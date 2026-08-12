@@ -1,30 +1,42 @@
-// This is a basic Flutter widget test.
+// Smoke test for the Playable 0.1 app shell.
 //
-// To perform an interaction with a widget in your test, use the WidgetTester
-// utility in the flutter_test package. For example, you can send tap and scroll
-// gestures. You can also use WidgetTester to find child widgets in the widget
-// tree, read text, and verify that the values of widget properties are correct.
+// Verifies the app boots, resolves its (mocked) local-storage save, and
+// renders the Home screen with the bottom navigation in place.
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
+import 'package:smile_enjoy_story/app/game_controller.dart';
 import 'package:smile_enjoy_story/main.dart';
 
 void main() {
-  testWidgets('Counter increments smoke test', (WidgetTester tester) async {
-    // Build our app and trigger a frame.
-    await tester.pumpWidget(const MyApp());
+  testWidgets('app boots into the Home screen with bottom navigation', (
+    WidgetTester tester,
+  ) async {
+    SharedPreferences.setMockInitialValues({});
 
-    // Verify that our counter starts at 0.
-    expect(find.text('0'), findsOneWidget);
-    expect(find.text('1'), findsNothing);
+    await tester.pumpWidget(SesApp(controller: GameController()));
+    await tester.pumpAndSettle();
 
-    // Tap the '+' icon and trigger a frame.
-    await tester.tap(find.byIcon(Icons.add));
-    await tester.pump();
+    expect(find.text('S.E.S.'), findsWidgets);
+    expect(find.text('ホーム'), findsOneWidget);
+    expect(find.text('社員'), findsOneWidget);
+    expect(find.text('採用'), findsOneWidget);
+    expect(find.text('案件'), findsOneWidget);
+    expect(find.text('その他'), findsOneWidget);
+    expect(find.textContaining('次の週へ'), findsOneWidget);
+  });
 
-    // Verify that our counter has incremented.
-    expect(find.text('0'), findsNothing);
-    expect(find.text('1'), findsOneWidget);
+  testWidgets('bottom navigation switches tabs', (WidgetTester tester) async {
+    SharedPreferences.setMockInitialValues({});
+
+    await tester.pumpWidget(SesApp(controller: GameController()));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('社員'));
+    await tester.pumpAndSettle();
+    expect(find.text('稼働率'), findsNothing);
+    expect(find.widgetWithText(AppBar, '社員'), findsOneWidget);
   });
 }

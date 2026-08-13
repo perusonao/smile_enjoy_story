@@ -1,3 +1,4 @@
+import '../../domain/domain.dart';
 import '../models/models.dart';
 import 'finance_engine.dart';
 
@@ -17,6 +18,27 @@ class TaskEngine {
     final tasks = <HomeTask>[];
 
     // --- Critical -----------------------------------------------------
+
+    for (final offer in state.offers.where(
+      (offer) =>
+          offer.status == OfferStatus.pending &&
+          offer.responseDeadlineWeek <= state.week,
+    )) {
+      final engineer = state.engineers
+          .where((e) => e.id == offer.employeeId)
+          .firstOrNull;
+      if (engineer == null) continue;
+      tasks.add(
+        HomeTask(
+          id: 'offer-deadline-${offer.id}',
+          priority: TaskPriority.critical,
+          title: '${engineer.profile.name}さんの案件オファー回答期限が今週です',
+          subtitle: '何もしないで週を送ると期限切れになります',
+          targetType: TaskTargetType.employeeDetail,
+          targetId: engineer.id,
+        ),
+      );
+    }
 
     // Week 1 founding guidance (§17-18): the game opens with everyone
     // waiting, so make the very first task list point straight at the
@@ -114,7 +136,8 @@ class TaskEngine {
         HomeTask(
           id: 'waiting-critical-more',
           priority: TaskPriority.critical,
-          title: 'ほかにも待機3週目以上の社員が${longWaiters.length - _maxIndividualWaitingTasks}名います',
+          title:
+              'ほかにも待機3週目以上の社員が${longWaiters.length - _maxIndividualWaitingTasks}名います',
           targetType: TaskTargetType.employeesTab,
         ),
       );
@@ -169,7 +192,12 @@ class TaskEngine {
     }
 
     final scheduledInterviews = state.proposals
-        .where((p) => p.stage == ProposalStage.proposed)
+        .where(
+          (p) =>
+              p.status == ApplicationStatus.active &&
+              p.currentStep != SelectionStep.documentScreening &&
+              p.currentStep != SelectionStep.offer,
+        )
         .length;
     if (scheduledInterviews > 0) {
       tasks.add(
@@ -251,7 +279,8 @@ class TaskEngine {
     }
 
     final expiredListings = state.events.where(
-      (e) => e.week == state.week && e.category == GameLogCategory.listingExpired,
+      (e) =>
+          e.week == state.week && e.category == GameLogCategory.listingExpired,
     );
     for (final e in expiredListings) {
       tasks.add(

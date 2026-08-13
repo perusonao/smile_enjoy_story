@@ -57,6 +57,12 @@ class GameController extends ChangeNotifier {
   void proposeEngineer(String engineerId, String projectId) =>
       _apply((s) => GameEngine.proposeEngineer(s, engineerId, projectId));
 
+  void acceptOffer(String offerId) =>
+      _apply((s) => GameEngine.acceptOffer(s, offerId));
+
+  void declineOffer(String offerId) =>
+      _apply((s) => GameEngine.declineOffer(s, offerId));
+
   // --- Turn ----------------------------------------------------------------
 
   void advanceWeek() => _apply(GameEngine.advanceWeek);
@@ -72,6 +78,7 @@ class GameController extends ChangeNotifier {
 
   GameRank get rank => GameEngine.computeRank(_state);
 
-  String playtestLogJson() =>
-      const JsonEncoder.withIndent('  ').convert(GameEngine.playtestLog(_state));
+  String playtestLogJson() => const JsonEncoder.withIndent(
+    '  ',
+  ).convert(GameEngine.playtestLog(_state));
 }

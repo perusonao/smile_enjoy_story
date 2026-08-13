@@ -93,6 +93,9 @@ void main() {
       var state = GameEngine.newGame(seed: 5);
 
       for (var i = 0; i < totalGameWeeks && state.status == GameStatus.playing; i++) {
+        for (final offer in state.offers.where((o) => o.status == OfferStatus.pending).toList()) {
+          state = GameEngine.acceptOffer(state, offer.id);
+        }
         for (final engineer in state.engineers) {
           if (engineer.status != EngineerStatus.waiting) continue;
           final target = _bestFitProposableProject(state, engineer);

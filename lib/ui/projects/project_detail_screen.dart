@@ -33,14 +33,16 @@ class ProjectDetailScreen extends StatelessWidget {
     }
     final project = entry.project;
     final open = state.isProjectOpenForProposal(project.id);
-    final waitingEngineers = state.engineers
-        .where((e) => e.status == EngineerStatus.waiting)
-        .toList()
-      ..sort(
-        (a, b) => MatchingEngine.computeFit(b, project).total.compareTo(
-          MatchingEngine.computeFit(a, project).total,
-        ),
-      );
+    final waitingEngineers =
+        state.engineers
+            .where((e) => e.status != EngineerStatus.assigned)
+            .toList()
+          ..sort(
+            (a, b) => MatchingEngine.computeFit(
+              b,
+              project,
+            ).total.compareTo(MatchingEngine.computeFit(a, project).total),
+          );
 
     return Scaffold(
       appBar: AppBar(title: Text(project.title)),
@@ -58,6 +60,17 @@ class ProjectDetailScreen extends StatelessWidget {
               _Row('契約期間', '${project.durationWeeks}週間'),
               _Row('応募締切', 'Week ${project.applicationDeadlineWeek}'),
               _Row('面談回数', '${project.interviewCount}回'),
+              _Row('競争度', '★' * project.competitionLevel),
+              _Row(
+                '選考フロー',
+                project.selectionFlow.steps
+                    .map((step) => selectionStepLabels[step]!)
+                    .join(' → '),
+              ),
+              _Row(
+                '自社応募',
+                '${state.proposals.where((p) => p.project.id == project.id && p.isActive).length}名',
+              ),
               _Row('勤務形態', remotePolicyLabels[project.remotePolicy] ?? ''),
               _Row('難易度', '★' * project.difficulty),
             ],
@@ -90,7 +103,10 @@ class ProjectDetailScreen extends StatelessWidget {
               Text('待機社員から提案', style: Theme.of(context).textTheme.titleMedium),
               const SizedBox(width: 8),
               if (open && waitingEngineers.isNotEmpty)
-                Text('比較して選べます', style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+                Text(
+                  '比較して選べます',
+                  style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                ),
             ],
           ),
           const SizedBox(height: 8),
@@ -167,7 +183,12 @@ class _CandidateCardState extends State<_CandidateCard> {
     final fit = MatchingEngine.computeFit(engineer, project);
     final visibleFit = PlayerVisibleFit.fromScore(fit.total);
     final profit = MatchingEngine.monthlyProfit(engineer, project);
-    final profitColor = profit >= 0 ? Colors.green.shade700 : Colors.red.shade700;
+    final profitColor = profit >= 0
+        ? Colors.green.shade700
+        : Colors.red.shade700;
+    final state = context.game.state;
+    final slots = state.activeProposalCountFor(engineer.id);
+    final canPropose = state.canPropose(engineer.id, project.id);
 
     return Container(
       padding: const EdgeInsets.all(12),
@@ -182,7 +203,13 @@ class _CandidateCardState extends State<_CandidateCard> {
           Row(
             children: [
               Expanded(
-                child: Text(profile.name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+                child: Text(
+                  profile.name,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 15,
+                  ),
+                ),
               ),
               FitBadge(fit: visibleFit),
             ],
@@ -192,18 +219,35 @@ class _CandidateCardState extends State<_CandidateCard> {
             spacing: 12,
             runSpacing: 4,
             children: [
-              _Bit(Icons.code, languageLabels[profile.mainLanguage] ?? profile.mainLanguage.name),
-              _Bit(Icons.timelapse, formatExperience(profile.totalItExperienceMonths)),
+              _Bit(
+                Icons.code,
+                languageLabels[profile.mainLanguage] ??
+                    profile.mainLanguage.name,
+              ),
+              _Bit(
+                Icons.timelapse,
+                formatExperience(profile.totalItExperienceMonths),
+              ),
               _Bit(Icons.payments_outlined, formatYen(engineer.salary)),
+              _Bit(
+                Icons.workspaces_outline,
+                '並行営業 $slots / $maxParallelProposalsPerEmployee',
+              ),
             ],
           ),
           const SizedBox(height: 6),
           Row(
             children: [
-              const Text('月間想定粗利  ', style: TextStyle(fontSize: 12.5, color: Colors.black54)),
+              const Text(
+                '月間想定粗利  ',
+                style: TextStyle(fontSize: 12.5, color: Colors.black54),
+              ),
               Text(
                 '${profit >= 0 ? '+' : ''}${formatYen(profit)}',
-                style: TextStyle(fontWeight: FontWeight.bold, color: profitColor),
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  color: profitColor,
+                ),
               ),
             ],
           ),
@@ -214,7 +258,10 @@ class _CandidateCardState extends State<_CandidateCard> {
               children: [
                 Text(
                   _expanded ? '内訳を閉じる' : 'Fitの内訳を見る',
-                  style: const TextStyle(fontSize: 12, color: SesTheme.primaryBlue),
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: SesTheme.primaryBlue,
+                  ),
                 ),
                 Icon(
                   _expanded ? Icons.expand_less : Icons.expand_more,
@@ -243,8 +290,8 @@ class _CandidateCardState extends State<_CandidateCard> {
           SizedBox(
             width: double.infinity,
             child: FilledButton(
-              onPressed: () => _propose(context),
-              child: const Text('提案する'),
+              onPressed: canPropose ? () => _propose(context) : null,
+              child: Text(canPropose ? '提案する' : '提案枠がありません'),
             ),
           ),
         ],
@@ -292,7 +339,10 @@ class _SectionCard extends StatelessWidget {
         children: [
           Text(
             title,
-            style: const TextStyle(fontWeight: FontWeight.bold, color: SesTheme.primaryBlue),
+            style: const TextStyle(
+              fontWeight: FontWeight.bold,
+              color: SesTheme.primaryBlue,
+            ),
           ),
           const SizedBox(height: 8),
           ...children,
@@ -317,7 +367,10 @@ class _Row extends StatelessWidget {
         children: [
           SizedBox(
             width: 96,
-            child: Text(label, style: const TextStyle(color: Colors.black54, fontSize: 13)),
+            child: Text(
+              label,
+              style: const TextStyle(color: Colors.black54, fontSize: 13),
+            ),
           ),
           Expanded(child: Text(value, style: const TextStyle(fontSize: 13))),
         ],

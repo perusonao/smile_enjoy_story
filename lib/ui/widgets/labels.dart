@@ -65,6 +65,15 @@ const Map<ProjectRank, String> projectRankLabels = {
   ProjectRank.lead: 'リード',
 };
 
+const Map<SelectionStep, String> selectionStepLabels = {
+  SelectionStep.documentScreening: '書類選考',
+  SelectionStep.upperCompanyInterview: '上位会社面談',
+  SelectionStep.technicalInterview: '技術面談',
+  SelectionStep.clientInterview: '客先面談',
+  SelectionStep.finalInterview: '最終面談',
+  SelectionStep.offer: 'オファー',
+};
+
 const Map<ClientSpecialty, String> clientSpecialtyLabels = {
   ClientSpecialty.javaBusiness: 'Java業務系',
   ClientSpecialty.webFrontend: 'Web/フロントエンド',
@@ -121,9 +130,13 @@ const Map<TechDomain, String> techDomainLabels = {
 /// (§9), e.g. `Java`, `Backend`, `経験年数`, `コミュ力`, `日本語`.
 String fitDetailLabel(FitDetailItem item) => switch (item.dimension) {
   FitDimension.language =>
-    item.language != null ? (languageLabels[item.language] ?? item.language!.name) : '言語',
+    item.language != null
+        ? (languageLabels[item.language] ?? item.language!.name)
+        : '言語',
   FitDimension.techDomain =>
-    item.techDomain != null ? (techDomainLabels[item.techDomain] ?? '技術') : '技術',
+    item.techDomain != null
+        ? (techDomainLabels[item.techDomain] ?? '技術')
+        : '技術',
   FitDimension.experience => '経験年数',
   FitDimension.communication => 'コミュ力',
   FitDimension.japanese => '日本語',

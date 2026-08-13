@@ -232,7 +232,7 @@ void main() {
       expect(next.engineerById(engineer.id).status, EngineerStatus.waiting);
     });
 
-    test('a proposal progresses through interview to assignment over two turns', () {
+    test('legacy single-interview proposal remains compatible over two turns', () {
       final engineer = buildEngineer(
         id: 'candidate-1',
         salary: 0,

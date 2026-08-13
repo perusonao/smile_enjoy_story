@@ -19,6 +19,19 @@ class GameStats {
   final int projectInterviewCount;
   final int projectInterviewSuccess;
   final int assignmentsStarted;
+  final int parallelProposalPeak;
+  final int screeningPassed;
+  final int upperCompanyInterviewPassed;
+  final int technicalInterviewPassed;
+  final int clientInterviewPassed;
+  final int finalInterviewPassed;
+  final int offersReceived;
+  final int offersAccepted;
+  final int offersDeclined;
+  final int offersExpired;
+  final int proposalCancelledByOtherAssignment;
+  final int selectionWeeksTotal;
+  final int completedSelections;
 
   /// Sum, over every simulated week, of the number of engineers who were
   /// `waiting` that week (待機延べ週).
@@ -46,6 +59,19 @@ class GameStats {
     required this.projectInterviewCount,
     required this.projectInterviewSuccess,
     required this.assignmentsStarted,
+    this.parallelProposalPeak = 0,
+    this.screeningPassed = 0,
+    this.upperCompanyInterviewPassed = 0,
+    this.technicalInterviewPassed = 0,
+    this.clientInterviewPassed = 0,
+    this.finalInterviewPassed = 0,
+    this.offersReceived = 0,
+    this.offersAccepted = 0,
+    this.offersDeclined = 0,
+    this.offersExpired = 0,
+    this.proposalCancelledByOtherAssignment = 0,
+    this.selectionWeeksTotal = 0,
+    this.completedSelections = 0,
     required this.waitingWeeks,
     this.cashRunwaySampleSum = 0,
     this.cashRunwaySampleCount = 0,
@@ -63,18 +89,34 @@ class GameStats {
       projectInterviewCount = 0,
       projectInterviewSuccess = 0,
       assignmentsStarted = 0,
+      parallelProposalPeak = 0,
+      screeningPassed = 0,
+      upperCompanyInterviewPassed = 0,
+      technicalInterviewPassed = 0,
+      clientInterviewPassed = 0,
+      finalInterviewPassed = 0,
+      offersReceived = 0,
+      offersAccepted = 0,
+      offersDeclined = 0,
+      offersExpired = 0,
+      proposalCancelledByOtherAssignment = 0,
+      selectionWeeksTotal = 0,
+      completedSelections = 0,
       waitingWeeks = 0,
       cashRunwaySampleSum = 0,
       cashRunwaySampleCount = 0;
 
   /// Mean of every sampled month-end cash-runway reading, or `null` before
   /// the first month has closed.
-  double? get averageCashRunwayMonths =>
-      cashRunwaySampleCount == 0 ? null : cashRunwaySampleSum / cashRunwaySampleCount;
+  double? get averageCashRunwayMonths => cashRunwaySampleCount == 0
+      ? null
+      : cashRunwaySampleSum / cashRunwaySampleCount;
 
   /// Returns a copy with one more runway sample folded in (§29).
   GameStats withRunwaySample(double months) {
-    final capped = months.isFinite ? months.clamp(0, runwaySampleCap) : runwaySampleCap;
+    final capped = months.isFinite
+        ? months.clamp(0, runwaySampleCap)
+        : runwaySampleCap;
     return copyWith(
       cashRunwaySampleSum: cashRunwaySampleSum + capped,
       cashRunwaySampleCount: cashRunwaySampleCount + 1,
@@ -90,6 +132,8 @@ class GameStats {
   /// 営業利益 (accounting profit): recognized revenue minus recognized
   /// expense — deliberately independent of actual cash movement (§20).
   int get cumulativeProfit => cumulativeRevenue - cumulativeExpense;
+  double get averageSelectionWeeks =>
+      completedSelections == 0 ? 0 : selectionWeeksTotal / completedSelections;
 
   GameStats copyWith({
     int? cumulativeRevenue,
@@ -103,6 +147,19 @@ class GameStats {
     int? projectInterviewCount,
     int? projectInterviewSuccess,
     int? assignmentsStarted,
+    int? parallelProposalPeak,
+    int? screeningPassed,
+    int? upperCompanyInterviewPassed,
+    int? technicalInterviewPassed,
+    int? clientInterviewPassed,
+    int? finalInterviewPassed,
+    int? offersReceived,
+    int? offersAccepted,
+    int? offersDeclined,
+    int? offersExpired,
+    int? proposalCancelledByOtherAssignment,
+    int? selectionWeeksTotal,
+    int? completedSelections,
     int? waitingWeeks,
     double? cashRunwaySampleSum,
     int? cashRunwaySampleCount,
@@ -123,6 +180,24 @@ class GameStats {
       projectInterviewSuccess:
           projectInterviewSuccess ?? this.projectInterviewSuccess,
       assignmentsStarted: assignmentsStarted ?? this.assignmentsStarted,
+      parallelProposalPeak: parallelProposalPeak ?? this.parallelProposalPeak,
+      screeningPassed: screeningPassed ?? this.screeningPassed,
+      upperCompanyInterviewPassed:
+          upperCompanyInterviewPassed ?? this.upperCompanyInterviewPassed,
+      technicalInterviewPassed:
+          technicalInterviewPassed ?? this.technicalInterviewPassed,
+      clientInterviewPassed:
+          clientInterviewPassed ?? this.clientInterviewPassed,
+      finalInterviewPassed: finalInterviewPassed ?? this.finalInterviewPassed,
+      offersReceived: offersReceived ?? this.offersReceived,
+      offersAccepted: offersAccepted ?? this.offersAccepted,
+      offersDeclined: offersDeclined ?? this.offersDeclined,
+      offersExpired: offersExpired ?? this.offersExpired,
+      proposalCancelledByOtherAssignment:
+          proposalCancelledByOtherAssignment ??
+          this.proposalCancelledByOtherAssignment,
+      selectionWeeksTotal: selectionWeeksTotal ?? this.selectionWeeksTotal,
+      completedSelections: completedSelections ?? this.completedSelections,
       waitingWeeks: waitingWeeks ?? this.waitingWeeks,
       cashRunwaySampleSum: cashRunwaySampleSum ?? this.cashRunwaySampleSum,
       cashRunwaySampleCount:
@@ -142,6 +217,19 @@ class GameStats {
     'projectInterviewCount': projectInterviewCount,
     'projectInterviewSuccess': projectInterviewSuccess,
     'assignmentsStarted': assignmentsStarted,
+    'parallelProposalPeak': parallelProposalPeak,
+    'screeningPassed': screeningPassed,
+    'upperCompanyInterviewPassed': upperCompanyInterviewPassed,
+    'technicalInterviewPassed': technicalInterviewPassed,
+    'clientInterviewPassed': clientInterviewPassed,
+    'finalInterviewPassed': finalInterviewPassed,
+    'offersReceived': offersReceived,
+    'offersAccepted': offersAccepted,
+    'offersDeclined': offersDeclined,
+    'offersExpired': offersExpired,
+    'proposalCancelledByOtherAssignment': proposalCancelledByOtherAssignment,
+    'selectionWeeksTotal': selectionWeeksTotal,
+    'completedSelections': completedSelections,
     'waitingWeeks': waitingWeeks,
     'cashRunwaySampleSum': cashRunwaySampleSum,
     'cashRunwaySampleCount': cashRunwaySampleCount,
@@ -159,6 +247,21 @@ class GameStats {
     projectInterviewCount: json['projectInterviewCount'] as int,
     projectInterviewSuccess: json['projectInterviewSuccess'] as int,
     assignmentsStarted: json['assignmentsStarted'] as int,
+    parallelProposalPeak: json['parallelProposalPeak'] as int? ?? 0,
+    screeningPassed: json['screeningPassed'] as int? ?? 0,
+    upperCompanyInterviewPassed:
+        json['upperCompanyInterviewPassed'] as int? ?? 0,
+    technicalInterviewPassed: json['technicalInterviewPassed'] as int? ?? 0,
+    clientInterviewPassed: json['clientInterviewPassed'] as int? ?? 0,
+    finalInterviewPassed: json['finalInterviewPassed'] as int? ?? 0,
+    offersReceived: json['offersReceived'] as int? ?? 0,
+    offersAccepted: json['offersAccepted'] as int? ?? 0,
+    offersDeclined: json['offersDeclined'] as int? ?? 0,
+    offersExpired: json['offersExpired'] as int? ?? 0,
+    proposalCancelledByOtherAssignment:
+        json['proposalCancelledByOtherAssignment'] as int? ?? 0,
+    selectionWeeksTotal: json['selectionWeeksTotal'] as int? ?? 0,
+    completedSelections: json['completedSelections'] as int? ?? 0,
     waitingWeeks: json['waitingWeeks'] as int,
     cashRunwaySampleSum: (json['cashRunwaySampleSum'] as num?)?.toDouble() ?? 0,
     cashRunwaySampleCount: json['cashRunwaySampleCount'] as int? ?? 0,

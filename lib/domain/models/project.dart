@@ -2,6 +2,7 @@ import 'programming_language.dart';
 import 'project_rank.dart';
 import 'project_type.dart';
 import 'remote_policy.dart';
+import 'selection_flow.dart';
 
 /// A project engagement offered by a [Client], as produced by
 /// `ProjectGenerator`.
@@ -35,6 +36,8 @@ class Project {
 
   final RemotePolicy remotePolicy;
   final int interviewCount;
+  final SelectionFlow selectionFlow;
+  final int competitionLevel;
 
   /// 1 (easy) - 5 (hard).
   final int difficulty;
@@ -59,6 +62,8 @@ class Project {
     required this.requiredJapaneseLevel,
     required this.remotePolicy,
     required this.interviewCount,
+    this.selectionFlow = const SelectionFlow.standard(),
+    this.competitionLevel = 3,
     required this.difficulty,
   }) : assert(monthlyRate > 0),
        assert(durationWeeks > 0),
@@ -71,6 +76,7 @@ class Project {
        assert(requiredManager >= 0 && requiredManager <= 5),
        assert(requiredJapaneseLevel >= 1 && requiredJapaneseLevel <= 5),
        assert(interviewCount >= 1),
+       assert(competitionLevel >= 1 && competitionLevel <= 5),
        assert(difficulty >= 1 && difficulty <= 5);
 
   Map<String, dynamic> toJson() => {
@@ -93,6 +99,8 @@ class Project {
     'requiredJapaneseLevel': requiredJapaneseLevel,
     'remotePolicy': remotePolicy.jsonValue,
     'interviewCount': interviewCount,
+    'selectionFlow': selectionFlow.toJson(),
+    'competitionLevel': competitionLevel,
     'difficulty': difficulty,
   };
 
@@ -119,6 +127,12 @@ class Project {
       requiredJapaneseLevel: json['requiredJapaneseLevel'] as int,
       remotePolicy: RemotePolicy.fromJson(json['remotePolicy'] as String),
       interviewCount: json['interviewCount'] as int,
+      selectionFlow: json['selectionFlow'] == null
+          ? const SelectionFlow.standard()
+          : SelectionFlow.fromJson(
+              json['selectionFlow'] as Map<String, dynamic>,
+            ),
+      competitionLevel: json['competitionLevel'] as int? ?? 3,
       difficulty: json['difficulty'] as int,
     );
   }

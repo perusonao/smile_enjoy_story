@@ -13,7 +13,9 @@ import 'recruitment_media.dart';
 /// Bumped whenever a save-incompatible change is made to [GameState]'s
 /// shape (Playable 0.3A §26). [SaveService] resets to a new game rather
 /// than crashing when a loaded save's version doesn't match.
-const int currentSchemaVersion = 2;
+const int currentSchemaVersion = 3;
+const int maxParallelProposalsPerEmployee = 3;
+const int maxActiveCompanyProposals = 6;
 
 /// 1 turn = 1 week, 4 weeks = 1 month, 48 weeks = 1 fiscal year (§3).
 const int totalGameWeeks = 48;
@@ -47,6 +49,7 @@ class GameState {
   final List<ProjectEntry> openProjects;
   final List<RecruitmentListing> listings;
   final List<ProjectProposal> proposals;
+  final List<Offer> offers;
   final List<ActiveAssignment> activeAssignments;
   final List<PendingHire> pendingHires;
   final List<AccountsReceivable> accountsReceivable;
@@ -88,6 +91,7 @@ class GameState {
     required this.openProjects,
     required this.listings,
     required this.proposals,
+    this.offers = const [],
     required this.activeAssignments,
     required this.pendingHires,
     this.accountsReceivable = const [],
@@ -135,16 +139,49 @@ class GameState {
     return null;
   }
 
+  List<ProjectProposal> applicationsForEngineer(String engineerId) =>
+      proposals.where((proposal) => proposal.engineerId == engineerId).toList();
+
+  int activeProposalCountFor(String engineerId) => proposals
+      .where(
+        (proposal) =>
+            proposal.engineerId == engineerId &&
+            (proposal.status == ApplicationStatus.active ||
+                proposal.status == ApplicationStatus.offered),
+      )
+      .length;
+
+  int get activeCompanyProposalCount => proposals
+      .where(
+        (proposal) =>
+            proposal.status == ApplicationStatus.active ||
+            proposal.status == ApplicationStatus.offered,
+      )
+      .length;
+
+  bool canPropose(String engineerId, String projectId) =>
+      activeProposalCountFor(engineerId) < maxParallelProposalsPerEmployee &&
+      activeCompanyProposalCount < maxActiveCompanyProposals &&
+      !proposals.any(
+        (proposal) =>
+            proposal.engineerId == engineerId &&
+            proposal.project.id == projectId &&
+            (proposal.status == ApplicationStatus.active ||
+                proposal.status == ApplicationStatus.offered),
+      ) &&
+      !activeAssignments.any(
+        (assignment) => assignment.engineerId == engineerId,
+      );
+
   bool isProjectOpenForProposal(String projectId) {
-    final hasActiveProposal = proposals.any(
-      (p) => p.project.id == projectId && p.stage == ProposalStage.proposed,
-    );
-    final isPassedAwaitingAssignment = proposals.any(
+    final hasLegacyProposal = proposals.any(
       (p) =>
-          p.project.id == projectId && p.stage == ProposalStage.interviewPassed,
+          p.project.id == projectId &&
+          p.project.interviewCount != p.project.selectionFlow.interviewCount &&
+          p.status == ApplicationStatus.active,
     );
     final isAssigned = activeAssignments.any((a) => a.project.id == projectId);
-    return !hasActiveProposal && !isPassedAwaitingAssignment && !isAssigned;
+    return !hasLegacyProposal && !isAssigned;
   }
 
   /// How many consecutive weeks [engineerId] has been waiting, or 0 if
@@ -172,6 +209,7 @@ class GameState {
     List<ProjectEntry>? openProjects,
     List<RecruitmentListing>? listings,
     List<ProjectProposal>? proposals,
+    List<Offer>? offers,
     List<ActiveAssignment>? activeAssignments,
     List<PendingHire>? pendingHires,
     List<AccountsReceivable>? accountsReceivable,
@@ -198,6 +236,7 @@ class GameState {
       openProjects: openProjects ?? this.openProjects,
       listings: listings ?? this.listings,
       proposals: proposals ?? this.proposals,
+      offers: offers ?? this.offers,
       activeAssignments: activeAssignments ?? this.activeAssignments,
       pendingHires: pendingHires ?? this.pendingHires,
       accountsReceivable: accountsReceivable ?? this.accountsReceivable,
@@ -237,6 +276,7 @@ class GameState {
     'openProjects': openProjects.map((e) => e.toJson()).toList(),
     'listings': listings.map((e) => e.toJson()).toList(),
     'proposals': proposals.map((e) => e.toJson()).toList(),
+    'offers': offers.map((e) => e.toJson()).toList(),
     'activeAssignments': activeAssignments.map((e) => e.toJson()).toList(),
     'pendingHires': pendingHires.map((e) => e.toJson()).toList(),
     'accountsReceivable': accountsReceivable.map((e) => e.toJson()).toList(),
@@ -279,6 +319,9 @@ class GameState {
     proposals: (json['proposals'] as List)
         .map((e) => ProjectProposal.fromJson(e as Map<String, dynamic>))
         .toList(),
+    offers: (json['offers'] as List? ?? const [])
+        .map((e) => Offer.fromJson(e as Map<String, dynamic>))
+        .toList(),
     activeAssignments: (json['activeAssignments'] as List)
         .map((e) => ActiveAssignment.fromJson(e as Map<String, dynamic>))
         .toList(),
@@ -296,7 +339,8 @@ class GameState {
         .toList(),
     stats: GameStats.fromJson(json['stats'] as Map<String, dynamic>),
     status: GameStatus.fromJson(json['status'] as String),
-    waitingStreak: (json['waitingStreak'] as Map<String, dynamic>?)?.map(
+    waitingStreak:
+        (json['waitingStreak'] as Map<String, dynamic>?)?.map(
           (key, value) => MapEntry(key, value as int),
         ) ??
         const {},

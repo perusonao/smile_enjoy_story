@@ -6,6 +6,7 @@ import '../models/project.dart';
 import '../models/project_rank.dart';
 import '../models/project_type.dart';
 import '../models/remote_policy.dart';
+import '../models/selection_flow.dart';
 import 'int_range.dart';
 import 'project_distribution.dart';
 import 'weighted_pick.dart';
@@ -77,7 +78,7 @@ class ProjectGenerator {
 
     final remotePolicy =
         RemotePolicy.values[_rng.nextInt(RemotePolicy.values.length)];
-    final interviewCount = interviewCountRangeByRank[rank]!.pick(_rng);
+    final selectionFlow = _selectionFlow(type, rank);
 
     var difficulty = (baseDifficultyByRank[rank]! + (_rng.nextInt(3) - 1))
         .clamp(1, 5);
@@ -106,9 +107,28 @@ class ProjectGenerator {
       requiredManager: requiredManager,
       requiredJapaneseLevel: requiredJapaneseLevel,
       remotePolicy: remotePolicy,
-      interviewCount: interviewCount,
+      interviewCount: selectionFlow.interviewCount,
+      selectionFlow: selectionFlow,
+      competitionLevel: (difficulty + _rng.nextInt(3) - 1).clamp(1, 5),
       difficulty: difficulty,
     );
+  }
+
+  SelectionFlow _selectionFlow(ProjectType type, ProjectRank rank) {
+    if (type == ProjectType.pl ||
+        rank == ProjectRank.senior ||
+        rank == ProjectRank.lead) {
+      return const SelectionFlow.advanced();
+    }
+    if (type == ProjectType.testSupport || rank == ProjectRank.entry) {
+      return const SelectionFlow.simple();
+    }
+    if (type == ProjectType.frontend &&
+        rank == ProjectRank.junior &&
+        _rng.nextBool()) {
+      return const SelectionFlow.simple();
+    }
+    return const SelectionFlow.standard();
   }
 
   Client _pickClient() {

@@ -1,9 +1,11 @@
 import '../../domain/domain.dart';
 import '../models/models.dart';
 import 'finance_engine.dart';
+import 'matching_engine.dart';
 import 'project_interview_engine.dart';
 import 'recruitment_engine.dart';
 import 'rng.dart';
+import 'selection_engine.dart';
 
 /// Orchestrates the whole simulation: new-game setup, the weekly turn, and
 /// the player actions that can happen between turns (interview, hire/reject,
@@ -31,7 +33,8 @@ class GameEngine {
   /// listings already on the market so there's something to propose them to
   /// on Week 1.
   static GameState newGame({int? seed, String companyName = 'あなたのSES会社'}) {
-    final marketSeed = seed ?? (DateTime.now().millisecondsSinceEpoch & 0x7fffffff);
+    final marketSeed =
+        seed ?? (DateTime.now().millisecondsSinceEpoch & 0x7fffffff);
 
     final founderApplicants = ApplicantGenerator(
       seed: founderApplicantSeed,
@@ -89,6 +92,7 @@ class GameEngine {
       openProjects: openProjects,
       listings: const [],
       proposals: const [],
+      offers: const [],
       activeAssignments: const [],
       pendingHires: const [],
       accountsReceivable: const [],
@@ -106,10 +110,7 @@ class GameEngine {
   static GameState interviewApplicant(GameState state, String applicantId) {
     if (state.interviewedApplicantIds.contains(applicantId)) return state;
     return state.copyWith(
-      interviewedApplicantIds: {
-        ...state.interviewedApplicantIds,
-        applicantId,
-      },
+      interviewedApplicantIds: {...state.interviewedApplicantIds, applicantId},
     );
   }
 
@@ -120,9 +121,9 @@ class GameEngine {
     if (index == -1) return state;
     final entry = state.applicants[index];
     final remaining = [...state.applicants]..removeAt(index);
-    return state.copyWith(applicants: remaining).withLog(
-      '${entry.applicant.name} を不採用としました。',
-    );
+    return state
+        .copyWith(applicants: remaining)
+        .withLog('${entry.applicant.name} を不採用としました。');
   }
 
   /// Hire decision + offer-acceptance roll (§10-11). Requires the applicant
@@ -185,11 +186,11 @@ class GameEngine {
     String engineerId,
     String projectId,
   ) {
-    if (!state.isProjectOpenForProposal(projectId)) return state;
+    if (!state.canPropose(engineerId, projectId)) return state;
     final engIndex = state.engineers.indexWhere((e) => e.id == engineerId);
     if (engIndex == -1) return state;
     final engineer = state.engineers[engIndex];
-    if (engineer.status != EngineerStatus.waiting) return state;
+    if (engineer.status == EngineerStatus.assigned) return state;
 
     ProjectEntry? entry;
     for (final e in state.openProjects) {
@@ -208,16 +209,28 @@ class GameEngine {
       project: entry.project,
       proposedWeek: state.week,
       stage: ProposalStage.proposed,
+      fitScore: MatchingEngine.computeFit(engineer, entry.project).total,
     );
     final updatedEngineers = [...state.engineers];
+    final legacySingleInterview =
+        entry.project.interviewCount !=
+        entry.project.selectionFlow.interviewCount;
     updatedEngineers[engIndex] = engineer.copyWith(
-      status: EngineerStatus.proposed,
+      status: legacySingleInterview
+          ? EngineerStatus.proposed
+          : EngineerStatus.waiting,
     );
     final stats = afterMint.stats.copyWith(
       proposalCount: afterMint.stats.proposalCount + 1,
+      parallelProposalPeak: [
+        afterMint.stats.parallelProposalPeak,
+        afterMint.activeProposalCountFor(engineerId) + 1,
+      ].reduce((a, b) => a > b ? a : b),
     );
-    final updatedWaitingStreak = {...afterMint.waitingStreak}
-      ..remove(engineerId);
+    final updatedWaitingStreak = {...afterMint.waitingStreak};
+    if (legacySingleInterview) {
+      updatedWaitingStreak.remove(engineerId);
+    }
     return afterMint
         .copyWith(
           engineers: updatedEngineers,
@@ -226,6 +239,94 @@ class GameEngine {
           waitingStreak: updatedWaitingStreak,
         )
         .withLog('${engineer.profile.name} を「${entry.project.title}」へ提案しました。');
+  }
+
+  static GameState acceptOffer(GameState state, String offerId) {
+    final offer = state.offers.where((item) => item.id == offerId).firstOrNull;
+    if (offer == null ||
+        offer.status != OfferStatus.pending ||
+        state.week > offer.responseDeadlineWeek) {
+      return state;
+    }
+
+    var cancelled = 0;
+    final proposals = state.proposals.map((application) {
+      if (application.id == offer.applicationId) {
+        return application.copyWith(
+          status: ApplicationStatus.accepted,
+          stage: ProposalStage.interviewPassed,
+          assignWeek: offer.startWeek,
+        );
+      }
+      if (application.engineerId == offer.employeeId &&
+          (application.status == ApplicationStatus.active ||
+              application.status == ApplicationStatus.offered)) {
+        cancelled++;
+        return application.copyWith(
+          status: ApplicationStatus.cancelled,
+          rejectionReason: '他案件のオファーを受諾したため営業終了',
+          stepHistory: [
+            ...application.stepHistory,
+            SelectionStepHistory(
+              week: state.week,
+              step: application.currentStep,
+              result: SelectionStepResult.cancelled,
+            ),
+          ],
+        );
+      }
+      return application;
+    }).toList();
+    final offers = state.offers.map((item) {
+      if (item.id == offerId) {
+        return item.copyWith(status: OfferStatus.accepted);
+      }
+      if (item.employeeId == offer.employeeId &&
+          item.status == OfferStatus.pending) {
+        return item.copyWith(status: OfferStatus.declined);
+      }
+      return item;
+    }).toList();
+    return state
+        .copyWith(
+          proposals: proposals,
+          offers: offers,
+          stats: state.stats.copyWith(
+            offersAccepted: state.stats.offersAccepted + 1,
+            proposalCancelledByOtherAssignment:
+                state.stats.proposalCancelledByOtherAssignment + cancelled,
+          ),
+        )
+        .withLog(
+          '案件オファーを受諾しました。Week ${offer.startWeek} に参画予定です。',
+          category: GameLogCategory.offerAccepted,
+        );
+  }
+
+  static GameState declineOffer(GameState state, String offerId) {
+    final offer = state.offers.where((item) => item.id == offerId).firstOrNull;
+    if (offer == null || offer.status != OfferStatus.pending) return state;
+    return state
+        .copyWith(
+          offers: state.offers
+              .map(
+                (item) => item.id == offerId
+                    ? item.copyWith(status: OfferStatus.declined)
+                    : item,
+              )
+              .toList(),
+          proposals: state.proposals
+              .map(
+                (application) => application.id == offer.applicationId
+                    ? application.copyWith(status: ApplicationStatus.declined)
+                    : application,
+              )
+              .toList(),
+          stats: state.stats.copyWith(
+            offersDeclined: state.stats.offersDeclined + 1,
+          ),
+        )
+        .withLog('案件オファーを辞退しました。', category: GameLogCategory.offerDeclined);
   }
 
   /// Posts a recruitment listing, deducting its cost immediately and
@@ -298,7 +399,11 @@ class GameEngine {
       );
       for (final a in generated) {
         newApplicantEntries.add(
-          ApplicantEntry(applicant: a, appearedWeek: newWeek, source: listing.type),
+          ApplicantEntry(
+            applicant: a,
+            appearedWeek: newWeek,
+            source: listing.type,
+          ),
         );
       }
     }
@@ -331,7 +436,10 @@ class GameEngine {
         .map((p) => ProjectEntry(project: p, postedWeek: newWeek))
         .toList();
     if (newProjectEntries.isNotEmpty) {
-      log('新着案件が${newProjectEntries.length}件届きました。', GameLogCategory.newProjects);
+      log(
+        '新着案件が${newProjectEntries.length}件届きました。',
+        GameLogCategory.newProjects,
+      );
     }
 
     // 3. 入社予定者処理 ---------------------------------------------------
@@ -354,79 +462,204 @@ class GameEngine {
       );
       engineersById[id] = engineer;
       hiresDelta++;
-      log('${hire.applicant.name} が入社しました(待機)。', GameLogCategory.engineerJoined);
+      log(
+        '${hire.applicant.name} が入社しました(待機)。',
+        GameLogCategory.engineerJoined,
+      );
     }
 
-    // 4/5. 提案進行・案件面談進行 -------------------------------------------
-    // Failed proposals stay visible for exactly the week they resolve in
-    // (so "案件面談結果" can show them), then get dropped here so the list
-    // doesn't grow without bound over the year.
-    final proposalsCarriedIn = state.proposals.where((p) {
-      final isStaleFailure =
-          p.stage == ProposalStage.interviewFailed &&
-          (p.interviewWeek ?? 0) < newWeek;
-      return !isStaleFailure;
+    // 4/5. Advance one selection step per week and create explicit offers.
+    final carriedProposals = <ProjectProposal>[];
+    final offers = state.offers.map((offer) {
+      if (offer.status == OfferStatus.pending &&
+          newWeek > offer.responseDeadlineWeek) {
+        log('案件オファーの回答期限が切れました。', GameLogCategory.offerDeclined);
+        return offer.copyWith(status: OfferStatus.expired);
+      }
+      return offer;
     }).toList();
-
-    final resolvedProposals = <ProjectProposal>[];
-    final stillPendingProposals = <ProjectProposal>[];
     var interviewCountDelta = 0;
     var interviewSuccessDelta = 0;
-    for (final proposal in proposalsCarriedIn) {
-      if (proposal.stage != ProposalStage.proposed) {
-        stillPendingProposals.add(proposal);
+    var screeningPassedDelta = 0;
+    var upperPassedDelta = 0;
+    var technicalPassedDelta = 0;
+    var clientPassedDelta = 0;
+    var finalPassedDelta = 0;
+    var offersReceivedDelta = 0;
+    final offersExpiredDelta =
+        offers.where((o) => o.status == OfferStatus.expired).length -
+        state.offers.where((o) => o.status == OfferStatus.expired).length;
+    for (final proposal in state.proposals) {
+      if (proposal.status != ApplicationStatus.active) {
+        final expired =
+            proposal.status == ApplicationStatus.offered &&
+            offers.any(
+              (offer) =>
+                  offer.applicationId == proposal.id &&
+                  offer.status == OfferStatus.expired,
+            );
+        carriedProposals.add(
+          expired
+              ? proposal.copyWith(
+                  status: ApplicationStatus.declined,
+                  rejectionReason: 'オファー回答期限切れ',
+                )
+              : proposal,
+        );
         continue;
       }
       final engineer = engineersById[proposal.engineerId];
       if (engineer == null) continue;
-
-      final rate = ProjectInterviewEngine.successRate(engineer, proposal.project);
-      final passed = ProjectInterviewEngine.roll(
+      final legacySingleInterview =
+          proposal.project.interviewCount !=
+          proposal.project.selectionFlow.interviewCount;
+      if (legacySingleInterview) {
+        final rate = ProjectInterviewEngine.successRate(
+          engineer,
+          proposal.project,
+        );
+        final passed = ProjectInterviewEngine.roll(
+          rate: rate,
+          seed: seed,
+          week: newWeek,
+          salt: 'interview:${proposal.id}',
+        );
+        interviewCountDelta++;
+        if (passed) interviewSuccessDelta++;
+        carriedProposals.add(
+          proposal.copyWith(
+            status: passed
+                ? ApplicationStatus.accepted
+                : ApplicationStatus.rejected,
+            stage: passed
+                ? ProposalStage.interviewPassed
+                : ProposalStage.interviewFailed,
+            interviewWeek: newWeek,
+            interviewSuccessRate: rate,
+            assignWeek: passed ? newWeek + 1 : null,
+          ),
+        );
+        engineersById[engineer.id] = engineer.copyWith(
+          status: passed
+              ? EngineerStatus.interviewScheduled
+              : EngineerStatus.waiting,
+        );
+        log(
+          '${engineer.profile.name} は「${proposal.project.title}」の案件面談に${passed ? '合格' : '不合格'}でした。',
+          passed
+              ? GameLogCategory.interviewPassed
+              : GameLogCategory.interviewFailed,
+        );
+        continue;
+      }
+      final step = proposal.currentStep;
+      if (step == SelectionStep.offer) {
+        final offerId = mintId('offer');
+        offers.add(
+          Offer(
+            id: offerId,
+            applicationId: proposal.id,
+            projectId: proposal.project.id,
+            employeeId: proposal.engineerId,
+            monthlyRate: proposal.project.monthlyRate,
+            startWeek: newWeek + 1,
+            responseDeadlineWeek: newWeek,
+          ),
+        );
+        offersReceivedDelta++;
+        carriedProposals.add(
+          proposal.copyWith(
+            status: ApplicationStatus.offered,
+            finalOfferId: offerId,
+            interviewWeek: newWeek,
+          ),
+        );
+        log(
+          '${engineer.profile.name} に「${proposal.project.title}」のオファーが届きました。回答期限は今週です。',
+          GameLogCategory.interviewPassed,
+        );
+        continue;
+      }
+      final rate = SelectionEngine.successRate(
+        engineer,
+        proposal.project,
+        step,
+      );
+      final passed = SelectionEngine.roll(
         rate: rate,
         seed: seed,
         week: newWeek,
-        salt: 'interview:${proposal.id}',
+        salt: 'selection:${proposal.id}:${step.name}',
       );
-      interviewCountDelta++;
-      if (passed) interviewSuccessDelta++;
-
-      resolvedProposals.add(
-        proposal.copyWith(
-          stage: passed
-              ? ProposalStage.interviewPassed
-              : ProposalStage.interviewFailed,
-          interviewWeek: newWeek,
-          interviewSuccessRate: rate,
-          assignWeek: passed ? newWeek + 1 : null,
-        ),
+      if (step != SelectionStep.documentScreening) {
+        interviewCountDelta++;
+      }
+      if (passed && step != SelectionStep.documentScreening) {
+        interviewSuccessDelta++;
+      }
+      final history = SelectionStepHistory(
+        week: newWeek,
+        step: step,
+        result: passed
+            ? SelectionStepResult.passed
+            : SelectionStepResult.failed,
+        successRate: rate,
       );
-
       if (passed) {
+        switch (step) {
+          case SelectionStep.documentScreening:
+            screeningPassedDelta++;
+          case SelectionStep.upperCompanyInterview:
+            upperPassedDelta++;
+          case SelectionStep.technicalInterview:
+            technicalPassedDelta++;
+          case SelectionStep.clientInterview:
+            clientPassedDelta++;
+          case SelectionStep.finalInterview:
+            finalPassedDelta++;
+          case SelectionStep.offer:
+            break;
+        }
+        carriedProposals.add(
+          proposal.copyWith(
+            currentStepIndex: proposal.currentStepIndex + 1,
+            stepHistory: [...proposal.stepHistory, history],
+            interviewWeek: newWeek,
+            interviewSuccessRate: rate,
+          ),
+        );
         log(
-          '${engineer.profile.name} は「${proposal.project.title}」の案件面談に合格しました。',
+          '${engineer.profile.name} は「${proposal.project.title}」の${step.name}を通過しました。',
           GameLogCategory.interviewPassed,
         );
-        // Stays non-waiting until the assignment actually starts next week.
-        engineersById[engineer.id] = engineer.copyWith(
-          status: EngineerStatus.interviewScheduled,
-        );
       } else {
-        log(
-          '${engineer.profile.name} は「${proposal.project.title}」の案件面談に不合格でした。',
-          GameLogCategory.interviewFailed,
+        final reason = SelectionEngine.rejectionReason(
+          engineer,
+          proposal.project,
+          step,
         );
-        engineersById[engineer.id] = engineer.copyWith(
-          status: EngineerStatus.waiting,
+        carriedProposals.add(
+          proposal.copyWith(
+            status: ApplicationStatus.rejected,
+            stage: ProposalStage.interviewFailed,
+            stepHistory: [...proposal.stepHistory, history],
+            rejectionReason: reason,
+            interviewWeek: newWeek,
+            interviewSuccessRate: rate,
+          ),
+        );
+        log(
+          '${engineer.profile.name} は「${proposal.project.title}」で不合格：$reason',
+          GameLogCategory.interviewFailed,
         );
       }
     }
 
-    // 6. 新規参画 ---------------------------------------------------------
-    final carriedProposals = [...stillPendingProposals, ...resolvedProposals];
+    // 6. Start accepted assignments.
     final newAssignments = <ActiveAssignment>[];
     final finalizedProposalIds = <String>{};
     for (final proposal in carriedProposals) {
-      if (proposal.stage == ProposalStage.interviewPassed &&
+      if (proposal.status == ApplicationStatus.accepted &&
           proposal.assignWeek == newWeek) {
         final engineer = engineersById[proposal.engineerId];
         if (engineer == null) continue;
@@ -448,8 +681,21 @@ class GameEngine {
         );
       }
     }
+    final filledProjectIds = newAssignments
+        .map((assignment) => assignment.project.id)
+        .toSet();
     final activeProposals = carriedProposals
         .where((p) => !finalizedProposalIds.contains(p.id))
+        .map(
+          (p) =>
+              filledProjectIds.contains(p.project.id) &&
+                  p.status == ApplicationStatus.active
+              ? p.copyWith(
+                  status: ApplicationStatus.cancelled,
+                  rejectionReason: '募集枠が充足しました',
+                )
+              : p,
+        )
         .toList();
 
     // 7/8. 案件残期間減少・終了案件処理 ---------------------------------------
@@ -487,9 +733,7 @@ class GameEngine {
 
     // Open-project marketplace bookkeeping ---------------------------------
     final activeProjectIds = {for (final a in allActiveThisWeek) a.project.id};
-    final inFlightProjectIds = {
-      for (final p in activeProposals) p.project.id,
-    };
+    final inFlightProjectIds = {for (final p in activeProposals) p.project.id};
     final survivingOpenProjects = state.openProjects.where((entry) {
       final id = entry.project.id;
       if (activeProjectIds.contains(id)) return false;
@@ -510,8 +754,45 @@ class GameEngine {
           state.stats.projectInterviewCount + interviewCountDelta,
       projectInterviewSuccess:
           state.stats.projectInterviewSuccess + interviewSuccessDelta,
-      assignmentsStarted: state.stats.assignmentsStarted + newAssignments.length,
+      assignmentsStarted:
+          state.stats.assignmentsStarted + newAssignments.length,
       waitingWeeks: state.stats.waitingWeeks + waitingCountThisWeek,
+      screeningPassed: state.stats.screeningPassed + screeningPassedDelta,
+      upperCompanyInterviewPassed:
+          state.stats.upperCompanyInterviewPassed + upperPassedDelta,
+      technicalInterviewPassed:
+          state.stats.technicalInterviewPassed + technicalPassedDelta,
+      clientInterviewPassed:
+          state.stats.clientInterviewPassed + clientPassedDelta,
+      finalInterviewPassed: state.stats.finalInterviewPassed + finalPassedDelta,
+      offersReceived: state.stats.offersReceived + offersReceivedDelta,
+      offersExpired: state.stats.offersExpired + offersExpiredDelta,
+      selectionWeeksTotal:
+          state.stats.selectionWeeksTotal +
+          state.proposals
+              .where(
+                (p) =>
+                    p.status == ApplicationStatus.active &&
+                    activeProposals.any(
+                      (n) =>
+                          n.id == p.id &&
+                          n.status == ApplicationStatus.rejected,
+                    ),
+              )
+              .fold<int>(0, (sum, p) => sum + newWeek - p.proposedWeek),
+      completedSelections:
+          state.stats.completedSelections +
+          state.proposals
+              .where(
+                (p) =>
+                    p.status == ApplicationStatus.active &&
+                    activeProposals.any(
+                      (n) =>
+                          n.id == p.id &&
+                          n.status == ApplicationStatus.rejected,
+                    ),
+              )
+              .length,
     );
 
     // 待機延べ週数の更新 (§17-18): まだ待機中の社員は連続待機週数を+1、
@@ -582,9 +863,17 @@ class GameEngine {
 
       // 7) 会計上利益 / 8) 現金増減 ----------------------------------------
       final accountingProfit =
-          projectRevenue - salaryPaid - rentPaid - fixedCostPaid - recruitmentCost;
+          projectRevenue -
+          salaryPaid -
+          rentPaid -
+          fixedCostPaid -
+          recruitmentCost;
       final cashDelta =
-          cashCollected - salaryPaid - rentPaid - fixedCostPaid - recruitmentCost;
+          cashCollected -
+          salaryPaid -
+          rentPaid -
+          fixedCostPaid -
+          recruitmentCost;
       final cashBefore = state.company.cash;
       final cashAfter = cashBefore + cashDelta;
       newCash = cashAfter;
@@ -649,7 +938,9 @@ class GameEngine {
 
     final events = [
       ...state.events,
-      ...logs.map((l) => GameLogEntry(week: newWeek, message: l.$1, category: l.$2)),
+      ...logs.map(
+        (l) => GameLogEntry(week: newWeek, message: l.$1, category: l.$2),
+      ),
     ];
     final trimmedEvents = events.length > maxLogEntries
         ? events.sublist(events.length - maxLogEntries)
@@ -668,6 +959,7 @@ class GameEngine {
       openProjects: openProjects,
       listings: activeListings,
       proposals: activeProposals,
+      offers: offers,
       activeAssignments: stillActive,
       pendingHires: pendingHires,
       accountsReceivable: accountsReceivable,
@@ -709,7 +1001,9 @@ class GameEngine {
   /// clearest sign of a struggling run, then the positive archetypes.
   static CompanyType classifyCompanyType(GameState state) {
     final weeks = state.displayWeek.clamp(1, totalGameWeeks);
-    final engineerWeeks = state.engineers.isEmpty ? 1 : state.engineers.length * weeks;
+    final engineerWeeks = state.engineers.isEmpty
+        ? 1
+        : state.engineers.length * weeks;
     final waitingRatio = state.stats.waitingWeeks / engineerWeeks;
 
     if (waitingRatio > 0.25) return CompanyType.overstaffedWaiting;
@@ -737,6 +1031,20 @@ class GameEngine {
     'monthlyClosings': state.monthlyClosings.map((c) => c.toJson()).toList(),
     'hires': state.stats.hires,
     'proposalCount': state.stats.proposalCount,
+    'totalProposals': state.stats.proposalCount,
+    'parallelProposalPeak': state.stats.parallelProposalPeak,
+    'screeningPassed': state.stats.screeningPassed,
+    'upperCompanyInterviewPassed': state.stats.upperCompanyInterviewPassed,
+    'technicalInterviewPassed': state.stats.technicalInterviewPassed,
+    'clientInterviewPassed': state.stats.clientInterviewPassed,
+    'finalInterviewPassed': state.stats.finalInterviewPassed,
+    'offersReceived': state.stats.offersReceived,
+    'offersAccepted': state.stats.offersAccepted,
+    'offersDeclined': state.stats.offersDeclined,
+    'offersExpired': state.stats.offersExpired,
+    'proposalCancelledByOtherAssignment':
+        state.stats.proposalCancelledByOtherAssignment,
+    'averageSelectionWeeks': state.stats.averageSelectionWeeks,
     'projectInterviewCount': state.stats.projectInterviewCount,
     'projectInterviewSuccess': state.stats.projectInterviewSuccess,
     'waitingWeeks': state.stats.waitingWeeks,

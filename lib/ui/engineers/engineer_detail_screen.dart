@@ -31,6 +31,21 @@ class EngineerDetailScreen extends StatelessWidget {
     final profile = engineer.profile;
     final assignment = state.assignmentForEngineer(engineerId);
     final proposal = state.proposalForEngineer(engineerId);
+    final applications = state
+        .applicationsForEngineer(engineerId)
+        .where(
+          (application) =>
+              application.status == ApplicationStatus.active ||
+              application.status == ApplicationStatus.offered,
+        )
+        .toList();
+    final pendingOffers = state.offers
+        .where(
+          (offer) =>
+              offer.employeeId == engineerId &&
+              offer.status == OfferStatus.pending,
+        )
+        .toList();
     final waitingWeeks = state.waitingStreakFor(engineerId);
 
     return Scaffold(
@@ -43,7 +58,10 @@ class EngineerDetailScreen extends StatelessWidget {
               Expanded(
                 child: Text(
                   profile.name,
-                  style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                  style: const TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
               ),
               EngineerStatusChip(status: engineer.status),
@@ -51,14 +69,26 @@ class EngineerDetailScreen extends StatelessWidget {
           ),
           const SizedBox(height: 12),
           if (engineer.status == EngineerStatus.waiting)
-            _WaitingWarningBanner(weeks: waitingWeeks, monthlySalary: engineer.salary),
+            _WaitingWarningBanner(
+              weeks: waitingWeeks,
+              monthlySalary: engineer.salary,
+            ),
           _SectionCard(
             title: '基本情報',
             children: [
               _Row('月給', formatYen(engineer.salary)),
-              _Row('主言語', languageLabels[profile.mainLanguage] ?? profile.mainLanguage.name),
+              _Row(
+                '主言語',
+                languageLabels[profile.mainLanguage] ??
+                    profile.mainLanguage.name,
+              ),
               if (profile.subLanguages.isNotEmpty)
-                _Row('副言語', profile.subLanguages.map((l) => languageLabels[l] ?? l.name).join(' / ')),
+                _Row(
+                  '副言語',
+                  profile.subLanguages
+                      .map((l) => languageLabels[l] ?? l.name)
+                      .join(' / '),
+                ),
               _Row('IT経験', formatExperience(profile.totalItExperienceMonths)),
               _Row('日本語', 'Lv.${profile.japaneseLevel}'),
             ],
@@ -97,13 +127,17 @@ class EngineerDetailScreen extends StatelessWidget {
                 _Row('案件単価', formatYen(assignment.project.monthlyRate)),
                 _Row(
                   '月間想定粗利',
-                  formatYen(MatchingEngine.monthlyProfit(engineer, assignment.project)),
+                  formatYen(
+                    MatchingEngine.monthlyProfit(engineer, assignment.project),
+                  ),
                 ),
               ] else if (proposal != null) ...[
                 _Row('提案先', proposal.project.title),
                 _Row(
                   '状況',
-                  proposal.stage == ProposalStage.interviewPassed ? '面談合格・参画待ち' : '面談待ち',
+                  proposal.stage == ProposalStage.interviewPassed
+                      ? '面談合格・参画待ち'
+                      : '面談待ち',
                 ),
               ] else ...[
                 _Row('現在案件', 'なし(待機中)'),
@@ -111,14 +145,134 @@ class EngineerDetailScreen extends StatelessWidget {
               ],
             ],
           ),
+          const SizedBox(height: 12),
+          _SectionCard(
+            title:
+                '営業中案件  ${applications.length} / $maxParallelProposalsPerEmployee',
+            children: [
+              if (applications.isEmpty) const Text('営業中の案件はありません。'),
+              for (final application in applications) ...[
+                _ApplicationRow(application: application),
+                const Divider(height: 18),
+              ],
+            ],
+          ),
+          if (pendingOffers.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            _SectionCard(
+              title: 'オファー比較・回答',
+              children: [
+                for (final offer in pendingOffers)
+                  _OfferRow(
+                    offer: offer,
+                    application: state.proposals.firstWhere(
+                      (application) => application.id == offer.applicationId,
+                    ),
+                  ),
+              ],
+            ),
+          ],
         ],
       ),
     );
   }
 }
 
+class _ApplicationRow extends StatelessWidget {
+  const _ApplicationRow({required this.application});
+
+  final ProjectApplication application;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          application.project.title,
+          style: const TextStyle(fontWeight: FontWeight.bold),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          '現在: ${selectionStepLabels[application.currentStep]}  / Fit ${application.fitScore}',
+        ),
+        if (application.stepHistory.isNotEmpty)
+          Text(
+            application.stepHistory
+                .map(
+                  (history) =>
+                      'Week ${history.week} ${selectionStepLabels[history.step]} ${history.result == SelectionStepResult.passed ? '通過' : '終了'}',
+                )
+                .join('\n'),
+            style: const TextStyle(fontSize: 12, color: Colors.black54),
+          ),
+      ],
+    );
+  }
+}
+
+class _OfferRow extends StatelessWidget {
+  const _OfferRow({required this.offer, required this.application});
+
+  final Offer offer;
+  final ProjectApplication application;
+
+  @override
+  Widget build(BuildContext context) {
+    final deadline = offer.responseDeadlineWeek == context.game.state.week
+        ? '今週中'
+        : 'Week ${offer.responseDeadlineWeek}';
+    return Card(
+      color: Colors.orange.shade50,
+      child: Padding(
+        padding: const EdgeInsets.all(10),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              application.project.title,
+              style: const TextStyle(fontWeight: FontWeight.bold),
+            ),
+            Text(
+              '月単価 ${formatYen(offer.monthlyRate)} / Fit ${application.fitScore}',
+            ),
+            Text(
+              '支払 ${paymentTermDaysById(application.project.clientId)}日 / 回答期限 $deadline',
+              style: TextStyle(
+                color: Colors.red.shade700,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(
+                  child: FilledButton(
+                    onPressed: () => context.game.acceptOffer(offer.id),
+                    child: const Text('受諾'),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: () => context.game.declineOffer(offer.id),
+                    child: const Text('辞退'),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _WaitingWarningBanner extends StatelessWidget {
-  const _WaitingWarningBanner({required this.weeks, required this.monthlySalary});
+  const _WaitingWarningBanner({
+    required this.weeks,
+    required this.monthlySalary,
+  });
 
   final int weeks;
   final int monthlySalary;
@@ -126,7 +280,9 @@ class _WaitingWarningBanner extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final critical = weeks >= 3;
-    final color = critical ? Colors.red : (weeks >= 2 ? Colors.orange : Colors.blueGrey);
+    final color = critical
+        ? Colors.red
+        : (weeks >= 2 ? Colors.orange : Colors.blueGrey);
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(12),
@@ -142,7 +298,11 @@ class _WaitingWarningBanner extends StatelessWidget {
           Expanded(
             child: Text(
               '待機$weeks週目です。案件が決まらなくても月給 ${formatYen(monthlySalary)} は月末に満額発生します。',
-              style: TextStyle(color: color, fontSize: 12.5, fontWeight: FontWeight.w600),
+              style: TextStyle(
+                color: color,
+                fontSize: 12.5,
+                fontWeight: FontWeight.w600,
+              ),
             ),
           ),
         ],
@@ -169,7 +329,13 @@ class _SectionCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(title, style: const TextStyle(fontWeight: FontWeight.bold, color: SesTheme.primaryBlue)),
+          Text(
+            title,
+            style: const TextStyle(
+              fontWeight: FontWeight.bold,
+              color: SesTheme.primaryBlue,
+            ),
+          ),
           const SizedBox(height: 8),
           ...children,
         ],
@@ -191,7 +357,13 @@ class _Row extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          SizedBox(width: 100, child: Text(label, style: const TextStyle(color: Colors.black54, fontSize: 13))),
+          SizedBox(
+            width: 100,
+            child: Text(
+              label,
+              style: const TextStyle(color: Colors.black54, fontSize: 13),
+            ),
+          ),
           Expanded(child: Text(value, style: const TextStyle(fontSize: 13))),
         ],
       ),

@@ -191,6 +191,7 @@ class _ClientCard extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(client.name, style: const TextStyle(fontWeight: FontWeight.bold)),
+                Text(client.id.contains('axis')?'金融・Java案件が多い':client.id.contains('future')?'Web・Frontend案件が多い':client.id.contains('nova')?'Infrastructure案件が多い':'幅広い業務案件',style:const TextStyle(fontSize:12)),
                 Text(relation.unlocked ? '取引中 / trust ${relation.trust} / 参画実績 ${relation.successfulAssignments}' : '未取引企業',style:TextStyle(fontSize:12,color:relation.unlocked?Colors.green:Colors.grey)),
                 if(!relation.unlocked) Text(client.id.contains('nova')?'解放条件: 社員5名以上 + インフラ経験社員':'解放条件: Axis Soft trust 60 + 参画成功3件',style:const TextStyle(fontSize:11,color:Colors.black54)),
                 Text(

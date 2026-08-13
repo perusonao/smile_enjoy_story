@@ -282,6 +282,7 @@ class _FoundingMission extends StatelessWidget {
   final GameState state;
   @override Widget build(BuildContext context) {
     final selling = state.engineers.any((e)=>e.salesStatus!=SalesStatus.notSelling);
+    final sheetChecked=state.events.any((e)=>e.message.contains('スキルシートを更新'));
     final proposed = state.proposals.isNotEmpty || state.interviewOffers.isNotEmpty;
     final assigned = state.assignedEngineerCount > 0 || state.stats.assignmentsStarted > 0;
     final selectionAdvanced = state.proposals.any((p) => p.currentStepIndex > 0 || p.stepHistory.isNotEmpty);
@@ -289,9 +290,9 @@ class _FoundingMission extends StatelessWidget {
       Text('創業ミッション', style: Theme.of(context).textTheme.titleMedium),
       const Text('まずは会社を軌道に乗せましょう。'), const SizedBox(height: 8),
       const Text('✓ ① 待機社員を確認'),
-      Text('${selling ? '✓' : '○'} ② スキルシートを確認して営業開始'),
-      Text('${proposed ? '✓' : '○'} ③ 面談オファーを受ける'),
-      Text('${selectionAdvanced ? '✓' : '○'} ④ 選考を進める'),
+      Text('${sheetChecked ? '✓' : '○'} ② スキルシートを確認'),
+      Text('${selling ? '✓' : '○'} ③ 営業を開始'),
+      Text('${proposed ? '✓' : '○'} ④ 面談オファーを受ける'),
       Text('${assigned ? '✓' : '○'} ⑤ 1人以上を案件参画させる'),
       if (proposed && !selectionAdvanced) const Padding(padding: EdgeInsets.only(top: 8), child: Text('次: 選考結果待ちです。次の週へ進めると結果が発生します。', style: TextStyle(fontWeight: FontWeight.bold))),
     ])));
@@ -323,7 +324,7 @@ class _HeadcountLine extends StatelessWidget {
           _divider(),
           _Metric('応募', '${state.applicants.where((e) => e.appearedWeek == state.week).length}'),
           _divider(),
-          _Metric('提案可', '${state.openProjects.where((e) => state.isProjectOpenForProposal(e.project.id)).length}'),
+          _Metric('市場案件', '${state.openProjects.where((e) => state.relationFor(e.project.clientId).unlocked).length}'),
         ],
       ),
     );

@@ -13,3 +13,4 @@ export 'selection_engine.dart';
 export 'sales_engine.dart';
 export 'rng.dart';
 export 'task_engine.dart';
+export 'weekly_summary_engine.dart';

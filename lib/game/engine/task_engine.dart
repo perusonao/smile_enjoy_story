@@ -132,7 +132,7 @@ class TaskEngine {
           id: 'waiting-critical-${entry.key}',
           priority: TaskPriority.critical,
           title: '${engineer.profile.name} が待機${entry.value}週目です',
-          subtitle: '長期化しています。案件への提案を検討してください',
+          subtitle: '長期化しています。スキルシートを確認して営業を開始してください',
           targetType: TaskTargetType.employeeDetail,
           targetId: engineer.id,
         ),
@@ -211,8 +211,8 @@ class TaskEngine {
         HomeTask(
           id: 'project-interview-scheduled',
           priority: TaskPriority.warning,
-          title: '来週、案件面談が$scheduledInterviews件予定されています',
-          targetType: TaskTargetType.projectsTab,
+          title: '現在、面談結果待ちが$scheduledInterviews件あります。次週へ進めましょう',
+          targetType: TaskTargetType.employeesTab,
         ),
       );
     }
@@ -260,19 +260,9 @@ class TaskEngine {
       );
     }
 
-    final proposable = state.openProjects
-        .where((e) => state.isProjectOpenForProposal(e.project.id))
-        .length;
-    if (proposable > 0) {
-      tasks.add(
-        HomeTask(
-          id: 'proposable-projects',
-          priority: TaskPriority.info,
-          title: '提案可能な案件が$proposable件あります',
-          targetType: TaskTargetType.projectsTab,
-        ),
-      );
-    }
+    final unlockedIds=state.clientRelations.where((r)=>r.unlocked).map((r)=>r.clientId).toSet();
+    final marketCount=state.openProjects.where((e)=>state.clientRelations.isEmpty||unlockedIds.contains(e.project.clientId)).length;
+    if(marketCount>0)tasks.add(HomeTask(id:'market-demand',priority:TaskPriority.info,title:'取引先市場に案件情報が$marketCount件あります',subtitle:'需要のある技術をスキルシート作成の参考にできます',targetType:TaskTargetType.projectsTab));
 
     if (state.listings.where((l) => l.isActiveOn(state.week)).isEmpty) {
       tasks.add(

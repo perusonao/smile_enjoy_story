@@ -6,7 +6,6 @@ import '../../game/game.dart';
 import '../theme.dart';
 import '../widgets/fit_badge.dart';
 import '../widgets/labels.dart';
-import '../widgets/proposal_confirm_dialog.dart';
 import 'project_detail_screen.dart';
 
 class ProjectListScreen extends StatelessWidget {
@@ -43,7 +42,7 @@ class ProjectListScreen extends StatelessWidget {
     return Scaffold(
       appBar: AppBar(
         title: Text(
-          employee == null ? '案件' : '${employee.profile.name}に提案する案件',
+          '市場の案件情報',
         ),
       ),
       body: entries.isEmpty
@@ -99,19 +98,6 @@ class _ProjectCard extends StatelessWidget {
   final int candidateCount;
   final int activeCount;
   final Engineer? employee;
-
-  Future<void> _propose(BuildContext context) async {
-    final confirmed = await showProposalConfirmDialog(
-      context,
-      engineer: employee!,
-      project: project,
-    );
-    if (!confirmed || !context.mounted) return;
-    context.game.proposeEngineer(employee!.id, project.id);
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('${employee!.profile.name} を提案しました。')),
-    );
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -204,7 +190,7 @@ class _ProjectCard extends StatelessWidget {
               children: [
                 _CountLabel(
                   icon: Icons.person_add_alt_1,
-                  text: '提案可能 $candidateCount名',
+                  text: '合いそうな社員 $candidateCount名',
                   active: candidateCount > 0,
                 ),
                 _CountLabel(
@@ -220,13 +206,7 @@ class _ProjectCard extends StatelessWidget {
                 children: [
                   FitBadge(fit: MatchingEngine.visibleFit(employee!, project)),
                   const Spacer(),
-                  FilledButton.tonal(
-                    onPressed:
-                        context.game.state.canPropose(employee!.id, project.id)
-                        ? () => _propose(context)
-                        : null,
-                    child: const Text('提案する'),
-                  ),
+                  const Text('応募は社員詳細から営業を開始',style:TextStyle(fontSize:12,color:Colors.black54)),
                 ],
               ),
             ],

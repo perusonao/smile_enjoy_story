@@ -1,25 +1,11 @@
 // ignore_for_file: avoid_print
+import 'package:smile_enjoy_story/domain/domain.dart';
 import 'package:smile_enjoy_story/game/game.dart';
 
-void main(){
-  for(final mode in ['honest','slight','large']){
-    var offerWeeks=0,assignmentWeeks=0,trust=0,survived=0,offers=0,assignedRuns=0;
-    for(var seed=1;seed<=200;seed++){
-      var s=GameEngine.newGame(seed:seed); final started=s.week;
-      for(final engineer in s.engineers){
-        var sheet=s.skillSheetFor(engineer.id);
-        if(mode!='honest'){final delta=mode=='slight'?12:36;final lang=engineer.profile.mainLanguage;sheet=sheet.copyWith(displayedLanguageExperience:{...sheet.displayedLanguageExperience,lang:(sheet.displayedLanguageExperience[lang]??0)+delta},displayedBackend:sheet.displayedBackend+(mode=='slight'?1:2));s=GameEngine.editSkillSheet(s,sheet);}
-        s=GameEngine.startSales(s,engineer.id);
-      }
-      int? firstOffer,firstAssignment;
-      while(s.status==GameStatus.playing && s.week<48){
-        for(final o in s.interviewOffers.where((o)=>o.status==InterviewOfferStatus.pending).toList()){firstOffer??=s.week;s=GameEngine.acceptInterviewOffer(s,o.id);offers++;}
-        for(final o in s.offers.where((o)=>o.status==OfferStatus.pending).toList()){s=GameEngine.acceptOffer(s,o.id);}
-        for(final a in s.activeAssignments.where((a)=>a.remainingWeeks<=4&&a.contractDecision==ContractDecision.undecided).toList()){s=GameEngine.decideContract(s,a.engineerId,seed.isEven);}
-        s=GameEngine.advanceWeek(s); if(s.activeAssignments.isNotEmpty)firstAssignment??=s.week;
-      }
-      if(firstOffer!=null)offerWeeks+=firstOffer-started; if(firstAssignment!=null){assignmentWeeks+=firstAssignment-started;assignedRuns++;} trust+=s.engineers.fold<int>(0,(n,e)=>n+e.companyTrust)~/s.engineers.length; if(s.status!=GameStatus.bankrupt)survived++;
-    }
-    print('$mode: avgOfferWeek=${offerWeeks/200}, avgAssignmentWeek=${assignedRuns==0?0:assignmentWeeks/assignedRuns}, avgTrust=${trust/200}, offers=$offers, survival48=${survived/2}%');
-  }
-}
+void main(){for(final strategy in ['honest','moderate','aggressive']){final m=_Metrics();for(var seed=1;seed<=200;seed++){var s=GameEngine.newGame(seed:seed);final founders=s.engineers.map((e)=>e.id).toSet();for(final e in s.engineers){var sheet=s.skillSheetFor(e.id);if(strategy!='honest'){final months=strategy=='moderate'?12:36;final skill=strategy=='moderate'?1:2;final lang=e.profile.mainLanguage;sheet=sheet.copyWith(displayedLanguageExperience:{...sheet.displayedLanguageExperience,lang:(sheet.displayedLanguageExperience[lang]??0)+months},displayedBackend:sheet.displayedBackend+skill,displayedLeader:sheet.displayedLeader+skill);s=GameEngine.editSkillSheet(s,sheet);}s=GameEngine.startSales(s,e.id);}
+      final seen=<String>{};int? firstOffer,firstAssignment;var accepted=0,offers=0,match=0;
+      while(s.status==GameStatus.playing&&s.week<48){for(final o in s.interviewOffers.where((o)=>o.status==InterviewOfferStatus.pending).toList()){firstOffer??=s.week;offers++;match+=o.skillSheetMatch;seen.add(o.projectId);s=GameEngine.acceptInterviewOffer(s,o.id);accepted++;}for(final o in s.offers.where((o)=>o.status==OfferStatus.pending).toList()){s=GameEngine.acceptOffer(s,o.id);}for(final a in s.activeAssignments.where((a)=>a.remainingWeeks<=4&&a.contractDecision==ContractDecision.undecided).toList()){s=GameEngine.decideContract(s,a.engineerId,true);}for(final e in s.engineers.where((e)=>e.status==EngineerStatus.waiting&&e.salesStatus!=SalesStatus.selling)){s=GameEngine.startSales(s,e.id);}s=GameEngine.advanceWeek(s);if(firstAssignment==null&&s.activeAssignments.any((a)=>founders.contains(a.engineerId)))firstAssignment=s.week;}
+      m.runs++;m.offerCount+=offers;m.accepted+=accepted;m.unique+=seen.length;m.match+=match;m.firstOffer+=firstOffer??49;m.firstAssignment+=firstAssignment??49;m.waiting+=s.stats.waitingWeeks;m.trust+=s.engineers.fold<int>(0,(n,e)=>n+e.companyTrust)/s.engineers.length;m.fieldLeads+=s.events.where((e)=>e.category==GameLogCategory.fieldLead).length;m.unlocks+=s.clientRelations.where((r)=>r.unlocked).length-2;m.cash+=s.company.cash;m.selectionWeeks+=s.stats.averageSelectionWeeks;m.assignedRuns+=firstAssignment==null?0:1;if(s.status!=GameStatus.bankrupt){m.survived++;}else{final month=GameCalendar.absoluteMonth(s.bankruptWeek!);m.bankruptByMonth[month]=(m.bankruptByMonth[month]??0)+1;}
+    }m.report(strategy);}}
+
+class _Metrics{int runs=0,offerCount=0,accepted=0,unique=0,firstOffer=0,firstAssignment=0,waiting=0,fieldLeads=0,unlocks=0,survived=0,assignedRuns=0;double match=0,trust=0,cash=0,selectionWeeks=0;final bankruptByMonth=<int,int>{};void report(String name){print('$name offers=${offerCount/runs} accepted=${accepted/runs} unique=${unique/runs} firstOffer=${firstOffer/runs} firstAssignment=${firstAssignment/runs} waiting=${waiting/runs} avgMatch=${offerCount==0?0:match/offerCount} selectionWeeks=${selectionWeeks/runs} trust=${trust/runs} fieldLeads=${fieldLeads/runs} unlocks=${unlocks/runs} survival=${survived/runs*100}% cash=${cash/runs} bankruptByMonth=$bankruptByMonth');}}

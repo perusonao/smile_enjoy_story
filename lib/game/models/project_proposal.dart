@@ -82,6 +82,7 @@ class ProjectProposal {
   final int fitScore;
   final String? finalOfferId;
   final String? rejectionReason;
+  final bool fromInterviewOffer;
 
   const ProjectProposal({
     required this.id,
@@ -98,6 +99,7 @@ class ProjectProposal {
     this.fitScore = 0,
     this.finalOfferId,
     this.rejectionReason,
+    this.fromInterviewOffer = false,
   });
 
   String get employeeId => engineerId;
@@ -137,6 +139,7 @@ class ProjectProposal {
       fitScore: fitScore ?? this.fitScore,
       finalOfferId: finalOfferId ?? this.finalOfferId,
       rejectionReason: rejectionReason ?? this.rejectionReason,
+      fromInterviewOffer: fromInterviewOffer,
     );
   }
 
@@ -155,6 +158,7 @@ class ProjectProposal {
     'fitScore': fitScore,
     'finalOfferId': finalOfferId,
     'rejectionReason': rejectionReason,
+    'fromInterviewOffer': fromInterviewOffer,
   };
 
   factory ProjectProposal.fromJson(Map<String, dynamic> json) =>
@@ -181,6 +185,7 @@ class ProjectProposal {
         fitScore: json['fitScore'] as int? ?? 0,
         finalOfferId: json['finalOfferId'] as String?,
         rejectionReason: json['rejectionReason'] as String?,
+        fromInterviewOffer: json['fromInterviewOffer'] as bool? ?? false,
       );
 }
 

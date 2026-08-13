@@ -102,41 +102,25 @@ void main() {
   });
 
   testWidgets(
-    'employee-first search keeps context and proposes with confirmation',
+    'project market has no direct proposal action',
     (tester) async {
       final state = GameEngine.newGame(seed: 42);
       final engineer = state.engineers.first;
     await _pumpEmployeeProjectList(tester, state);
 
-      expect(
-        find.widgetWithText(AppBar, '${engineer.profile.name}に提案する案件'),
-        findsOneWidget,
-      );
-      expect(find.text('提案する'), findsWidgets);
-
-      await tester.tap(find.text('提案する').first);
-      await tester.pumpAndSettle();
-      expect(find.text('この案件へ提案しますか？'), findsOneWidget);
-    expect(find.textContaining('月間想定粗利'), findsOneWidget);
-    await tester.tap(
-      find.descendant(
-        of: find.byType(AlertDialog),
-        matching: find.widgetWithText(FilledButton, '提案する'),
-      ),
-    );
-      await tester.pumpAndSettle();
-      expect(find.textContaining('を提案しました。'), findsOneWidget);
+      expect(engineer.id,isNotEmpty);
+      expect(find.widgetWithText(AppBar, '市場の案件情報'), findsOneWidget);
+      expect(find.text('提案する'), findsNothing);
+      expect(find.textContaining('応募は社員詳細から営業を開始'), findsWidgets);
     },
   );
 
-  testWidgets('employee-first search is disabled at the three-project limit', (
+  testWidgets('project market remains read-only at the three-project limit', (
     tester,
   ) async {
     final state = _stateWithApplications(3);
     await _pumpEmployeeProjectList(tester, state);
-    final buttons = tester.widgetList<FilledButton>(find.byType(FilledButton));
-    expect(buttons, isNotEmpty);
-    expect(buttons.every((button) => button.onPressed == null), isTrue);
+    expect(find.text('提案する'),findsNothing);
   });
 
   for (final flow in <SelectionFlow>[

@@ -8,7 +8,6 @@ import '../widgets/labels.dart';
 import '../widgets/fit_badge.dart';
 import '../widgets/selection_stepper.dart';
 import '../widgets/status_chip.dart';
-import '../projects/project_list_screen.dart';
 
 /// 社員詳細 (§19): salary, status, skills, personality, current project,
 /// waiting weeks + cost, and (if assigned) the project rate / monthly
@@ -85,7 +84,8 @@ class EngineerDetailScreen extends StatelessWidget {
             _Row('Leader','実際 Lv.${profile.techSkills.leader} / 記載 Lv.${skillSheet.displayedLeader}'),
             _Row('営業状態',engineer.salesStatus==SalesStatus.selling?'営業中（公開先 ${state.unlockedClientCount}社）':engineer.salesStatus.name),
             _Row('参画可能','Week ${engineer.availableFromWeek}〜'),
-            Row(children:[Expanded(child:OutlinedButton(onPressed:()=>_editSkillSheet(context,engineer!,skillSheet),child:const Text('編集'))),const SizedBox(width:8),Expanded(child:FilledButton(onPressed:engineer.salesStatus==SalesStatus.selling?null:()=>context.game.startSales(engineerId),child:const Text('この社員の営業を開始')))]),
+            const Text('会社信頼が低い社員は、現場の増員情報を持ち帰りにくくなります。',style:TextStyle(fontSize:12,color:Colors.black54)),
+            Row(children:[Expanded(child:OutlinedButton(onPressed:()=>_editSkillSheet(context,engineer!,skillSheet),child:const Text('営業用記載を編集'))),const SizedBox(width:8),Expanded(child:FilledButton(onPressed:engineer.salesStatus==SalesStatus.selling?null:()=>_confirmSalesStart(context,engineer!,skillSheet),child:const Text('営業を開始する')))]),
           ]),
           if(interviewOffers.isNotEmpty)...[const SizedBox(height:12),_SectionCard(title:'面談オファー',children:[for(final offer in interviewOffers) _InterviewOfferCard(offer:offer,project:state.openProjects.firstWhere((e)=>e.project.id==offer.projectId).project)])],
           if(assignment != null && assignment.remainingWeeks <= 4 && assignment.contractDecision==ContractDecision.undecided)...[const SizedBox(height:12),_SectionCard(title:'契約更新判断（終了4週前）',children:[Text('${assignment.project.title} / 残り${assignment.remainingWeeks}週'),Row(children:[Expanded(child:FilledButton(onPressed:()=>context.game.decideContract(engineerId,extend:true),child:const Text('延長する'))),const SizedBox(width:8),Expanded(child:OutlinedButton(onPressed:()=>context.game.decideContract(engineerId,extend:false),child:const Text('撤退する')))])])],
@@ -171,25 +171,8 @@ class EngineerDetailScreen extends StatelessWidget {
                 _ApplicationRow(application: application),
                 const Divider(height: 18),
               ],
-              if (engineer.status != EngineerStatus.assigned) ...[
-                const SizedBox(height: 4),
-                SizedBox(
-                  width: double.infinity,
-                  child: OutlinedButton.icon(
-                    onPressed:
-                        applications.length < maxParallelProposalsPerEmployee
-                        ? () => Navigator.of(context).push(
-                            MaterialPageRoute(
-                              builder: (_) =>
-                                  ProjectListScreen(employeeId: engineerId),
-                            ),
-                          )
-                        : null,
-                    icon: const Icon(Icons.search),
-                    label: const Text('この社員に案件を探す'),
-                  ),
-                ),
-              ],
+              if (applications.isEmpty && engineer.salesStatus == SalesStatus.selling)
+                Text('面談オファー待ち\n現在${state.unlockedClientCount}社へ公開中です。条件に合う案件が見つかると面談オファーが届きます。'),
             ],
           ),
           if (pendingOffers.isNotEmpty) ...[
@@ -215,14 +198,22 @@ class EngineerDetailScreen extends StatelessWidget {
   Future<void> _editSkillSheet(BuildContext context,Engineer engineer,SkillSheet original) async {
     var months=original.displayedLanguageExperience[engineer.profile.mainLanguage] ?? 0; var backend=original.displayedBackend; var leader=original.displayedLeader;
     await showDialog<void>(context:context,builder:(dialog)=>StatefulBuilder(builder:(context,setState){
-      final actualMonths=engineer.profile.skillFor(engineer.profile.mainLanguage).actualExperienceMonths; final inflated=months>actualMonths || backend>engineer.profile.techSkills.backend || leader>engineer.profile.techSkills.leader;
+      final actualMonths=engineer.profile.skillFor(engineer.profile.mainLanguage).actualExperienceMonths;
+      final draft=original.copyWith(displayedLanguageExperience:{...original.displayedLanguageExperience,engineer.profile.mainLanguage:months},displayedBackend:backend,displayedLeader:leader);
+      final risk=SalesEngine.riskFor(engineer,draft);
       Widget adjust(String label,int actual,int value,void Function(int) change,{String suffix=''})=>Row(children:[Expanded(child:Text('$label  実際 $actual$suffix / 記載 $value$suffix')),IconButton(onPressed:value>0?()=>setState(()=>change(value-1)):null,icon:const Icon(Icons.remove)),IconButton(onPressed:()=>setState(()=>change(value+1)),icon:const Icon(Icons.add))]);
-      return AlertDialog(title:const Text('スキルシート編集'),content:Column(mainAxisSize:MainAxisSize.min,children:[adjust(languageLabels[engineer.profile.mainLanguage] ?? engineer.profile.mainLanguage.name,actualMonths~/12,months~/12,(v)=>months=v*12,suffix:'年'),adjust('Backend',engineer.profile.techSkills.backend,backend,(v)=>backend=v),adjust('Leader',engineer.profile.techSkills.leader,leader,(v)=>leader=v),if(inflated)Container(padding:const EdgeInsets.all(8),color:Colors.orange.shade50,child:const Text('実態より長く・高く記載しています。少し盛りすぎではないでしょうか…\n予想影響: 会社信頼 ↓'))]),actions:[TextButton(onPressed:()=>Navigator.pop(dialog),child:const Text('キャンセル')),FilledButton(onPressed:(){final languages={...original.displayedLanguageExperience,engineer.profile.mainLanguage:months};context.game.editSkillSheet(original.copyWith(displayedLanguageExperience:languages,displayedBackend:backend,displayedLeader:leader));Navigator.pop(dialog);},child:const Text('保存'))]);
+      return AlertDialog(title:Text('${engineer.profile.name}\n営業用スキルシート'),content:SingleChildScrollView(child:Column(mainAxisSize:MainAxisSize.min,crossAxisAlignment:CrossAxisAlignment.start,children:[const Text('取引先へ公開する経歴です。強い記載は機会を増やしますが、実態との差にはリスクがあります。'),const SizedBox(height:10),Text('スキルシート信頼性\n${SalesEngine.riskLabel(risk)}',style:const TextStyle(fontWeight:FontWeight.bold)),Text(SalesEngine.employeeReaction(risk)),const Divider(),adjust(languageLabels[engineer.profile.mainLanguage] ?? engineer.profile.mainLanguage.name,actualMonths~/12,months~/12,(v)=>months=v*12,suffix:'年'),adjust('Backend',engineer.profile.techSkills.backend,backend,(v)=>backend=v),adjust('Leader',engineer.profile.techSkills.leader,leader,(v)=>leader=v),const Divider(),Text('営業機会: ${risk==SkillSheetRisk.honest?'→':risk==SkillSheetRisk.moderate?'↑':'↑↑'}'),Text('社員信頼リスク: ${risk==SkillSheetRisk.honest?'なし':risk==SkillSheetRisk.moderate?'小':risk==SkillSheetRisk.aggressive?'中':'大'}'),Text('面談リスク: ${risk==SkillSheetRisk.honest?'低い':risk==SkillSheetRisk.moderate?'やや上昇':'上昇'}')])),actions:[TextButton(onPressed:()=>Navigator.pop(dialog),child:const Text('キャンセル')),FilledButton(onPressed:()async{if(risk==SkillSheetRisk.aggressive||risk==SkillSheetRisk.extreme){final ok=await showDialog<bool>(context:context,builder:(c)=>AlertDialog(title:const Text('スキルシートを保存しますか？'),content:Text('実態との差が大きい項目があります。\n\n・${SalesEngine.inflationDetails(engineer,draft).join('\n・')}\n\n社員からの信頼や面談結果へ影響する可能性があります。'),actions:[TextButton(onPressed:()=>Navigator.pop(c,false),child:const Text('戻る')),FilledButton(onPressed:()=>Navigator.pop(c,true),child:const Text('この内容で保存'))]));if(ok!=true)return;}if(context.mounted){context.game.editSkillSheet(draft);Navigator.pop(dialog);}},child:const Text('保存'))]);
     }));
+  }
+
+  Future<void> _confirmSalesStart(BuildContext context,Engineer engineer,SkillSheet sheet) async {
+    final state=context.game.state; final clients=sampleClients.where((c)=>state.relationFor(c.id).unlocked).map((c)=>c.name).join('\n');
+    final accepted=await showDialog<bool>(context:context,builder:(c)=>AlertDialog(title:Text('${engineer.profile.name}の営業を開始します'),content:Text('公開先:\n$clients\n\n参画可能: ${engineer.availableFromWeek<=state.week?'現在':'Week ${engineer.availableFromWeek}'}\nスキルシート: ${SalesEngine.riskLabel(SalesEngine.riskFor(engineer,sheet))}\n\n条件に合う案件があると、取引先から面談オファーが届きます。'),actions:[TextButton(onPressed:()=>Navigator.pop(c,false),child:const Text('戻る')),FilledButton(onPressed:()=>Navigator.pop(c,true),child:const Text('営業開始'))]));
+    if(accepted==true&&context.mounted)context.game.startSales(engineer.id);
   }
 }
 
-class _InterviewOfferCard extends StatelessWidget { const _InterviewOfferCard({required this.offer,required this.project}); final InterviewOffer offer; final Project project; @override Widget build(BuildContext context)=>Card(color:Colors.blue.shade50,child:Padding(padding:const EdgeInsets.all(12),child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[Text('${clientNameById(project.clientId)}  ${project.title}',style:const TextStyle(fontWeight:FontWeight.bold)),Text('単価 ${formatYen(project.monthlyRate)} / ${project.location.name} / ${project.industry.name}'),Text('契約 ${project.contractTermMonths}か月 / 支払 ${project.paymentTermDays}日 / SkillSheet適合 ${offer.skillSheetMatch}'),const Text('面談を受けますか？'),Row(children:[Expanded(child:FilledButton(onPressed:()=>context.game.acceptInterviewOffer(offer.id),child:const Text('受ける'))),const SizedBox(width:8),Expanded(child:OutlinedButton(onPressed:()=>context.game.declineInterviewOffer(offer.id),child:const Text('断る')))])]))); }
+class _InterviewOfferCard extends StatelessWidget { const _InterviewOfferCard({required this.offer,required this.project}); final InterviewOffer offer; final Project project; @override Widget build(BuildContext context){final good=<String>[if(offer.skillSheetMatch>=70)'スキルシートとの相性が高い',if(project.paymentTermDays==30)'30日サイト'];final cautions=<String>[if(project.competitionLevel>=4)'競争度が高い',if(project.difficulty>=4)'要求水準が高い'];return Card(color:Colors.blue.shade50,child:Padding(padding:const EdgeInsets.all(12),child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[const Text('面談オファー！',style:TextStyle(fontSize:17,fontWeight:FontWeight.bold)),Text('${clientNameById(project.clientId)}  ${project.title}',style:const TextStyle(fontWeight:FontWeight.bold)),Text('単価 ${formatYen(project.monthlyRate)} / ${project.location.name} / ${project.industry.name}'),Text('契約 ${project.contractTermMonths}か月 / 支払 ${project.paymentTermDays}日'),if(good.isNotEmpty)Text('良い点\n・${good.take(2).join('\n・')}'),if(cautions.isNotEmpty)Text('注意点\n・${cautions.take(2).join('\n・')}'),Row(children:[Expanded(child:OutlinedButton(onPressed:()=>context.game.declineInterviewOffer(offer.id),child:const Text('断る'))),const SizedBox(width:8),Expanded(child:FilledButton(onPressed:()=>context.game.acceptInterviewOffer(offer.id),child:const Text('面談へ進む')))])]))); } }
 
 class _ApplicationRow extends StatelessWidget {
   const _ApplicationRow({required this.application});

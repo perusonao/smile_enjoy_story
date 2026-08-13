@@ -143,7 +143,7 @@ void main() {
     // of pre-assigning the founders to them (§2) — nothing to propose them
     // to yet is no longer the Week 1 story.
     expect(find.text('現在公開中の案件はありません。'), findsNothing);
-    expect(find.textContaining('提案可能'), findsWidgets);
+    expect(find.textContaining('合いそうな社員'), findsWidgets);
     expect(find.textContaining('営業中'), findsWidgets);
     expect(find.textContaining('選考'), findsWidgets);
   });
@@ -159,8 +159,8 @@ void main() {
     await tester.tap(find.textContaining('次の週へ'));
     await tester.pumpAndSettle();
 
-    expect(find.text('Week 2 開始'), findsOneWidget);
-    await tester.tap(find.text('今週を始める'));
+    expect(find.text('Week 2'), findsOneWidget);
+    await tester.tap(find.text('閉じる'));
     await tester.pumpAndSettle();
 
     expect(find.textContaining('Week 2'), findsWidgets);

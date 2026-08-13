@@ -6,6 +6,37 @@ class SalesEngine {
   const SalesEngine._();
   static const int offerThreshold = 55;
 
+  static SkillSheetRisk riskFor(Engineer engineer, SkillSheet sheet) {
+    final points = inflationPoints(engineer, sheet);
+    if (points == 0) return SkillSheetRisk.honest;
+    if (points <= 4) return SkillSheetRisk.moderate;
+    if (points <= 10) return SkillSheetRisk.aggressive;
+    return SkillSheetRisk.extreme;
+  }
+
+  static String riskLabel(SkillSheetRisk risk) => switch (risk) {
+    SkillSheetRisk.honest => '◎ 実態に忠実',
+    SkillSheetRisk.moderate => '○ 少し強め',
+    SkillSheetRisk.aggressive => '△ かなり強め',
+    SkillSheetRisk.extreme => '！ 実態との乖離が大きい',
+  };
+
+  static String employeeReaction(SkillSheetRisk risk) => switch (risk) {
+    SkillSheetRisk.honest => '「この内容なら問題ありません」',
+    SkillSheetRisk.moderate => '「少し強めですが、このくらいなら…」',
+    SkillSheetRisk.aggressive => '「これは実際の経験とかなり違いませんか？」',
+    SkillSheetRisk.extreme => '「この内容で営業されるのは不安です」',
+  };
+
+  static List<String> inflationDetails(Engineer engineer, SkillSheet sheet) {
+    final details=<String>[];
+    for(final item in sheet.displayedLanguageExperience.entries){final actual=engineer.profile.skillFor(item.key).actualExperienceMonths;final delta=item.value-actual;if(delta>0)details.add('${item.key.name} +${delta~/12}年');}
+    final actual=engineer.profile.techSkills;
+    if(sheet.displayedBackend>actual.backend)details.add('Backend +${sheet.displayedBackend-actual.backend}');
+    if(sheet.displayedLeader>actual.leader)details.add('Leader +${sheet.displayedLeader-actual.leader}');
+    return details;
+  }
+
   static int skillSheetMatch(SkillSheet s, Project p) {
     var earned = 0.0, possible = 0.0;
     void score(int value, int required, [double weight = 1]) { if (required <= 0) return; possible += weight; earned += (value / required).clamp(0,1) * weight; }
@@ -36,15 +67,21 @@ class SalesEngine {
     final result=<InterviewOffer>[];
     final unlocked=state.clientRelations.where((r)=>r.unlocked).map((r)=>r.clientId).toSet();
     for(final engineer in state.engineers.where((e)=>e.salesStatus==SalesStatus.selling)){
-      if(state.interviewOffers.any((o)=>o.employeeId==engineer.id && o.status==InterviewOfferStatus.pending)) continue;
+      if(!state.skillSheets.any((s)=>s.employeeId==engineer.id)) continue;
+      final pendingCount=state.interviewOffers.where((o)=>o.employeeId==engineer.id && o.status==InterviewOfferStatus.pending).length;
+      final risk=riskFor(engineer,state.skillSheetFor(engineer.id));
+      final offerSlots=switch(risk){SkillSheetRisk.honest=>1,SkillSheetRisk.moderate=>2,SkillSheetRisk.aggressive||SkillSheetRisk.extreme=>3};
+      if(pendingCount>=offerSlots) continue;
       final sheet=state.skillSheetFor(engineer.id);
       final candidates=state.openProjects.where((e)=>unlocked.contains(e.project.clientId) && e.project.applicationDeadlineWeek>=week && e.project.availableStartWeek<=engineer.availableFromWeek+8 && !state.proposals.any((p)=>p.employeeId==engineer.id&&p.projectId==e.project.id)).toList();
       candidates.sort((a,b)=>skillSheetMatch(sheet,b.project).compareTo(skillSheetMatch(sheet,a.project)));
       if(candidates.isEmpty) continue;
-      final project=candidates.first.project; final match=skillSheetMatch(sheet,project);
+      final project=candidates[pendingCount.clamp(0,candidates.length-1)].project; final match=skillSheetMatch(sheet,project);
       final rate=((match-offerThreshold)*2+35).clamp(5,85);
       if(match>=offerThreshold && ProjectInterviewEngine.roll(rate:rate,seed:state.seed,week:week,salt:'sales:${engineer.id}:${project.id}')) result.add(InterviewOffer(id:mintId('interview-offer'),employeeId:engineer.id,projectId:project.id,clientId:project.clientId,generatedWeek:week,expiresWeek:week+1,skillSheetMatch:match));
     }
     return result;
   }
 }
+
+enum SkillSheetRisk { honest, moderate, aggressive, extreme }

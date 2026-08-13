@@ -89,7 +89,7 @@ class GameEngine {
       GameLogEntry(week: 1, message: 'S.E.S. 経営を開始しました。(seed: $marketSeed)'),
       GameLogEntry(
         week: 1,
-        message: '創業メンバー $founderNames が入社しました(待機中)。まずは案件を確認し、提案しましょう。',
+        message: '創業メンバー $founderNames が入社しました(待機中)。社員のスキルシートを確認し、営業を開始しましょう。',
       ),
     ];
 
@@ -590,6 +590,10 @@ class GameEngine {
               ? EngineerStatus.interviewScheduled
               : EngineerStatus.waiting,
         );
+        engineersById[engineer.id] = engineer.copyWith(
+          status: passed ? EngineerStatus.interviewScheduled : EngineerStatus.waiting,
+          salesStatus: passed ? SalesStatus.interviewing : SalesStatus.selling,
+        );
         log(
           '${engineer.profile.name} は「${proposal.project.title}」の案件面談に${passed ? '合格' : '不合格'}でした。',
           passed
@@ -622,15 +626,16 @@ class GameEngine {
         );
         log(
           '${engineer.profile.name} に「${proposal.project.title}」のオファーが届きました。回答期限は今週です。',
-          GameLogCategory.interviewPassed,
+          GameLogCategory.offerReceived,
         );
         continue;
       }
-      final rate = SelectionEngine.successRate(
+      var rate = SelectionEngine.successRate(
         engineer,
         proposal.project,
         step,
       );
+      if(proposal.fromInterviewOffer) rate=(rate-35).clamp(5,95);
       final passed = SelectionEngine.roll(
         rate: rate,
         seed: seed,
@@ -694,6 +699,7 @@ class GameEngine {
             interviewSuccessRate: rate,
           ),
         );
+        engineersById[engineer.id] = engineer.copyWith(salesStatus: SalesStatus.selling);
         log(
           '${engineer.profile.name} は「${proposal.project.title}」で不合格：$reason',
           GameLogCategory.interviewFailed,
@@ -795,16 +801,16 @@ class GameEngine {
     final engineers = engineersById.values.toList();
     var clientRelations=[...state.clientRelations];
     for(final assignment in newAssignments){ final ri=clientRelations.indexWhere((r)=>r.clientId==assignment.project.clientId); if(ri>=0){ final r=clientRelations[ri]; clientRelations[ri]=r.copyWith(trust:(r.trust+5).clamp(0,100),totalDeals:r.totalDeals+1,successfulAssignments:r.successfulAssignments+1,lastDealWeek:newWeek); } }
-    for(final a in stillActive){ final e=engineersById[a.engineerId]!; final rate=(e.companyTrust~/5 + e.talkSkill*4 + (e.abilities.contains(EmployeeAbility.clientFriendly)?10:0)).clamp(1,55); if(newWeek-a.assignedWeek>=4 && ProjectInterviewEngine.roll(rate:rate,seed:seed,week:newWeek,salt:'field-lead:${e.id}')) log('${e.profile.name}さんから「現場で増員予定がある」と案件情報が届きました'); }
+    for(final a in stillActive){ final e=engineersById[a.engineerId]!; final rate=(e.companyTrust~/5 + e.talkSkill*4 + (e.abilities.contains(EmployeeAbility.clientFriendly)?10:0)).clamp(1,55); if(newWeek-a.assignedWeek>=4 && ProjectInterviewEngine.roll(rate:rate,seed:seed,week:newWeek,salt:'field-lead:${e.id}')) log('${e.profile.name}さんから「現場で増員予定がある」と案件情報が届きました',GameLogCategory.fieldLead); }
     for(var i=0;i<clientRelations.length;i++){
       final r=clientRelations[i]; if(r.unlocked)continue;
       final unlock=r.clientId=='client-nova-infra' ? engineers.length>=5 && engineers.any((e)=>e.profile.techSkills.infrastructure>=1) : r.clientId=='client-bright-solutions' ? clientRelations.firstWhere((x)=>x.clientId=='client-axis-soft').trust>=60 && clientRelations.fold<int>(0,(n,x)=>n+x.successfulAssignments)>=3 : false;
-      if(unlock){clientRelations[i]=r.copyWith(unlocked:true,trust:30);log('新規取引開始！ ${sampleClients.firstWhere((c)=>c.id==r.clientId).name}',GameLogCategory.assignmentStarted);}
+      if(unlock){clientRelations[i]=r.copyWith(unlocked:true,trust:30);log('新規取引開始！ ${sampleClients.firstWhere((c)=>c.id==r.clientId).name}',GameLogCategory.clientUnlocked);}
     }
     final expiredInterviewOffers=[for(final o in state.interviewOffers) if(o.status==InterviewOfferStatus.pending && o.expiresWeek<newWeek)o.copyWith(status:InterviewOfferStatus.expired) else o];
     final salesSnapshot=state.copyWith(engineers:engineers,openProjects:openProjects,clientRelations:clientRelations,interviewOffers:expiredInterviewOffers,idCounter:idCounter);
     final generatedInterviewOffers=SalesEngine.generateOffers(salesSnapshot,newWeek,mintId);
-    for(final o in generatedInterviewOffers){ final project=openProjects.firstWhere((e)=>e.project.id==o.projectId).project; log('${engineers.firstWhere((e)=>e.id==o.employeeId).profile.name}さんに「${project.title}」の面談オファーが届きました'); }
+    for(final o in generatedInterviewOffers){ final project=openProjects.firstWhere((e)=>e.project.id==o.projectId).project; log('面談オファー！ ${engineers.firstWhere((e)=>e.id==o.employeeId).profile.name}さん / ${project.title}',GameLogCategory.interviewOffer); }
     final waitingCountThisWeek = engineersById.values
         .where((e) => e.status == EngineerStatus.waiting)
         .length;
@@ -1173,7 +1179,7 @@ class GameEngine {
   static GameState acceptInterviewOffer(GameState state,String offerId){
     final offer=state.interviewOffers.where((o)=>o.id==offerId).firstOrNull; if(offer==null||offer.status!=InterviewOfferStatus.pending||state.week>offer.expiresWeek)return state;
     final entry=state.openProjects.where((e)=>e.project.id==offer.projectId).firstOrNull; if(entry==null)return state;
-    final (next,id)=state.mintId('proposal'); final proposal=ProjectProposal(id:id,engineerId:offer.employeeId,project:entry.project,proposedWeek:state.week,stage:ProposalStage.proposed,currentStepIndex:entry.project.selectionFlow.steps.length>1?1:0,fitScore:offer.skillSheetMatch);
+    final (next,id)=state.mintId('proposal'); final proposal=ProjectProposal(id:id,engineerId:offer.employeeId,project:entry.project,proposedWeek:state.week,stage:ProposalStage.proposed,currentStepIndex:entry.project.selectionFlow.steps.length>1?1:0,fitScore:offer.skillSheetMatch,fromInterviewOffer:true);
     final engineers=[...next.engineers]; final i=engineers.indexWhere((e)=>e.id==offer.employeeId); engineers[i]=engineers[i].copyWith(salesStatus:SalesStatus.interviewing);
     return next.copyWith(engineers:engineers,interviewOffers:[for(final o in next.interviewOffers) if(o.id==offerId)o.copyWith(status:InterviewOfferStatus.accepted) else o],proposals:[...next.proposals,proposal],stats:next.stats.copyWith(proposalCount:next.stats.proposalCount+1)).withLog('${entry.project.title} の面談オファーを受けました');
   }

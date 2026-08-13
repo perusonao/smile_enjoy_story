@@ -8,8 +8,8 @@ class RecruitmentEngine {
   const RecruitmentEngine._();
 
   /// `70 + companyCredit * 0.2`, clamped to `[0, 100]` (§10).
-  static int acceptanceRate(int companyCredit) =>
-      (70 + companyCredit * 0.2).round().clamp(0, 100);
+  static int acceptanceRate(int companyCredit, {int companyImpression = 50}) =>
+      (60 + companyCredit * 0.2 + (companyImpression - 50) * 0.55).round().clamp(5, 95);
 
   static bool rollAcceptance({
     required int rate,

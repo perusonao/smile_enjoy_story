@@ -43,6 +43,15 @@ class GameController extends ChangeNotifier {
   void interviewApplicant(String applicantId) =>
       _apply((s) => GameEngine.interviewApplicant(s, applicantId));
 
+  void askRecruitmentQuestion(String applicantId, InterviewQuestionCategory category) =>
+      _apply((s) => GameEngine.askRecruitmentQuestion(s, applicantId, category));
+
+  void answerRecruitmentReverseQuestion(String applicantId, int choiceIndex) =>
+      _apply((s) => GameEngine.answerRecruitmentReverseQuestion(s, applicantId, choiceIndex));
+
+  void completeRecruitmentInterview(String applicantId, InterviewOutcome outcome) =>
+      _apply((s) => GameEngine.completeRecruitmentInterview(s, applicantId, outcome));
+
   void rejectApplicant(String applicantId) =>
       _apply((s) => GameEngine.rejectApplicant(s, applicantId));
 

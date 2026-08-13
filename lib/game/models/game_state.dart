@@ -9,11 +9,12 @@ import 'office.dart';
 import 'project_entry.dart';
 import 'project_proposal.dart';
 import 'recruitment_media.dart';
+import 'recruitment_interview.dart';
 
 /// Bumped whenever a save-incompatible change is made to [GameState]'s
 /// shape (Playable 0.3A §26). [SaveService] resets to a new game rather
 /// than crashing when a loaded save's version doesn't match.
-const int currentSchemaVersion = 3;
+const int currentSchemaVersion = 4;
 const int maxParallelProposalsPerEmployee = 3;
 const int maxActiveCompanyProposals = 6;
 
@@ -46,6 +47,7 @@ class GameState {
   final List<Engineer> engineers;
   final List<ApplicantEntry> applicants;
   final Set<String> interviewedApplicantIds;
+  final List<RecruitmentInterviewSession> recruitmentInterviews;
   final List<ProjectEntry> openProjects;
   final List<RecruitmentListing> listings;
   final List<ProjectProposal> proposals;
@@ -88,6 +90,7 @@ class GameState {
     required this.engineers,
     required this.applicants,
     required this.interviewedApplicantIds,
+    this.recruitmentInterviews = const [],
     required this.openProjects,
     required this.listings,
     required this.proposals,
@@ -206,6 +209,7 @@ class GameState {
     List<Engineer>? engineers,
     List<ApplicantEntry>? applicants,
     Set<String>? interviewedApplicantIds,
+    List<RecruitmentInterviewSession>? recruitmentInterviews,
     List<ProjectEntry>? openProjects,
     List<RecruitmentListing>? listings,
     List<ProjectProposal>? proposals,
@@ -233,6 +237,7 @@ class GameState {
       applicants: applicants ?? this.applicants,
       interviewedApplicantIds:
           interviewedApplicantIds ?? this.interviewedApplicantIds,
+      recruitmentInterviews: recruitmentInterviews ?? this.recruitmentInterviews,
       openProjects: openProjects ?? this.openProjects,
       listings: listings ?? this.listings,
       proposals: proposals ?? this.proposals,
@@ -273,6 +278,7 @@ class GameState {
     'engineers': engineers.map((e) => e.toJson()).toList(),
     'applicants': applicants.map((e) => e.toJson()).toList(),
     'interviewedApplicantIds': interviewedApplicantIds.toList(),
+    'recruitmentInterviews': recruitmentInterviews.map((e) => e.toJson()).toList(),
     'openProjects': openProjects.map((e) => e.toJson()).toList(),
     'listings': listings.map((e) => e.toJson()).toList(),
     'proposals': proposals.map((e) => e.toJson()).toList(),
@@ -310,6 +316,8 @@ class GameState {
     interviewedApplicantIds: (json['interviewedApplicantIds'] as List)
         .cast<String>()
         .toSet(),
+    recruitmentInterviews: (json['recruitmentInterviews'] as List? ?? const [])
+        .map((e) => RecruitmentInterviewSession.fromJson(e as Map<String, dynamic>)).toList(),
     openProjects: (json['openProjects'] as List)
         .map((e) => ProjectEntry.fromJson(e as Map<String, dynamic>))
         .toList(),

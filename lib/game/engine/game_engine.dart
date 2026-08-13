@@ -4,6 +4,7 @@ import 'finance_engine.dart';
 import 'matching_engine.dart';
 import 'project_interview_engine.dart';
 import 'recruitment_engine.dart';
+import 'recruitment_interview_engine.dart';
 import 'rng.dart';
 import 'selection_engine.dart';
 
@@ -108,10 +109,39 @@ class GameEngine {
   // ---------------------------------------------------------------------
 
   static GameState interviewApplicant(GameState state, String applicantId) {
-    if (state.interviewedApplicantIds.contains(applicantId)) return state;
+    if (state.interviewedApplicantIds.contains(applicantId) || state.recruitmentInterviews.any((s) => s.applicantId == applicantId)) return state;
+    final entry = state.applicants.where((e) => e.applicant.id == applicantId);
+    if (entry.isEmpty) return state;
+    final session = RecruitmentInterviewEngine.start(seed: state.seed, week: state.week, applicant: entry.first.applicant, companyCredit: state.company.credit, officeType: state.officeType, companySize: state.engineers.length);
     return state.copyWith(
+      recruitmentInterviews: [...state.recruitmentInterviews, session],
       interviewedApplicantIds: {...state.interviewedApplicantIds, applicantId},
     );
+  }
+
+  static GameState askRecruitmentQuestion(GameState state, String applicantId, InterviewQuestionCategory category) {
+    final sessionIndex = state.recruitmentInterviews.indexWhere((s) => s.applicantId == applicantId && !s.completed);
+    final applicant = state.applicants.where((e) => e.applicant.id == applicantId);
+    if (sessionIndex < 0 || applicant.isEmpty) return state;
+    final sessions = [...state.recruitmentInterviews];
+    sessions[sessionIndex] = RecruitmentInterviewEngine.ask(session: sessions[sessionIndex], applicant: applicant.first.applicant, seed: state.seed, category: category);
+    return state.copyWith(recruitmentInterviews: sessions);
+  }
+
+  static GameState answerRecruitmentReverseQuestion(GameState state, String applicantId, int choiceIndex) {
+    final index = state.recruitmentInterviews.indexWhere((s) => s.applicantId == applicantId && !s.completed);
+    if (index < 0) return state;
+    final sessions = [...state.recruitmentInterviews];
+    sessions[index] = RecruitmentInterviewEngine.answerReverse(sessions[index], choiceIndex);
+    return state.copyWith(recruitmentInterviews: sessions);
+  }
+
+  static GameState completeRecruitmentInterview(GameState state, String applicantId, InterviewOutcome outcome) {
+    final index = state.recruitmentInterviews.indexWhere((s) => s.applicantId == applicantId && !s.completed);
+    if (index < 0 || !state.recruitmentInterviews[index].conversationComplete) return state;
+    final sessions = [...state.recruitmentInterviews];
+    sessions[index] = sessions[index].copyWith(completed: true, outcome: outcome);
+    return state.copyWith(recruitmentInterviews: sessions, interviewedApplicantIds: {...state.interviewedApplicantIds, applicantId});
   }
 
   static GameState rejectApplicant(GameState state, String applicantId) {
@@ -144,7 +174,8 @@ class GameEngine {
     final remainingApplicants = [...state.applicants]..removeAt(index);
     var next = state.copyWith(applicants: remainingApplicants);
 
-    final rate = RecruitmentEngine.acceptanceRate(state.company.credit);
+    final session = state.recruitmentInterviews.where((s) => s.applicantId == applicantId && s.completed).toList();
+    final rate = RecruitmentEngine.acceptanceRate(state.company.credit, companyImpression: session.isEmpty ? 50 : session.last.companyImpression);
     final accepted = RecruitmentEngine.rollAcceptance(
       rate: rate,
       seed: state.seed,
@@ -1030,6 +1061,14 @@ class GameEngine {
     'totalFixedCost': state.stats.cumulativeFixedCost,
     'monthlyClosings': state.monthlyClosings.map((c) => c.toJson()).toList(),
     'hires': state.stats.hires,
+    'recruitmentInterviews': state.recruitmentInterviews.where((s) => s.completed).length,
+    'recruitmentQuestionsAsked': state.recruitmentInterviews.fold<int>(0, (n, s) => n + s.selectedQuestions.length),
+    'reverseQuestionCategories': state.recruitmentInterviews.where((s) => s.reverseQuestion != null).map((s) => s.reverseQuestion!.name).toList(),
+    'averageCandidateKnowledge': state.recruitmentInterviews.isEmpty ? 0 : state.recruitmentInterviews.fold<int>(0, (n, s) => n + s.candidateKnowledge) / state.recruitmentInterviews.length,
+    'averageCompanyImpression': state.recruitmentInterviews.isEmpty ? 0 : state.recruitmentInterviews.fold<int>(0, (n, s) => n + s.companyImpression) / state.recruitmentInterviews.length,
+    'offersMade': state.recruitmentInterviews.where((s) => s.outcome == InterviewOutcome.hired).length,
+    'hiresAfterInterview': state.recruitmentInterviews.where((s) => s.outcome == InterviewOutcome.hired).length,
+    'rejectsAfterInterview': state.recruitmentInterviews.where((s) => s.outcome == InterviewOutcome.rejected).length,
     'proposalCount': state.stats.proposalCount,
     'totalProposals': state.stats.proposalCount,
     'parallelProposalPeak': state.stats.parallelProposalPeak,

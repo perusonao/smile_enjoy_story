@@ -4,9 +4,8 @@ import '../../app/game_scope.dart';
 import '../../domain/domain.dart';
 import '../../game/game.dart';
 import '../theme.dart';
-import '../widgets/interview_reveal_dialog.dart';
 import '../widgets/labels.dart';
-import '../widgets/offer_result_dialog.dart';
+import 'recruitment_interview_screen.dart';
 
 class ApplicantDetailScreen extends StatelessWidget {
   const ApplicantDetailScreen({super.key, required this.applicantId});
@@ -14,32 +13,7 @@ class ApplicantDetailScreen extends StatelessWidget {
   final String applicantId;
 
   Future<void> _onInterviewPressed(BuildContext context, Applicant applicant) async {
-    final controller = context.game;
-    controller.interviewApplicant(applicantId);
-
-    final decision = await showInterviewResultDialog(context, applicant);
-
-    if (decision == InterviewDecision.reject) {
-      controller.rejectApplicant(applicantId);
-    } else if (decision == InterviewDecision.hire) {
-      final beforeCount = controller.state.pendingHires.length;
-      controller.hireApplicant(applicantId);
-      final after = controller.state;
-      final accepted = after.pendingHires.length > beforeCount;
-      final joinWeek = accepted ? after.pendingHires.last.joinWeek : null;
-      if (context.mounted) {
-        await showOfferResultDialog(
-          context,
-          accepted: accepted,
-          name: applicant.name,
-          joinWeek: joinWeek,
-        );
-      }
-    }
-
-    if (context.mounted && Navigator.of(context).canPop()) {
-      Navigator.of(context).pop();
-    }
+    await Navigator.of(context).push(MaterialPageRoute(builder: (_) => RecruitmentInterviewScreen(applicantId: applicantId)));
   }
 
   @override
@@ -63,7 +37,8 @@ class ApplicantDetailScreen extends StatelessWidget {
     }
 
     final applicant = entry.applicant;
-    final interviewed = state.interviewedApplicantIds.contains(applicantId);
+    final interviewed = state.recruitmentInterviews.any((s) => s.applicantId == applicantId && s.completed);
+    final interviewStarted = state.recruitmentInterviews.any((s) => s.applicantId == applicantId && !s.completed);
 
     return Scaffold(
       appBar: AppBar(title: Text(applicant.name)),
@@ -110,18 +85,12 @@ class ApplicantDetailScreen extends StatelessWidget {
           if (!interviewed)
             _LockedPersonalityCard(
               onInterview: () => _onInterviewPressed(context, applicant),
+              started: interviewStarted,
             )
           else
             _SectionCard(
-              title: '人物評価 (面接結果)',
-              children: [
-                _Row('ルックス', '★' * applicant.personality.looks),
-                _Row('清潔感', '★' * applicant.personality.cleanliness),
-                _Row('コミュ力', '★' * applicant.personality.communication),
-                _Row('アルコール耐性', '★' * applicant.personality.alcoholTolerance),
-                _Row('真面目度', '★' * applicant.personality.seriousness),
-                _Row('経歴書との信頼度', RecruitmentEngine.trustAssessment(applicant)),
-              ],
+              title: '面接済み',
+              children: const [_Row('判断', '会話と観察をもとに採否を決定しました')],
             ),
         ],
       ),
@@ -130,9 +99,10 @@ class ApplicantDetailScreen extends StatelessWidget {
 }
 
 class _LockedPersonalityCard extends StatelessWidget {
-  const _LockedPersonalityCard({required this.onInterview});
+  const _LockedPersonalityCard({required this.onInterview, this.started = false});
 
   final VoidCallback onInterview;
+  final bool started;
 
   @override
   Widget build(BuildContext context) {
@@ -158,7 +128,7 @@ class _LockedPersonalityCard extends StatelessWidget {
             child: FilledButton.icon(
               onPressed: onInterview,
               icon: const Icon(Icons.forum_outlined),
-              label: const Text('面接する'),
+              label: Text(started ? '面接を再開する' : '面接する'),
             ),
           ),
         ],

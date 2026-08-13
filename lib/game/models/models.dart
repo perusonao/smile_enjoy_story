@@ -17,3 +17,4 @@ export 'office.dart';
 export 'project_entry.dart';
 export 'project_proposal.dart';
 export 'recruitment_media.dart';
+export 'recruitment_interview.dart';

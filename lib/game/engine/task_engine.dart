@@ -1,6 +1,7 @@
 import '../../domain/domain.dart';
 import '../models/models.dart';
 import 'finance_engine.dart';
+import 'morale_engine.dart';
 
 /// Generates the "今週の経営判断" task list shown at the top of Home
 /// (Playable 0.2 §3-§4, extended for 0.3A's monthly cash flow §11). Pure
@@ -289,6 +290,53 @@ class TaskEngine {
           targetType: TaskTargetType.recruitmentTab,
         ),
       );
+    }
+
+    // --- Morale / welfare (Playable 0.4C §41) ----------------------------
+    final lowMorale = state.engineers.where((e) => e.morale < 30).toList()
+      ..sort((a, b) => a.morale.compareTo(b.morale));
+    for (final e in lowMorale.take(2)) {
+      final highRisk = MoraleEngine.turnoverRisk(e) == TurnoverRisk.high;
+      tasks.add(HomeTask(
+        id: 'low-morale-${e.id}',
+        priority: highRisk ? TaskPriority.critical : TaskPriority.warning,
+        title: '${e.profile.name}さんのモチベーションが低下しています',
+        subtitle: highRisk ? '退職リスクが高まっています' : null,
+        targetType: TaskTargetType.employeeDetail,
+        targetId: e.id,
+      ));
+    }
+
+    final monthName = GameCalendar.monthName(state.week);
+    if ((monthName == '6月' || monthName == '12月') &&
+        (state.lastBonusWeek == null || state.week - state.lastBonusWeek! >= 20)) {
+      tasks.add(const HomeTask(
+        id: 'bonus-season',
+        priority: TaskPriority.info,
+        title: '賞与支給月です',
+        targetType: TaskTargetType.othersTab,
+      ));
+    }
+    if (monthName == '10月' &&
+        (state.lastHealthCheckWeek == null || state.week - state.lastHealthCheckWeek! >= 40)) {
+      tasks.add(const HomeTask(
+        id: 'health-check-season',
+        priority: TaskPriority.info,
+        title: '健康診断を実施できます',
+        targetType: TaskTargetType.othersTab,
+      ));
+    }
+    final staleLowMoralePc = state.engineers.where((e) {
+      final tier = state.equipmentFor(e.id)?.pcTier;
+      return tier == PcTier.basicLaptop && e.morale < 60;
+    }).length;
+    if (staleLowMoralePc > 0) {
+      tasks.add(HomeTask(
+        id: 'pc-upgrade-available',
+        priority: TaskPriority.info,
+        title: '社員のPCを更新できます($staleLowMoralePc名)',
+        targetType: TaskTargetType.employeesTab,
+      ));
     }
 
     if (state.pendingHires.isNotEmpty) {

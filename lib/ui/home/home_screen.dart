@@ -80,6 +80,8 @@ class _HomeScreenState extends State<HomeScreen> {
         context.switchTab(SesTab.employees);
       case TaskTargetType.projectsTab:
         context.switchTab(SesTab.projects);
+      case TaskTargetType.othersTab:
+        context.switchTab(SesTab.others);
       case TaskTargetType.employeeDetail:
         context.switchTab(SesTab.employees);
         final id = task.targetId;

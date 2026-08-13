@@ -108,6 +108,7 @@ Project buildProject({
   RemotePolicy remotePolicy = RemotePolicy.hybrid,
   int interviewCount = 1,
   int difficulty = 3,
+  ResidenceArea location = ResidenceArea.tokyo,
 }) {
   return Project(
     id: id,
@@ -130,5 +131,6 @@ Project buildProject({
     remotePolicy: remotePolicy,
     interviewCount: interviewCount,
     difficulty: difficulty,
+    location: location,
   );
 }

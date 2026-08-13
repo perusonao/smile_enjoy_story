@@ -26,7 +26,8 @@ class RecommendationEngine {
       TaskTargetType.employeesTab: 3,
       TaskTargetType.interviewResults: 4,
       TaskTargetType.projectsTab: 5,
-      TaskTargetType.none: 6,
+      TaskTargetType.othersTab: 6,
+      TaskTargetType.none: 7,
     };
     tasks.sort((a, b) {
       final priority = rank[a.priority]!.compareTo(rank[b.priority]!);

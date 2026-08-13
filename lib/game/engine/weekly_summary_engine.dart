@@ -22,6 +22,7 @@ class WeeklySummaryEngine {
       GameLogCategory.interviewPassed => WeeklyResult(event,priority:10,actionLabel:'社員を見る',targetType:TaskTargetType.employeesTab),
       GameLogCategory.fieldLead => WeeklyResult(event,priority:11,actionLabel:'市場を見る',targetType:TaskTargetType.projectsTab),
       GameLogCategory.engineerJoined||GameLogCategory.applicantsArrived => WeeklyResult(event,priority:12),
+      GameLogCategory.welfareEvent => WeeklyResult(event,priority:13,actionLabel:'社員を見る',targetType:TaskTargetType.employeesTab),
       _ => WeeklyResult(event,priority:100),
     };
   }

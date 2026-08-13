@@ -18,7 +18,8 @@ enum GameLogCategory {
   assignmentStarted,
   contractEnded,
   bankrupt,
-  gameFinished;
+  gameFinished,
+  welfareEvent;
 
   String get jsonValue => name;
 

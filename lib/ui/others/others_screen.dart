@@ -43,8 +43,11 @@ class OthersScreen extends StatelessWidget {
               _Row('種別', office.label),
               _Row('家賃', '${formatYen(office.monthlyRent)}/月'),
               _Row('定員', '$occupancy / ${office.employeeCapacity}名'),
+              _Row('モチベーション補正', office.moraleModifier > 0 ? 'プラス' : office.moraleModifier < 0 ? 'マイナス' : 'なし'),
             ],
           ),
+          const SizedBox(height: 14),
+          const _WelfareSection(),
           const SizedBox(height: 14),
           Text('入金予定 (${upcomingAr.length}件)', style: Theme.of(context).textTheme.titleMedium),
           const SizedBox(height: 8),
@@ -165,6 +168,223 @@ class OthersScreen extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// 福利厚生 / 社員環境 (Playable 0.4C §28-29): a compact summary + the
+/// three occasional welfare events. Deliberately event-driven, not a
+/// weekly chore — day-to-day state stays on the employee detail screen.
+class _WelfareSection extends StatelessWidget {
+  const _WelfareSection();
+
+  @override
+  Widget build(BuildContext context) {
+    final state = context.game.state;
+    final pcCounts = <PcTier, int>{for (final tier in PcTier.values) tier: 0};
+    for (final e in state.engineers) {
+      final tier = state.equipmentFor(e.id)?.pcTier ?? PcTier.standardLaptop;
+      pcCounts[tier] = (pcCounts[tier] ?? 0) + 1;
+    }
+    String lastLabel(int? week) =>
+        week == null ? '未実施' : 'Week $week (${GameCalendar.displayLabel(week)})';
+    final hasEmployees = state.engineers.isNotEmpty;
+
+    return _SectionCard(
+      title: '福利厚生 / 社員環境',
+      children: [
+        _Row(
+          '貸与PC',
+          pcCounts.entries.where((e) => e.value > 0).map((e) => '${pcTierConfigs[e.key]!.label}×${e.value}').join(' / '),
+        ),
+        const Text('PCのアップグレードは社員詳細画面から行えます。', style: TextStyle(fontSize: 11.5, color: Colors.black54)),
+        const Divider(height: 22),
+        _Row('健康診断', lastLabel(state.lastHealthCheckWeek)),
+        const SizedBox(height: 6),
+        SizedBox(
+          width: double.infinity,
+          child: OutlinedButton(
+            onPressed: hasEmployees ? () => _showHealthCheckDialog(context) : null,
+            child: const Text('健康診断を実施する'),
+          ),
+        ),
+        const Divider(height: 22),
+        _Row('賞与', lastLabel(state.lastBonusWeek)),
+        const SizedBox(height: 6),
+        SizedBox(
+          width: double.infinity,
+          child: OutlinedButton(
+            onPressed: hasEmployees ? () => _showBonusDialog(context) : null,
+            child: const Text('賞与を検討する'),
+          ),
+        ),
+        const Divider(height: 22),
+        _Row('社員旅行', lastLabel(state.lastCompanyTripWeek)),
+        const SizedBox(height: 6),
+        SizedBox(
+          width: double.infinity,
+          child: OutlinedButton(
+            onPressed: hasEmployees ? () => _showCompanyTripDialog(context) : null,
+            child: const Text('社員旅行を検討する'),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+Future<void> _showHealthCheckDialog(BuildContext context) async {
+  final state = context.game.state;
+  var tier = HealthCheckTier.basic;
+  final confirmed = await showDialog<bool>(
+    context: context,
+    builder: (dialog) => StatefulBuilder(builder: (context, setState) {
+      final cost = WelfareEngine.healthCheckCost(tier, state.engineers.length);
+      final config = healthCheckConfigs[tier]!;
+      return AlertDialog(
+        title: const Text('健康診断を実施'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            for (final t in HealthCheckTier.values)
+              _ChoiceTile(
+                selected: t == tier,
+                onTap: () => setState(() => tier = t),
+                title: healthCheckConfigs[t]!.label,
+                subtitle: '${formatYen(healthCheckConfigs[t]!.costPerEmployee)}/人  モチベーション+${healthCheckConfigs[t]!.moraleEffect} / 信頼+${healthCheckConfigs[t]!.trustEffect}',
+              ),
+            const Divider(),
+            Text('対象: 全社員 ${state.engineers.length}名', style: const TextStyle(fontSize: 13)),
+            Text('必要資金: ${formatYen(cost)}', style: const TextStyle(fontWeight: FontWeight.bold)),
+            Text('現預金: ${formatYen(state.company.cash)} → ${formatYen(state.company.cash - cost)}'),
+            Text('全社員 モチベーション+${config.moraleEffect} / 信頼+${config.trustEffect}', style: const TextStyle(fontSize: 12.5, color: Colors.black54)),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialog, false), child: const Text('キャンセル')),
+          FilledButton(
+            onPressed: state.company.cash < cost ? null : () => Navigator.pop(dialog, true),
+            child: const Text('実施する'),
+          ),
+        ],
+      );
+    }),
+  );
+  if (confirmed == true && context.mounted) {
+    context.game.conductHealthCheck(tier);
+  }
+}
+
+Future<void> _showBonusDialog(BuildContext context) async {
+  final state = context.game.state;
+  var plan = BonusPlan.one;
+  final totalSalary = state.engineers.fold<int>(0, (sum, e) => sum + e.salary);
+  final confirmed = await showDialog<bool>(
+    context: context,
+    builder: (dialog) => StatefulBuilder(builder: (context, setState) {
+      final cost = WelfareEngine.bonusCost(plan, totalSalary);
+      final config = bonusPlanConfigs[plan]!;
+      final cashAfter = state.company.cash - cost;
+      final runwayBefore = FinanceEngine.cashRunwayMonths(state);
+      final hypothetical = state.copyWith(company: state.company.copyWith(cash: cashAfter));
+      final runwayAfter = FinanceEngine.cashRunwayMonths(hypothetical);
+      String runwayText(double months) => months.isFinite ? '約${months.toStringAsFixed(1)}か月' : '減少せず';
+      return AlertDialog(
+        title: const Text('賞与を検討'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              for (final p in BonusPlan.values)
+                _ChoiceTile(
+                  selected: p == plan,
+                  onTap: () => setState(() => plan = p),
+                  title: bonusPlanConfigs[p]!.label,
+                ),
+              const Divider(),
+              Text('必要資金: ${formatYen(cost)}', style: const TextStyle(fontWeight: FontWeight.bold)),
+              Text('現預金: ${formatYen(state.company.cash)} → ${formatYen(cashAfter)}', style: TextStyle(color: cashAfter < 0 ? Colors.red.shade700 : null, fontWeight: FontWeight.bold)),
+              Text('予想資金余命: ${runwayText(runwayBefore)} → ${runwayText(runwayAfter)}'),
+              const SizedBox(height: 6),
+              Text('社員 モチベーション${config.moraleEffect >= 0 ? '+' : ''}${config.moraleEffect} / 信頼${config.trustEffect >= 0 ? '+' : ''}${config.trustEffect}(目安)', style: const TextStyle(fontSize: 12.5, color: Colors.black54)),
+              if (cashAfter < 0) const Padding(padding: EdgeInsets.only(top: 8), child: Text('資金がマイナスになります。月末決算で倒産する可能性があります。', style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold, fontSize: 12.5))),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialog, false), child: const Text('キャンセル')),
+          FilledButton(onPressed: () => Navigator.pop(dialog, true), child: const Text('この内容で支給')),
+        ],
+      );
+    }),
+  );
+  if (confirmed == true && context.mounted) {
+    context.game.payBonus(plan);
+  }
+}
+
+Future<void> _showCompanyTripDialog(BuildContext context) async {
+  final state = context.game.state;
+  var type = CompanyTripType.dayTrip;
+  final confirmed = await showDialog<bool>(
+    context: context,
+    builder: (dialog) => StatefulBuilder(builder: (context, setState) {
+      final cost = WelfareEngine.companyTripCost(type, state.engineers.length);
+      return AlertDialog(
+        title: const Text('社員旅行を検討'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            for (final t in CompanyTripType.values)
+              _ChoiceTile(
+                selected: t == type,
+                onTap: () => setState(() => type = t),
+                title: companyTripConfigs[t]!.label,
+                subtitle: '${formatYen(companyTripConfigs[t]!.costPerEmployee)}/人',
+              ),
+            const Divider(),
+            Text('対象: 全社員 ${state.engineers.length}名', style: const TextStyle(fontSize: 13)),
+            Text('必要資金: ${formatYen(cost)}', style: const TextStyle(fontWeight: FontWeight.bold)),
+            Text('現預金: ${formatYen(state.company.cash)} → ${formatYen(state.company.cash - cost)}'),
+            const SizedBox(height: 6),
+            const Text('反応は社員が重視すること（人間関係・プライベート・待遇など）によって異なります。', style: TextStyle(fontSize: 12, color: Colors.black54)),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialog, false), child: const Text('キャンセル')),
+          FilledButton(
+            onPressed: state.company.cash < cost ? null : () => Navigator.pop(dialog, true),
+            child: const Text('実施する'),
+          ),
+        ],
+      );
+    }),
+  );
+  if (confirmed == true && context.mounted) {
+    context.game.conductCompanyTrip(type);
+  }
+}
+
+/// A radio-style selection row for the welfare dialogs, avoiding the
+/// deprecated `RadioListTile.groupValue`/`onChanged` API.
+class _ChoiceTile extends StatelessWidget {
+  const _ChoiceTile({required this.selected, required this.onTap, required this.title, this.subtitle});
+
+  final bool selected;
+  final VoidCallback onTap;
+  final String title;
+  final String? subtitle;
+
+  @override
+  Widget build(BuildContext context) {
+    return ListTile(
+      leading: Icon(selected ? Icons.radio_button_checked : Icons.radio_button_unchecked, color: selected ? SesTheme.primaryBlue : null),
+      title: Text(title),
+      subtitle: subtitle == null ? null : Text(subtitle!),
+      onTap: onTap,
     );
   }
 }

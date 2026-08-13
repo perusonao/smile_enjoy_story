@@ -78,6 +78,12 @@ class EngineerDetailScreen extends StatelessWidget {
               weeks: waitingWeeks,
               monthlySalary: engineer.salary,
             ),
+          _ConditionCard(engineer: engineer, state: state),
+          const SizedBox(height: 12),
+          if (assignment != null && assignment.remainingWeeks <= 4 && assignment.contractDecision == ContractDecision.undecided) ...[
+            _ContractPreferenceHint(engineer: engineer, assignment: assignment, currentWeek: state.week),
+            const SizedBox(height: 12),
+          ],
           _SectionCard(title:'スキルシート / 営業',children:[
             _Row('会社信頼',engineer.companyTrust >= 70 ? '高い' : engineer.companyTrust >= 45 ? '普通' : '低下中'),
             _Row(languageLabels[profile.mainLanguage] ?? profile.mainLanguage.name,'実際 ${formatExperience(profile.skillFor(profile.mainLanguage).actualExperienceMonths)} / 記載 ${formatExperience(skillSheet.displayedLanguageExperience[profile.mainLanguage] ?? 0)}'),
@@ -211,6 +217,136 @@ class EngineerDetailScreen extends StatelessWidget {
     final state=context.game.state; final clients=sampleClients.where((c)=>state.relationFor(c.id).unlocked).map((c)=>c.name).join('\n');
     final accepted=await showDialog<bool>(context:context,builder:(c)=>AlertDialog(title:Text('${engineer.profile.name}の営業を開始します'),content:Text('公開先:\n$clients\n\n参画可能: ${engineer.availableFromWeek<=state.week?'現在':'Week ${engineer.availableFromWeek}'}\nスキルシート: ${SalesEngine.riskLabel(SalesEngine.riskFor(engineer,sheet))}\n\n条件に合う案件があると、取引先から面談オファーが届きます。'),actions:[TextButton(onPressed:()=>Navigator.pop(c,false),child:const Text('戻る')),FilledButton(onPressed:()=>Navigator.pop(c,true),child:const Text('営業開始'))]));
     if(accepted==true&&context.mounted)context.game.startSales(engineer.id);
+  }
+}
+
+/// 社員コンディション (Playable 0.4C §6, §11-15, §38): Morale/Trust labels,
+/// preference, turnover-risk warning, current PC + upgrade action, and the
+/// last few morale/trust change reasons.
+class _ConditionCard extends StatelessWidget {
+  const _ConditionCard({required this.engineer, required this.state});
+
+  final Engineer engineer;
+  final GameState state;
+
+  @override
+  Widget build(BuildContext context) {
+    final risk = MoraleEngine.turnoverRisk(engineer);
+    final pcTier = state.equipmentFor(engineer.id)?.pcTier ?? PcTier.standardLaptop;
+    final recent = engineer.relationshipHistory.reversed.take(maxRelationshipHistory).toList();
+    return _SectionCard(
+      title: '社員コンディション',
+      children: [
+        _Row('モチベーション', '${MoraleEngine.moraleEmoji(engineer.morale)} ${MoraleEngine.moraleLabel(engineer.morale)}'),
+        _Row('会社への信頼', '${MoraleEngine.trustSymbol(engineer.companyTrust)} ${MoraleEngine.trustLabel(engineer.companyTrust)}'),
+        _Row('重視すること', engineer.preference.label),
+        if (risk != TurnoverRisk.low)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 4),
+            child: Text(
+              '⚠ 退職リスク: ${MoraleEngine.turnoverRiskLabel(risk)}',
+              style: TextStyle(
+                color: risk == TurnoverRisk.high ? Colors.red.shade700 : Colors.orange.shade800,
+                fontWeight: FontWeight.bold,
+                fontSize: 12.5,
+              ),
+            ),
+          ),
+        const Divider(height: 18),
+        Row(
+          children: [
+            Expanded(child: _Row('貸与PC', pcTierConfigs[pcTier]!.label)),
+            OutlinedButton(
+              onPressed: () => _showPcUpgradeDialog(context, engineer, pcTier),
+              child: const Text('アップグレード'),
+            ),
+          ],
+        ),
+        if (recent.isNotEmpty) ...[
+          const Divider(height: 18),
+          const Text('最近の変化', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12.5)),
+          const SizedBox(height: 4),
+          for (final event in recent) _RelationshipHistoryRow(event: event),
+        ],
+      ],
+    );
+  }
+}
+
+class _RelationshipHistoryRow extends StatelessWidget {
+  const _RelationshipHistoryRow({required this.event});
+
+  final EmployeeRelationshipEvent event;
+
+  @override
+  Widget build(BuildContext context) {
+    String signed(int delta) => delta == 0 ? '' : (delta > 0 ? '+$delta' : '$delta');
+    final parts = <String>[
+      if (event.moraleDelta != 0) 'モチベ${signed(event.moraleDelta)}',
+      if (event.trustDelta != 0) '信頼${signed(event.trustDelta)}',
+    ];
+    final positive = event.moraleDelta + event.trustDelta >= 0;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2),
+      child: Text(
+        'W${event.week}  ${parts.join(' / ')}  ${event.reason}',
+        style: TextStyle(
+          fontSize: 12,
+          color: positive ? Colors.green.shade700 : Colors.red.shade700,
+        ),
+      ),
+    );
+  }
+}
+
+Future<void> _showPcUpgradeDialog(BuildContext context, Engineer engineer, PcTier current) async {
+  final chosen = await showDialog<PcTier>(
+    context: context,
+    builder: (dialog) => AlertDialog(
+      title: Text('${engineer.profile.name}さんのPCをアップグレード'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          for (final tier in PcTier.values)
+            ListTile(
+              leading: Icon(tier == current ? Icons.radio_button_checked : Icons.radio_button_unchecked),
+              title: Text(pcTierConfigs[tier]!.label),
+              subtitle: Text('${formatYen(pcTierConfigs[tier]!.cost)}${tier == current ? ' (現在)' : ''}'),
+              onTap: tier == current ? null : () => Navigator.pop(dialog, tier),
+            ),
+        ],
+      ),
+      actions: [TextButton(onPressed: () => Navigator.pop(dialog), child: const Text('閉じる'))],
+    ),
+  );
+  if (chosen != null && chosen != current && context.mounted) {
+    context.game.upgradePc(engineer.id, chosen);
+  }
+}
+
+class _ContractPreferenceHint extends StatelessWidget {
+  const _ContractPreferenceHint({required this.engineer, required this.assignment, required this.currentWeek});
+
+  final Engineer engineer;
+  final ActiveAssignment assignment;
+  final int currentWeek;
+
+  @override
+  Widget build(BuildContext context) {
+    final preference = MoraleEngine.contractPreference(engineer, assignment, currentWeek);
+    if (preference == ContractPreference.neutral) return const SizedBox.shrink();
+    return Container(
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: Colors.blueGrey.shade50,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Text(
+        '本人の希望: ${MoraleEngine.contractPreferenceLabel(preference)}',
+        style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600),
+      ),
+    );
   }
 }
 

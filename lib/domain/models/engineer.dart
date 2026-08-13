@@ -1,6 +1,12 @@
 import 'applicant.dart';
+import 'employee_preference.dart';
+import 'employee_relationship_event.dart';
 import 'engineer_status.dart';
 import 'sales_profile.dart';
+
+/// Number of recent [EmployeeRelationshipEvent] rows kept per engineer
+/// (Playable 0.4C §38).
+const int maxRelationshipHistory = 5;
 
 /// An employee, created once an [Applicant] has been hired.
 ///
@@ -16,7 +22,25 @@ class Engineer {
   final int salary;
   final int employmentWeek;
   final EngineerStatus status;
+
+  /// "会社・社長そのものをどれくらい信用しているか" (Playable 0.4C §4):
+  /// promises kept, honest SkillSheet handling, good placements.
   final int companyTrust;
+
+  /// "今、仕事や待遇にどれくらい満足しているか" (Playable 0.4C §3):
+  /// current assignment fit, pay events, equipment, waiting streak, commute.
+  /// Deliberately independent from [companyTrust] — high pay can mean high
+  /// morale with low trust, and vice versa.
+  final int morale;
+
+  /// The one welfare dimension this employee cares about most (§25-26),
+  /// driving how they react to bonuses/trips/etc.
+  final EmployeePreference preference;
+
+  /// Up to [maxRelationshipHistory] most recent morale/trust changes, newest
+  /// last, so the player can always see *why* a number moved (§38-40).
+  final List<EmployeeRelationshipEvent> relationshipHistory;
+
   final Map<Industry, int> industryExperience;
   final ResidenceArea residenceArea;
   final int talkSkill;
@@ -34,6 +58,9 @@ class Engineer {
     required this.employmentWeek,
     required this.status,
     this.companyTrust = 60,
+    this.morale = 65,
+    this.preference = EmployeePreference.stability,
+    this.relationshipHistory = const [],
     this.industryExperience = const {},
     this.residenceArea = ResidenceArea.tokyo,
     this.talkSkill = 3,
@@ -52,6 +79,9 @@ class Engineer {
     int? employmentWeek,
     EngineerStatus? status,
     int? companyTrust,
+    int? morale,
+    EmployeePreference? preference,
+    List<EmployeeRelationshipEvent>? relationshipHistory,
     Map<Industry,int>? industryExperience,
     ResidenceArea? residenceArea,
     int? talkSkill,
@@ -69,6 +99,9 @@ class Engineer {
       employmentWeek: employmentWeek ?? this.employmentWeek,
       status: status ?? this.status,
       companyTrust: companyTrust ?? this.companyTrust,
+      morale: morale ?? this.morale,
+      preference: preference ?? this.preference,
+      relationshipHistory: relationshipHistory ?? this.relationshipHistory,
       industryExperience: industryExperience ?? this.industryExperience,
       residenceArea: residenceArea ?? this.residenceArea,
       talkSkill: talkSkill ?? this.talkSkill,
@@ -88,6 +121,9 @@ class Engineer {
     'employmentWeek': employmentWeek,
     'status': status.jsonValue,
     'companyTrust': companyTrust,
+    'morale': morale,
+    'preference': preference.jsonValue,
+    'relationshipHistory': relationshipHistory.map((e) => e.toJson()).toList(),
     'industryExperience': industryExperience.map((k,v)=>MapEntry(k.name,v)),
     'residenceArea': residenceArea.name,
     'talkSkill': talkSkill,
@@ -107,6 +143,13 @@ class Engineer {
       employmentWeek: json['employmentWeek'] as int,
       status: EngineerStatus.fromJson(json['status'] as String),
       companyTrust: json['companyTrust'] as int? ?? 60,
+      morale: json['morale'] as int? ?? 65,
+      preference: json['preference'] == null
+          ? EmployeePreference.stability
+          : EmployeePreference.fromJson(json['preference'] as String),
+      relationshipHistory: (json['relationshipHistory'] as List? ?? const [])
+          .map((e) => EmployeeRelationshipEvent.fromJson(e as Map<String, dynamic>))
+          .toList(),
       industryExperience: (json['industryExperience'] as Map<String,dynamic>? ?? {}).map((k,v)=>MapEntry(Industry.values.byName(k),v as int)),
       residenceArea: ResidenceArea.values.byName(json['residenceArea'] as String? ?? 'tokyo'),
       talkSkill: json['talkSkill'] as int? ?? 3,

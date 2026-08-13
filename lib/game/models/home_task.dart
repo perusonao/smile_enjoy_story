@@ -15,6 +15,7 @@ enum TaskTargetType {
   recruitmentTab,
   employeesTab,
   projectsTab,
+  othersTab,
 
   /// Requires [HomeTask.targetId] to be an engineer id.
   employeeDetail,
@@ -52,6 +53,7 @@ class HomeTask {
     TaskTargetType.recruitmentTab => '採用を見る',
     TaskTargetType.employeesTab => '社員を見る',
     TaskTargetType.projectsTab => 'おすすめ案件を見る',
+    TaskTargetType.othersTab => '福利厚生を見る',
     TaskTargetType.employeeDetail => '社員とOfferを確認',
     TaskTargetType.interviewResults => '選考結果を見る',
     TaskTargetType.none => '確認する',

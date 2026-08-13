@@ -6,6 +6,7 @@ import 'game_stats.dart';
 import 'game_status.dart';
 import 'monthly_closing.dart';
 import 'office.dart';
+import 'pc_equipment.dart';
 import 'project_entry.dart';
 import 'project_proposal.dart';
 import 'recruitment_media.dart';
@@ -66,6 +67,15 @@ class GameState {
   final GameStats stats;
   final GameStatus status;
 
+  /// Lent-laptop assignments, one entry per employee (Playable 0.4C §12).
+  final List<EmployeeEquipment> equipment;
+
+  /// When each welfare event was last run, for recommendation nudges
+  /// (§16-26). `null` means "never".
+  final int? lastHealthCheckWeek;
+  final int? lastBonusWeek;
+  final int? lastCompanyTripWeek;
+
   /// Consecutive weeks each currently-waiting engineer has been waiting
   /// (Playable 0.2 §17-18). Keyed by engineer id; an engineer who isn't
   /// waiting doesn't appear here.
@@ -112,6 +122,10 @@ class GameState {
     required this.events,
     required this.stats,
     required this.status,
+    this.equipment = const [],
+    this.lastHealthCheckWeek,
+    this.lastBonusWeek,
+    this.lastCompanyTripWeek,
     this.waitingStreak = const {},
     this.monthAccrualSnapshot = const {},
     this.pendingMiscExpense = 0,
@@ -138,6 +152,8 @@ class GameState {
 
   Engineer engineerById(String id) => engineers.firstWhere((e) => e.id == id);
   SkillSheet skillSheetFor(String id) => skillSheets.firstWhere((s) => s.employeeId == id);
+  EmployeeEquipment? equipmentFor(String id) =>
+      equipment.where((e) => e.employeeId == id).firstOrNull;
   ClientRelation relationFor(String id) => clientRelations.firstWhere((r) => r.clientId == id);
   int get unlockedClientCount => clientRelations.where((r)=>r.unlocked).length;
 
@@ -238,6 +254,10 @@ class GameState {
     List<GameLogEntry>? events,
     GameStats? stats,
     GameStatus? status,
+    List<EmployeeEquipment>? equipment,
+    int? lastHealthCheckWeek,
+    int? lastBonusWeek,
+    int? lastCompanyTripWeek,
     Map<String, int>? waitingStreak,
     Map<String, ActiveAssignment>? monthAccrualSnapshot,
     int? pendingMiscExpense,
@@ -270,6 +290,10 @@ class GameState {
       events: events ?? this.events,
       stats: stats ?? this.stats,
       status: status ?? this.status,
+      equipment: equipment ?? this.equipment,
+      lastHealthCheckWeek: lastHealthCheckWeek ?? this.lastHealthCheckWeek,
+      lastBonusWeek: lastBonusWeek ?? this.lastBonusWeek,
+      lastCompanyTripWeek: lastCompanyTripWeek ?? this.lastCompanyTripWeek,
       waitingStreak: waitingStreak ?? this.waitingStreak,
       monthAccrualSnapshot: monthAccrualSnapshot ?? this.monthAccrualSnapshot,
       pendingMiscExpense: pendingMiscExpense ?? this.pendingMiscExpense,
@@ -315,6 +339,10 @@ class GameState {
     'events': events.map((e) => e.toJson()).toList(),
     'stats': stats.toJson(),
     'status': status.jsonValue,
+    'equipment': equipment.map((e) => e.toJson()).toList(),
+    'lastHealthCheckWeek': lastHealthCheckWeek,
+    'lastBonusWeek': lastBonusWeek,
+    'lastCompanyTripWeek': lastCompanyTripWeek,
     'waitingStreak': waitingStreak,
     'monthAccrualSnapshot': monthAccrualSnapshot.map(
       (key, value) => MapEntry(key, value.toJson()),
@@ -376,6 +404,12 @@ class GameState {
         .toList(),
     stats: GameStats.fromJson(json['stats'] as Map<String, dynamic>),
     status: GameStatus.fromJson(json['status'] as String),
+    equipment: (json['equipment'] as List? ?? const [])
+        .map((e) => EmployeeEquipment.fromJson(e as Map<String, dynamic>))
+        .toList(),
+    lastHealthCheckWeek: json['lastHealthCheckWeek'] as int?,
+    lastBonusWeek: json['lastBonusWeek'] as int?,
+    lastCompanyTripWeek: json['lastCompanyTripWeek'] as int?,
     waitingStreak:
         (json['waitingStreak'] as Map<String, dynamic>?)?.map(
           (key, value) => MapEntry(key, value as int),

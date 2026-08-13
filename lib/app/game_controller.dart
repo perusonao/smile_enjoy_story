@@ -82,6 +82,13 @@ class GameController extends ChangeNotifier {
   void autoResolveClientInterview(String applicationId) => _apply((s)=>GameEngine.autoResolveClientInterview(s,applicationId));
   void decideContract(String employeeId,{required bool extend}) => _apply((s)=>GameEngine.decideContract(s,employeeId,extend));
 
+  // --- Welfare ---------------------------------------------------------
+
+  void upgradePc(String employeeId, PcTier tier) => _apply((s)=>GameEngine.upgradePc(s,employeeId,tier));
+  void conductHealthCheck(HealthCheckTier tier) => _apply((s)=>GameEngine.conductHealthCheck(s,tier));
+  void payBonus(BonusPlan plan) => _apply((s)=>GameEngine.payBonus(s,plan));
+  void conductCompanyTrip(CompanyTripType type) => _apply((s)=>GameEngine.conductCompanyTrip(s,type));
+
   // --- Turn ----------------------------------------------------------------
 
   void advanceWeek() => _apply(GameEngine.advanceWeek);

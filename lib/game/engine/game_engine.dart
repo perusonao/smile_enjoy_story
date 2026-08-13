@@ -2,6 +2,7 @@ import '../../domain/domain.dart';
 import '../models/models.dart';
 import 'finance_engine.dart';
 import 'matching_engine.dart';
+import 'morale_engine.dart';
 import 'project_interview_engine.dart';
 import 'recruitment_engine.dart';
 import 'recruitment_interview_engine.dart';
@@ -9,6 +10,7 @@ import 'rng.dart';
 import 'selection_engine.dart';
 import 'sales_engine.dart';
 import 'client_interview_engine.dart';
+import 'welfare_engine.dart';
 
 /// Orchestrates the whole simulation: new-game setup, the weekly turn, and
 /// the player actions that can happen between turns (interview, hire/reject,
@@ -59,6 +61,8 @@ class GameEngine {
           employmentWeek: 1,
           status: EngineerStatus.waiting,
           companyTrust: 55 + i * 10,
+          morale: 60 + i * 8,
+          preference: EmployeePreference.values[i % EmployeePreference.values.length],
           industryExperience: {Industry.values[i]: applicant.totalItExperienceMonths ~/ 2},
           residenceArea: ResidenceArea.values[i],
           talkSkill: 3 + i,
@@ -72,6 +76,14 @@ class GameEngine {
         .map((p) => ProjectEntry(project: p, postedWeek: 1))
         .toList();
     final skillSheets = engineers.map((e)=>SkillSheet.fromActual(employeeId:e.id,languageMonths:e.profile.languageSkills.map((k,v)=>MapEntry(k,v.actualExperienceMonths)),skills:e.profile.techSkills,industryExperience:e.industryExperience,week:1)).toList();
+    final equipment = engineers
+        .map((e) => EmployeeEquipment(
+              employeeId: e.id,
+              pcTier: PcTier.standardLaptop,
+              purchaseWeek: 1,
+              purchaseCost: pcTierConfigs[PcTier.standardLaptop]!.cost,
+            ))
+        .toList();
     final clientRelations = sampleClients.indexed.map((item)=>ClientRelation(clientId:item.$2.id,unlocked:item.$1<2,trust:item.$1<2?50:0)).toList();
 
     final initialClientIds = sampleClients.take(2).map((c) => c.id).toList();
@@ -107,6 +119,7 @@ class GameEngine {
       offers: const [],
       skillSheets: skillSheets,
       clientRelations: clientRelations,
+      equipment: equipment,
       interviewOffers: const [],
       activeAssignments: const [],
       pendingHires: const [],
@@ -497,8 +510,11 @@ class GameEngine {
         .where((h) => h.joinWeek != newWeek)
         .toList();
     var hiresDelta = 0;
+    final newEquipment = <EmployeeEquipment>[];
     for (final hire in joiningNow) {
       final id = mintId('engineer');
+      final moraleRng = seededRandom(seed, newWeek, 'initial-morale:$id');
+      final preferenceRng = seededRandom(seed, newWeek, 'preference:$id');
       final engineer = Engineer(
         id: id,
         sourceApplicantId: hire.applicant.id,
@@ -506,9 +522,18 @@ class GameEngine {
         salary: hire.salary,
         employmentWeek: newWeek,
         status: EngineerStatus.waiting,
+        morale: 55 + moraleRng.nextInt(21),
+        preference: EmployeePreference
+            .values[preferenceRng.nextInt(EmployeePreference.values.length)],
       );
       engineersById[id] = engineer;
       skillSheets.add(SkillSheet.fromActual(employeeId:id,languageMonths:hire.applicant.languageSkills.map((k,v)=>MapEntry(k,v.actualExperienceMonths)),skills:hire.applicant.techSkills,week:newWeek));
+      newEquipment.add(EmployeeEquipment(
+        employeeId: id,
+        pcTier: PcTier.standardLaptop,
+        purchaseWeek: newWeek,
+        purchaseCost: pcTierConfigs[PcTier.standardLaptop]!.cost,
+      ));
       hiresDelta++;
       log(
         '${hire.applicant.name} が入社しました(待機)。',
@@ -803,7 +828,10 @@ class GameEngine {
     final engineers = engineersById.values.toList();
     var clientRelations=[...state.clientRelations];
     for(final assignment in newAssignments){ final ri=clientRelations.indexWhere((r)=>r.clientId==assignment.project.clientId); if(ri>=0){ final r=clientRelations[ri]; clientRelations[ri]=r.copyWith(trust:(r.trust+5).clamp(0,100),totalDeals:r.totalDeals+1,successfulAssignments:r.successfulAssignments+1,lastDealWeek:newWeek); } }
-    for(final a in stillActive){ final e=engineersById[a.engineerId]!; final rate=(e.companyTrust~/5 + e.talkSkill*4 + (e.abilities.contains(EmployeeAbility.clientFriendly)?10:0)).clamp(1,55); if(newWeek-a.assignedWeek>=4 && ProjectInterviewEngine.roll(rate:rate,seed:seed,week:newWeek,salt:'field-lead:${e.id}')) log('${e.profile.name}さんから「現場で増員予定がある」と案件情報が届きました',GameLogCategory.fieldLead); }
+    // Field Lead (§32): trust (会社を信用しているか) drives whether an
+    // engineer bothers bringing information back to the company at all;
+    // morale contributes only a small nudge on top of that.
+    for(final a in stillActive){ final e=engineersById[a.engineerId]!; final rate=(e.companyTrust~/3 + e.morale~/10 + e.talkSkill*2 + (e.abilities.contains(EmployeeAbility.clientFriendly)?10:0)).clamp(1,60); if(newWeek-a.assignedWeek>=4 && ProjectInterviewEngine.roll(rate:rate,seed:seed,week:newWeek,salt:'field-lead:${e.id}')) log('${e.profile.name}さんから「現場で増員予定がある」と案件情報が届きました',GameLogCategory.fieldLead); }
     for(var i=0;i<clientRelations.length;i++){
       final r=clientRelations[i]; if(r.unlocked)continue;
       final unlock=r.clientId=='client-nova-infra' ? engineers.length>=5 && engineers.any((e)=>e.profile.techSkills.infrastructure>=1) : r.clientId=='client-bright-solutions' ? clientRelations.firstWhere((x)=>x.clientId=='client-axis-soft').trust>=60 && clientRelations.fold<int>(0,(n,x)=>n+x.successfulAssignments)>=3 : false;
@@ -872,6 +900,20 @@ class GameEngine {
         if (e.status == EngineerStatus.waiting)
           e.id: (state.waitingStreak[e.id] ?? 0) + 1,
     };
+
+    // Morale / Trust: bounded weekly drift toward each engineer's current
+    // conditions (office / waiting streak / assignment fit & commute),
+    // always attributed to a concrete reason (Playable 0.4C §7-9, §30, §40).
+    final assignmentByEngineer = {
+      for (final a in stillActive) a.engineerId: a,
+    };
+    final engineersWithMorale = MoraleEngine.weeklyUpdate(
+      engineers: engineers,
+      officeType: state.officeType,
+      week: newWeek,
+      waitingStreak: newWaitingStreak,
+      assignmentByEngineer: assignmentByEngineer,
+    );
 
     // ---------------------------------------------------------------------
     // 月次会計 (§8-9, §20): 4週目のみ実行。給与・家賃・固定費・売上計上・
@@ -1019,12 +1061,12 @@ class GameEngine {
     final company = state.company.copyWith(
       cash: newCash,
       currentWeek: newWeek,
-      engineerIds: engineers.map((e) => e.id).toList(),
+      engineerIds: engineersWithMorale.map((e) => e.id).toList(),
     );
 
     var next = state.copyWith(
       company: company,
-      engineers: engineers,
+      engineers: engineersWithMorale,
       skillSheets: skillSheets,
       applicants: applicants,
       openProjects: openProjects,
@@ -1032,6 +1074,7 @@ class GameEngine {
       proposals: activeProposals,
       offers: offers,
       clientRelations: clientRelations,
+      equipment: [...state.equipment, ...newEquipment],
       interviewOffers: [...expiredInterviewOffers,...generatedInterviewOffers],
       activeAssignments: stillActive,
       pendingHires: pendingHires,
@@ -1215,11 +1258,167 @@ class GameEngine {
 
   static GameState _completeClientInterview(GameState state,ClientInterviewSession s,ProjectProposal p,Engineer e,{required bool played}){final rate=ClientInterviewEngine.finalRate(e,p.project,s,fromInterviewOffer:p.fromInterviewOffer);final passed=SelectionEngine.roll(rate:rate,seed:state.seed,week:s.startedWeek,salt:'client-conversation:${s.id}:${s.playerFollowUps.map((e)=>e.name).join(',')}');final result=passed?ClientInterviewResult.passed:ClientInterviewResult.failed;final history=SelectionStepHistory(week:state.week,step:SelectionStep.clientInterview,result:passed?SelectionStepResult.passed:SelectionStepResult.failed,successRate:rate);final completed=s.copyWith(completed:true,result:result,mismatchFailure:s.mismatchFailure||(!passed&&s.questions.any((q)=>q.mismatch>=2)));final trustDelta=completed.mismatchFailure?-2:(passed&&s.questions.every((q)=>q.mismatch<2)?1:0);final engineers=[for(final x in state.engineers)if(x.id==e.id)x.copyWith(companyTrust:(x.companyTrust+trustDelta).clamp(0,100),salesStatus:passed?SalesStatus.interviewing:SalesStatus.selling)else x];final proposals=[for(final x in state.proposals)if(x.id==p.id)x.copyWith(currentStepIndex:passed?x.currentStepIndex+1:x.currentStepIndex,status:passed?ApplicationStatus.active:ApplicationStatus.rejected,stage:passed?x.stage:ProposalStage.interviewFailed,stepHistory:[...x.stepHistory,history],interviewWeek:state.week,interviewSuccessRate:rate,rejectionReason:passed?null:(completed.mismatchFailure?'SkillSheet記載に対して具体的な経験が不足していました':'他候補がより案件要件に合致しました'))else x];return state.copyWith(clientInterviews:[...state.clientInterviews.where((x)=>x.id!=s.id),completed],proposals:proposals,engineers:engineers,stats:state.stats.copyWith(projectInterviewCount:state.stats.projectInterviewCount+1,projectInterviewSuccess:state.stats.projectInterviewSuccess+(passed?1:0),clientInterviewPassed:state.stats.clientInterviewPassed+(passed?1:0))).withLog('客先面談 ${passed?'通過！':'不合格'} ${e.profile.name} / ${p.project.title}',category:passed?GameLogCategory.interviewPassed:GameLogCategory.interviewFailed);}
 
+  /// §34-35: the player can override the employee's own preference (visible
+  /// via [MoraleEngine.contractPreference] in the UI) — doing so is a
+  /// legitimate management call, but it costs Morale/Trust.
   static GameState decideContract(GameState state,String employeeId,bool extend){
     final i=state.activeAssignments.indexWhere((a)=>a.engineerId==employeeId); if(i<0)return state; final a=state.activeAssignments[i]; if(a.remainingWeeks>4)return state;
-    final assignments=[...state.activeAssignments]; final engineers=[...state.engineers]; final ei=engineers.indexWhere((e)=>e.id==employeeId);
+    final assignments=[...state.activeAssignments]; var engineers=[...state.engineers]; final ei=engineers.indexWhere((e)=>e.id==employeeId);
+    final preference = MoraleEngine.contractPreference(engineers[ei], a, state.week);
     if(extend){ final weeks=a.contractTermMonths*4; assignments[i]=a.copyWith(remainingWeeks:a.remainingWeeks+weeks,contractEndWeek:a.contractEndWeek+weeks,contractDecision:ContractDecision.extend); engineers[ei]=engineers[ei].copyWith(availableFromWeek:a.contractEndWeek+weeks+1); }
     else { assignments[i]=a.copyWith(contractDecision:ContractDecision.withdraw); engineers[ei]=engineers[ei].copyWith(availableFromWeek:a.contractEndWeek+1,salesStatus:SalesStatus.notSelling); }
+    if(extend && preference==ContractPreference.wantsLeave){ engineers[ei]=MoraleEngine.applyDelta(engineers[ei],week:state.week,reason:'本人の意向に反して延長',moraleDelta:-4,trustDelta:-3); }
+    else if(!extend && preference==ContractPreference.wantsExtend){ engineers[ei]=MoraleEngine.applyDelta(engineers[ei],week:state.week,reason:'延長希望を無視して撤退',moraleDelta:-3,trustDelta:-2); }
     return state.copyWith(activeAssignments:assignments,engineers:engineers).withLog('${engineers[ei].profile.name}さんの契約を${extend?'延長':'満了で撤退'}します');
+  }
+
+  // ---------------------------------------------------------------------
+  // Welfare (Playable 0.4C §11-27)
+  // ---------------------------------------------------------------------
+
+  /// §11-15: replaces the employee's lent PC. Cash-only, immediate expense —
+  /// not a monthly fixed cost.
+  static GameState upgradePc(GameState state, String employeeId, PcTier tier) {
+    final index = state.engineers.indexWhere((e) => e.id == employeeId);
+    if (index < 0) return state;
+    final cost = WelfareEngine.pcUpgradeCost(tier);
+    if (state.company.cash < cost) return state;
+    var engineer = state.engineers[index];
+    final current = state.equipmentFor(employeeId);
+    if (current != null && current.pcTier == tier) return state;
+    final moraleDelta = WelfareEngine.pcMoraleDelta(engineer, tier);
+    engineer = MoraleEngine.applyDelta(
+      engineer,
+      week: state.week,
+      reason: '${pcTierConfigs[tier]!.label}を支給',
+      moraleDelta: moraleDelta,
+    );
+    final engineers = [...state.engineers];
+    engineers[index] = engineer;
+    final equipmentEntry = EmployeeEquipment(
+      employeeId: employeeId,
+      pcTier: tier,
+      purchaseWeek: state.week,
+      purchaseCost: cost,
+    );
+    final equipment = [
+      for (final e in state.equipment)
+        if (e.employeeId != employeeId) e,
+      equipmentEntry,
+    ];
+    return state
+        .copyWith(
+          engineers: engineers,
+          equipment: equipment,
+          company: state.company.copyWith(cash: state.company.cash - cost),
+        )
+        .withLog(
+          '${engineer.profile.name}さんに${pcTierConfigs[tier]!.label}を支給しました。(-¥$cost)',
+          category: GameLogCategory.welfareEvent,
+        );
+  }
+
+  /// §16-17: company-wide, once-in-a-while event. No hard yearly gate in
+  /// the prototype — [RecommendationEngine] nudges the player instead.
+  static GameState conductHealthCheck(GameState state, HealthCheckTier tier) {
+    if (state.engineers.isEmpty) return state;
+    final cost = WelfareEngine.healthCheckCost(tier, state.engineers.length);
+    if (state.company.cash < cost) return state;
+    final config = healthCheckConfigs[tier]!;
+    final engineers = state.engineers
+        .map((e) => MoraleEngine.applyDelta(
+              e,
+              week: state.week,
+              reason: config.label,
+              moraleDelta: config.moraleEffect,
+              trustDelta: config.trustEffect,
+            ))
+        .toList();
+    return state
+        .copyWith(
+          engineers: engineers,
+          company: state.company.copyWith(cash: state.company.cash - cost),
+          lastHealthCheckWeek: state.week,
+        )
+        .withLog(
+          '${config.label}を実施しました。(-¥$cost / 全社員対象)',
+          category: GameLogCategory.welfareEvent,
+        );
+  }
+
+  /// §18-22: the player-facing preview (支給総額 / 支給後現預金 / 資金余命)
+  /// is computed by the UI from [WelfareEngine.bonusCost] +
+  /// [FinanceEngine.cashRunwayMonths] against a hypothetical post-bonus
+  /// state — this method is the actual, committed payout.
+  static GameState payBonus(GameState state, BonusPlan plan) {
+    if (state.engineers.isEmpty) return state;
+    final totalSalary = state.engineers.fold<int>(0, (sum, e) => sum + e.salary);
+    final cost = WelfareEngine.bonusCost(plan, totalSalary);
+    final config = bonusPlanConfigs[plan]!;
+    final engineers = state.engineers.map((e) {
+      final moraleDelta = WelfareEngine.bonusMoraleDelta(plan, e.preference);
+      final reason = plan == BonusPlan.none ? '賞与なし' : '賞与 ${config.label}';
+      return MoraleEngine.applyDelta(
+        e,
+        week: state.week,
+        reason: reason,
+        moraleDelta: moraleDelta,
+        trustDelta: WelfareEngine.bonusTrustDelta(plan),
+      );
+    }).toList();
+    final sampleReactions = engineers.take(2).map(
+      (e) => '${e.profile.name}: ${WelfareEngine.bonusReaction(e.preference, plan)}',
+    );
+    var next = state
+        .copyWith(
+          engineers: engineers,
+          company: state.company.copyWith(cash: state.company.cash - cost),
+          lastBonusWeek: state.week,
+        )
+        .withLog(
+          plan == BonusPlan.none
+              ? '今回は賞与を見送りました。'
+              : '賞与(${config.label})を支給しました。(-¥$cost)',
+          category: GameLogCategory.welfareEvent,
+        );
+    for (final line in sampleReactions) {
+      next = next.withLog(line, category: GameLogCategory.welfareEvent);
+    }
+    return next;
+  }
+
+  /// §23-27: `none` is intentionally not selectable here — skipping the
+  /// trip is simply not calling this method.
+  static GameState conductCompanyTrip(GameState state, CompanyTripType type) {
+    if (state.engineers.isEmpty) return state;
+    final cost = WelfareEngine.companyTripCost(type, state.engineers.length);
+    if (state.company.cash < cost) return state;
+    final config = companyTripConfigs[type]!;
+    final engineers = state.engineers.map((e) {
+      final moraleDelta = WelfareEngine.tripMoraleDelta(type, e.preference);
+      return MoraleEngine.applyDelta(
+        e,
+        week: state.week,
+        reason: config.label,
+        moraleDelta: moraleDelta,
+      );
+    }).toList();
+    final sampleReactions = engineers.take(2).map(
+      (e) => '${e.profile.name}: ${WelfareEngine.tripReaction(e.preference)}',
+    );
+    var next = state
+        .copyWith(
+          engineers: engineers,
+          company: state.company.copyWith(cash: state.company.cash - cost),
+          lastCompanyTripWeek: state.week,
+        )
+        .withLog(
+          '${config.label}を実施しました。(-¥$cost)',
+          category: GameLogCategory.welfareEvent,
+        );
+    for (final line in sampleReactions) {
+      next = next.withLog(line, category: GameLogCategory.welfareEvent);
+    }
+    return next;
   }
 }

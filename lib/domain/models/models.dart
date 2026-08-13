@@ -7,6 +7,8 @@ export 'client.dart';
 export 'client_specialty.dart';
 export 'company.dart';
 export 'education.dart';
+export 'employee_preference.dart';
+export 'employee_relationship_event.dart';
 export 'engineer.dart';
 export 'engineer_status.dart';
 export 'hidden_parameters.dart';

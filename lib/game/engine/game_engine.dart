@@ -1067,6 +1067,20 @@ class GameEngine {
     'averageCandidateKnowledge': state.recruitmentInterviews.isEmpty ? 0 : state.recruitmentInterviews.fold<int>(0, (n, s) => n + s.candidateKnowledge) / state.recruitmentInterviews.length,
     'averageCompanyImpression': state.recruitmentInterviews.isEmpty ? 0 : state.recruitmentInterviews.fold<int>(0, (n, s) => n + s.companyImpression) / state.recruitmentInterviews.length,
     'offersMade': state.recruitmentInterviews.where((s) => s.outcome == InterviewOutcome.hired).length,
+    'offerAcceptanceRate': (() {
+      final made = state.recruitmentInterviews.where((s) => s.outcome == InterviewOutcome.hired).length;
+      if (made == 0) return 0.0;
+      final acceptedIds = <String>{
+        ...state.pendingHires.map((h) => h.applicant.id),
+        ...state.engineers.map((e) => e.sourceApplicantId),
+      };
+      final accepted = state.recruitmentInterviews.where((s) => s.outcome == InterviewOutcome.hired && acceptedIds.contains(s.applicantId)).length;
+      return accepted / made;
+    })(),
+    'recruitmentQuestionCategoryCounts': {
+      for (final category in InterviewQuestionCategory.values)
+        category.name: state.recruitmentInterviews.fold<int>(0, (count, session) => count + session.selectedQuestions.where((q) => q == category).length),
+    },
     'hiresAfterInterview': state.recruitmentInterviews.where((s) => s.outcome == InterviewOutcome.hired).length,
     'rejectsAfterInterview': state.recruitmentInterviews.where((s) => s.outcome == InterviewOutcome.rejected).length,
     'proposalCount': state.stats.proposalCount,

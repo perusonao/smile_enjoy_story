@@ -6,6 +6,7 @@ import '../../game/game.dart';
 import '../theme.dart';
 import '../widgets/labels.dart';
 import '../widgets/status_chip.dart';
+import 'engineer_detail_screen.dart';
 
 String _topTechSkillLabel(TechSkillLevels t) {
   final entries = <String, int>{
@@ -28,15 +29,16 @@ class EngineerListScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final state = context.game.state;
-    final engineers = [...state.engineers]..sort((a, b) {
-      int rank(EngineerStatus s) => switch (s) {
-        EngineerStatus.waiting => 0,
-        EngineerStatus.interviewScheduled => 1,
-        EngineerStatus.proposed => 2,
-        EngineerStatus.assigned => 3,
-      };
-      return rank(a.status).compareTo(rank(b.status));
-    });
+    final engineers = [...state.engineers]
+      ..sort((a, b) {
+        int rank(EngineerStatus s) => switch (s) {
+          EngineerStatus.waiting => 0,
+          EngineerStatus.interviewScheduled => 1,
+          EngineerStatus.proposed => 2,
+          EngineerStatus.assigned => 3,
+        };
+        return rank(a.status).compareTo(rank(b.status));
+      });
 
     return Scaffold(
       appBar: AppBar(title: const Text('社員')),
@@ -46,7 +48,8 @@ class EngineerListScreen extends StatelessWidget {
               padding: const EdgeInsets.fromLTRB(14, 14, 14, 24),
               itemCount: engineers.length,
               separatorBuilder: (context, index) => const SizedBox(height: 8),
-              itemBuilder: (context, i) => _EngineerCard(engineer: engineers[i]),
+              itemBuilder: (context, i) =>
+                  _EngineerCard(engineer: engineers[i]),
             ),
     );
   }
@@ -62,11 +65,13 @@ class _EngineerCard extends StatelessWidget {
     final state = context.game.state;
     final profile = engineer.profile;
     final isWaiting = engineer.status == EngineerStatus.waiting;
+    final waitingWeeks = state.waitingStreakFor(engineer.id);
 
     String currentProjectLabel = '-';
     final assignment = state.assignmentForEngineer(engineer.id);
     if (assignment != null) {
-      currentProjectLabel = '${assignment.project.title} (残${assignment.remainingWeeks}週)';
+      currentProjectLabel =
+          '${assignment.project.title} (残${assignment.remainingWeeks}週)';
     } else {
       final proposal = state.proposalForEngineer(engineer.id);
       if (proposal != null) {
@@ -76,60 +81,117 @@ class _EngineerCard extends StatelessWidget {
       }
     }
 
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: isWaiting ? Colors.red.withValues(alpha: 0.06) : Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: isWaiting
-              ? Colors.red.withValues(alpha: 0.4)
-              : Theme.of(context).colorScheme.outlineVariant,
-          width: isWaiting ? 1.4 : 1,
+    final waitingColor = waitingWeeks >= 3
+        ? Colors.red
+        : (waitingWeeks >= 2 ? Colors.orange : null);
+
+    return InkWell(
+      borderRadius: BorderRadius.circular(12),
+      onTap: () => Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => EngineerDetailScreen(engineerId: engineer.id),
         ),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  profile.name,
-                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: isWaiting ? Colors.red.withValues(alpha: 0.06) : Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: isWaiting
+                ? Colors.red.withValues(alpha: 0.4)
+                : Theme.of(context).colorScheme.outlineVariant,
+            width: isWaiting ? 1.4 : 1,
+          ),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    profile.name,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16,
+                    ),
+                  ),
                 ),
-              ),
-              EngineerStatusChip(status: engineer.status),
-            ],
-          ),
-          const SizedBox(height: 6),
-          Wrap(
-            spacing: 12,
-            runSpacing: 4,
-            children: [
-              _InfoBit(icon: Icons.payments_outlined, text: formatYen(engineer.salary)),
-              _InfoBit(
-                icon: Icons.code,
-                text: languageLabels[profile.mainLanguage] ?? profile.mainLanguage.name,
-              ),
-              _InfoBit(icon: Icons.star_outline, text: _topTechSkillLabel(profile.techSkills)),
-            ],
-          ),
-          const SizedBox(height: 6),
-          Row(
-            children: [
-              const Icon(Icons.work_outline, size: 15, color: Colors.black45),
-              const SizedBox(width: 4),
-              Expanded(
-                child: Text(
-                  currentProjectLabel,
-                  style: const TextStyle(fontSize: 12.5, color: Colors.black54),
-                  overflow: TextOverflow.ellipsis,
+                if (isWaiting && waitingWeeks > 0)
+                  Padding(
+                    padding: const EdgeInsets.only(right: 6),
+                    child: _WaitingBadge(
+                      weeks: waitingWeeks,
+                      color: waitingColor,
+                    ),
+                  ),
+                EngineerStatusChip(status: engineer.status),
+              ],
+            ),
+            const SizedBox(height: 6),
+            Wrap(
+              spacing: 12,
+              runSpacing: 4,
+              children: [
+                _InfoBit(
+                  icon: Icons.payments_outlined,
+                  text: formatYen(engineer.salary),
                 ),
-              ),
-            ],
-          ),
-        ],
+                _InfoBit(
+                  icon: Icons.code,
+                  text:
+                      languageLabels[profile.mainLanguage] ??
+                      profile.mainLanguage.name,
+                ),
+                _InfoBit(
+                  icon: Icons.star_outline,
+                  text: _topTechSkillLabel(profile.techSkills),
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            Row(
+              children: [
+                const Icon(Icons.work_outline, size: 15, color: Colors.black45),
+                const SizedBox(width: 4),
+                Expanded(
+                  child: Text(
+                    currentProjectLabel,
+                    style: const TextStyle(
+                      fontSize: 12.5,
+                      color: Colors.black54,
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _WaitingBadge extends StatelessWidget {
+  const _WaitingBadge({required this.weeks, required this.color});
+
+  final int weeks;
+  final Color? color;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = color ?? Colors.blueGrey;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+      decoration: BoxDecoration(
+        color: c.withValues(alpha: 0.15),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Text(
+        '待機$weeks週目',
+        style: TextStyle(color: c, fontSize: 10.5, fontWeight: FontWeight.bold),
       ),
     );
   }

@@ -1,4 +1,5 @@
 import '../../domain/domain.dart';
+import '../../game/game.dart';
 
 /// Japanese display labels for domain enums, centralized so every screen
 /// renders the same wording.
@@ -96,6 +97,28 @@ String topRequiredSkillLabel(Project project) {
   if (best.value <= 0) return '特になし';
   return '${best.key} Lv.${best.value}';
 }
+
+const Map<TechDomain, String> techDomainLabels = {
+  TechDomain.database: 'DB',
+  TechDomain.network: 'Network',
+  TechDomain.infrastructure: 'Infra',
+  TechDomain.frontend: 'Frontend',
+  TechDomain.backend: 'Backend',
+  TechDomain.leader: 'Leader',
+  TechDomain.manager: 'Manager',
+};
+
+/// Localizes a single [FitDetailItem]'s label for the Fit breakdown display
+/// (§9), e.g. `Java`, `Backend`, `経験年数`, `コミュ力`, `日本語`.
+String fitDetailLabel(FitDetailItem item) => switch (item.dimension) {
+  FitDimension.language =>
+    item.language != null ? (languageLabels[item.language] ?? item.language!.name) : '言語',
+  FitDimension.techDomain =>
+    item.techDomain != null ? (techDomainLabels[item.techDomain] ?? '技術') : '技術',
+  FitDimension.experience => '経験年数',
+  FitDimension.communication => 'コミュ力',
+  FitDimension.japanese => '日本語',
+};
 
 /// Formats a total-IT-experience month count as e.g. `3年2ヶ月`.
 String formatExperience(int months) {

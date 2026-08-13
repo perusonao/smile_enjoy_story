@@ -36,12 +36,23 @@ class GameState {
   final GameStats stats;
   final GameStatus status;
 
+  /// Consecutive weeks each currently-waiting engineer has been waiting
+  /// (Playable 0.2 §17-18). Keyed by engineer id; an engineer who isn't
+  /// waiting doesn't appear here.
+  final Map<String, int> waitingStreak;
+
   /// Ad-hoc spending (recruitment media) incurred since the last weekly
   /// tick; folded into the next tick's expense total and then reset.
   final int pendingMiscExpense;
 
   final int lastWeekRevenue;
   final int lastWeekExpense;
+
+  /// Expense sub-totals for [lastWeekExpense], so Home can show a
+  /// breakdown (§7). Fixed cost isn't stored separately since it's always
+  /// the [weeklyFixedCost] constant.
+  final int lastWeekSalary;
+  final int lastWeekRecruitmentCost;
 
   final int? bankruptWeek;
   final String? bankruptCause;
@@ -64,9 +75,12 @@ class GameState {
     required this.events,
     required this.stats,
     required this.status,
+    this.waitingStreak = const {},
     this.pendingMiscExpense = 0,
     this.lastWeekRevenue = 0,
     this.lastWeekExpense = 0,
+    this.lastWeekSalary = 0,
+    this.lastWeekRecruitmentCost = 0,
     this.bankruptWeek,
     this.bankruptCause,
     this.idCounter = 0,
@@ -82,6 +96,9 @@ class GameState {
   }
 
   int get displayWeek => week > totalGameWeeks ? totalGameWeeks : week;
+
+  /// 今週収支 (§7): positive when last week's revenue beat its expenses.
+  int get lastWeekProfit => lastWeekRevenue - lastWeekExpense;
 
   Engineer engineerById(String id) => engineers.firstWhere((e) => e.id == id);
 
@@ -111,6 +128,10 @@ class GameState {
     return !hasActiveProposal && !isPassedAwaitingAssignment && !isAssigned;
   }
 
+  /// How many consecutive weeks [engineerId] has been waiting, or 0 if
+  /// they aren't currently waiting.
+  int waitingStreakFor(String engineerId) => waitingStreak[engineerId] ?? 0;
+
   int get waitingEngineerCount =>
       engineers.where((e) => e.status == EngineerStatus.waiting).length;
 
@@ -135,9 +156,12 @@ class GameState {
     List<GameLogEntry>? events,
     GameStats? stats,
     GameStatus? status,
+    Map<String, int>? waitingStreak,
     int? pendingMiscExpense,
     int? lastWeekRevenue,
     int? lastWeekExpense,
+    int? lastWeekSalary,
+    int? lastWeekRecruitmentCost,
     int? bankruptWeek,
     String? bankruptCause,
     int? idCounter,
@@ -157,9 +181,13 @@ class GameState {
       events: events ?? this.events,
       stats: stats ?? this.stats,
       status: status ?? this.status,
+      waitingStreak: waitingStreak ?? this.waitingStreak,
       pendingMiscExpense: pendingMiscExpense ?? this.pendingMiscExpense,
       lastWeekRevenue: lastWeekRevenue ?? this.lastWeekRevenue,
       lastWeekExpense: lastWeekExpense ?? this.lastWeekExpense,
+      lastWeekSalary: lastWeekSalary ?? this.lastWeekSalary,
+      lastWeekRecruitmentCost:
+          lastWeekRecruitmentCost ?? this.lastWeekRecruitmentCost,
       bankruptWeek: bankruptWeek ?? this.bankruptWeek,
       bankruptCause: bankruptCause ?? this.bankruptCause,
       idCounter: idCounter ?? this.idCounter,
@@ -167,8 +195,11 @@ class GameState {
   }
 
   /// Appends a log line, trimming the oldest entries beyond [maxLogEntries].
-  GameState withLog(String message) {
-    final updated = [...events, GameLogEntry(week: week, message: message)];
+  GameState withLog(String message, {GameLogCategory? category}) {
+    final updated = [
+      ...events,
+      GameLogEntry(week: week, message: message, category: category),
+    ];
     final trimmed = updated.length > maxLogEntries
         ? updated.sublist(updated.length - maxLogEntries)
         : updated;
@@ -189,9 +220,12 @@ class GameState {
     'events': events.map((e) => e.toJson()).toList(),
     'stats': stats.toJson(),
     'status': status.jsonValue,
+    'waitingStreak': waitingStreak,
     'pendingMiscExpense': pendingMiscExpense,
     'lastWeekRevenue': lastWeekRevenue,
     'lastWeekExpense': lastWeekExpense,
+    'lastWeekSalary': lastWeekSalary,
+    'lastWeekRecruitmentCost': lastWeekRecruitmentCost,
     'bankruptWeek': bankruptWeek,
     'bankruptCause': bankruptCause,
     'idCounter': idCounter,
@@ -229,9 +263,15 @@ class GameState {
         .toList(),
     stats: GameStats.fromJson(json['stats'] as Map<String, dynamic>),
     status: GameStatus.fromJson(json['status'] as String),
+    waitingStreak: (json['waitingStreak'] as Map<String, dynamic>?)?.map(
+          (key, value) => MapEntry(key, value as int),
+        ) ??
+        const {},
     pendingMiscExpense: json['pendingMiscExpense'] as int? ?? 0,
     lastWeekRevenue: json['lastWeekRevenue'] as int? ?? 0,
     lastWeekExpense: json['lastWeekExpense'] as int? ?? 0,
+    lastWeekSalary: json['lastWeekSalary'] as int? ?? 0,
+    lastWeekRecruitmentCost: json['lastWeekRecruitmentCost'] as int? ?? 0,
     bankruptWeek: json['bankruptWeek'] as int?,
     bankruptCause: json['bankruptCause'] as String?,
     idCounter: json['idCounter'] as int? ?? 0,

@@ -166,5 +166,51 @@ void main() {
         expect(afterInterview.stats.projectInterviewSuccess, 0);
       }
     });
+
+    test('waiting streak increments week over week and resets once no longer waiting (§17-18)', () {
+      final engineer = buildEngineer(
+        id: 'waiter-1',
+        salary: 400000,
+        status: EngineerStatus.waiting,
+      );
+      var state = _emptyState().copyWith(engineers: [engineer]);
+      expect(state.waitingStreakFor('waiter-1'), 0);
+
+      state = GameEngine.advanceWeek(state);
+      expect(state.waitingStreakFor('waiter-1'), 1);
+      // Waiting-week cost this week should match salary / 4 (§18).
+      expect(state.lastWeekSalary, (400000 / 4).round());
+
+      state = GameEngine.advanceWeek(state);
+      expect(state.waitingStreakFor('waiter-1'), 2);
+
+      state = GameEngine.advanceWeek(state);
+      expect(state.waitingStreakFor('waiter-1'), 3);
+
+      // Once proposed, the streak is cleared even before the interview
+      // resolves — they're no longer "waiting".
+      final project = buildProject(id: 'proj-streak', applicationDeadlineWeek: 20);
+      state = state.copyWith(openProjects: [ProjectEntry(project: project, postedWeek: state.week)]);
+      state = GameEngine.proposeEngineer(state, 'waiter-1', 'proj-streak');
+      expect(state.waitingStreakFor('waiter-1'), 0);
+    });
+
+    test('lastWeekExpense breaks down into salary + recruitment cost + fixed cost (§7)', () {
+      final engineer = buildEngineer(id: 'w1', salary: 400000, status: EngineerStatus.waiting);
+      var state = _emptyState().copyWith(engineers: [engineer]);
+      state = GameEngine.postRecruitmentMedia(state, RecruitmentMediaType.engineerCareer);
+      final mediaCost = recruitmentMediaConfigs[RecruitmentMediaType.engineerCareer]!.cost;
+
+      final next = GameEngine.advanceWeek(state);
+
+      final expectedSalary = (400000 / 4).round();
+      expect(next.lastWeekSalary, expectedSalary);
+      expect(next.lastWeekRecruitmentCost, mediaCost);
+      expect(
+        next.lastWeekExpense,
+        expectedSalary + mediaCost + weeklyFixedCost,
+      );
+      expect(next.lastWeekProfit, next.lastWeekRevenue - next.lastWeekExpense);
+    });
   });
 }

@@ -6,6 +6,7 @@ import '../../game/game.dart';
 import '../theme.dart';
 import '../widgets/fit_badge.dart';
 import '../widgets/labels.dart';
+import '../widgets/proposal_confirm_dialog.dart';
 
 class ProjectDetailScreen extends StatelessWidget {
   const ProjectDetailScreen({super.key, required this.projectId});
@@ -34,7 +35,12 @@ class ProjectDetailScreen extends StatelessWidget {
     final open = state.isProjectOpenForProposal(project.id);
     final waitingEngineers = state.engineers
         .where((e) => e.status == EngineerStatus.waiting)
-        .toList();
+        .toList()
+      ..sort(
+        (a, b) => MatchingEngine.computeFit(b, project).total.compareTo(
+          MatchingEngine.computeFit(a, project).total,
+        ),
+      );
 
     return Scaffold(
       appBar: AppBar(title: Text(project.title)),
@@ -78,33 +84,24 @@ class ProjectDetailScreen extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 20),
-          Text('待機社員から提案', style: Theme.of(context).textTheme.titleMedium),
+          Row(
+            children: [
+              Text('待機社員から提案', style: Theme.of(context).textTheme.titleMedium),
+              const SizedBox(width: 8),
+              if (open && waitingEngineers.isNotEmpty)
+                Text('比較して選べます', style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+            ],
+          ),
           const SizedBox(height: 8),
           if (!open)
-            Container(
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
-              ),
-              child: const Text('この案件は現在提案できません(選考中、または募集終了)。'),
-            )
+            _InfoBox(text: 'この案件は現在提案できません(選考中、または募集終了)。')
           else if (waitingEngineers.isEmpty)
-            Container(
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
-              ),
-              child: const Text('待機中の社員がいません。'),
-            )
+            _InfoBox(text: '待機中の社員がいません。採用してから提案しましょう。')
           else
             for (final engineer in waitingEngineers)
               Padding(
                 padding: const EdgeInsets.only(bottom: 8),
-                child: _CandidateRow(engineer: engineer, project: project),
+                child: _CandidateCard(engineer: engineer, project: project),
               ),
         ],
       ),
@@ -112,47 +109,164 @@ class ProjectDetailScreen extends StatelessWidget {
   }
 }
 
-class _CandidateRow extends StatelessWidget {
-  const _CandidateRow({required this.engineer, required this.project});
+class _InfoBox extends StatelessWidget {
+  const _InfoBox({required this.text});
 
-  final Engineer engineer;
-  final Project project;
+  final String text;
 
   @override
   Widget build(BuildContext context) {
-    final controller = context.game;
-    final fit = MatchingEngine.visibleFit(engineer, project);
     return Container(
-      padding: const EdgeInsets.all(10),
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(10),
         border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
       ),
-      child: Row(
+      child: Text(text),
+    );
+  }
+}
+
+class _CandidateCard extends StatefulWidget {
+  const _CandidateCard({required this.engineer, required this.project});
+
+  final Engineer engineer;
+  final Project project;
+
+  @override
+  State<_CandidateCard> createState() => _CandidateCardState();
+}
+
+class _CandidateCardState extends State<_CandidateCard> {
+  bool _expanded = false;
+
+  Future<void> _propose(BuildContext context) async {
+    final controller = context.game;
+    final confirmed = await showProposalConfirmDialog(
+      context,
+      engineer: widget.engineer,
+      project: widget.project,
+    );
+    if (!confirmed || !context.mounted) return;
+    controller.proposeEngineer(widget.engineer.id, widget.project.id);
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('${widget.engineer.profile.name} を提案しました。')),
+    );
+    if (context.mounted && Navigator.of(context).canPop()) {
+      Navigator.of(context).pop();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final engineer = widget.engineer;
+    final project = widget.project;
+    final profile = engineer.profile;
+    final fit = MatchingEngine.computeFit(engineer, project);
+    final visibleFit = PlayerVisibleFit.fromScore(fit.total);
+    final profit = MatchingEngine.monthlyProfit(engineer, project);
+    final profitColor = profit >= 0 ? Colors.green.shade700 : Colors.red.shade700;
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+          Row(
+            children: [
+              Expanded(
+                child: Text(profile.name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+              ),
+              FitBadge(fit: visibleFit),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Wrap(
+            spacing: 12,
+            runSpacing: 4,
+            children: [
+              _Bit(Icons.code, languageLabels[profile.mainLanguage] ?? profile.mainLanguage.name),
+              _Bit(Icons.timelapse, formatExperience(profile.totalItExperienceMonths)),
+              _Bit(Icons.payments_outlined, formatYen(engineer.salary)),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Row(
+            children: [
+              const Text('月間想定粗利  ', style: TextStyle(fontSize: 12.5, color: Colors.black54)),
+              Text(
+                '${profit >= 0 ? '+' : ''}${formatYen(profit)}',
+                style: TextStyle(fontWeight: FontWeight.bold, color: profitColor),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          InkWell(
+            onTap: () => setState(() => _expanded = !_expanded),
+            child: Row(
               children: [
-                Text(engineer.profile.name, style: const TextStyle(fontWeight: FontWeight.bold)),
-                const SizedBox(height: 4),
-                FitBadge(fit: fit),
+                Text(
+                  _expanded ? '内訳を閉じる' : 'Fitの内訳を見る',
+                  style: const TextStyle(fontSize: 12, color: SesTheme.primaryBlue),
+                ),
+                Icon(
+                  _expanded ? Icons.expand_less : Icons.expand_more,
+                  size: 16,
+                  color: SesTheme.primaryBlue,
+                ),
               ],
             ),
           ),
-          FilledButton(
-            onPressed: () {
-              controller.proposeEngineer(engineer.id, project.id);
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text('${engineer.profile.name} を提案しました。')),
-              );
-              Navigator.of(context).pop();
-            },
-            child: const Text('提案する'),
+          if (_expanded)
+            Padding(
+              padding: const EdgeInsets.only(top: 4, bottom: 4),
+              child: Wrap(
+                spacing: 14,
+                runSpacing: 4,
+                children: [
+                  for (final detail in fit.details)
+                    Text(
+                      '${fitDetailLabel(detail)}: ${detail.rating.symbol}',
+                      style: const TextStyle(fontSize: 12.5),
+                    ),
+                ],
+              ),
+            ),
+          const SizedBox(height: 8),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton(
+              onPressed: () => _propose(context),
+              child: const Text('提案する'),
+            ),
           ),
         ],
       ),
+    );
+  }
+}
+
+class _Bit extends StatelessWidget {
+  const _Bit(this.icon, this.text);
+
+  final IconData icon;
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 14, color: Colors.black54),
+        const SizedBox(width: 3),
+        Text(text, style: const TextStyle(fontSize: 12.5)),
+      ],
     );
   }
 }

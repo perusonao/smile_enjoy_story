@@ -140,7 +140,10 @@ class GameEngine {
       salt: 'hire-accept:$applicantId',
     );
     if (!accepted) {
-      return next.withLog('${applicant.name} は内定を辞退しました。');
+      return next.withLog(
+        '${applicant.name} は内定を辞退しました。',
+        category: GameLogCategory.offerDeclined,
+      );
     }
 
     final delay = RecruitmentEngine.joinDelayWeeks(
@@ -159,7 +162,10 @@ class GameEngine {
     );
     return afterMint
         .copyWith(pendingHires: [...afterMint.pendingHires, pendingHire])
-        .withLog('${applicant.name} が内定を承諾しました。($joinWeek 週目に入社予定)');
+        .withLog(
+          '${applicant.name} が内定を承諾しました。($joinWeek 週目に入社予定)',
+          category: GameLogCategory.offerAccepted,
+        );
   }
 
   /// Proposes a waiting engineer for an open project (§16).
@@ -199,11 +205,14 @@ class GameEngine {
     final stats = afterMint.stats.copyWith(
       proposalCount: afterMint.stats.proposalCount + 1,
     );
+    final updatedWaitingStreak = {...afterMint.waitingStreak}
+      ..remove(engineerId);
     return afterMint
         .copyWith(
           engineers: updatedEngineers,
           proposals: [...afterMint.proposals, proposal],
           stats: stats,
+          waitingStreak: updatedWaitingStreak,
         )
         .withLog('${engineer.profile.name} を「${entry.project.title}」へ提案しました。');
   }
@@ -247,7 +256,10 @@ class GameEngine {
     if (state.status != GameStatus.playing) return state;
     final newWeek = state.week + 1;
     final seed = state.seed;
-    final logs = <String>[];
+    final logs = <(String message, GameLogCategory? category)>[];
+    void log(String message, [GameLogCategory? category]) {
+      logs.add((message, category));
+    }
 
     var idCounter = state.idCounter;
     String mintId(String prefix) {
@@ -280,7 +292,19 @@ class GameEngine {
     }
     final applicants = [...state.applicants, ...newApplicantEntries];
     if (newApplicantEntries.isNotEmpty) {
-      logs.add('新しい応募者が${newApplicantEntries.length}名届きました。');
+      log(
+        '新しい応募者が${newApplicantEntries.length}名届きました。',
+        GameLogCategory.applicantsArrived,
+      );
+    }
+
+    // 求人掲載終了の検出 (§3) -------------------------------------------------
+    final expiringListings = state.listings.where(
+      (l) => l.isActiveOn(state.week) && !l.isActiveOn(newWeek),
+    );
+    for (final listing in expiringListings) {
+      final label = recruitmentMediaConfigs[listing.type]!.label;
+      log('$label の掲載期間が終了しました。', GameLogCategory.listingExpired);
     }
 
     // 2. 新規案件生成 -----------------------------------------------------
@@ -295,7 +319,7 @@ class GameEngine {
         .map((p) => ProjectEntry(project: p, postedWeek: newWeek))
         .toList();
     if (newProjectEntries.isNotEmpty) {
-      logs.add('新着案件が${newProjectEntries.length}件届きました。');
+      log('新着案件が${newProjectEntries.length}件届きました。', GameLogCategory.newProjects);
     }
 
     // 3. 入社予定者処理 ---------------------------------------------------
@@ -318,7 +342,7 @@ class GameEngine {
       );
       engineersById[id] = engineer;
       hiresDelta++;
-      logs.add('${hire.applicant.name} が入社しました(待機)。');
+      log('${hire.applicant.name} が入社しました(待機)。', GameLogCategory.engineerJoined);
     }
 
     // 4/5. 提案進行・案件面談進行 -------------------------------------------
@@ -366,16 +390,18 @@ class GameEngine {
       );
 
       if (passed) {
-        logs.add(
+        log(
           '${engineer.profile.name} は「${proposal.project.title}」の案件面談に合格しました。',
+          GameLogCategory.interviewPassed,
         );
         // Stays non-waiting until the assignment actually starts next week.
         engineersById[engineer.id] = engineer.copyWith(
           status: EngineerStatus.interviewScheduled,
         );
       } else {
-        logs.add(
+        log(
           '${engineer.profile.name} は「${proposal.project.title}」の案件面談に不合格でした。',
+          GameLogCategory.interviewFailed,
         );
         engineersById[engineer.id] = engineer.copyWith(
           status: EngineerStatus.waiting,
@@ -404,7 +430,10 @@ class GameEngine {
           status: EngineerStatus.assigned,
         );
         finalizedProposalIds.add(proposal.id);
-        logs.add('${engineer.profile.name} が「${proposal.project.title}」に参画しました。');
+        log(
+          '${engineer.profile.name} が「${proposal.project.title}」に参画しました。',
+          GameLogCategory.assignmentStarted,
+        );
       }
     }
     final activeProposals = carriedProposals
@@ -428,7 +457,10 @@ class GameEngine {
         engineersById[a.engineerId] = engineer.copyWith(
           status: EngineerStatus.waiting,
         );
-        logs.add('${engineer.profile.name} が「${a.project.title}」の契約を終了しました(待機)。');
+        log(
+          '${engineer.profile.name} が「${a.project.title}」の契約を終了しました(待機)。',
+          GameLogCategory.contractEnded,
+        );
       }
     }
 
@@ -496,19 +528,27 @@ class GameEngine {
       bankruptWeek = newWeek;
       bankruptCause =
           '週間支出(給与¥$salaryTotal + 固定費¥$fixedCost)が売上(¥$revenue)を上回り、資金がショートしました。';
-      logs.add('資金がマイナスになりました。倒産しました。');
+      log('資金がマイナスになりました。倒産しました。', GameLogCategory.bankrupt);
     } else if (newWeek >= totalGameWeeks) {
       status = GameStatus.finished;
-      logs.add('$totalGameWeeks 週間の経営期間が終了しました。');
+      log('$totalGameWeeks 週間の経営期間が終了しました。', GameLogCategory.gameFinished);
     }
 
     final events = [
       ...state.events,
-      ...logs.map((m) => GameLogEntry(week: newWeek, message: m)),
+      ...logs.map((l) => GameLogEntry(week: newWeek, message: l.$1, category: l.$2)),
     ];
     final trimmedEvents = events.length > maxLogEntries
         ? events.sublist(events.length - maxLogEntries)
         : events;
+
+    // 待機延べ週数の更新 (§17-18): まだ待機中の社員は連続待機週数を+1、
+    // 待機を抜けた社員は履歴をクリアする。
+    final newWaitingStreak = <String, int>{
+      for (final e in engineers)
+        if (e.status == EngineerStatus.waiting)
+          e.id: (state.waitingStreak[e.id] ?? 0) + 1,
+    };
 
     return state.copyWith(
       company: company,
@@ -522,9 +562,12 @@ class GameEngine {
       events: trimmedEvents,
       stats: stats,
       status: status,
+      waitingStreak: newWaitingStreak,
       pendingMiscExpense: 0,
       lastWeekRevenue: revenue,
       lastWeekExpense: salaryTotal + fixedCost + state.pendingMiscExpense,
+      lastWeekSalary: salaryTotal,
+      lastWeekRecruitmentCost: state.pendingMiscExpense,
       bankruptWeek: bankruptWeek,
       bankruptCause: bankruptCause,
       idCounter: idCounter,
@@ -542,6 +585,23 @@ class GameEngine {
     final hireScore = state.stats.hires * 3.0;
     final assignScore = state.stats.assignmentsStarted * 2.0;
     return GameRank.fromScore(cashScore + utilScore + hireScore + assignScore);
+  }
+
+  /// A lightweight, cosmetic "company type" read for the result screen
+  /// (§23). Order matters: waiting-heavy is checked first since it's the
+  /// clearest sign of a struggling run, then the positive archetypes.
+  static CompanyType classifyCompanyType(GameState state) {
+    final weeks = state.displayWeek.clamp(1, totalGameWeeks);
+    final engineerWeeks = state.engineers.isEmpty ? 1 : state.engineers.length * weeks;
+    final waitingRatio = state.stats.waitingWeeks / engineerWeeks;
+
+    if (waitingRatio > 0.25) return CompanyType.overstaffedWaiting;
+    if (state.utilizationPercent >= 85) return CompanyType.highUtilization;
+    if (state.stats.hires >= 5) return CompanyType.aggressiveHiring;
+    if (state.stats.cumulativeProfit >= startingCash * 0.5) {
+      return CompanyType.highProfit;
+    }
+    return CompanyType.steady;
   }
 
   static Map<String, dynamic> playtestLog(GameState state) => {

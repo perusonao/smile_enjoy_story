@@ -14,6 +14,7 @@ class ProjectListScreen extends StatelessWidget {
     final state = context.game.state;
     final entries = [...state.openProjects]
       ..sort((a, b) => b.postedWeek.compareTo(a.postedWeek));
+    final waitingCount = state.waitingEngineerCount;
 
     return Scaffold(
       appBar: AppBar(title: const Text('案件')),
@@ -26,7 +27,11 @@ class ProjectListScreen extends StatelessWidget {
               itemBuilder: (context, i) {
                 final entry = entries[i];
                 final open = state.isProjectOpenForProposal(entry.project.id);
-                return _ProjectCard(project: entry.project, open: open);
+                return _ProjectCard(
+                  project: entry.project,
+                  open: open,
+                  candidateCount: open ? waitingCount : 0,
+                );
               },
             ),
     );
@@ -34,10 +39,15 @@ class ProjectListScreen extends StatelessWidget {
 }
 
 class _ProjectCard extends StatelessWidget {
-  const _ProjectCard({required this.project, required this.open});
+  const _ProjectCard({
+    required this.project,
+    required this.open,
+    required this.candidateCount,
+  });
 
   final Project project;
   final bool open;
+  final int candidateCount;
 
   @override
   Widget build(BuildContext context) {
@@ -93,6 +103,25 @@ class _ProjectCard extends StatelessWidget {
                 _Bit(Icons.star_outline, topRequiredSkillLabel(project)),
                 _Bit(Icons.timelapse, '${project.durationWeeks}週間'),
                 _Bit(Icons.forum_outlined, '面談${project.interviewCount}回'),
+              ],
+            ),
+            const SizedBox(height: 6),
+            Row(
+              children: [
+                Icon(
+                  Icons.groups_outlined,
+                  size: 14,
+                  color: candidateCount > 0 ? SesTheme.primaryBlue : Colors.black38,
+                ),
+                const SizedBox(width: 4),
+                Text(
+                  candidateCount > 0 ? '提案候補 $candidateCount名' : '候補なし',
+                  style: TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w600,
+                    color: candidateCount > 0 ? SesTheme.primaryBlue : Colors.black38,
+                  ),
+                ),
               ],
             ),
           ],

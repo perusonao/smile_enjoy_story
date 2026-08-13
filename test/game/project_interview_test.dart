@@ -106,4 +106,71 @@ void main() {
       expect(outcomes.length, 2);
     });
   });
+
+  group('failureReasons (§15)', () {
+    test('picks reasons that match the weakest parts of the fit breakdown', () {
+      final project = buildProject(
+        requiredLanguages: const [ProgrammingLanguage.java],
+        requiredBackend: 5,
+        requiredLeader: 5,
+        requiredJapaneseLevel: 5,
+      );
+      final mismatchedEngineer = buildEngineer(
+        profile: buildApplicant(
+          mainLanguage: ProgrammingLanguage.python,
+          mainLanguageActualSkill: 5,
+          totalItExperienceMonths: 2,
+          japaneseLevel: 1,
+          techSkills: const TechSkillLevels.zero(),
+          personality: const PersonalityTraits(
+            looks: 3,
+            cleanliness: 3,
+            communication: 1,
+            alcoholTolerance: 3,
+            seriousness: 3,
+            dishonesty: 3,
+          ),
+        ),
+      );
+
+      final reasons = ProjectInterviewEngine.failureReasons(mismatchedEngineer, project);
+      expect(reasons, isNotEmpty);
+      expect(reasons.length, lessThanOrEqualTo(2));
+      // The clear-cut technical mismatch should be surfaced, not a vague
+      // catch-all.
+      expect(reasons, isNot(contains('他候補を優先')));
+    });
+
+    test('falls back to a generic reason when nothing stands out as weak', () {
+      final project = buildProject(
+        requiredLanguages: const [],
+        requiredBackend: 0,
+        requiredDatabase: 0,
+        requiredNetwork: 0,
+        requiredInfrastructure: 0,
+        requiredFrontend: 0,
+        requiredLeader: 0,
+        requiredManager: 0,
+        requiredJapaneseLevel: 1,
+      );
+      final excellentEngineer = buildEngineer(
+        profile: buildApplicant(
+          mainLanguageActualSkill: 90,
+          totalItExperienceMonths: 100,
+          japaneseLevel: 5,
+          personality: const PersonalityTraits(
+            looks: 5,
+            cleanliness: 5,
+            communication: 5,
+            alcoholTolerance: 5,
+            seriousness: 5,
+            dishonesty: 1,
+          ),
+        ),
+      );
+
+      final reasons = ProjectInterviewEngine.failureReasons(excellentEngineer, project);
+      expect(reasons, ['他候補を優先']);
+    });
+  });
 }

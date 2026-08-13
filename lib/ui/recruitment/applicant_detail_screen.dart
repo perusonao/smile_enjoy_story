@@ -1,14 +1,46 @@
 import 'package:flutter/material.dart';
 
 import '../../app/game_scope.dart';
+import '../../domain/domain.dart';
 import '../../game/game.dart';
 import '../theme.dart';
+import '../widgets/interview_reveal_dialog.dart';
 import '../widgets/labels.dart';
+import '../widgets/offer_result_dialog.dart';
 
 class ApplicantDetailScreen extends StatelessWidget {
   const ApplicantDetailScreen({super.key, required this.applicantId});
 
   final String applicantId;
+
+  Future<void> _onInterviewPressed(BuildContext context, Applicant applicant) async {
+    final controller = context.game;
+    controller.interviewApplicant(applicantId);
+
+    final decision = await showInterviewResultDialog(context, applicant);
+
+    if (decision == InterviewDecision.reject) {
+      controller.rejectApplicant(applicantId);
+    } else if (decision == InterviewDecision.hire) {
+      final beforeCount = controller.state.pendingHires.length;
+      controller.hireApplicant(applicantId);
+      final after = controller.state;
+      final accepted = after.pendingHires.length > beforeCount;
+      final joinWeek = accepted ? after.pendingHires.last.joinWeek : null;
+      if (context.mounted) {
+        await showOfferResultDialog(
+          context,
+          accepted: accepted,
+          name: applicant.name,
+          joinWeek: joinWeek,
+        );
+      }
+    }
+
+    if (context.mounted && Navigator.of(context).canPop()) {
+      Navigator.of(context).pop();
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -76,7 +108,9 @@ class ApplicantDetailScreen extends StatelessWidget {
           ),
           const SizedBox(height: 14),
           if (!interviewed)
-            _LockedPersonalityCard(onInterview: () => controller.interviewApplicant(applicantId))
+            _LockedPersonalityCard(
+              onInterview: () => _onInterviewPressed(context, applicant),
+            )
           else
             _SectionCard(
               title: '人物評価 (面接結果)',
@@ -89,8 +123,6 @@ class ApplicantDetailScreen extends StatelessWidget {
                 _Row('経歴書との信頼度', RecruitmentEngine.trustAssessment(applicant)),
               ],
             ),
-          const SizedBox(height: 20),
-          if (interviewed) _DecisionButtons(applicantId: applicantId),
         ],
       ),
     );
@@ -131,44 +163,6 @@ class _LockedPersonalityCard extends StatelessWidget {
           ),
         ],
       ),
-    );
-  }
-}
-
-class _DecisionButtons extends StatelessWidget {
-  const _DecisionButtons({required this.applicantId});
-
-  final String applicantId;
-
-  @override
-  Widget build(BuildContext context) {
-    final controller = context.game;
-    return Row(
-      children: [
-        Expanded(
-          child: OutlinedButton(
-            onPressed: () {
-              controller.rejectApplicant(applicantId);
-              Navigator.of(context).pop();
-            },
-            style: OutlinedButton.styleFrom(foregroundColor: Colors.red),
-            child: const Text('不採用'),
-          ),
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: FilledButton(
-            onPressed: () {
-              controller.hireApplicant(applicantId);
-              Navigator.of(context).pop();
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('内定を出しました。結果はホーム画面のログをご確認ください。')),
-              );
-            },
-            child: const Text('採用'),
-          ),
-        ),
-      ],
     );
   }
 }

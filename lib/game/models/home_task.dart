@@ -1,0 +1,43 @@
+/// How urgently a [HomeTask] needs the player's attention (§4).
+enum TaskPriority {
+  critical, // 赤
+  warning, // 黄
+  info; // 青/緑
+}
+
+/// Where tapping a [HomeTask] should take the player (§5).
+enum TaskTargetType {
+  /// Nothing to navigate to — informational only.
+  none,
+
+  /// Opens the 今週収支 breakdown sheet right on Home.
+  cashBreakdown,
+  recruitmentTab,
+  employeesTab,
+  projectsTab,
+
+  /// Requires [HomeTask.targetId] to be an engineer id.
+  employeeDetail,
+
+  /// Shows this week's resolved project-interview results.
+  interviewResults,
+}
+
+/// One row of the "今週の経営判断" list (§3).
+class HomeTask {
+  final String id;
+  final TaskPriority priority;
+  final String title;
+  final String? subtitle;
+  final TaskTargetType targetType;
+  final String? targetId;
+
+  const HomeTask({
+    required this.id,
+    required this.priority,
+    required this.title,
+    this.subtitle,
+    this.targetType = TaskTargetType.none,
+    this.targetId,
+  });
+}

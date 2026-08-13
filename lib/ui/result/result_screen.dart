@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../app/game_scope.dart';
+import '../../game/game.dart';
 import '../theme.dart';
 
 class ResultScreen extends StatelessWidget {
@@ -13,6 +14,10 @@ class ResultScreen extends StatelessWidget {
     final state = controller.state;
     final stats = state.stats;
     final rank = controller.rank;
+    final companyType = GameEngine.classifyCompanyType(state);
+    final interviewSuccessRate = stats.projectInterviewCount == 0
+        ? 0
+        : (stats.projectInterviewSuccess / stats.projectInterviewCount * 100).round();
 
     return Scaffold(
       appBar: AppBar(title: const Text('経営結果')),
@@ -46,16 +51,17 @@ class ResultScreen extends StatelessWidget {
               ],
             ),
           ),
+          const SizedBox(height: 12),
+          _CompanyTypeCard(companyType: companyType),
           const SizedBox(height: 16),
           _ResultRow('最終資金', formatYen(state.company.cash)),
           _ResultRow('累計売上', formatYen(stats.cumulativeRevenue)),
-          _ResultRow('累計給与', formatYen(stats.cumulativeSalary)),
+          _ResultRow('累計支出', formatYen(stats.cumulativeExpense)),
           _ResultRow('利益', formatYen(stats.cumulativeProfit)),
           _ResultRow('社員数', '${state.engineers.length}名'),
-          _ResultRow('稼働人数', '${state.assignedEngineerCount}名'),
           _ResultRow('稼働率', '${state.utilizationPercent}%'),
           _ResultRow('採用人数', '${stats.hires}名'),
-          _ResultRow('案件参画成功数', '${stats.assignmentsStarted}件'),
+          _ResultRow('案件面談成功率', '$interviewSuccessRate%'),
           _ResultRow('待機延べ週', '${stats.waitingWeeks}週'),
           const SizedBox(height: 20),
           SizedBox(
@@ -80,6 +86,38 @@ class ResultScreen extends StatelessWidget {
               label: const Text('もう一度プレイする'),
             ),
           ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CompanyTypeCard extends StatelessWidget {
+  const _CompanyTypeCard({required this.companyType});
+
+  final CompanyType companyType;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(
+        color: SesTheme.accentCyan.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: SesTheme.accentCyan.withValues(alpha: 0.4)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('会社タイプ', style: TextStyle(fontSize: 11.5, color: Colors.black54)),
+          const SizedBox(height: 2),
+          Text(
+            companyType.label,
+            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: SesTheme.primaryBlue),
+          ),
+          const SizedBox(height: 2),
+          Text(companyType.description, style: const TextStyle(fontSize: 12.5, color: Colors.black54)),
         ],
       ),
     );

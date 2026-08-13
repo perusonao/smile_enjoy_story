@@ -22,7 +22,9 @@ class MatchingEngine {
   static FitBreakdown computeFit(Engineer engineer, Project project) {
     final profile = engineer.profile;
 
-    final techScore = (_languageScore(profile, project) + _domainScore(profile, project))
+    final languageResult = _languageScore(profile, project);
+    final domainResult = _domainScore(profile, project);
+    final techScore = (languageResult.score + domainResult.score)
         .round()
         .clamp(0, 55);
 
@@ -45,19 +47,58 @@ class MatchingEngine {
       10,
     );
 
+    final details = <FitDetailItem>[
+      if (languageResult.language != null)
+        FitDetailItem(
+          dimension: FitDimension.language,
+          rating: PlayerVisibleFit.fromRaw(languageResult.score, 30),
+          language: languageResult.language,
+        ),
+      if (domainResult.dominant != null)
+        FitDetailItem(
+          dimension: FitDimension.techDomain,
+          rating: PlayerVisibleFit.fromRaw(domainResult.dominantRatio, 1.0),
+          techDomain: domainResult.dominant,
+        ),
+      FitDetailItem(
+        dimension: FitDimension.experience,
+        rating: PlayerVisibleFit.fromRaw(expRatio, 1.0),
+      ),
+      FitDetailItem(
+        dimension: FitDimension.communication,
+        rating: PlayerVisibleFit.fromLevel1to5(pt.communication),
+      ),
+      FitDetailItem(
+        dimension: FitDimension.japanese,
+        rating: PlayerVisibleFit.fromRaw(
+          profile.japaneseLevel,
+          project.requiredJapaneseLevel,
+        ),
+      ),
+    ];
+
     return FitBreakdown(
       techScore: techScore,
       experienceScore: experienceScore,
       personalityScore: personalityScore,
       conditionScore: conditionScore,
+      details: details,
     );
   }
 
   static PlayerVisibleFit visibleFit(Engineer engineer, Project project) =>
       PlayerVisibleFit.fromScore(computeFit(engineer, project).total);
 
-  static double _languageScore(Applicant profile, Project project) {
-    if (project.requiredLanguages.isEmpty) return 30;
+  /// Simple `案件月単価 - 社員月給` estimate shown before proposing (§10).
+  /// Prototype-level: no social-insurance or other overhead deducted.
+  static int monthlyProfit(Engineer engineer, Project project) =>
+      project.monthlyRate - engineer.salary;
+
+  static ({double score, ProgrammingLanguage? language}) _languageScore(
+    Applicant profile,
+    Project project,
+  ) {
+    if (project.requiredLanguages.isEmpty) return (score: 30, language: null);
 
     final matchesMain = project.requiredLanguages.contains(
       profile.mainLanguage,
@@ -67,32 +108,51 @@ class MatchingEngine {
         .toList();
 
     if (!matchesMain && matchingSub.isEmpty) {
-      return 5; // no overlap at all: small baseline, not zero
+      // No overlap at all: small baseline, not zero. Still report the
+      // project's primary required language so the UI can show "Java: ×".
+      return (score: 5, language: project.requiredLanguages.first);
     }
 
     final language = matchesMain ? profile.mainLanguage : matchingSub.first;
     final skill = profile.skillFor(language).actualSkill; // 0-100
     final weight = matchesMain ? 1.0 : 0.8;
-    return (skill / 100) * 30 * weight;
+    return (score: (skill / 100) * 30 * weight, language: language);
   }
 
-  static double _domainScore(Applicant profile, Project project) {
+  static ({double score, TechDomain? dominant, double dominantRatio})
+  _domainScore(Applicant profile, Project project) {
     final tech = profile.techSkills;
-    final dims = <(int required, int actual)>[
-      (project.requiredDatabase, tech.database),
-      (project.requiredNetwork, tech.network),
-      (project.requiredInfrastructure, tech.infrastructure),
-      (project.requiredFrontend, tech.frontend),
-      (project.requiredBackend, tech.backend),
-      (project.requiredLeader, tech.leader),
-      (project.requiredManager, tech.manager),
+    final dims = <(TechDomain domain, int required, int actual)>[
+      (TechDomain.database, project.requiredDatabase, tech.database),
+      (TechDomain.network, project.requiredNetwork, tech.network),
+      (
+        TechDomain.infrastructure,
+        project.requiredInfrastructure,
+        tech.infrastructure,
+      ),
+      (TechDomain.frontend, project.requiredFrontend, tech.frontend),
+      (TechDomain.backend, project.requiredBackend, tech.backend),
+      (TechDomain.leader, project.requiredLeader, tech.leader),
+      (TechDomain.manager, project.requiredManager, tech.manager),
     ];
-    final needed = dims.where((d) => d.$1 > 0).toList();
-    if (needed.isEmpty) return 25;
+    final needed = dims.where((d) => d.$2 > 0).toList();
+    if (needed.isEmpty) return (score: 25, dominant: null, dominantRatio: 1);
 
-    final ratios = needed.map((d) => (d.$2 / d.$1).clamp(0.0, 1.0));
-    final avg = ratios.reduce((a, b) => a + b) / ratios.length;
-    return avg * 25;
+    final ratios = needed
+        .map((d) => (d.$1, (d.$3 / d.$2).clamp(0.0, 1.0)))
+        .toList();
+    final avg =
+        ratios.map((r) => r.$2).reduce((a, b) => a + b) / ratios.length;
+
+    // The dominant dimension is the one the project requires most; ties
+    // break toward the first in declaration order above.
+    needed.sort((a, b) => b.$2.compareTo(a.$2));
+    final dominantDim = needed.first.$1;
+    final dominantRatio = ratios
+        .firstWhere((r) => r.$1 == dominantDim)
+        .$2;
+
+    return (score: avg * 25, dominant: dominantDim, dominantRatio: dominantRatio);
   }
 
   static double _conditionScore(Applicant profile, Project project) {

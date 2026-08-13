@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../app/nav_scope.dart';
 import 'engineers/engineer_list_screen.dart';
 import 'home/home_screen.dart';
 import 'others/others_screen.dart';
@@ -7,16 +8,22 @@ import 'projects/project_list_screen.dart';
 import 'recruitment/recruitment_screen.dart';
 import 'widgets/phone_frame.dart';
 
-/// Root shell: bottom navigation across the five Playable 0.1 tabs (§6).
-class MainShell extends StatefulWidget {
-  const MainShell({super.key});
-
-  @override
-  State<MainShell> createState() => _MainShellState();
+/// Bottom-nav tab indices, shared with anything that calls
+/// `context.switchTab(...)` (Playable 0.2 §5 task navigation).
+class SesTab {
+  static const int home = 0;
+  static const int employees = 1;
+  static const int recruitment = 2;
+  static const int projects = 3;
+  static const int others = 4;
 }
 
-class _MainShellState extends State<MainShell> {
-  int _index = 0;
+/// Root shell: bottom navigation across the five Playable 0.1 tabs (§6).
+///
+/// The selected tab lives in [NavScope] rather than local State, so any
+/// screen can jump to another tab (e.g. tapping a Home task).
+class MainShell extends StatelessWidget {
+  const MainShell({super.key});
 
   static const _screens = [
     HomeScreen(),
@@ -36,16 +43,22 @@ class _MainShellState extends State<MainShell> {
 
   @override
   Widget build(BuildContext context) {
+    final tabIndex = NavScope.of(context);
     return PhoneFrame(
-      child: Scaffold(
-        body: SafeArea(
-          child: IndexedStack(index: _index, children: _screens),
-        ),
-        bottomNavigationBar: NavigationBar(
-          selectedIndex: _index,
-          onDestinationSelected: (i) => setState(() => _index = i),
-          destinations: _destinations,
-        ),
+      child: ValueListenableBuilder<int>(
+        valueListenable: tabIndex,
+        builder: (context, index, _) {
+          return Scaffold(
+            body: SafeArea(
+              child: IndexedStack(index: index, children: _screens),
+            ),
+            bottomNavigationBar: NavigationBar(
+              selectedIndex: index,
+              onDestinationSelected: (i) => tabIndex.value = i,
+              destinations: _destinations,
+            ),
+          );
+        },
       ),
     );
   }

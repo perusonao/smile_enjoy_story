@@ -1,42 +1,68 @@
 import 'package:flutter/material.dart';
 
 import '../../app/game_scope.dart';
+import '../../app/nav_scope.dart';
 import '../../game/game.dart';
+import '../engineers/engineer_detail_screen.dart';
+import '../main_shell.dart';
+import '../projects/interview_results_screen.dart';
 import '../theme.dart';
+import '../widgets/expense_breakdown_sheet.dart';
 import '../widgets/stat_tile.dart';
+import '../widgets/task_card.dart';
+import '../widgets/week_summary_dialog.dart';
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
+
+  Future<void> _onNextWeek(BuildContext context) async {
+    final controller = context.game;
+    controller.advanceWeek();
+    final state = controller.state;
+    // Bankruptcy/finished already gets its own full-screen treatment via
+    // _GameRoot, so only show the week summary when still playing (§16,
+    // §22) — showing a dialog right as the screen is about to be swapped
+    // out would fight that transition.
+    if (state.status == GameStatus.playing && context.mounted) {
+      await showWeekSummaryDialog(context, state);
+    }
+  }
+
+  void _onTaskTap(BuildContext context, HomeTask task) {
+    switch (task.targetType) {
+      case TaskTargetType.none:
+        break;
+      case TaskTargetType.cashBreakdown:
+        showExpenseBreakdownSheet(context, context.game.state);
+      case TaskTargetType.recruitmentTab:
+        context.switchTab(SesTab.recruitment);
+      case TaskTargetType.employeesTab:
+        context.switchTab(SesTab.employees);
+      case TaskTargetType.projectsTab:
+        context.switchTab(SesTab.projects);
+      case TaskTargetType.employeeDetail:
+        context.switchTab(SesTab.employees);
+        final id = task.targetId;
+        if (id != null) {
+          Navigator.of(context).push(
+            MaterialPageRoute(builder: (_) => EngineerDetailScreen(engineerId: id)),
+          );
+        }
+      case TaskTargetType.interviewResults:
+        Navigator.of(context).push(
+          MaterialPageRoute(builder: (_) => const InterviewResultsScreen()),
+        );
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     final controller = context.game;
     final state = controller.state;
     final company = state.company;
-
-    final unInterviewedCount = state.applicants
-        .where((e) => !state.interviewedApplicantIds.contains(e.applicant.id))
-        .length;
-    final waitingCount = state.waitingEngineerCount;
-    final newProjectsThisWeek = state.openProjects
-        .where((e) => e.postedWeek == state.week)
-        .length;
-    final proposableProjects = state.openProjects
-        .where((e) => state.isProjectOpenForProposal(e.project.id))
-        .length;
-    final interviewResultsThisWeek = state.proposals
-        .where((p) => p.interviewWeek == state.week)
-        .length;
-    final newApplicantsThisWeek = state.applicants
-        .where((e) => e.appearedWeek == state.week)
-        .length;
-
-    final todos = <String>[
-      if (unInterviewedCount > 0) '面接可能 $unInterviewedCount名',
-      if (waitingCount > 0) '待機社員 $waitingCount名',
-      if (newProjectsThisWeek > 0) '新着案件 $newProjectsThisWeek件',
-      if (interviewResultsThisWeek > 0) '案件面談結果 $interviewResultsThisWeek件',
-    ];
+    final tasks = TaskEngine.generateTasks(state);
+    final profit = state.lastWeekProfit;
+    final profitColor = profit >= 0 ? Colors.green.shade700 : Colors.red.shade700;
 
     return Scaffold(
       appBar: AppBar(
@@ -54,52 +80,76 @@ class HomeScreen extends StatelessWidget {
         ],
       ),
       body: ListView(
-        padding: const EdgeInsets.fromLTRB(14, 14, 14, 100),
+        padding: const EdgeInsets.fromLTRB(14, 12, 14, 100),
         children: [
-          _TitleBanner(companyName: company.name),
-          const SizedBox(height: 16),
-          GridView.count(
-            crossAxisCount: 2,
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            mainAxisSpacing: 8,
-            crossAxisSpacing: 8,
-            childAspectRatio: 2.4,
+          // --- コンパクトな会社指標 (§6) ---------------------------------
+          Row(
             children: [
-              StatTile(label: '資金', value: formatYen(company.cash), emphasis: true),
-              StatTile(
-                label: '稼働率',
-                value: '${state.utilizationPercent}%',
-                emphasis: true,
+              Expanded(
+                child: StatTile(label: '資金', value: formatYen(company.cash), emphasis: true),
               ),
-              StatTile(
-                label: '今週売上',
-                value: formatYen(state.lastWeekRevenue),
-                valueColor: Colors.green.shade700,
+              const SizedBox(width: 8),
+              Expanded(
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(10),
+                  onTap: () => showExpenseBreakdownSheet(context, state),
+                  child: StatTile(
+                    label: '今週収支',
+                    value: '${profit >= 0 ? '+' : ''}${formatYen(profit)}',
+                    emphasis: true,
+                    valueColor: profitColor,
+                  ),
+                ),
               ),
-              StatTile(
-                label: '今週支出',
-                value: formatYen(state.lastWeekExpense),
-                valueColor: Colors.red.shade700,
+              const SizedBox(width: 8),
+              Expanded(
+                child: StatTile(label: '稼働率', value: '${state.utilizationPercent}%', emphasis: true),
               ),
-              StatTile(label: 'エンジニア人数', value: '${state.engineers.length}名'),
-              StatTile(label: '稼働人数', value: '${state.assignedEngineerCount}名'),
-              StatTile(label: '待機人数', value: '$waitingCount名'),
-              StatTile(label: '今週の応募者数', value: '$newApplicantsThisWeek名'),
-              StatTile(label: '提案可能案件数', value: '$proposableProjects件'),
             ],
           ),
-          const SizedBox(height: 20),
-          Text('今週やること', style: Theme.of(context).textTheme.titleMedium),
+          const SizedBox(height: 6),
+          _HeadcountLine(state: state),
+          const SizedBox(height: 18),
+
+          // --- 今週の経営判断 (§3-§6の主役) ------------------------------
+          Row(
+            children: [
+              Text('今週の経営判断', style: Theme.of(context).textTheme.titleMedium),
+              const SizedBox(width: 6),
+              if (tasks.isNotEmpty)
+                Text('(${tasks.length})', style: const TextStyle(color: Colors.black45, fontSize: 13)),
+            ],
+          ),
           const SizedBox(height: 8),
-          if (todos.isEmpty)
-            const _EmptyTodoCard()
+          if (tasks.isEmpty)
+            Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
+              ),
+              child: const Text('今週やることは特にありません。「次の週へ」進めましょう。'),
+            )
           else
-            ...todos.map((t) => _TodoRow(text: t)),
-          const SizedBox(height: 20),
-          Text('最近の出来事', style: Theme.of(context).textTheme.titleMedium),
-          const SizedBox(height: 8),
-          _RecentEvents(events: state.events),
+            for (final task in tasks)
+              TaskCard(
+                task: task,
+                onTap: task.targetType == TaskTargetType.none
+                    ? null
+                    : () => _onTaskTap(context, task),
+              ),
+
+          const SizedBox(height: 10),
+          Theme(
+            data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+            child: ExpansionTile(
+              tilePadding: EdgeInsets.zero,
+              title: const Text('最近の出来事', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+              childrenPadding: EdgeInsets.zero,
+              children: [_RecentEvents(events: state.events)],
+            ),
+          ),
         ],
       ),
       bottomSheet: Padding(
@@ -107,7 +157,7 @@ class HomeScreen extends StatelessWidget {
         child: SizedBox(
           width: double.infinity,
           child: FilledButton.icon(
-            onPressed: controller.advanceWeek,
+            onPressed: () => _onNextWeek(context),
             icon: const Icon(Icons.arrow_forward),
             label: Text('次の週へ (Week ${state.displayWeek} → ${state.displayWeek + 1})'),
           ),
@@ -117,86 +167,54 @@ class HomeScreen extends StatelessWidget {
   }
 }
 
-class _TitleBanner extends StatelessWidget {
-  const _TitleBanner({required this.companyName});
+class _HeadcountLine extends StatelessWidget {
+  const _HeadcountLine({required this.state});
 
-  final String companyName;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [SesTheme.primaryBlue, SesTheme.accentCyan],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.circular(14),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            'S.E.S.',
-            style: TextStyle(
-              color: Colors.white,
-              fontSize: 28,
-              fontWeight: FontWeight.w900,
-              letterSpacing: 1.5,
-            ),
-          ),
-          const Text(
-            'Smile. Enjoy. Story.',
-            style: TextStyle(color: Colors.white70, fontSize: 12),
-          ),
-          const SizedBox(height: 8),
-          Text(companyName, style: const TextStyle(color: Colors.white, fontSize: 14)),
-        ],
-      ),
-    );
-  }
-}
-
-class _TodoRow extends StatelessWidget {
-  const _TodoRow({required this.text});
-
-  final String text;
+  final GameState state;
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      margin: const EdgeInsets.only(bottom: 6),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(10),
         border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
       ),
       child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceAround,
         children: [
-          const Icon(Icons.check_circle_outline, size: 18, color: SesTheme.accentCyan),
-          const SizedBox(width: 8),
-          Expanded(child: Text(text)),
+          _Metric('社員', '${state.engineers.length}'),
+          _divider(),
+          _Metric('稼働', '${state.assignedEngineerCount}'),
+          _divider(),
+          _Metric('待機', '${state.waitingEngineerCount}', color: state.waitingEngineerCount > 0 ? Colors.red : null),
+          _divider(),
+          _Metric('応募', '${state.applicants.where((e) => e.appearedWeek == state.week).length}'),
+          _divider(),
+          _Metric('提案可', '${state.openProjects.where((e) => state.isProjectOpenForProposal(e.project.id)).length}'),
         ],
       ),
     );
   }
+
+  static Widget _divider() => Container(width: 1, height: 20, color: Colors.black12);
 }
 
-class _EmptyTodoCard extends StatelessWidget {
-  const _EmptyTodoCard();
+class _Metric extends StatelessWidget {
+  const _Metric(this.label, this.value, {this.color});
+
+  final String label;
+  final String value;
+  final Color? color;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
-      ),
-      child: const Text('今週やることは特にありません。「次の週へ」進めましょう。'),
+    return Column(
+      children: [
+        Text(value, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: color)),
+        Text(label, style: const TextStyle(fontSize: 10.5, color: Colors.black54)),
+      ],
     );
   }
 }
@@ -210,7 +228,10 @@ class _RecentEvents extends StatelessWidget {
   Widget build(BuildContext context) {
     final recent = events.reversed.take(8).toList();
     if (recent.isEmpty) {
-      return const _EmptyTodoCard();
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 8),
+        child: Text('まだ出来事はありません。', style: TextStyle(color: Colors.black45, fontSize: 13)),
+      );
     }
     return Container(
       decoration: BoxDecoration(

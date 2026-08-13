@@ -1,4 +1,5 @@
 import '../../domain/domain.dart';
+import '../models/models.dart';
 import 'matching_engine.dart';
 import 'rng.dart';
 
@@ -37,4 +38,49 @@ class ProjectInterviewEngine {
     final rng = seededRandom(seed, week, salt);
     return rng.nextInt(100) < rate;
   }
+
+  /// Picks the 1-2 most plausible reasons a project interview failed, from
+  /// the weakest points of the [MatchingEngine] fit breakdown (§15). Not a
+  /// text generator — just a short, deterministic pick so the player can
+  /// see *why* rather than a bare "不合格".
+  static List<String> failureReasons(Engineer engineer, Project project) {
+    final fit = MatchingEngine.computeFit(engineer, project);
+    final reasons = <String>[];
+
+    for (final detail in fit.details) {
+      if (reasons.length >= 2) break;
+      if (detail.rating != PlayerVisibleFit.poor &&
+          detail.rating != PlayerVisibleFit.fair) {
+        continue;
+      }
+      switch (detail.dimension) {
+        case FitDimension.language:
+          reasons.add('技術経験が要求水準に不足');
+        case FitDimension.techDomain:
+          reasons.add('${_domainLabel(detail.techDomain)}の経験不足');
+        case FitDimension.experience:
+          reasons.add('実務経験年数が要求水準に不足');
+        case FitDimension.communication:
+          reasons.add('コミュニケーション評価不足');
+        case FitDimension.japanese:
+          reasons.add('日本語レベルが要求水準に不足');
+      }
+    }
+
+    if (reasons.isEmpty) {
+      reasons.add('他候補を優先');
+    }
+    return reasons.take(2).toList();
+  }
+
+  static String _domainLabel(TechDomain? domain) => switch (domain) {
+    TechDomain.database => 'DB',
+    TechDomain.network => 'ネットワーク',
+    TechDomain.infrastructure => 'インフラ',
+    TechDomain.frontend => 'フロントエンド',
+    TechDomain.backend => 'バックエンド',
+    TechDomain.leader => 'リーダー',
+    TechDomain.manager => 'マネジメント',
+    null => '技術',
+  };
 }

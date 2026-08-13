@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'app/game_controller.dart';
 import 'app/game_scope.dart';
+import 'app/nav_scope.dart';
 import 'game/game.dart';
 import 'ui/main_shell.dart';
 import 'ui/result/game_over_screen.dart';
@@ -14,19 +15,23 @@ void main() {
 }
 
 class SesApp extends StatelessWidget {
-  const SesApp({super.key, required this.controller});
+  SesApp({super.key, required this.controller});
 
   final GameController controller;
+  final ValueNotifier<int> _tabIndex = ValueNotifier(0);
 
   @override
   Widget build(BuildContext context) {
     return GameScope(
       controller: controller,
-      child: MaterialApp(
-        title: 'S.E.S. - Smile. Enjoy. Story.',
-        debugShowCheckedModeBanner: false,
-        theme: SesTheme.build(),
-        home: const _GameRoot(),
+      child: NavScope(
+        tabIndex: _tabIndex,
+        child: MaterialApp(
+          title: 'S.E.S. - Smile. Enjoy. Story.',
+          debugShowCheckedModeBanner: false,
+          theme: SesTheme.build(),
+          home: const _GameRoot(),
+        ),
       ),
     );
   }

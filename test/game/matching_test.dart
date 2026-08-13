@@ -121,4 +121,79 @@ void main() {
       );
     });
   });
+
+  group('Fit detail breakdown (§9)', () {
+    test('exposes one detail item per expected dimension when the project has real requirements', () {
+      final project = buildProject(
+        requiredLanguages: const [ProgrammingLanguage.java],
+        requiredBackend: 4,
+        requiredJapaneseLevel: 3,
+      );
+      final engineer = buildEngineer(profile: buildApplicant());
+
+      final details = MatchingEngine.computeFit(engineer, project).details;
+      final dimensions = details.map((d) => d.dimension).toSet();
+
+      expect(dimensions, {
+        FitDimension.language,
+        FitDimension.techDomain,
+        FitDimension.experience,
+        FitDimension.communication,
+        FitDimension.japanese,
+      });
+
+      final languageDetail = details.firstWhere((d) => d.dimension == FitDimension.language);
+      expect(languageDetail.language, ProgrammingLanguage.java);
+      final domainDetail = details.firstWhere((d) => d.dimension == FitDimension.techDomain);
+      expect(domainDetail.techDomain, TechDomain.backend);
+    });
+
+    test('omits the techDomain/language details when the project has no such requirement', () {
+      final project = buildProject(
+        requiredLanguages: const [],
+        requiredBackend: 0,
+        requiredDatabase: 0,
+        requiredNetwork: 0,
+        requiredInfrastructure: 0,
+        requiredFrontend: 0,
+        requiredLeader: 0,
+        requiredManager: 0,
+      );
+      final engineer = buildEngineer(profile: buildApplicant());
+      final details = MatchingEngine.computeFit(engineer, project).details;
+      expect(details.any((d) => d.dimension == FitDimension.techDomain), isFalse);
+    });
+  });
+
+  group('PlayerVisibleFit rating helpers', () {
+    test('fromRaw normalizes to the same thresholds as fromScore', () {
+      expect(PlayerVisibleFit.fromRaw(85, 100), PlayerVisibleFit.excellent);
+      expect(PlayerVisibleFit.fromRaw(17, 20), PlayerVisibleFit.excellent); // 85%
+      expect(PlayerVisibleFit.fromRaw(35, 50), PlayerVisibleFit.good); // 70%
+      expect(PlayerVisibleFit.fromRaw(5, 10), PlayerVisibleFit.fair); // 50%
+      expect(PlayerVisibleFit.fromRaw(1, 10), PlayerVisibleFit.poor); // 10%
+    });
+
+    test('fromLevel1to5 maps each level to the expected tier', () {
+      expect(PlayerVisibleFit.fromLevel1to5(5), PlayerVisibleFit.excellent);
+      expect(PlayerVisibleFit.fromLevel1to5(4), PlayerVisibleFit.good);
+      expect(PlayerVisibleFit.fromLevel1to5(3), PlayerVisibleFit.fair);
+      expect(PlayerVisibleFit.fromLevel1to5(2), PlayerVisibleFit.poor);
+      expect(PlayerVisibleFit.fromLevel1to5(1), PlayerVisibleFit.poor);
+    });
+  });
+
+  group('monthlyProfit (§10)', () {
+    test('is simply project monthly rate minus engineer salary', () {
+      final engineer = buildEngineer(salary: 390000);
+      final project = buildProject(monthlyRate: 720000);
+      expect(MatchingEngine.monthlyProfit(engineer, project), 330000);
+    });
+
+    test('can be negative when salary exceeds the project rate', () {
+      final engineer = buildEngineer(salary: 800000);
+      final project = buildProject(monthlyRate: 500000);
+      expect(MatchingEngine.monthlyProfit(engineer, project), -300000);
+    });
+  });
 }

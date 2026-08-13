@@ -143,7 +143,9 @@ void main() {
     // of pre-assigning the founders to them (§2) — nothing to propose them
     // to yet is no longer the Week 1 story.
     expect(find.text('現在公開中の案件はありません。'), findsNothing);
-    expect(find.textContaining('提案候補'), findsWidgets);
+    expect(find.textContaining('提案可能'), findsWidgets);
+    expect(find.textContaining('営業中'), findsWidgets);
+    expect(find.textContaining('選考'), findsWidgets);
   });
 
   testWidgets('次の週へ advances the week and shows a week-summary dialog', (

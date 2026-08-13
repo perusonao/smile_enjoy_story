@@ -71,7 +71,16 @@ const Map<SelectionStep, String> selectionStepLabels = {
   SelectionStep.technicalInterview: '技術面談',
   SelectionStep.clientInterview: '客先面談',
   SelectionStep.finalInterview: '最終面談',
-  SelectionStep.offer: 'オファー',
+  SelectionStep.offer: 'Offer',
+};
+
+const Map<SelectionStep, String> selectionStepShortLabels = {
+  SelectionStep.documentScreening: '書類',
+  SelectionStep.upperCompanyInterview: '上位',
+  SelectionStep.technicalInterview: '技術',
+  SelectionStep.clientInterview: '客先',
+  SelectionStep.finalInterview: '最終',
+  SelectionStep.offer: 'Offer',
 };
 
 const Map<ClientSpecialty, String> clientSpecialtyLabels = {

@@ -67,18 +67,32 @@ class _EngineerCard extends StatelessWidget {
     final isWaiting = engineer.status == EngineerStatus.waiting;
     final waitingWeeks = state.waitingStreakFor(engineer.id);
 
-    String currentProjectLabel = '-';
+    final applications = state
+        .applicationsForEngineer(engineer.id)
+        .where(
+          (application) =>
+              application.status == ApplicationStatus.active ||
+              application.status == ApplicationStatus.offered,
+        )
+        .toList();
+    final pendingOffers = state.offers.where(
+      (offer) =>
+          offer.employeeId == engineer.id &&
+          offer.status == OfferStatus.pending,
+    );
+    final pendingOffer = pendingOffers.isEmpty ? null : pendingOffers.first;
+    ProjectApplication? offerApplication;
+    if (pendingOffer != null) {
+      offerApplication = state.proposals.firstWhere(
+        (application) => application.id == pendingOffer.applicationId,
+      );
+    }
+
+    String? currentProjectLabel;
     final assignment = state.assignmentForEngineer(engineer.id);
     if (assignment != null) {
       currentProjectLabel =
           '${assignment.project.title} (残${assignment.remainingWeeks}週)';
-    } else {
-      final proposal = state.proposalForEngineer(engineer.id);
-      if (proposal != null) {
-        currentProjectLabel = proposal.stage == ProposalStage.interviewPassed
-            ? '${proposal.project.title} (参画予定)'
-            : '${proposal.project.title} (面談中)';
-      }
     }
 
     final waitingColor = waitingWeeks >= 3
@@ -151,22 +165,21 @@ class _EngineerCard extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 6),
-            Row(
-              children: [
-                const Icon(Icons.work_outline, size: 15, color: Colors.black45),
-                const SizedBox(width: 4),
-                Expanded(
-                  child: Text(
-                    currentProjectLabel,
-                    style: const TextStyle(
-                      fontSize: 12.5,
-                      color: Colors.black54,
-                    ),
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-              ],
-            ),
+            if (pendingOffer != null && offerApplication != null) ...[
+              _OfferBanner(
+                title: offerApplication.project.title,
+                monthlyRate: pendingOffer.monthlyRate,
+                deadlineThisWeek:
+                    pendingOffer.responseDeadlineWeek == state.week,
+              ),
+              const SizedBox(height: 7),
+            ],
+            if (assignment == null) ...[
+              _SalesCapacity(count: applications.length),
+              for (final application in applications.take(3))
+                _ApplicationSummary(application: application),
+            ] else if (currentProjectLabel != null)
+              _ProjectLine(text: currentProjectLabel),
           ],
         ),
       ),
@@ -195,6 +208,140 @@ class _WaitingBadge extends StatelessWidget {
       ),
     );
   }
+}
+
+class _SalesCapacity extends StatelessWidget {
+  const _SalesCapacity({required this.count});
+  final int count;
+
+  @override
+  Widget build(BuildContext context) => Row(
+    children: [
+      const Icon(
+        Icons.workspaces_outline,
+        size: 15,
+        color: SesTheme.primaryBlue,
+      ),
+      const SizedBox(width: 5),
+      Text(
+        '並行営業 $count / $maxParallelProposalsPerEmployee',
+        style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.bold),
+      ),
+      const SizedBox(width: 8),
+      for (var i = 0; i < maxParallelProposalsPerEmployee; i++)
+        Padding(
+          padding: const EdgeInsets.only(right: 3),
+          child: Icon(
+            i < count ? Icons.circle : Icons.circle_outlined,
+            size: 9,
+            color: i < count ? SesTheme.primaryBlue : Colors.black26,
+          ),
+        ),
+    ],
+  );
+}
+
+class _ApplicationSummary extends StatelessWidget {
+  const _ApplicationSummary({required this.application});
+  final ProjectApplication application;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.only(top: 4),
+    child: Row(
+      children: [
+        const SizedBox(width: 20),
+        Expanded(
+          child: Text(
+            application.project.title,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(fontSize: 12.5),
+          ),
+        ),
+        const SizedBox(width: 8),
+        Text(
+          selectionStepLabels[application.currentStep]!,
+          style: const TextStyle(
+            fontSize: 12,
+            color: SesTheme.primaryBlue,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ],
+    ),
+  );
+}
+
+class _OfferBanner extends StatelessWidget {
+  const _OfferBanner({
+    required this.title,
+    required this.monthlyRate,
+    required this.deadlineThisWeek,
+  });
+  final String title;
+  final int monthlyRate;
+  final bool deadlineThisWeek;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    width: double.infinity,
+    padding: const EdgeInsets.all(8),
+    decoration: BoxDecoration(
+      color: Colors.red.withValues(alpha: 0.07),
+      borderRadius: BorderRadius.circular(8),
+      border: Border.all(color: Colors.red.withValues(alpha: 0.4)),
+    ),
+    child: Row(
+      children: [
+        const Icon(Icons.notification_important, color: Colors.red, size: 18),
+        const SizedBox(width: 6),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'OFFER',
+                style: TextStyle(
+                  color: Colors.red,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 12,
+                ),
+              ),
+              Text(
+                title,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontWeight: FontWeight.bold),
+              ),
+              Text(
+                '${formatYen(monthlyRate)} / 月  回答期限: ${deadlineThisWeek ? '今週' : '確認してください'}',
+                style: const TextStyle(fontSize: 11.5),
+              ),
+            ],
+          ),
+        ),
+      ],
+    ),
+  );
+}
+
+class _ProjectLine extends StatelessWidget {
+  const _ProjectLine({required this.text});
+  final String text;
+
+  @override
+  Widget build(BuildContext context) => Row(
+    children: [
+      const Icon(Icons.work_outline, size: 15, color: Colors.black45),
+      const SizedBox(width: 4),
+      Expanded(
+        child: Text(
+          text,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(fontSize: 12.5, color: Colors.black54),
+        ),
+      ),
+    ],
+  );
 }
 
 class _InfoBit extends StatelessWidget {

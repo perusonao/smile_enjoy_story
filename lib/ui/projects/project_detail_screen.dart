@@ -9,9 +9,14 @@ import '../widgets/labels.dart';
 import '../widgets/proposal_confirm_dialog.dart';
 
 class ProjectDetailScreen extends StatelessWidget {
-  const ProjectDetailScreen({super.key, required this.projectId});
+  const ProjectDetailScreen({
+    super.key,
+    required this.projectId,
+    this.preferredEmployeeId,
+  });
 
   final String projectId;
+  final String? preferredEmployeeId;
 
   @override
   Widget build(BuildContext context) {
@@ -43,6 +48,16 @@ class ProjectDetailScreen extends StatelessWidget {
               project,
             ).total.compareTo(MatchingEngine.computeFit(a, project).total),
           );
+    if (preferredEmployeeId != null) {
+      waitingEngineers.sort((a, b) {
+        if (a.id == preferredEmployeeId) return -1;
+        if (b.id == preferredEmployeeId) return 1;
+        return MatchingEngine.computeFit(
+          b,
+          project,
+        ).total.compareTo(MatchingEngine.computeFit(a, project).total);
+      });
+    }
 
     return Scaffold(
       appBar: AppBar(title: Text(project.title)),

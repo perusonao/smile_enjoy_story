@@ -2,22 +2,49 @@ import 'package:flutter/material.dart';
 
 import '../../app/game_scope.dart';
 import '../../domain/domain.dart';
+import '../../game/game.dart';
 import '../theme.dart';
+import '../widgets/fit_badge.dart';
 import '../widgets/labels.dart';
+import '../widgets/proposal_confirm_dialog.dart';
 import 'project_detail_screen.dart';
 
 class ProjectListScreen extends StatelessWidget {
-  const ProjectListScreen({super.key});
+  const ProjectListScreen({super.key, this.employeeId});
+
+  final String? employeeId;
 
   @override
   Widget build(BuildContext context) {
     final state = context.game.state;
-    final entries = [...state.openProjects]
-      ..sort((a, b) => b.postedWeek.compareTo(a.postedWeek));
-    final waitingCount = state.waitingEngineerCount;
+    Engineer? employee;
+    if (employeeId != null) {
+      employee = state.engineerById(employeeId!);
+    }
+    final entries = [...state.openProjects];
+    if (employee != null) {
+      entries.sort((a, b) {
+        final fitA = MatchingEngine.computeFit(employee!, a.project).total;
+        final fitB = MatchingEngine.computeFit(employee, b.project).total;
+        if (fitA != fitB) return fitB.compareTo(fitA);
+        final profitA = MatchingEngine.monthlyProfit(employee, a.project);
+        final profitB = MatchingEngine.monthlyProfit(employee, b.project);
+        if (profitA != profitB) return profitB.compareTo(profitA);
+        final termA = paymentTermDaysById(a.project.clientId);
+        final termB = paymentTermDaysById(b.project.clientId);
+        if (termA != termB) return termA.compareTo(termB);
+        return a.project.competitionLevel.compareTo(b.project.competitionLevel);
+      });
+    } else {
+      entries.sort((a, b) => b.postedWeek.compareTo(a.postedWeek));
+    }
 
     return Scaffold(
-      appBar: AppBar(title: const Text('案件')),
+      appBar: AppBar(
+        title: Text(
+          employee == null ? '案件' : '${employee.profile.name}に提案する案件',
+        ),
+      ),
       body: entries.isEmpty
           ? const Center(child: Text('現在公開中の案件はありません。'))
           : ListView.separated(
@@ -27,10 +54,29 @@ class ProjectListScreen extends StatelessWidget {
               itemBuilder: (context, i) {
                 final entry = entries[i];
                 final open = state.isProjectOpenForProposal(entry.project.id);
+                final candidateCount = open
+                    ? state.engineers
+                          .where(
+                            (engineer) =>
+                                engineer.status != EngineerStatus.assigned &&
+                                state.canPropose(engineer.id, entry.project.id),
+                          )
+                          .length
+                    : 0;
+                final activeCount = state.proposals
+                    .where(
+                      (application) =>
+                          application.project.id == entry.project.id &&
+                          (application.status == ApplicationStatus.active ||
+                              application.status == ApplicationStatus.offered),
+                    )
+                    .length;
                 return _ProjectCard(
                   project: entry.project,
                   open: open,
-                  candidateCount: open ? waitingCount : 0,
+                  candidateCount: candidateCount,
+                  activeCount: activeCount,
+                  employee: employee,
                 );
               },
             ),
@@ -43,25 +89,49 @@ class _ProjectCard extends StatelessWidget {
     required this.project,
     required this.open,
     required this.candidateCount,
+    required this.activeCount,
+    this.employee,
   });
 
   final Project project;
   final bool open;
   final int candidateCount;
+  final int activeCount;
+  final Engineer? employee;
+
+  Future<void> _propose(BuildContext context) async {
+    final confirmed = await showProposalConfirmDialog(
+      context,
+      engineer: employee!,
+      project: project,
+    );
+    if (!confirmed || !context.mounted) return;
+    context.game.proposeEngineer(employee!.id, project.id);
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('${employee!.profile.name} を提案しました。')),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
     return InkWell(
       borderRadius: BorderRadius.circular(12),
       onTap: () => Navigator.of(context).push(
-        MaterialPageRoute(builder: (_) => ProjectDetailScreen(projectId: project.id)),
+        MaterialPageRoute(
+          builder: (_) => ProjectDetailScreen(
+            projectId: project.id,
+            preferredEmployeeId: employee?.id,
+          ),
+        ),
       ),
       child: Container(
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
+          border: Border.all(
+            color: Theme.of(context).colorScheme.outlineVariant,
+          ),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -71,7 +141,10 @@ class _ProjectCard extends StatelessWidget {
                 Expanded(
                   child: Text(
                     project.title,
-                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16,
+                    ),
                   ),
                 ),
                 if (!open)
@@ -91,8 +164,14 @@ class _ProjectCard extends StatelessWidget {
               spacing: 12,
               runSpacing: 4,
               children: [
-                _Bit(Icons.payments_outlined, '${formatYen(project.monthlyRate)}/月'),
-                _Bit(Icons.event_outlined, '支払${paymentTermDaysById(project.clientId)}日'),
+                _Bit(
+                  Icons.payments_outlined,
+                  '${formatYen(project.monthlyRate)}/月',
+                ),
+                _Bit(
+                  Icons.event_outlined,
+                  '支払${paymentTermDaysById(project.clientId)}日',
+                ),
                 _Bit(
                   Icons.code,
                   project.requiredLanguages.isEmpty
@@ -106,30 +185,87 @@ class _ProjectCard extends StatelessWidget {
                 _Bit(Icons.forum_outlined, '面談${project.interviewCount}回'),
               ],
             ),
+            const SizedBox(height: 7),
+            Text(
+              '選考 ${project.selectionFlow.steps.length - 1}段階  ${project.selectionFlow.steps.map((step) => selectionStepShortLabels[step]!).join(' → ')}',
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                fontSize: 12,
+                color: SesTheme.primaryBlue,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
             const SizedBox(height: 6),
-            Row(
+            Wrap(
+              spacing: 12,
+              runSpacing: 4,
               children: [
-                Icon(
-                  Icons.groups_outlined,
-                  size: 14,
-                  color: candidateCount > 0 ? SesTheme.primaryBlue : Colors.black38,
+                _CountLabel(
+                  icon: Icons.person_add_alt_1,
+                  text: '提案可能 $candidateCount名',
+                  active: candidateCount > 0,
                 ),
-                const SizedBox(width: 4),
-                Text(
-                  candidateCount > 0 ? '提案候補 $candidateCount名' : '候補なし',
-                  style: TextStyle(
-                    fontSize: 12.5,
-                    fontWeight: FontWeight.w600,
-                    color: candidateCount > 0 ? SesTheme.primaryBlue : Colors.black38,
-                  ),
+                _CountLabel(
+                  icon: Icons.work_outline,
+                  text: '営業中 $activeCount名',
+                  active: activeCount > 0,
                 ),
               ],
             ),
+            if (employee != null) ...[
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  FitBadge(fit: MatchingEngine.visibleFit(employee!, project)),
+                  const Spacer(),
+                  FilledButton.tonal(
+                    onPressed:
+                        context.game.state.canPropose(employee!.id, project.id)
+                        ? () => _propose(context)
+                        : null,
+                    child: const Text('提案する'),
+                  ),
+                ],
+              ),
+            ],
           ],
         ),
       ),
     );
   }
+}
+
+class _CountLabel extends StatelessWidget {
+  const _CountLabel({
+    required this.icon,
+    required this.text,
+    required this.active,
+  });
+  final IconData icon;
+  final String text;
+  final bool active;
+
+  @override
+  Widget build(BuildContext context) => Row(
+    mainAxisSize: MainAxisSize.min,
+    children: [
+      Icon(
+        icon,
+        size: 14,
+        color: active ? SesTheme.primaryBlue : Colors.black38,
+      ),
+      const SizedBox(width: 4),
+      Text(
+        text,
+        style: TextStyle(
+          fontSize: 12.5,
+          fontWeight: FontWeight.w600,
+          color: active ? SesTheme.primaryBlue : Colors.black38,
+        ),
+      ),
+    ],
+  );
 }
 
 class _Bit extends StatelessWidget {

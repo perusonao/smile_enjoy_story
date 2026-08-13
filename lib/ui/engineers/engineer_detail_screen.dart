@@ -5,7 +5,10 @@ import '../../domain/domain.dart';
 import '../../game/game.dart';
 import '../theme.dart';
 import '../widgets/labels.dart';
+import '../widgets/fit_badge.dart';
+import '../widgets/selection_stepper.dart';
 import '../widgets/status_chip.dart';
+import '../projects/project_list_screen.dart';
 
 /// 社員詳細 (§19): salary, status, skills, personality, current project,
 /// waiting weeks + cost, and (if assigned) the project rate / monthly
@@ -148,12 +151,31 @@ class EngineerDetailScreen extends StatelessWidget {
           const SizedBox(height: 12),
           _SectionCard(
             title:
-                '営業中案件  ${applications.length} / $maxParallelProposalsPerEmployee',
+                '営業状況  並行営業 ${applications.length} / $maxParallelProposalsPerEmployee',
             children: [
               if (applications.isEmpty) const Text('営業中の案件はありません。'),
               for (final application in applications) ...[
                 _ApplicationRow(application: application),
                 const Divider(height: 18),
+              ],
+              if (engineer.status != EngineerStatus.assigned) ...[
+                const SizedBox(height: 4),
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    onPressed:
+                        applications.length < maxParallelProposalsPerEmployee
+                        ? () => Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (_) =>
+                                  ProjectListScreen(employeeId: engineerId),
+                            ),
+                          )
+                        : null,
+                    icon: const Icon(Icons.search),
+                    label: const Text('この社員に案件を探す'),
+                  ),
+                ),
               ],
             ],
           ),
@@ -185,16 +207,55 @@ class _ApplicationRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final engineer = context.game.state.engineerById(application.engineerId);
+    final profit = MatchingEngine.monthlyProfit(engineer, application.project);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
           application.project.title,
-          style: const TextStyle(fontWeight: FontWeight.bold),
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
         ),
-        const SizedBox(height: 4),
+        const SizedBox(height: 3),
         Text(
-          '現在: ${selectionStepLabels[application.currentStep]}  / Fit ${application.fitScore}',
+          '現在: ${selectionStepLabels[application.currentStep]}',
+          style: const TextStyle(
+            color: SesTheme.primaryBlue,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        const SizedBox(height: 6),
+        SelectionStepper(
+          steps: application.project.selectionFlow.steps,
+          currentStepIndex: application.currentStepIndex,
+          compact: true,
+        ),
+        const SizedBox(height: 7),
+        Wrap(
+          spacing: 10,
+          runSpacing: 5,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: [
+            Text(
+              '${formatYen(application.project.monthlyRate)} / 月',
+              style: const TextStyle(fontWeight: FontWeight.w600),
+            ),
+            FitBadge(fit: PlayerVisibleFit.fromScore(application.fitScore)),
+            Text(
+              '${paymentTermDaysById(application.project.clientId)}日サイト',
+              style: const TextStyle(fontSize: 12.5),
+            ),
+            Text(
+              '粗利 ${profit >= 0 ? '+' : ''}${formatYen(profit)}',
+              style: const TextStyle(fontSize: 12.5, color: Colors.black54),
+            ),
+            Text(
+              '競争度 ${'★' * application.project.competitionLevel}',
+              style: const TextStyle(fontSize: 12.5, color: Colors.black54),
+            ),
+          ],
         ),
         if (application.stepHistory.isNotEmpty)
           Text(

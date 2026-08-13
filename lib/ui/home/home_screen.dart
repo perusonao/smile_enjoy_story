@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../app/game_scope.dart';
 import '../../app/nav_scope.dart';
+import '../../domain/domain.dart';
 import '../../game/game.dart';
 import '../engineers/engineer_detail_screen.dart';
 import '../main_shell.dart';
@@ -280,16 +281,18 @@ class _FoundingMission extends StatelessWidget {
   const _FoundingMission({required this.state});
   final GameState state;
   @override Widget build(BuildContext context) {
-    final proposed = state.proposals.isNotEmpty || state.stats.proposalCount > 0;
+    final selling = state.engineers.any((e)=>e.salesStatus!=SalesStatus.notSelling);
+    final proposed = state.proposals.isNotEmpty || state.interviewOffers.isNotEmpty;
     final assigned = state.assignedEngineerCount > 0 || state.stats.assignmentsStarted > 0;
     final selectionAdvanced = state.proposals.any((p) => p.currentStepIndex > 0 || p.stepHistory.isNotEmpty);
     return Card(child: Padding(padding: const EdgeInsets.all(14), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Text('創業ミッション', style: Theme.of(context).textTheme.titleMedium),
       const Text('まずは会社を軌道に乗せましょう。'), const SizedBox(height: 8),
       const Text('✓ ① 待機社員を確認'),
-      Text('${proposed ? '✓' : '○'} ② 社員に案件を提案'),
-      Text('${selectionAdvanced ? '✓' : '○'} ③ 選考を進める'),
-      Text('${assigned ? '✓' : '○'} ④ 1人以上を案件参画させる'),
+      Text('${selling ? '✓' : '○'} ② スキルシートを確認して営業開始'),
+      Text('${proposed ? '✓' : '○'} ③ 面談オファーを受ける'),
+      Text('${selectionAdvanced ? '✓' : '○'} ④ 選考を進める'),
+      Text('${assigned ? '✓' : '○'} ⑤ 1人以上を案件参画させる'),
       if (proposed && !selectionAdvanced) const Padding(padding: EdgeInsets.only(top: 8), child: Text('次: 選考結果待ちです。次の週へ進めると結果が発生します。', style: TextStyle(fontWeight: FontWeight.bold))),
     ])));
   }

@@ -1,5 +1,6 @@
 import 'applicant.dart';
 import 'engineer_status.dart';
+import 'sales_profile.dart';
 
 /// An employee, created once an [Applicant] has been hired.
 ///
@@ -15,6 +16,15 @@ class Engineer {
   final int salary;
   final int employmentWeek;
   final EngineerStatus status;
+  final int companyTrust;
+  final Map<Industry, int> industryExperience;
+  final ResidenceArea residenceArea;
+  final int talkSkill;
+  final int mental;
+  final int toughness;
+  final Set<EmployeeAbility> abilities;
+  final SalesStatus salesStatus;
+  final int availableFromWeek;
 
   const Engineer({
     required this.id,
@@ -23,6 +33,15 @@ class Engineer {
     required this.salary,
     required this.employmentWeek,
     required this.status,
+    this.companyTrust = 60,
+    this.industryExperience = const {},
+    this.residenceArea = ResidenceArea.tokyo,
+    this.talkSkill = 3,
+    this.mental = 3,
+    this.toughness = 3,
+    this.abilities = const {},
+    this.salesStatus = SalesStatus.notSelling,
+    this.availableFromWeek = 1,
   });
 
   Engineer copyWith({
@@ -32,6 +51,15 @@ class Engineer {
     int? salary,
     int? employmentWeek,
     EngineerStatus? status,
+    int? companyTrust,
+    Map<Industry,int>? industryExperience,
+    ResidenceArea? residenceArea,
+    int? talkSkill,
+    int? mental,
+    int? toughness,
+    Set<EmployeeAbility>? abilities,
+    SalesStatus? salesStatus,
+    int? availableFromWeek,
   }) {
     return Engineer(
       id: id ?? this.id,
@@ -40,6 +68,15 @@ class Engineer {
       salary: salary ?? this.salary,
       employmentWeek: employmentWeek ?? this.employmentWeek,
       status: status ?? this.status,
+      companyTrust: companyTrust ?? this.companyTrust,
+      industryExperience: industryExperience ?? this.industryExperience,
+      residenceArea: residenceArea ?? this.residenceArea,
+      talkSkill: talkSkill ?? this.talkSkill,
+      mental: mental ?? this.mental,
+      toughness: toughness ?? this.toughness,
+      abilities: abilities ?? this.abilities,
+      salesStatus: salesStatus ?? this.salesStatus,
+      availableFromWeek: availableFromWeek ?? this.availableFromWeek,
     );
   }
 
@@ -50,6 +87,15 @@ class Engineer {
     'salary': salary,
     'employmentWeek': employmentWeek,
     'status': status.jsonValue,
+    'companyTrust': companyTrust,
+    'industryExperience': industryExperience.map((k,v)=>MapEntry(k.name,v)),
+    'residenceArea': residenceArea.name,
+    'talkSkill': talkSkill,
+    'mental': mental,
+    'toughness': toughness,
+    'abilities': abilities.map((e)=>e.name).toList(),
+    'salesStatus': salesStatus.name,
+    'availableFromWeek': availableFromWeek,
   };
 
   factory Engineer.fromJson(Map<String, dynamic> json) {
@@ -60,6 +106,15 @@ class Engineer {
       salary: json['salary'] as int,
       employmentWeek: json['employmentWeek'] as int,
       status: EngineerStatus.fromJson(json['status'] as String),
+      companyTrust: json['companyTrust'] as int? ?? 60,
+      industryExperience: (json['industryExperience'] as Map<String,dynamic>? ?? {}).map((k,v)=>MapEntry(Industry.values.byName(k),v as int)),
+      residenceArea: ResidenceArea.values.byName(json['residenceArea'] as String? ?? 'tokyo'),
+      talkSkill: json['talkSkill'] as int? ?? 3,
+      mental: json['mental'] as int? ?? 3,
+      toughness: json['toughness'] as int? ?? 3,
+      abilities: (json['abilities'] as List? ?? const []).map((e)=>EmployeeAbility.values.byName(e as String)).toSet(),
+      salesStatus: SalesStatus.values.byName(json['salesStatus'] as String? ?? 'notSelling'),
+      availableFromWeek: json['availableFromWeek'] as int? ?? 1,
     );
   }
 

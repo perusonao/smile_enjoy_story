@@ -91,7 +91,7 @@ class OthersScreen extends StatelessWidget {
               padding: const EdgeInsets.only(bottom: 8),
               child: _ClientCard(
                 client: client,
-                known: state.company.clientIds.contains(client.id),
+                relation: state.relationFor(client.id),
               ),
             ),
           const SizedBox(height: 20),
@@ -170,10 +170,10 @@ class OthersScreen extends StatelessWidget {
 }
 
 class _ClientCard extends StatelessWidget {
-  const _ClientCard({required this.client, required this.known});
+  const _ClientCard({required this.client, required this.relation});
 
   final Client client;
-  final bool known;
+  final ClientRelation relation;
 
   @override
   Widget build(BuildContext context) {
@@ -191,6 +191,8 @@ class _ClientCard extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(client.name, style: const TextStyle(fontWeight: FontWeight.bold)),
+                Text(relation.unlocked ? '取引中 / trust ${relation.trust} / 参画実績 ${relation.successfulAssignments}' : '未取引企業',style:TextStyle(fontSize:12,color:relation.unlocked?Colors.green:Colors.grey)),
+                if(!relation.unlocked) Text(client.id.contains('nova')?'解放条件: 社員5名以上 + インフラ経験社員':'解放条件: Axis Soft trust 60 + 参画成功3件',style:const TextStyle(fontSize:11,color:Colors.black54)),
                 Text(
                   '${clientSpecialtyLabels[client.specialty] ?? client.specialty.name} ・ 支払${client.paymentTermDays}日',
                   style: const TextStyle(fontSize: 12, color: Colors.black54),
@@ -198,7 +200,7 @@ class _ClientCard extends StatelessWidget {
               ],
             ),
           ),
-          if (known)
+          if (relation.unlocked)
             const Icon(Icons.handshake_outlined, color: SesTheme.primaryBlue, size: 20),
         ],
       ),

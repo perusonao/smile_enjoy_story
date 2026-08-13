@@ -14,7 +14,7 @@ import 'package:smile_enjoy_story/main.dart';
 /// paint (Playable 0.3A §18) — dismiss it so subsequent taps in a test
 /// reach the widgets underneath rather than the dialog's modal barrier.
 Future<void> _dismissFoundingTutorial(WidgetTester tester) async {
-  final button = find.text('案件を見る');
+  final button = find.text('社員を見る');
   if (button.evaluate().isNotEmpty) {
     await tester.tap(button);
     await tester.pumpAndSettle();

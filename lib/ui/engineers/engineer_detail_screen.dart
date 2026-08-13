@@ -50,6 +50,8 @@ class EngineerDetailScreen extends StatelessWidget {
         )
         .toList();
     final waitingWeeks = state.waitingStreakFor(engineerId);
+    final skillSheet = state.skillSheetFor(engineerId);
+    final interviewOffers = state.interviewOffers.where((o)=>o.employeeId==engineerId && o.status==InterviewOfferStatus.pending).toList();
 
     return Scaffold(
       appBar: AppBar(title: Text(profile.name)),
@@ -76,6 +78,17 @@ class EngineerDetailScreen extends StatelessWidget {
               weeks: waitingWeeks,
               monthlySalary: engineer.salary,
             ),
+          _SectionCard(title:'スキルシート / 営業',children:[
+            _Row('会社信頼',engineer.companyTrust >= 70 ? '高い' : engineer.companyTrust >= 45 ? '普通' : '低下中'),
+            _Row(languageLabels[profile.mainLanguage] ?? profile.mainLanguage.name,'実際 ${formatExperience(profile.skillFor(profile.mainLanguage).actualExperienceMonths)} / 記載 ${formatExperience(skillSheet.displayedLanguageExperience[profile.mainLanguage] ?? 0)}'),
+            _Row('Backend','実際 Lv.${profile.techSkills.backend} / 記載 Lv.${skillSheet.displayedBackend}'),
+            _Row('Leader','実際 Lv.${profile.techSkills.leader} / 記載 Lv.${skillSheet.displayedLeader}'),
+            _Row('営業状態',engineer.salesStatus==SalesStatus.selling?'営業中（公開先 ${state.unlockedClientCount}社）':engineer.salesStatus.name),
+            _Row('参画可能','Week ${engineer.availableFromWeek}〜'),
+            Row(children:[Expanded(child:OutlinedButton(onPressed:()=>_editSkillSheet(context,engineer!,skillSheet),child:const Text('編集'))),const SizedBox(width:8),Expanded(child:FilledButton(onPressed:engineer.salesStatus==SalesStatus.selling?null:()=>context.game.startSales(engineerId),child:const Text('この社員の営業を開始')))]),
+          ]),
+          if(interviewOffers.isNotEmpty)...[const SizedBox(height:12),_SectionCard(title:'面談オファー',children:[for(final offer in interviewOffers) _InterviewOfferCard(offer:offer,project:state.openProjects.firstWhere((e)=>e.project.id==offer.projectId).project)])],
+          if(assignment != null && assignment.remainingWeeks <= 4 && assignment.contractDecision==ContractDecision.undecided)...[const SizedBox(height:12),_SectionCard(title:'契約更新判断（終了4週前）',children:[Text('${assignment.project.title} / 残り${assignment.remainingWeeks}週'),Row(children:[Expanded(child:FilledButton(onPressed:()=>context.game.decideContract(engineerId,extend:true),child:const Text('延長する'))),const SizedBox(width:8),Expanded(child:OutlinedButton(onPressed:()=>context.game.decideContract(engineerId,extend:false),child:const Text('撤退する')))])])],
           _SectionCard(
             title: '基本情報',
             children: [
@@ -198,7 +211,18 @@ class EngineerDetailScreen extends StatelessWidget {
       ),
     );
   }
+
+  Future<void> _editSkillSheet(BuildContext context,Engineer engineer,SkillSheet original) async {
+    var months=original.displayedLanguageExperience[engineer.profile.mainLanguage] ?? 0; var backend=original.displayedBackend; var leader=original.displayedLeader;
+    await showDialog<void>(context:context,builder:(dialog)=>StatefulBuilder(builder:(context,setState){
+      final actualMonths=engineer.profile.skillFor(engineer.profile.mainLanguage).actualExperienceMonths; final inflated=months>actualMonths || backend>engineer.profile.techSkills.backend || leader>engineer.profile.techSkills.leader;
+      Widget adjust(String label,int actual,int value,void Function(int) change,{String suffix=''})=>Row(children:[Expanded(child:Text('$label  実際 $actual$suffix / 記載 $value$suffix')),IconButton(onPressed:value>0?()=>setState(()=>change(value-1)):null,icon:const Icon(Icons.remove)),IconButton(onPressed:()=>setState(()=>change(value+1)),icon:const Icon(Icons.add))]);
+      return AlertDialog(title:const Text('スキルシート編集'),content:Column(mainAxisSize:MainAxisSize.min,children:[adjust(languageLabels[engineer.profile.mainLanguage] ?? engineer.profile.mainLanguage.name,actualMonths~/12,months~/12,(v)=>months=v*12,suffix:'年'),adjust('Backend',engineer.profile.techSkills.backend,backend,(v)=>backend=v),adjust('Leader',engineer.profile.techSkills.leader,leader,(v)=>leader=v),if(inflated)Container(padding:const EdgeInsets.all(8),color:Colors.orange.shade50,child:const Text('実態より長く・高く記載しています。少し盛りすぎではないでしょうか…\n予想影響: 会社信頼 ↓'))]),actions:[TextButton(onPressed:()=>Navigator.pop(dialog),child:const Text('キャンセル')),FilledButton(onPressed:(){final languages={...original.displayedLanguageExperience,engineer.profile.mainLanguage:months};context.game.editSkillSheet(original.copyWith(displayedLanguageExperience:languages,displayedBackend:backend,displayedLeader:leader));Navigator.pop(dialog);},child:const Text('保存'))]);
+    }));
+  }
 }
+
+class _InterviewOfferCard extends StatelessWidget { const _InterviewOfferCard({required this.offer,required this.project}); final InterviewOffer offer; final Project project; @override Widget build(BuildContext context)=>Card(color:Colors.blue.shade50,child:Padding(padding:const EdgeInsets.all(12),child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[Text('${clientNameById(project.clientId)}  ${project.title}',style:const TextStyle(fontWeight:FontWeight.bold)),Text('単価 ${formatYen(project.monthlyRate)} / ${project.location.name} / ${project.industry.name}'),Text('契約 ${project.contractTermMonths}か月 / 支払 ${project.paymentTermDays}日 / SkillSheet適合 ${offer.skillSheetMatch}'),const Text('面談を受けますか？'),Row(children:[Expanded(child:FilledButton(onPressed:()=>context.game.acceptInterviewOffer(offer.id),child:const Text('受ける'))),const SizedBox(width:8),Expanded(child:OutlinedButton(onPressed:()=>context.game.declineInterviewOffer(offer.id),child:const Text('断る')))])]))); }
 
 class _ApplicationRow extends StatelessWidget {
   const _ApplicationRow({required this.application});

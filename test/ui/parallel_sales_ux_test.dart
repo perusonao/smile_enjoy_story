@@ -18,7 +18,7 @@ Future<void> _openEmployees(WidgetTester tester, GameState state) async {
   });
   await tester.pumpWidget(SesApp(controller: GameController()));
   await tester.pumpAndSettle();
-  final tutorialButton = find.text('案件を見る');
+  final tutorialButton = find.text('社員を見る');
   if (tutorialButton.evaluate().isNotEmpty) {
     await tester.tap(tutorialButton);
     await tester.pumpAndSettle();

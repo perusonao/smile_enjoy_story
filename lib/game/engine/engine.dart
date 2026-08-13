@@ -10,5 +10,6 @@ export 'recruitment_interview_engine.dart';
 export 'recruitment_interview_content.dart';
 export 'recommendation_engine.dart';
 export 'selection_engine.dart';
+export 'sales_engine.dart';
 export 'rng.dart';
 export 'task_engine.dart';

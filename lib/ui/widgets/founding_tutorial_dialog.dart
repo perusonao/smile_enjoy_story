@@ -10,13 +10,14 @@ Future<void> showFoundingTutorialDialog(BuildContext context, {required int wait
       title: const Text('創業1か月目'),
       content: Text(
         '現在、社員$waitingCount名は案件に参画していません。\n\n'
-        'まずは案件を確認し、待機社員を提案してください。\n'
+        'まず社員詳細でスキルシートを確認し、営業を開始してください。\n'
+        '取引先から面談オファーが届いたら、受けるか判断します。\n'
         '現金が尽きると倒産します。',
       ),
       actions: [
         FilledButton(
           onPressed: () => Navigator.of(context).pop(),
-          child: const Text('案件を見る'),
+          child: const Text('社員を見る'),
         ),
       ],
     ),

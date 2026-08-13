@@ -1,4 +1,5 @@
 import '../../domain/domain.dart';
+import 'sales_models.dart';
 
 /// Where a [ProjectProposal] is in its lifecycle.
 ///
@@ -252,19 +253,33 @@ class ActiveAssignment {
   final Project project;
   final int remainingWeeks;
   final int assignedWeek;
+  final int contractStartWeek;
+  final int contractEndWeek;
+  final int contractTermMonths;
+  final ContractDecision contractDecision;
 
-  const ActiveAssignment({
+  ActiveAssignment({
     required this.engineerId,
     required this.project,
     required this.remainingWeeks,
     required this.assignedWeek,
-  });
+    int? contractStartWeek,
+    int? contractEndWeek,
+    int? contractTermMonths,
+    this.contractDecision = ContractDecision.undecided,
+  }) : contractStartWeek = contractStartWeek ?? assignedWeek,
+       contractEndWeek = contractEndWeek ?? (assignedWeek + remainingWeeks - 1),
+       contractTermMonths = contractTermMonths ?? project.contractTermMonths;
 
-  ActiveAssignment copyWith({int? remainingWeeks}) => ActiveAssignment(
+  ActiveAssignment copyWith({int? remainingWeeks, int? contractEndWeek, ContractDecision? contractDecision}) => ActiveAssignment(
     engineerId: engineerId,
     project: project,
     remainingWeeks: remainingWeeks ?? this.remainingWeeks,
     assignedWeek: assignedWeek,
+    contractStartWeek: contractStartWeek,
+    contractEndWeek: contractEndWeek ?? this.contractEndWeek,
+    contractTermMonths: contractTermMonths,
+    contractDecision: contractDecision ?? this.contractDecision,
   );
 
   Map<String, dynamic> toJson() => {
@@ -272,6 +287,10 @@ class ActiveAssignment {
     'project': project.toJson(),
     'remainingWeeks': remainingWeeks,
     'assignedWeek': assignedWeek,
+    'contractStartWeek': contractStartWeek,
+    'contractEndWeek': contractEndWeek,
+    'contractTermMonths': contractTermMonths,
+    'contractDecision': contractDecision.name,
   };
 
   factory ActiveAssignment.fromJson(Map<String, dynamic> json) =>
@@ -280,6 +299,10 @@ class ActiveAssignment {
         project: Project.fromJson(json['project'] as Map<String, dynamic>),
         remainingWeeks: json['remainingWeeks'] as int,
         assignedWeek: json['assignedWeek'] as int,
+        contractStartWeek: json['contractStartWeek'] as int?,
+        contractEndWeek: json['contractEndWeek'] as int?,
+        contractTermMonths: json['contractTermMonths'] as int?,
+        contractDecision: ContractDecision.values.byName(json['contractDecision'] as String? ?? 'undecided'),
       );
 }
 

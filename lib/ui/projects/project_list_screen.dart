@@ -21,7 +21,8 @@ class ProjectListScreen extends StatelessWidget {
     if (employeeId != null) {
       employee = state.engineerById(employeeId!);
     }
-    final entries = [...state.openProjects];
+    final unlockedClientIds = state.clientRelations.where((r) => r.unlocked).map((r) => r.clientId).toSet();
+    final entries = state.openProjects.where((e) => unlockedClientIds.contains(e.project.clientId)).toList();
     if (employee != null) {
       entries.sort((a, b) {
         final fitA = MatchingEngine.computeFit(employee!, a.project).total;

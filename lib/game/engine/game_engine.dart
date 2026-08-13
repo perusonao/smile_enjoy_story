@@ -7,6 +7,7 @@ import 'recruitment_engine.dart';
 import 'recruitment_interview_engine.dart';
 import 'rng.dart';
 import 'selection_engine.dart';
+import 'sales_engine.dart';
 
 /// Orchestrates the whole simulation: new-game setup, the weekly turn, and
 /// the player actions that can happen between turns (interview, hire/reject,
@@ -56,12 +57,21 @@ class GameEngine {
           salary: applicant.desiredMonthlySalary,
           employmentWeek: 1,
           status: EngineerStatus.waiting,
+          companyTrust: 55 + i * 10,
+          industryExperience: {Industry.values[i]: applicant.totalItExperienceMonths ~/ 2},
+          residenceArea: ResidenceArea.values[i],
+          talkSkill: 3 + i,
+          mental: 3,
+          toughness: 3 + i,
+          abilities: {i == 0 ? EmployeeAbility.clientFriendly : EmployeeAbility.fastLearner},
         ),
       );
     }
     final openProjects = founderProjects
         .map((p) => ProjectEntry(project: p, postedWeek: 1))
         .toList();
+    final skillSheets = engineers.map((e)=>SkillSheet.fromActual(employeeId:e.id,languageMonths:e.profile.languageSkills.map((k,v)=>MapEntry(k,v.actualExperienceMonths)),skills:e.profile.techSkills,industryExperience:e.industryExperience,week:1)).toList();
+    final clientRelations = sampleClients.indexed.map((item)=>ClientRelation(clientId:item.$2.id,unlocked:item.$1<2,trust:item.$1<2?50:0)).toList();
 
     final initialClientIds = sampleClients.take(2).map((c) => c.id).toList();
     final company = Company(
@@ -94,6 +104,9 @@ class GameEngine {
       listings: const [],
       proposals: const [],
       offers: const [],
+      skillSheets: skillSheets,
+      clientRelations: clientRelations,
+      interviewOffers: const [],
       activeAssignments: const [],
       pendingHires: const [],
       accountsReceivable: const [],
@@ -415,6 +428,7 @@ class GameEngine {
     final engineersById = <String, Engineer>{
       for (final e in state.engineers) e.id: e,
     };
+    final skillSheets=[...state.skillSheets];
 
     // 1. 新規応募者生成 -------------------------------------------------
     final activeListings = state.listings
@@ -492,6 +506,7 @@ class GameEngine {
         status: EngineerStatus.waiting,
       );
       engineersById[id] = engineer;
+      skillSheets.add(SkillSheet.fromActual(employeeId:id,languageMonths:hire.applicant.languageSkills.map((k,v)=>MapEntry(k,v.actualExperienceMonths)),skills:hire.applicant.techSkills,week:newWeek));
       hiresDelta++;
       log(
         '${hire.applicant.name} が入社しました(待機)。',
@@ -704,6 +719,8 @@ class GameEngine {
         );
         engineersById[engineer.id] = engineer.copyWith(
           status: EngineerStatus.assigned,
+          salesStatus: SalesStatus.assigned,
+          availableFromWeek: newWeek + proposal.project.durationWeeks,
         );
         finalizedProposalIds.add(proposal.id);
         log(
@@ -745,6 +762,8 @@ class GameEngine {
       if (engineer != null) {
         engineersById[a.engineerId] = engineer.copyWith(
           status: EngineerStatus.waiting,
+          salesStatus: engineer.salesStatus == SalesStatus.selling ? SalesStatus.selling : SalesStatus.notSelling,
+          availableFromWeek: newWeek,
         );
         log(
           '${engineer.profile.name} が「${a.project.title}」の契約を終了しました(待機)。',
@@ -774,6 +793,18 @@ class GameEngine {
     final openProjects = [...survivingOpenProjects, ...newProjectEntries];
 
     final engineers = engineersById.values.toList();
+    var clientRelations=[...state.clientRelations];
+    for(final assignment in newAssignments){ final ri=clientRelations.indexWhere((r)=>r.clientId==assignment.project.clientId); if(ri>=0){ final r=clientRelations[ri]; clientRelations[ri]=r.copyWith(trust:(r.trust+5).clamp(0,100),totalDeals:r.totalDeals+1,successfulAssignments:r.successfulAssignments+1,lastDealWeek:newWeek); } }
+    for(final a in stillActive){ final e=engineersById[a.engineerId]!; final rate=(e.companyTrust~/5 + e.talkSkill*4 + (e.abilities.contains(EmployeeAbility.clientFriendly)?10:0)).clamp(1,55); if(newWeek-a.assignedWeek>=4 && ProjectInterviewEngine.roll(rate:rate,seed:seed,week:newWeek,salt:'field-lead:${e.id}')) log('${e.profile.name}さんから「現場で増員予定がある」と案件情報が届きました'); }
+    for(var i=0;i<clientRelations.length;i++){
+      final r=clientRelations[i]; if(r.unlocked)continue;
+      final unlock=r.clientId=='client-nova-infra' ? engineers.length>=5 && engineers.any((e)=>e.profile.techSkills.infrastructure>=1) : r.clientId=='client-bright-solutions' ? clientRelations.firstWhere((x)=>x.clientId=='client-axis-soft').trust>=60 && clientRelations.fold<int>(0,(n,x)=>n+x.successfulAssignments)>=3 : false;
+      if(unlock){clientRelations[i]=r.copyWith(unlocked:true,trust:30);log('新規取引開始！ ${sampleClients.firstWhere((c)=>c.id==r.clientId).name}',GameLogCategory.assignmentStarted);}
+    }
+    final expiredInterviewOffers=[for(final o in state.interviewOffers) if(o.status==InterviewOfferStatus.pending && o.expiresWeek<newWeek)o.copyWith(status:InterviewOfferStatus.expired) else o];
+    final salesSnapshot=state.copyWith(engineers:engineers,openProjects:openProjects,clientRelations:clientRelations,interviewOffers:expiredInterviewOffers,idCounter:idCounter);
+    final generatedInterviewOffers=SalesEngine.generateOffers(salesSnapshot,newWeek,mintId);
+    for(final o in generatedInterviewOffers){ final project=openProjects.firstWhere((e)=>e.project.id==o.projectId).project; log('${engineers.firstWhere((e)=>e.id==o.employeeId).profile.name}さんに「${project.title}」の面談オファーが届きました'); }
     final waitingCountThisWeek = engineersById.values
         .where((e) => e.status == EngineerStatus.waiting)
         .length;
@@ -986,11 +1017,14 @@ class GameEngine {
     var next = state.copyWith(
       company: company,
       engineers: engineers,
+      skillSheets: skillSheets,
       applicants: applicants,
       openProjects: openProjects,
       listings: activeListings,
       proposals: activeProposals,
       offers: offers,
+      clientRelations: clientRelations,
+      interviewOffers: [...expiredInterviewOffers,...generatedInterviewOffers],
       activeAssignments: stillActive,
       pendingHires: pendingHires,
       accountsReceivable: accountsReceivable,
@@ -1101,6 +1135,17 @@ class GameEngine {
     'projectInterviewCount': state.stats.projectInterviewCount,
     'projectInterviewSuccess': state.stats.projectInterviewSuccess,
     'waitingWeeks': state.stats.waitingWeeks,
+    'skillSheetEdits': state.events.where((e)=>e.message.contains('スキルシート')).length,
+    'skillSheetInflationAverage': state.engineers.isEmpty?0:state.engineers.fold<int>(0,(n,e)=>n+SalesEngine.inflationPoints(e,state.skillSheetFor(e.id)))/state.engineers.length,
+    'employeeTrustChanges': state.engineers.fold<int>(0,(n,e)=>n+(60-e.companyTrust)),
+    'salesStarted': state.events.where((e)=>e.message.contains('営業を開始')).length,
+    'interviewOffersReceived': state.interviewOffers.length,
+    'interviewOffersAccepted': state.interviewOffers.where((o)=>o.status==InterviewOfferStatus.accepted).length,
+    'interviewOffersDeclined': state.interviewOffers.where((o)=>o.status==InterviewOfferStatus.declined).length,
+    'clientUnlocks': state.clientRelations.where((r)=>r.unlocked).length-2,
+    'fieldLeadsReceived': state.events.where((e)=>e.message.contains('増員予定')).length,
+    'contractExtensions': state.activeAssignments.where((a)=>a.contractDecision==ContractDecision.extend).length,
+    'contractWithdrawals': state.activeAssignments.where((a)=>a.contractDecision==ContractDecision.withdraw).length,
     'finalEmployees': state.engineers.length,
     'bankruptcy': state.status == GameStatus.bankrupt,
     if (state.bankruptWeek != null) 'bankruptWeek': state.bankruptWeek,
@@ -1109,4 +1154,37 @@ class GameEngine {
     if (state.stats.averageCashRunwayMonths != null)
       'averageCashRunway': state.stats.averageCashRunwayMonths,
   };
+  static GameState editSkillSheet(GameState state, SkillSheet requested) {
+    final index=state.engineers.indexWhere((e)=>e.id==requested.employeeId); if(index<0) return state;
+    final engineer=state.engineers[index]; final old=state.skillSheetFor(engineer.id); final sheet=SalesEngine.clampSheet(engineer,requested,state.week);
+    final increase=(SalesEngine.inflationPoints(engineer,sheet)-SalesEngine.inflationPoints(engineer,old)).clamp(0,99);
+    final trustLoss=increase==0?0:(increase<=2?1:increase<=6?3:increase<=12?7:12);
+    final engineers=[...state.engineers]; engineers[index]=engineer.copyWith(companyTrust:(engineer.companyTrust-trustLoss).clamp(0,100));
+    return state.copyWith(engineers:engineers,skillSheets:[for(final s in state.skillSheets) if(s.employeeId==sheet.employeeId) sheet else s]).withLog('${engineer.profile.name}さんのスキルシートを更新しました${trustLoss>0?'（記載差に懸念）':''}');
+  }
+
+  static GameState startSales(GameState state,String employeeId){
+    final index=state.engineers.indexWhere((e)=>e.id==employeeId); if(index<0) return state; final engineer=state.engineers[index];
+    if(engineer.salesStatus==SalesStatus.selling || engineer.salesStatus==SalesStatus.interviewing) return state;
+    final engineers=[...state.engineers]; engineers[index]=engineer.copyWith(salesStatus:SalesStatus.selling,availableFromWeek:engineer.status==EngineerStatus.assigned?state.assignmentForEngineer(employeeId)!.contractEndWeek+1:state.week);
+    return state.copyWith(engineers:engineers).withLog('${engineer.profile.name}さんの営業を開始しました（公開先 ${state.unlockedClientCount}社）');
+  }
+
+  static GameState acceptInterviewOffer(GameState state,String offerId){
+    final offer=state.interviewOffers.where((o)=>o.id==offerId).firstOrNull; if(offer==null||offer.status!=InterviewOfferStatus.pending||state.week>offer.expiresWeek)return state;
+    final entry=state.openProjects.where((e)=>e.project.id==offer.projectId).firstOrNull; if(entry==null)return state;
+    final (next,id)=state.mintId('proposal'); final proposal=ProjectProposal(id:id,engineerId:offer.employeeId,project:entry.project,proposedWeek:state.week,stage:ProposalStage.proposed,currentStepIndex:entry.project.selectionFlow.steps.length>1?1:0,fitScore:offer.skillSheetMatch);
+    final engineers=[...next.engineers]; final i=engineers.indexWhere((e)=>e.id==offer.employeeId); engineers[i]=engineers[i].copyWith(salesStatus:SalesStatus.interviewing);
+    return next.copyWith(engineers:engineers,interviewOffers:[for(final o in next.interviewOffers) if(o.id==offerId)o.copyWith(status:InterviewOfferStatus.accepted) else o],proposals:[...next.proposals,proposal],stats:next.stats.copyWith(proposalCount:next.stats.proposalCount+1)).withLog('${entry.project.title} の面談オファーを受けました');
+  }
+
+  static GameState declineInterviewOffer(GameState state,String offerId)=>state.copyWith(interviewOffers:[for(final o in state.interviewOffers) if(o.id==offerId)o.copyWith(status:InterviewOfferStatus.declined) else o]).withLog('面談オファーを辞退しました');
+
+  static GameState decideContract(GameState state,String employeeId,bool extend){
+    final i=state.activeAssignments.indexWhere((a)=>a.engineerId==employeeId); if(i<0)return state; final a=state.activeAssignments[i]; if(a.remainingWeeks>4)return state;
+    final assignments=[...state.activeAssignments]; final engineers=[...state.engineers]; final ei=engineers.indexWhere((e)=>e.id==employeeId);
+    if(extend){ final weeks=a.contractTermMonths*4; assignments[i]=a.copyWith(remainingWeeks:a.remainingWeeks+weeks,contractEndWeek:a.contractEndWeek+weeks,contractDecision:ContractDecision.extend); engineers[ei]=engineers[ei].copyWith(availableFromWeek:a.contractEndWeek+weeks+1); }
+    else { assignments[i]=a.copyWith(contractDecision:ContractDecision.withdraw); engineers[ei]=engineers[ei].copyWith(availableFromWeek:a.contractEndWeek+1,salesStatus:SalesStatus.notSelling); }
+    return state.copyWith(activeAssignments:assignments,engineers:engineers).withLog('${engineers[ei].profile.name}さんの契約を${extend?'延長':'満了で撤退'}します');
+  }
 }

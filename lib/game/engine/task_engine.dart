@@ -10,12 +10,19 @@ class TaskEngine {
   const TaskEngine._();
 
   /// A contract with this many weeks left (or fewer) counts as "間近".
-  static const int _contractEndingSoonWeeks = 1;
+  static const int _contractEndingSoonWeeks = 4;
 
   static const int _maxIndividualWaitingTasks = 3;
 
   static List<HomeTask> generateTasks(GameState state) {
     final tasks = <HomeTask>[];
+
+    for(final offer in state.interviewOffers.where((o)=>o.status==InterviewOfferStatus.pending)){
+      final employee=state.engineerById(offer.employeeId);
+      tasks.add(HomeTask(id:'interview-offer-${offer.id}',priority:TaskPriority.critical,title:'${employee.profile.name}さんに面談オファーがあります',subtitle:'受けるか断るか判断してください',targetType:TaskTargetType.employeeDetail,targetId:employee.id));
+    }
+    final salesCandidate=state.engineers.where((e)=>e.status==EngineerStatus.waiting && e.salesStatus==SalesStatus.notSelling).firstOrNull;
+    if(salesCandidate!=null && state.week!=1) tasks.add(HomeTask(id:'sales-start-${salesCandidate.id}',priority:TaskPriority.warning,title:'${salesCandidate.profile.name}さんが待機中です',subtitle:'スキルシートを確認して営業開始しましょう',targetType:TaskTargetType.employeeDetail,targetId:salesCandidate.id));
 
     // --- Critical -----------------------------------------------------
 
@@ -46,7 +53,7 @@ class TaskEngine {
     if (state.week == 1 && state.waitingEngineerCount > 0) {
       tasks.add(
         HomeTask(
-          id: 'founding-guidance',
+          id: 'sales-start-founding-guidance',
           priority: TaskPriority.warning,
           title: '社員${state.waitingEngineerCount}名が待機中です',
           subtitle: '案件を決めない限り、月末に給与だけが発生します',
@@ -95,7 +102,7 @@ class TaskEngine {
     }
 
     for (final a in state.activeAssignments) {
-      if (a.remainingWeeks > _contractEndingSoonWeeks) continue;
+      if (a.remainingWeeks > _contractEndingSoonWeeks || a.contractDecision != ContractDecision.undecided) continue;
       final engineer = state.engineers
           .where((e) => e.id == a.engineerId)
           .firstOrNull;

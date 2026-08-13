@@ -3,6 +3,10 @@ import 'project_rank.dart';
 import 'project_type.dart';
 import 'remote_policy.dart';
 import 'selection_flow.dart';
+import 'sales_profile.dart';
+
+enum WorkCategory { development, maintenance, infrastructure, testing, support }
+enum CommercialFlow { prime, firstTier, secondTier, thirdTier }
 
 /// A project engagement offered by a [Client], as produced by
 /// `ProjectGenerator`.
@@ -41,6 +45,14 @@ class Project {
 
   /// 1 (easy) - 5 (hard).
   final int difficulty;
+  final Industry industry;
+  final ResidenceArea location;
+  final int availableStartWeek;
+  final int plannedDurationMonths;
+  final WorkCategory workCategory;
+  final CommercialFlow commercialFlow;
+  final int contractTermMonths;
+  final int paymentTermDays;
 
   const Project({
     required this.id,
@@ -65,6 +77,14 @@ class Project {
     this.selectionFlow = const SelectionFlow.standard(),
     this.competitionLevel = 3,
     required this.difficulty,
+    this.industry = Industry.other,
+    this.location = ResidenceArea.tokyo,
+    this.availableStartWeek = 1,
+    this.plannedDurationMonths = 3,
+    this.workCategory = WorkCategory.development,
+    this.commercialFlow = CommercialFlow.secondTier,
+    this.contractTermMonths = 3,
+    this.paymentTermDays = 30,
   }) : assert(monthlyRate > 0),
        assert(durationWeeks > 0),
        assert(requiredDatabase >= 0 && requiredDatabase <= 5),
@@ -102,6 +122,14 @@ class Project {
     'selectionFlow': selectionFlow.toJson(),
     'competitionLevel': competitionLevel,
     'difficulty': difficulty,
+    'industry': industry.name,
+    'location': location.name,
+    'availableStartWeek': availableStartWeek,
+    'plannedDurationMonths': plannedDurationMonths,
+    'workCategory': workCategory.name,
+    'commercialFlow': commercialFlow.name,
+    'contractTermMonths': contractTermMonths,
+    'paymentTermDays': paymentTermDays,
   };
 
   factory Project.fromJson(Map<String, dynamic> json) {
@@ -134,6 +162,14 @@ class Project {
             ),
       competitionLevel: json['competitionLevel'] as int? ?? 3,
       difficulty: json['difficulty'] as int,
+      industry: Industry.values.byName(json['industry'] as String? ?? 'other'),
+      location: ResidenceArea.values.byName(json['location'] as String? ?? 'tokyo'),
+      availableStartWeek: json['availableStartWeek'] as int? ?? 1,
+      plannedDurationMonths: json['plannedDurationMonths'] as int? ?? 3,
+      workCategory: WorkCategory.values.byName(json['workCategory'] as String? ?? 'development'),
+      commercialFlow: CommercialFlow.values.byName(json['commercialFlow'] as String? ?? 'secondTier'),
+      contractTermMonths: json['contractTermMonths'] as int? ?? 3,
+      paymentTermDays: json['paymentTermDays'] as int? ?? 30,
     );
   }
 

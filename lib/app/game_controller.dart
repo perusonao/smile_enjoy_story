@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 
 import '../game/game.dart';
+import '../domain/domain.dart';
 import '../game/persistence/save_service.dart';
 
 /// UI-facing façade over [GameEngine]: holds the current [GameState],
@@ -71,6 +72,12 @@ class GameController extends ChangeNotifier {
 
   void declineOffer(String offerId) =>
       _apply((s) => GameEngine.declineOffer(s, offerId));
+
+  void editSkillSheet(SkillSheet sheet) => _apply((s)=>GameEngine.editSkillSheet(s,sheet));
+  void startSales(String employeeId) => _apply((s)=>GameEngine.startSales(s,employeeId));
+  void acceptInterviewOffer(String offerId) => _apply((s)=>GameEngine.acceptInterviewOffer(s,offerId));
+  void declineInterviewOffer(String offerId) => _apply((s)=>GameEngine.declineInterviewOffer(s,offerId));
+  void decideContract(String employeeId,{required bool extend}) => _apply((s)=>GameEngine.decideContract(s,employeeId,extend));
 
   // --- Turn ----------------------------------------------------------------
 

@@ -68,3 +68,20 @@ String formatYen(int amount) {
   }
   return '${negative ? '-' : ''}¥$buffer';
 }
+
+/// Compact, sign-safe money text for narrow dashboard cards.
+String formatCompactYen(int amount) {
+  final sign = amount < 0 ? '-' : '';
+  final value = amount.abs();
+  if (value >= 100000000 && value % 100000000 == 0) {
+    return '$sign${value ~/ 100000000}億円';
+  }
+  if (value >= 10000) {
+    final man = value / 10000;
+    final text = man == man.roundToDouble()
+        ? man.round().toString()
+        : man.toStringAsFixed(1);
+    return '$sign$text万円';
+  }
+  return '$sign$value円';
+}

@@ -47,7 +47,7 @@ class TaskEngine {
       tasks.add(
         HomeTask(
           id: 'founding-guidance',
-          priority: TaskPriority.critical,
+          priority: TaskPriority.warning,
           title: '社員${state.waitingEngineerCount}名が待機中です',
           subtitle: '案件を決めない限り、月末に給与だけが発生します',
           targetType: TaskTargetType.projectsTab,

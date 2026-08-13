@@ -226,6 +226,16 @@ class _ApplicationRow extends StatelessWidget {
             fontWeight: FontWeight.bold,
           ),
         ),
+        Text(
+          application.status == ApplicationStatus.active
+              ? '結果待ち・次週に判定されます'
+              : application.status == ApplicationStatus.offered
+                  ? 'Offer獲得・今週中に回答してください'
+                  : '選考終了',
+          style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.bold, color: application.status == ApplicationStatus.active ? Colors.orange.shade800 : Colors.black54),
+        ),
+        if (application.status == ApplicationStatus.active && application.currentStepIndex + 1 < application.project.selectionFlow.steps.length)
+          Text('次: ${selectionStepLabels[application.project.selectionFlow.steps[application.currentStepIndex + 1]]}', style: const TextStyle(fontSize: 12.5)),
         const SizedBox(height: 6),
         SelectionStepper(
           steps: application.project.selectionFlow.steps,

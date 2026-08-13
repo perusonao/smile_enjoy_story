@@ -38,6 +38,7 @@ class TaskCard extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  Text(task.priorityLabel, style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: color)),
                   Text(
                     task.title,
                     style: TextStyle(
@@ -52,6 +53,10 @@ class TaskCard extends StatelessWidget {
                       task.subtitle!,
                       style: const TextStyle(fontSize: 11.5, color: Colors.black54),
                     ),
+                  ],
+                  if (onTap != null) ...[
+                    const SizedBox(height: 5),
+                    Text('→ ${task.nextActionLabel}', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: color)),
                   ],
                 ],
               ),

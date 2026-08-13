@@ -40,4 +40,20 @@ class HomeTask {
     this.targetType = TaskTargetType.none,
     this.targetId,
   });
+
+  String get priorityLabel => switch (priority) {
+    TaskPriority.critical => '最優先',
+    TaskPriority.warning => 'おすすめ',
+    TaskPriority.info => '余裕があれば',
+  };
+
+  String get nextActionLabel => switch (targetType) {
+    TaskTargetType.cashBreakdown => '資金詳細を見る',
+    TaskTargetType.recruitmentTab => '採用を見る',
+    TaskTargetType.employeesTab => '社員を見る',
+    TaskTargetType.projectsTab => 'おすすめ案件を見る',
+    TaskTargetType.employeeDetail => '社員とOfferを確認',
+    TaskTargetType.interviewResults => '選考結果を見る',
+    TaskTargetType.none => '確認する',
+  };
 }

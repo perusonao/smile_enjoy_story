@@ -138,9 +138,17 @@ class _ApplicantCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final applicant = entry.applicant;
-    final interviewed = context.game.state.interviewedApplicantIds.contains(
+    final state = context.game.state;
+    final interviewed = state.interviewedApplicantIds.contains(
       applicant.id,
     );
+    final assessment = RecommendationEngine.candidateAssessment(applicant, state);
+    final recommendation = switch (assessment.level) {
+      AssessmentLevel.attention => '◎ 注目',
+      AssessmentLevel.candidate => '○ 候補',
+      AssessmentLevel.cautious => '△ 慎重',
+      AssessmentLevel.lowPriority => '× 見送り候補',
+    };
 
     return InkWell(
       borderRadius: BorderRadius.circular(12),
@@ -174,6 +182,11 @@ class _ApplicantCard extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 4),
+            Text(recommendation, style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.indigo)),
+            if (assessment.good.isNotEmpty)
+              Text('理由: ${assessment.good.join('・')}', style: const TextStyle(fontSize: 12, color: Colors.black54), maxLines: 2),
+            if (assessment.cautions.isNotEmpty)
+              Text('注意: ${assessment.cautions.join('・')}', style: TextStyle(fontSize: 12, color: Colors.orange.shade800), maxLines: 2),
             Text(
               applicantTypeLabels[applicant.type] ?? applicant.type.name,
               style: const TextStyle(fontSize: 12.5, color: Colors.black54),

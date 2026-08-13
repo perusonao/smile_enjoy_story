@@ -4,6 +4,7 @@ import '../../domain/domain.dart';
 import '../../game/game.dart';
 import '../theme.dart';
 import 'fit_badge.dart';
+import 'labels.dart';
 
 /// 提案確認モーダル (§11): shows who, where, the Fit rating, and the
 /// estimated monthly profit before actually submitting the proposal.
@@ -50,6 +51,11 @@ Future<bool> showProposalConfirmDialog(
               ),
             ],
           ),
+          const SizedBox(height: 12),
+          const Text('選考', style: TextStyle(fontWeight: FontWeight.bold)),
+          Text(project.selectionFlow.steps.map((step) => selectionStepLabels[step]!).join('\n↓\n')),
+          const SizedBox(height: 6),
+          const Text('選考は週ごとに進行します。', style: TextStyle(fontSize: 12, color: Colors.black54)),
         ],
       ),
       actions: [

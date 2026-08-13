@@ -40,6 +40,17 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _onNextWeek(BuildContext context) async {
     final controller = context.game;
+    final critical = RecommendationEngine.recommendedActions(controller.state)
+        .where((task) => task.priority == TaskPriority.critical)
+        .toList();
+    if (critical.isNotEmpty) {
+      final proceed = await showDialog<bool>(context: context, builder: (dialogContext) => AlertDialog(
+        title: const Text('重要事項が残っています'),
+        content: Text('まだ今週対応できる重要事項があります。\n・${critical.map((e) => e.title).join('\n・')}\n\nこのまま次の週へ進みますか？'),
+        actions: [TextButton(onPressed:()=>Navigator.pop(dialogContext,false),child:const Text('戻る')),FilledButton(onPressed:()=>Navigator.pop(dialogContext,true),child:const Text('それでも進む'))],
+      ));
+      if (proceed != true || !context.mounted) return;
+    }
     controller.advanceWeek();
     final state = controller.state;
 
@@ -88,7 +99,8 @@ class _HomeScreenState extends State<HomeScreen> {
     final controller = context.game;
     final state = controller.state;
     final company = state.company;
-    final tasks = TaskEngine.generateTasks(state);
+    final allTasks = TaskEngine.generateTasks(state);
+    final tasks = RecommendationEngine.recommendedActions(state);
     final runway = FinanceEngine.cashRunwayMonths(state);
     final runwayColor = RunwayIndicator.colorFor(FinanceEngine.classifyRunway(runway));
 
@@ -124,7 +136,7 @@ class _HomeScreenState extends State<HomeScreen> {
           Row(
             children: [
               Expanded(
-                child: StatTile(label: '現預金', value: formatYen(company.cash), emphasis: true),
+                child: StatTile(label: '現預金', value: formatCompactYen(company.cash), emphasis: true),
               ),
               const SizedBox(width: 8),
               Expanded(
@@ -158,7 +170,9 @@ class _HomeScreenState extends State<HomeScreen> {
           // --- 今週の経営判断 (§3-§6の主役) ------------------------------
           Row(
             children: [
-              Text('今週の経営判断', style: Theme.of(context).textTheme.titleMedium),
+              Text('今週のおすすめ行動', style: Theme.of(context).textTheme.titleMedium),
+              const SizedBox(width: 6),
+              const Text('今週の経営判断', style: TextStyle(fontSize: 10, color: Colors.black45)),
               const SizedBox(width: 6),
               if (tasks.isNotEmpty)
                 Text('(${tasks.length})', style: const TextStyle(color: Colors.black45, fontSize: 13)),
@@ -183,6 +197,19 @@ class _HomeScreenState extends State<HomeScreen> {
                     ? null
                     : () => _onTaskTap(context, task),
               ),
+          if (allTasks.length > 3)
+            ExpansionTile(
+              tilePadding: EdgeInsets.zero,
+              title: Text('その他 ${allTasks.length - 3}件', style: const TextStyle(fontSize: 13)),
+              children: [for (final task in allTasks.skip(3)) TaskCard(task: task, onTap: task.targetType == TaskTargetType.none ? null : () => _onTaskTap(context, task))],
+            ),
+          if (state.listings.where((listing) => listing.isActiveOn(state.week)).isEmpty)
+            const Padding(padding: EdgeInsets.only(top: 4), child: Text('求人媒体が掲載されていません', style: TextStyle(fontSize: 11, color: Colors.black54))),
+
+          if (state.week <= 4) ...[
+            const SizedBox(height: 12),
+            _FoundingMission(state: state),
+          ],
 
           const SizedBox(height: 10),
           Theme(
@@ -234,19 +261,38 @@ class _FinanceLine extends StatelessWidget {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceAround,
         children: [
-          _Metric('売掛金', formatYen(ar)),
+          _Metric('売掛金', formatCompactYen(ar)),
           _divider(),
-          _Metric('今月入金予定', formatYen(inflow)),
+          _Metric('今月入金予定', formatCompactYen(inflow)),
           _divider(),
-          _Metric('今月支払予定', formatYen(outflow)),
+          _Metric('今月支払予定', formatCompactYen(outflow)),
           _divider(),
-          _Metric('月末予想現金', formatYen(projected), color: projectedColor),
+          _Metric('月末予想現金', formatCompactYen(projected), color: projectedColor),
         ],
       ),
     );
   }
 
   static Widget _divider() => Container(width: 1, height: 24, color: Colors.black12);
+}
+
+class _FoundingMission extends StatelessWidget {
+  const _FoundingMission({required this.state});
+  final GameState state;
+  @override Widget build(BuildContext context) {
+    final proposed = state.proposals.isNotEmpty || state.stats.proposalCount > 0;
+    final assigned = state.assignedEngineerCount > 0 || state.stats.assignmentsStarted > 0;
+    final selectionAdvanced = state.proposals.any((p) => p.currentStepIndex > 0 || p.stepHistory.isNotEmpty);
+    return Card(child: Padding(padding: const EdgeInsets.all(14), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Text('創業ミッション', style: Theme.of(context).textTheme.titleMedium),
+      const Text('まずは会社を軌道に乗せましょう。'), const SizedBox(height: 8),
+      const Text('✓ ① 待機社員を確認'),
+      Text('${proposed ? '✓' : '○'} ② 社員に案件を提案'),
+      Text('${selectionAdvanced ? '✓' : '○'} ③ 選考を進める'),
+      Text('${assigned ? '✓' : '○'} ④ 1人以上を案件参画させる'),
+      if (proposed && !selectionAdvanced) const Padding(padding: EdgeInsets.only(top: 8), child: Text('次: 選考結果待ちです。次の週へ進めると結果が発生します。', style: TextStyle(fontWeight: FontWeight.bold))),
+    ])));
+  }
 }
 
 class _HeadcountLine extends StatelessWidget {

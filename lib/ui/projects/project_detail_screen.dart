@@ -204,6 +204,13 @@ class _CandidateCardState extends State<_CandidateCard> {
     final state = context.game.state;
     final slots = state.activeProposalCountFor(engineer.id);
     final canPropose = state.canPropose(engineer.id, project.id);
+    final assessment = RecommendationEngine.projectAssessment(engineer, project, state);
+    final recommendation = switch (assessment.level) {
+      AssessmentLevel.attention => '◎ おすすめ',
+      AssessmentLevel.candidate => '○ 候補',
+      AssessmentLevel.cautious => '△ 慎重',
+      AssessmentLevel.lowPriority => '× 優先度低め',
+    };
 
     return Container(
       padding: const EdgeInsets.all(12),
@@ -230,6 +237,9 @@ class _CandidateCardState extends State<_CandidateCard> {
             ],
           ),
           const SizedBox(height: 6),
+          Text(recommendation, style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.indigo)),
+          if (assessment.good.isNotEmpty) Text('良い点: ${assessment.good.join('・')}', style: const TextStyle(fontSize: 12)),
+          if (assessment.cautions.isNotEmpty) Text('注意: ${assessment.cautions.join('・')}', style: TextStyle(fontSize: 12, color: Colors.orange.shade800)),
           Wrap(
             spacing: 12,
             runSpacing: 4,

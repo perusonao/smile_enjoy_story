@@ -2,8 +2,8 @@ import 'package:flutter/material.dart';
 
 import '../../domain/domain.dart';
 
-/// Small color-coded chip for an [EngineerStatus] (§12: 参画中/待機中/提案中/
-/// 面談予定 must be visually distinct, and waiting engineers must stand out).
+/// Small color-coded chip for an [EngineerStatus]. Sales activity is shown
+/// separately; employees remain waiting until they actually join a project.
 class EngineerStatusChip extends StatelessWidget {
   const EngineerStatusChip({super.key, required this.status});
 
@@ -14,7 +14,7 @@ class EngineerStatusChip extends StatelessWidget {
     final (label, color) = switch (status) {
       EngineerStatus.assigned => ('参画中', Colors.blue),
       EngineerStatus.waiting => ('待機中', Colors.red),
-      EngineerStatus.proposed => ('提案中', Colors.orange),
+      EngineerStatus.proposed => ('待機中', Colors.red),
       EngineerStatus.interviewScheduled => ('面談合格・参画予定', Colors.purple),
     };
     return Container(

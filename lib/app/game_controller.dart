@@ -77,6 +77,9 @@ class GameController extends ChangeNotifier {
   void startSales(String employeeId) => _apply((s)=>GameEngine.startSales(s,employeeId));
   void acceptInterviewOffer(String offerId) => _apply((s)=>GameEngine.acceptInterviewOffer(s,offerId));
   void declineInterviewOffer(String offerId) => _apply((s)=>GameEngine.declineInterviewOffer(s,offerId));
+  void startClientInterview(String applicationId) => _apply((s)=>GameEngine.startClientInterview(s,applicationId));
+  void chooseClientInterviewFollowUp(String sessionId,ClientInterviewFollowUp choice) => _apply((s)=>GameEngine.chooseClientInterviewFollowUp(s,sessionId,choice));
+  void autoResolveClientInterview(String applicationId) => _apply((s)=>GameEngine.autoResolveClientInterview(s,applicationId));
   void decideContract(String employeeId,{required bool extend}) => _apply((s)=>GameEngine.decideContract(s,employeeId,extend));
 
   // --- Turn ----------------------------------------------------------------

@@ -8,6 +8,7 @@ import '../widgets/labels.dart';
 import '../widgets/fit_badge.dart';
 import '../widgets/selection_stepper.dart';
 import '../widgets/status_chip.dart';
+import '../projects/client_interview_screen.dart';
 
 /// 社員詳細 (§19): salary, status, skills, personality, current project,
 /// waiting weeks + cost, and (if assigned) the project rate / monthly
@@ -292,6 +293,7 @@ class _ApplicationRow extends StatelessWidget {
                 .join('\n'),
             style: const TextStyle(fontSize: 12, color: Colors.black54),
           ),
+        if(application.status==ApplicationStatus.active&&application.currentStep==SelectionStep.clientInterview)...[const SizedBox(height:8),const Text('操作: 面談をプレイできます',style:TextStyle(fontWeight:FontWeight.bold,color:Colors.deepOrange)),Row(children:[Expanded(child:FilledButton(onPressed:()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>ClientInterviewScreen(applicationId:application.id))),child:const Text('面談をプレイ'))),const SizedBox(width:8),Expanded(child:OutlinedButton(onPressed:()=>context.game.autoResolveClientInterview(application.id),child:const Text('社員に任せる')))])],
       ],
     );
   }

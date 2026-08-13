@@ -8,6 +8,7 @@ import 'recruitment_interview_engine.dart';
 import 'rng.dart';
 import 'selection_engine.dart';
 import 'sales_engine.dart';
+import 'client_interview_engine.dart';
 
 /// Orchestrates the whole simulation: new-game setup, the weekly turn, and
 /// the player actions that can happen between turns (interview, hire/reject,
@@ -410,6 +411,7 @@ class GameEngine {
   // ---------------------------------------------------------------------
 
   static GameState advanceWeek(GameState state) {
+    if (state.proposals.any((p)=>p.status==ApplicationStatus.active && p.currentStep==SelectionStep.clientInterview && !state.clientInterviews.any((s)=>s.applicationId==p.id && s.completed))) return state.withLog('客先面談が残っています。面談をプレイするか、社員に任せてください。');
     if (state.status != GameStatus.playing) return state;
     final newWeek = state.week + 1;
     final seed = state.seed;
@@ -1130,6 +1132,14 @@ class GameEngine {
     'upperCompanyInterviewPassed': state.stats.upperCompanyInterviewPassed,
     'technicalInterviewPassed': state.stats.technicalInterviewPassed,
     'clientInterviewPassed': state.stats.clientInterviewPassed,
+    'clientInterviewsPlayed': state.clientInterviews.where((s)=>s.completed&&s.playerFollowUps.any((f)=>f!=ClientInterviewFollowUp.letEmployeeHandle)).length,
+    'clientInterviewsAutoResolved': state.clientInterviews.where((s)=>s.completed&&s.playerFollowUps.every((f)=>f==ClientInterviewFollowUp.letEmployeeHandle)).length,
+    'clientInterviewPass': state.clientInterviews.where((s)=>s.result==ClientInterviewResult.passed).length,
+    'clientInterviewFail': state.clientInterviews.where((s)=>s.result==ClientInterviewResult.failed).length,
+    'followUpChoices': {for(final choice in ClientInterviewFollowUp.values)choice.name:state.clientInterviews.fold<int>(0,(n,s)=>n+s.playerFollowUps.where((f)=>f==choice).length)},
+    'deepDiveCount': state.clientInterviews.where((s)=>s.deepDiveOccurred).length,
+    'mismatchFailures': state.clientInterviews.where((s)=>s.mismatchFailure&&s.result==ClientInterviewResult.failed).length,
+    'trustChangesFromInterview': state.clientInterviews.fold<int>(0,(n,s)=>n+(s.mismatchFailure?-2:(s.result==ClientInterviewResult.passed&&s.questions.every((q)=>q.mismatch<2)?1:0))),
     'finalInterviewPassed': state.stats.finalInterviewPassed,
     'offersReceived': state.stats.offersReceived,
     'offersAccepted': state.stats.offersAccepted,
@@ -1185,6 +1195,25 @@ class GameEngine {
   }
 
   static GameState declineInterviewOffer(GameState state,String offerId)=>state.copyWith(interviewOffers:[for(final o in state.interviewOffers) if(o.id==offerId)o.copyWith(status:InterviewOfferStatus.declined) else o]).withLog('面談オファーを辞退しました');
+
+  static GameState startClientInterview(GameState state,String applicationId){
+    final existing=state.clientInterviews.where((s)=>s.applicationId==applicationId&&!s.completed).firstOrNull;if(existing!=null)return state;
+    final p=state.proposals.where((p)=>p.id==applicationId&&p.status==ApplicationStatus.active&&p.currentStep==SelectionStep.clientInterview).firstOrNull;if(p==null)return state;
+    final e=state.engineerById(p.engineerId),sheet=state.skillSheetFor(e.id);final (next,id)=state.mintId('client-interview');
+    final qs=ClientInterviewEngine.questions(seed:state.seed,employee:e,project:p.project,sheet:sheet);final first=ClientInterviewEngine.answer(e,p.project,qs.first);
+    return next.copyWith(clientInterviews:[...next.clientInterviews,ClientInterviewSession(id:id,applicationId:p.id,employeeId:e.id,projectId:p.project.id,clientId:p.project.clientId,startedWeek:p.interviewWeek??state.week,questions:qs,employeeAnswers:[first])]).withLog('${e.profile.name}さんの客先面談を開始しました');
+  }
+
+  static GameState chooseClientInterviewFollowUp(GameState state,String sessionId,ClientInterviewFollowUp choice){
+    final s=state.clientInterviews.where((s)=>s.id==sessionId&&!s.completed).firstOrNull;if(s==null)return state;final p=state.proposals.firstWhere((p)=>p.id==s.applicationId),e=state.engineerById(s.employeeId),q=s.questions[s.currentQuestionIndex],a=s.employeeAnswers[s.currentQuestionIndex];
+    final outcome=ClientInterviewEngine.evaluate(e,q,a,choice,state.seed,s.id);var updated=s.copyWith(playerFollowUps:[...s.playerFollowUps,choice],interviewerReactions:[...s.interviewerReactions,outcome.reaction],accumulatedEvaluation:s.accumulatedEvaluation.add(technical:outcome.evaluation.technical,experience:outcome.evaluation.experience,communication:outcome.evaluation.communication,credibility:outcome.evaluation.credibility,clientFit:outcome.evaluation.clientFit),deepDiveOccurred:s.deepDiveOccurred||outcome.deepDive,mismatchFailure:s.mismatchFailure||(outcome.deepDive&&q.mismatch>=2),deepDiveText:outcome.deepDive?'「具体的な規模と、ご本人が担当した範囲を教えてください」':null);
+    if(s.currentQuestionIndex<2){final nextIndex=s.currentQuestionIndex+1;updated=updated.copyWith(currentQuestionIndex:nextIndex,employeeAnswers:[...updated.employeeAnswers,ClientInterviewEngine.answer(e,p.project,s.questions[nextIndex])]);return state.copyWith(clientInterviews:[for(final x in state.clientInterviews)if(x.id==s.id)updated else x]);}
+    return _completeClientInterview(state,updated,p,e,played:true);
+  }
+
+  static GameState autoResolveClientInterview(GameState state,String applicationId){final p=state.proposals.where((p)=>p.id==applicationId&&p.status==ApplicationStatus.active&&p.currentStep==SelectionStep.clientInterview).firstOrNull;if(p==null)return state;final e=state.engineerById(p.engineerId),sheet=state.skillSheetFor(e.id);final (next,id)=state.mintId('client-interview');final qs=ClientInterviewEngine.questions(seed:state.seed,employee:e,project:p.project,sheet:sheet);var s=ClientInterviewSession(id:id,applicationId:p.id,employeeId:e.id,projectId:p.project.id,clientId:p.project.clientId,startedWeek:state.week,questions:qs);for(var i=0;i<3;i++){final a=ClientInterviewEngine.answer(e,p.project,qs[i]);final o=ClientInterviewEngine.evaluate(e,qs[i],a,ClientInterviewFollowUp.letEmployeeHandle,state.seed,id);s=s.copyWith(currentQuestionIndex:i,employeeAnswers:[...s.employeeAnswers,a],playerFollowUps:[...s.playerFollowUps,ClientInterviewFollowUp.letEmployeeHandle],interviewerReactions:[...s.interviewerReactions,o.reaction],accumulatedEvaluation:s.accumulatedEvaluation.add(technical:o.evaluation.technical,experience:o.evaluation.experience,communication:o.evaluation.communication,credibility:o.evaluation.credibility,clientFit:o.evaluation.clientFit));}return _completeClientInterview(next,s,p,e,played:false);}
+
+  static GameState _completeClientInterview(GameState state,ClientInterviewSession s,ProjectProposal p,Engineer e,{required bool played}){final rate=ClientInterviewEngine.finalRate(e,p.project,s,fromInterviewOffer:p.fromInterviewOffer);final passed=SelectionEngine.roll(rate:rate,seed:state.seed,week:s.startedWeek,salt:'client-conversation:${s.id}:${s.playerFollowUps.map((e)=>e.name).join(',')}');final result=passed?ClientInterviewResult.passed:ClientInterviewResult.failed;final history=SelectionStepHistory(week:state.week,step:SelectionStep.clientInterview,result:passed?SelectionStepResult.passed:SelectionStepResult.failed,successRate:rate);final completed=s.copyWith(completed:true,result:result,mismatchFailure:s.mismatchFailure||(!passed&&s.questions.any((q)=>q.mismatch>=2)));final trustDelta=completed.mismatchFailure?-2:(passed&&s.questions.every((q)=>q.mismatch<2)?1:0);final engineers=[for(final x in state.engineers)if(x.id==e.id)x.copyWith(companyTrust:(x.companyTrust+trustDelta).clamp(0,100),salesStatus:passed?SalesStatus.interviewing:SalesStatus.selling)else x];final proposals=[for(final x in state.proposals)if(x.id==p.id)x.copyWith(currentStepIndex:passed?x.currentStepIndex+1:x.currentStepIndex,status:passed?ApplicationStatus.active:ApplicationStatus.rejected,stage:passed?x.stage:ProposalStage.interviewFailed,stepHistory:[...x.stepHistory,history],interviewWeek:state.week,interviewSuccessRate:rate,rejectionReason:passed?null:(completed.mismatchFailure?'SkillSheet記載に対して具体的な経験が不足していました':'他候補がより案件要件に合致しました'))else x];return state.copyWith(clientInterviews:[...state.clientInterviews.where((x)=>x.id!=s.id),completed],proposals:proposals,engineers:engineers,stats:state.stats.copyWith(projectInterviewCount:state.stats.projectInterviewCount+1,projectInterviewSuccess:state.stats.projectInterviewSuccess+(passed?1:0),clientInterviewPassed:state.stats.clientInterviewPassed+(passed?1:0))).withLog('客先面談 ${passed?'通過！':'不合格'} ${e.profile.name} / ${p.project.title}',category:passed?GameLogCategory.interviewPassed:GameLogCategory.interviewFailed);}
 
   static GameState decideContract(GameState state,String employeeId,bool extend){
     final i=state.activeAssignments.indexWhere((a)=>a.engineerId==employeeId); if(i<0)return state; final a=state.activeAssignments[i]; if(a.remainingWeeks>4)return state;

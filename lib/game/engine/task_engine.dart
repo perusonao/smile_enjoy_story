@@ -16,6 +16,7 @@ class TaskEngine {
 
   static List<HomeTask> generateTasks(GameState state) {
     final tasks = <HomeTask>[];
+    for(final p in state.proposals.where((p)=>p.status==ApplicationStatus.active&&p.currentStep==SelectionStep.clientInterview&&!state.clientInterviews.any((s)=>s.applicationId==p.id&&s.completed))){final employee=state.engineerById(p.engineerId);tasks.add(HomeTask(id:'client-interview-${p.id}',priority:TaskPriority.critical,title:'${employee.profile.name}さんの客先面談があります',subtitle:'今週中に面談をプレイするか、社員に任せてください',targetType:TaskTargetType.employeeDetail,targetId:employee.id));}
 
     for(final offer in state.interviewOffers.where((o)=>o.status==InterviewOfferStatus.pending)){
       final employee=state.engineerById(offer.employeeId);

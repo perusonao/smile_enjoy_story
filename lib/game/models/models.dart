@@ -4,6 +4,7 @@ library;
 export 'accounts_receivable.dart';
 export 'applicant_entry.dart';
 export 'calendar.dart';
+export 'client_interview.dart';
 export 'company_type.dart';
 export 'fit_result.dart';
 export 'game_log_entry.dart';

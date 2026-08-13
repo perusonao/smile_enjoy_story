@@ -11,11 +11,12 @@ import 'project_proposal.dart';
 import 'recruitment_media.dart';
 import 'recruitment_interview.dart';
 import 'sales_models.dart';
+import 'client_interview.dart';
 
 /// Bumped whenever a save-incompatible change is made to [GameState]'s
 /// shape (Playable 0.3A §26). [SaveService] resets to a new game rather
 /// than crashing when a loaded save's version doesn't match.
-const int currentSchemaVersion = 5;
+const int currentSchemaVersion = 6;
 const int maxParallelProposalsPerEmployee = 3;
 const int maxActiveCompanyProposals = 6;
 
@@ -56,6 +57,7 @@ class GameState {
   final List<SkillSheet> skillSheets;
   final List<ClientRelation> clientRelations;
   final List<InterviewOffer> interviewOffers;
+  final List<ClientInterviewSession> clientInterviews;
   final List<ActiveAssignment> activeAssignments;
   final List<PendingHire> pendingHires;
   final List<AccountsReceivable> accountsReceivable;
@@ -102,6 +104,7 @@ class GameState {
     this.skillSheets = const [],
     this.clientRelations = const [],
     this.interviewOffers = const [],
+    this.clientInterviews = const [],
     required this.activeAssignments,
     required this.pendingHires,
     this.accountsReceivable = const [],
@@ -227,6 +230,7 @@ class GameState {
     List<SkillSheet>? skillSheets,
     List<ClientRelation>? clientRelations,
     List<InterviewOffer>? interviewOffers,
+    List<ClientInterviewSession>? clientInterviews,
     List<ActiveAssignment>? activeAssignments,
     List<PendingHire>? pendingHires,
     List<AccountsReceivable>? accountsReceivable,
@@ -258,6 +262,7 @@ class GameState {
       skillSheets: skillSheets ?? this.skillSheets,
       clientRelations: clientRelations ?? this.clientRelations,
       interviewOffers: interviewOffers ?? this.interviewOffers,
+      clientInterviews: clientInterviews ?? this.clientInterviews,
       activeAssignments: activeAssignments ?? this.activeAssignments,
       pendingHires: pendingHires ?? this.pendingHires,
       accountsReceivable: accountsReceivable ?? this.accountsReceivable,
@@ -302,6 +307,7 @@ class GameState {
     'skillSheets': skillSheets.map((e)=>e.toJson()).toList(),
     'clientRelations': clientRelations.map((e)=>e.toJson()).toList(),
     'interviewOffers': interviewOffers.map((e)=>e.toJson()).toList(),
+    'clientInterviews': clientInterviews.map((e)=>e.toJson()).toList(),
     'activeAssignments': activeAssignments.map((e) => e.toJson()).toList(),
     'pendingHires': pendingHires.map((e) => e.toJson()).toList(),
     'accountsReceivable': accountsReceivable.map((e) => e.toJson()).toList(),
@@ -352,6 +358,7 @@ class GameState {
     skillSheets: (json['skillSheets'] as List? ?? const []).map((e)=>SkillSheet.fromJson(e as Map<String,dynamic>)).toList(),
     clientRelations: (json['clientRelations'] as List? ?? const []).map((e)=>ClientRelation.fromJson(e as Map<String,dynamic>)).toList(),
     interviewOffers: (json['interviewOffers'] as List? ?? const []).map((e)=>InterviewOffer.fromJson(e as Map<String,dynamic>)).toList(),
+    clientInterviews: (json['clientInterviews'] as List? ?? const []).map((e)=>ClientInterviewSession.fromJson(e as Map<String,dynamic>)).toList(),
     activeAssignments: (json['activeAssignments'] as List)
         .map((e) => ActiveAssignment.fromJson(e as Map<String, dynamic>))
         .toList(),

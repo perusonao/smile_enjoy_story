@@ -35,7 +35,7 @@ class ResultScreen extends StatelessWidget {
             child: Column(
               children: [
                 const Text(
-                  '26週間の経営が終了しました',
+                  '1年目決算 (48週間の経営が終了しました)',
                   style: TextStyle(color: Colors.white70, fontSize: 13),
                 ),
                 const SizedBox(height: 8),
@@ -54,15 +54,19 @@ class ResultScreen extends StatelessWidget {
           const SizedBox(height: 12),
           _CompanyTypeCard(companyType: companyType),
           const SizedBox(height: 16),
-          _ResultRow('最終資金', formatYen(state.company.cash)),
+          _ResultRow('最終現預金', formatYen(state.company.cash)),
+          _ResultRow('売掛金', formatYen(FinanceEngine.totalPendingAr(state))),
           _ResultRow('累計売上', formatYen(stats.cumulativeRevenue)),
-          _ResultRow('累計支出', formatYen(stats.cumulativeExpense)),
-          _ResultRow('利益', formatYen(stats.cumulativeProfit)),
+          _ResultRow('累計入金', formatYen(stats.cumulativeCashCollected)),
+          _ResultRow('累計給与', formatYen(stats.cumulativeSalary)),
+          _ResultRow('累計家賃', formatYen(stats.cumulativeRent)),
+          _ResultRow('累計固定費', formatYen(stats.cumulativeFixedCost)),
+          _ResultRow('営業利益', formatYen(stats.cumulativeProfit)),
           _ResultRow('社員数', '${state.engineers.length}名'),
           _ResultRow('稼働率', '${state.utilizationPercent}%'),
+          _ResultRow('待機延べ週', '${stats.waitingWeeks}週'),
           _ResultRow('採用人数', '${stats.hires}名'),
           _ResultRow('案件面談成功率', '$interviewSuccessRate%'),
-          _ResultRow('待機延べ週', '${stats.waitingWeeks}週'),
           const SizedBox(height: 20),
           SizedBox(
             width: double.infinity,

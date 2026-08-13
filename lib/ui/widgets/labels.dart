@@ -81,6 +81,15 @@ String clientNameById(String clientId) {
   return clientId;
 }
 
+/// 支払サイト (Playable 0.3A §14): a client's payment term in days, falling
+/// back to 30 if somehow unknown.
+int paymentTermDaysById(String clientId) {
+  for (final c in sampleClients) {
+    if (c.id == clientId) return c.paymentTermDays;
+  }
+  return 30;
+}
+
 /// The single highest-required tech-domain skill on a project, e.g.
 /// `Backend Lv.3`, used as the "主要求スキル" summary in list views.
 String topRequiredSkillLabel(Project project) {

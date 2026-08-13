@@ -81,14 +81,20 @@ void main() {
       expect(task.title, contains('1'));
     });
 
-    test('low cash produces a critical cash-danger task', () {
-      final state = _emptyState();
-      final poor = state.copyWith(
-        company: state.company.copyWith(cash: 1000),
-        lastWeekExpense: 200000,
-      );
+    test('a projected month-end cash shortfall produces a critical cash-danger task (§11, §16)', () {
+      final engineer = buildEngineer(id: 'costly', salary: 900000, status: EngineerStatus.waiting);
+      final state = _emptyState().copyWith(engineers: [engineer]);
+      final poor = state.copyWith(company: state.company.copyWith(cash: 1000));
       final tasks = TaskEngine.generateTasks(poor);
       expect(tasks.where((t) => t.id == 'cash-danger').single.priority, TaskPriority.critical);
+    });
+
+    test('a comfortable cash runway produces no cash-danger or cash-runway task', () {
+      final state = _emptyState();
+      final tasks = TaskEngine.generateTasks(state);
+      expect(tasks.where((t) => t.id == 'cash-danger'), isEmpty);
+      expect(tasks.where((t) => t.id == 'cash-runway-danger'), isEmpty);
+      expect(tasks.where((t) => t.id == 'cash-runway-caution'), isEmpty);
     });
 
     test('a contract ending within a week produces a critical task', () {

@@ -54,6 +54,7 @@ class ProjectDetailScreen extends StatelessWidget {
               _Row('種別', projectTypeLabels[project.type] ?? project.type.name),
               _Row('ランク', projectRankLabels[project.rank] ?? project.rank.name),
               _Row('月単価', formatYen(project.monthlyRate)),
+              _Row('支払サイト', '${paymentTermDaysById(project.clientId)}日'),
               _Row('契約期間', '${project.durationWeeks}週間'),
               _Row('応募締切', 'Week ${project.applicationDeadlineWeek}'),
               _Row('面談回数', '${project.interviewCount}回'),

@@ -19,6 +19,15 @@ GameState _emptyState({int seed = 42}) {
   );
 }
 
+/// Advances [state] by [count] weeks in a row.
+GameState _advance(GameState state, int count) {
+  var next = state;
+  for (var i = 0; i < count; i++) {
+    next = GameEngine.advanceWeek(next);
+  }
+  return next;
+}
+
 void main() {
   group('Weekly simulation', () {
     test('week progresses by exactly 1 each turn', () {
@@ -30,57 +39,170 @@ void main() {
       expect(state.week, 3);
     });
 
-    test('waiting engineers still cost salary each week', () {
-      final engineer = buildEngineer(
-        id: 'waiting-1',
-        salary: 400000,
-        status: EngineerStatus.waiting,
-      );
-      final state = _emptyState().copyWith(engineers: [engineer]);
-      final cashBefore = state.company.cash;
+    test(
+      'waiting engineers cost nothing week-to-week but draw full salary at month-end (§7-8)',
+      () {
+        final engineer = buildEngineer(
+          id: 'waiting-1',
+          salary: 400000,
+          status: EngineerStatus.waiting,
+        );
+        final state = _emptyState().copyWith(engineers: [engineer]);
+        final cashBefore = state.company.cash;
 
-      final next = GameEngine.advanceWeek(state);
+        // Weeks 2-3 aren't month-end: no cash moves at all.
+        var next = GameEngine.advanceWeek(state);
+        expect(next.company.cash, cashBefore);
+        next = GameEngine.advanceWeek(next);
+        expect(next.company.cash, cashBefore);
 
-      final expectedSalary = (400000 / 4).round();
-      expect(next.company.cash, cashBefore - expectedSalary - weeklyFixedCost);
-      expect(next.stats.cumulativeSalary, expectedSalary);
-      expect(next.stats.cumulativeFixedCost, weeklyFixedCost);
-      expect(next.stats.waitingWeeks, 1);
-    });
+        // Week 4 (month-end): full monthly salary + rent + other fixed cost
+        // land all at once. Waiting engineers draw 100% salary too.
+        next = GameEngine.advanceWeek(next);
+        final rent = officeConfigs[OfficeType.smallOffice]!.monthlyRent;
+        expect(next.company.cash, cashBefore - 400000 - rent - otherMonthlyFixedCost);
+        expect(next.stats.cumulativeSalary, 400000);
+        expect(next.stats.cumulativeRent, rent);
+        expect(next.stats.cumulativeFixedCost, otherMonthlyFixedCost);
+        expect(next.stats.waitingWeeks, 3);
+      },
+    );
 
-    test('revenue is added for assigned engineers and duration counts down', () {
-      final engineer = buildEngineer(
-        id: 'assigned-1',
-        salary: 0,
-        status: EngineerStatus.assigned,
-      );
+    test(
+      'an assigned engineer\'s revenue becomes accounts receivable at month-end, not immediate cash (§9, §13)',
+      () {
+        final engineer = buildEngineer(
+          id: 'assigned-1',
+          salary: 0,
+          status: EngineerStatus.assigned,
+        );
+        final project = buildProject(
+          id: 'proj-1',
+          clientId: 'client-axis-soft', // 支払30日
+          monthlyRate: 800000,
+          durationWeeks: 12,
+        );
+        final assignment = ActiveAssignment(
+          engineerId: engineer.id,
+          project: project,
+          remainingWeeks: 12,
+          assignedWeek: 1,
+        );
+        final state = _emptyState().copyWith(
+          engineers: [engineer],
+          activeAssignments: [assignment],
+        );
+        final cashBefore = state.company.cash;
+
+        final next = _advance(state, 3); // through week 4 (month-end)
+
+        expect(next.stats.cumulativeRevenue, 800000);
+        expect(next.stats.cumulativeCashCollected, 0);
+        expect(next.accountsReceivable, hasLength(1));
+        final ar = next.accountsReceivable.single;
+        expect(ar.status, ArStatus.pending);
+        expect(ar.amount, 800000);
+        expect(ar.clientId, 'client-axis-soft');
+        expect(ar.generatedMonth, 1);
+        expect(ar.dueMonth, 2); // 30日サイト → 翌月末
+
+        final rent = officeConfigs[OfficeType.smallOffice]!.monthlyRent;
+        expect(next.company.cash, cashBefore - rent - otherMonthlyFixedCost);
+        final updated = next.activeAssignments.firstWhere(
+          (a) => a.engineerId == engineer.id,
+        );
+        expect(updated.remainingWeeks, 9);
+        expect(next.engineerById(engineer.id).status, EngineerStatus.assigned);
+      },
+    );
+
+    test('a 30-day payment term client\'s AR is collected at the next month-end (§14-15)', () {
+      final engineer = buildEngineer(id: 'e30', salary: 0, status: EngineerStatus.assigned);
       final project = buildProject(
-        id: 'proj-1',
-        monthlyRate: 800000,
-        durationWeeks: 3,
+        id: 'p30',
+        clientId: 'client-axis-soft', // 支払30日
+        monthlyRate: 700000,
       );
       final assignment = ActiveAssignment(
-        engineerId: engineer.id,
+        engineerId: 'e30',
         project: project,
-        remainingWeeks: 3,
+        remainingWeeks: 3, // completes exactly at week 4 (month 1's close)
         assignedWeek: 1,
       );
-      final state = _emptyState().copyWith(
+      var state = _emptyState().copyWith(
         engineers: [engineer],
         activeAssignments: [assignment],
       );
 
-      final next = GameEngine.advanceWeek(state);
+      state = _advance(state, 3); // week 4: AR generated, dueMonth 2
+      expect(state.accountsReceivable.single.status, ArStatus.pending);
+      expect(state.accountsReceivable.single.dueMonth, 2);
 
-      final expectedRevenue = (800000 / 4).round();
-      expect(next.lastWeekRevenue, expectedRevenue);
-      expect(next.stats.cumulativeRevenue, expectedRevenue);
-      final updated = next.activeAssignments.firstWhere(
-        (a) => a.engineerId == engineer.id,
-      );
-      expect(updated.remainingWeeks, 2);
-      expect(next.engineerById(engineer.id).status, EngineerStatus.assigned);
+      state = _advance(state, 4); // week 8: month 2 closes → AR collected
+      expect(state.accountsReceivable, hasLength(1));
+      expect(state.accountsReceivable.single.status, ArStatus.paid);
+      expect(state.stats.cumulativeCashCollected, 700000);
     });
+
+    test('a 60-day payment term client\'s AR is collected two month-ends later (§14-15)', () {
+      final engineer = buildEngineer(id: 'e60', salary: 0, status: EngineerStatus.assigned);
+      final project = buildProject(
+        id: 'p60',
+        clientId: 'client-future-web', // 支払60日
+        monthlyRate: 900000,
+      );
+      final assignment = ActiveAssignment(
+        engineerId: 'e60',
+        project: project,
+        remainingWeeks: 3,
+        assignedWeek: 1,
+      );
+      var state = _emptyState().copyWith(
+        engineers: [engineer],
+        activeAssignments: [assignment],
+      );
+
+      state = _advance(state, 3); // week 4: AR generated, dueMonth 3
+      expect(state.accountsReceivable.single.dueMonth, 3);
+
+      state = _advance(state, 4); // week 8: month 2 closes — not due yet
+      expect(state.accountsReceivable.single.status, ArStatus.pending);
+      expect(state.stats.cumulativeCashCollected, 0);
+
+      state = _advance(state, 4); // week 12: month 3 closes — now collected
+      expect(state.accountsReceivable.single.status, ArStatus.paid);
+      expect(state.stats.cumulativeCashCollected, 900000);
+    });
+
+    test(
+      'accounting profit and cash delta are computed independently (§20-21)',
+      () {
+        final engineer = buildEngineer(id: 'e1', salary: 0, status: EngineerStatus.assigned);
+        final project = buildProject(
+          id: 'p1',
+          clientId: 'client-axis-soft',
+          monthlyRate: 800000,
+        );
+        final assignment = ActiveAssignment(
+          engineerId: 'e1',
+          project: project,
+          remainingWeeks: 12,
+          assignedWeek: 1,
+        );
+        final state = _emptyState().copyWith(
+          engineers: [engineer],
+          activeAssignments: [assignment],
+        );
+
+        final next = _advance(state, 3);
+        final closing = next.latestClosing!;
+        // Revenue was recognized (¥800,000) but no cash arrived this month
+        // (nothing was already due), while rent + fixed cost were paid —
+        // so profit is positive while cash actually fell.
+        expect(closing.accountingProfit, greaterThan(0));
+        expect(closing.cashDelta, lessThan(0));
+      },
+    );
 
     test('a contract that reaches 0 remaining weeks completes and frees the engineer', () {
       final engineer = buildEngineer(
@@ -108,8 +230,6 @@ void main() {
 
       expect(next.activeAssignments, isEmpty);
       expect(next.engineerById(engineer.id).status, EngineerStatus.waiting);
-      // The final week of the contract still counts as revenue.
-      expect(next.lastWeekRevenue, (400000 / 4).round());
     });
 
     test('a proposal progresses through interview to assignment over two turns', () {
@@ -178,8 +298,6 @@ void main() {
 
       state = GameEngine.advanceWeek(state);
       expect(state.waitingStreakFor('waiter-1'), 1);
-      // Waiting-week cost this week should match salary / 4 (§18).
-      expect(state.lastWeekSalary, (400000 / 4).round());
 
       state = GameEngine.advanceWeek(state);
       expect(state.waitingStreakFor('waiter-1'), 2);
@@ -195,22 +313,24 @@ void main() {
       expect(state.waitingStreakFor('waiter-1'), 0);
     });
 
-    test('lastWeekExpense breaks down into salary + recruitment cost + fixed cost (§7)', () {
+    test('month-end closing breaks down salary + rent + fixed cost + recruitment cost (§20)', () {
       final engineer = buildEngineer(id: 'w1', salary: 400000, status: EngineerStatus.waiting);
       var state = _emptyState().copyWith(engineers: [engineer]);
       state = GameEngine.postRecruitmentMedia(state, RecruitmentMediaType.engineerCareer);
       final mediaCost = recruitmentMediaConfigs[RecruitmentMediaType.engineerCareer]!.cost;
 
-      final next = GameEngine.advanceWeek(state);
+      final next = _advance(state, 3); // week 4: month-end
 
-      final expectedSalary = (400000 / 4).round();
-      expect(next.lastWeekSalary, expectedSalary);
-      expect(next.lastWeekRecruitmentCost, mediaCost);
+      final closing = next.latestClosing!;
+      final rent = officeConfigs[OfficeType.smallOffice]!.monthlyRent;
+      expect(closing.salaryPaid, 400000);
+      expect(closing.rentPaid, rent);
+      expect(closing.otherFixedCost, otherMonthlyFixedCost);
+      expect(closing.recruitmentCost, mediaCost);
       expect(
-        next.lastWeekExpense,
-        expectedSalary + mediaCost + weeklyFixedCost,
+        closing.accountingProfit,
+        closing.projectRevenue - 400000 - rent - otherMonthlyFixedCost - mediaCost,
       );
-      expect(next.lastWeekProfit, next.lastWeekRevenue - next.lastWeekExpense);
     });
   });
 }

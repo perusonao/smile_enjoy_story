@@ -1,14 +1,12 @@
 import '../models/models.dart';
+import 'finance_engine.dart';
 
 /// Generates the "今週の経営判断" task list shown at the top of Home
-/// (Playable 0.2 §3-§4). Pure function of [GameState] — no randomness, no
-/// side effects, safe to call on every rebuild.
+/// (Playable 0.2 §3-§4, extended for 0.3A's monthly cash flow §11). Pure
+/// function of [GameState] — no randomness, no side effects, safe to call
+/// on every rebuild.
 class TaskEngine {
   const TaskEngine._();
-
-  /// Below this cash cushion (relative to last week's burn) a "資金残高が
-  /// 危険" task fires.
-  static const int _minSafeCash = 300000;
 
   /// A contract with this many weeks left (or fewer) counts as "間近".
   static const int _contractEndingSoonWeeks = 1;
@@ -19,19 +17,59 @@ class TaskEngine {
     final tasks = <HomeTask>[];
 
     // --- Critical -----------------------------------------------------
-    final dangerCash = state.lastWeekExpense * 2 > _minSafeCash
-        ? state.lastWeekExpense * 2
-        : _minSafeCash;
-    if (state.company.cash < dangerCash) {
+
+    // Week 1 founding guidance (§17-18): the game opens with everyone
+    // waiting, so make the very first task list point straight at the
+    // fix instead of letting the player discover it on their own.
+    if (state.week == 1 && state.waitingEngineerCount > 0) {
+      tasks.add(
+        HomeTask(
+          id: 'founding-guidance',
+          priority: TaskPriority.critical,
+          title: '社員${state.waitingEngineerCount}名が待機中です',
+          subtitle: '案件を決めない限り、月末に給与だけが発生します',
+          targetType: TaskTargetType.projectsTab,
+        ),
+      );
+    }
+
+    // Predictive bankruptcy warning (§16): a heads-up before the month-end
+    // close actually determines game over.
+    if (FinanceEngine.projectedMonthEndCash(state) < 0) {
       tasks.add(
         const HomeTask(
           id: 'cash-danger',
           priority: TaskPriority.critical,
-          title: '資金残高が危険水準です',
-          subtitle: 'このままだと資金がショートする可能性があります',
+          title: 'このままだと月末に資金がショートします',
+          subtitle: '今月の支払い予定が入金予定を上回っています',
           targetType: TaskTargetType.cashBreakdown,
         ),
       );
+    } else {
+      final runway = FinanceEngine.cashRunwayMonths(state);
+      switch (FinanceEngine.classifyRunway(runway)) {
+        case RunwayLevel.danger:
+          tasks.add(
+            const HomeTask(
+              id: 'cash-runway-danger',
+              priority: TaskPriority.critical,
+              title: '資金余命が3か月を切っています',
+              subtitle: '早めに案件を決めて収入を確保しましょう',
+              targetType: TaskTargetType.cashBreakdown,
+            ),
+          );
+        case RunwayLevel.caution:
+          tasks.add(
+            const HomeTask(
+              id: 'cash-runway-caution',
+              priority: TaskPriority.warning,
+              title: '資金余命が6か月を切っています',
+              targetType: TaskTargetType.cashBreakdown,
+            ),
+          );
+        case RunwayLevel.safe:
+          break;
+      }
     }
 
     for (final a in state.activeAssignments) {

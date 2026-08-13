@@ -21,13 +21,20 @@ class Client {
   /// A type absent from this map uses a multiplier of 1.0.
   final Map<ProjectType, double> projectTypeWeights;
 
+  /// 支払サイト (Playable 0.3A §14): how many days after a month's revenue
+  /// is recognized this client's invoice is paid. Prototype scope only
+  /// supports 30 or 60.
+  final int paymentTermDays;
+
   const Client({
     required this.id,
     required this.name,
     required this.specialty,
     required this.projectGenerationWeight,
     this.projectTypeWeights = const {},
-  }) : assert(projectGenerationWeight > 0);
+    this.paymentTermDays = 30,
+  }) : assert(projectGenerationWeight > 0),
+       assert(paymentTermDays == 30 || paymentTermDays == 60);
 
   double weightFor(ProjectType type) => projectTypeWeights[type] ?? 1.0;
 
@@ -39,6 +46,7 @@ class Client {
     'projectTypeWeights': projectTypeWeights.map(
       (key, value) => MapEntry(key.jsonValue, value),
     ),
+    'paymentTermDays': paymentTermDays,
   };
 
   factory Client.fromJson(Map<String, dynamic> json) {
@@ -57,6 +65,7 @@ class Client {
                 (value as num).toDouble(),
               ),
             ),
+      paymentTermDays: json['paymentTermDays'] as int? ?? 30,
     );
   }
 

@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 
 import '../../app/game_scope.dart';
 import '../../domain/domain.dart';
+import '../../game/game.dart';
 import '../theme.dart';
 import '../widgets/labels.dart';
 
@@ -13,6 +14,13 @@ class OthersScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final controller = context.game;
     final state = controller.state;
+    final office = officeConfigs[state.officeType]!;
+    final occupancy = state.engineers.length + state.pendingHires.length;
+
+    final upcomingAr = state.accountsReceivable
+        .where((ar) => ar.status == ArStatus.pending)
+        .toList()
+      ..sort((a, b) => a.dueMonth.compareTo(b.dueMonth));
 
     return Scaffold(
       appBar: AppBar(title: const Text('その他')),
@@ -29,6 +37,53 @@ class OthersScreen extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 14),
+          _SectionCard(
+            title: 'オフィス',
+            children: [
+              _Row('種別', office.label),
+              _Row('家賃', '${formatYen(office.monthlyRent)}/月'),
+              _Row('定員', '$occupancy / ${office.employeeCapacity}名'),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Text('入金予定 (${upcomingAr.length}件)', style: Theme.of(context).textTheme.titleMedium),
+          const SizedBox(height: 8),
+          if (upcomingAr.isEmpty)
+            Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
+              ),
+              child: const Text('現在、入金待ちの売掛金はありません。', style: TextStyle(fontSize: 13, color: Colors.black54)),
+            )
+          else
+            Container(
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
+              ),
+              child: Column(
+                children: [
+                  for (final ar in upcomingAr)
+                    ListTile(
+                      dense: true,
+                      leading: Text(
+                        GameCalendar.monthEndLabel(ar.dueMonth),
+                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12.5),
+                      ),
+                      title: Text(clientNameById(ar.clientId), style: const TextStyle(fontSize: 13)),
+                      trailing: Text(
+                        formatYen(ar.amount),
+                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          const SizedBox(height: 20),
           Text('取引先', style: Theme.of(context).textTheme.titleMedium),
           const SizedBox(height: 8),
           for (final client in sampleClients)
@@ -137,7 +192,7 @@ class _ClientCard extends StatelessWidget {
               children: [
                 Text(client.name, style: const TextStyle(fontWeight: FontWeight.bold)),
                 Text(
-                  clientSpecialtyLabels[client.specialty] ?? client.specialty.name,
+                  '${clientSpecialtyLabels[client.specialty] ?? client.specialty.name} ・ 支払${client.paymentTermDays}日',
                   style: const TextStyle(fontSize: 12, color: Colors.black54),
                 ),
               ],

@@ -92,6 +92,7 @@ class _ProjectCard extends StatelessWidget {
               runSpacing: 4,
               children: [
                 _Bit(Icons.payments_outlined, '${formatYen(project.monthlyRate)}/月'),
+                _Bit(Icons.event_outlined, '支払${paymentTermDaysById(project.clientId)}日'),
                 _Bit(
                   Icons.code,
                   project.requiredLanguages.isEmpty

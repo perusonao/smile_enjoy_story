@@ -32,7 +32,6 @@ class EngineerDetailScreen extends StatelessWidget {
     final assignment = state.assignmentForEngineer(engineerId);
     final proposal = state.proposalForEngineer(engineerId);
     final waitingWeeks = state.waitingStreakFor(engineerId);
-    final weeklyCost = (engineer.salary / 4).round();
 
     return Scaffold(
       appBar: AppBar(title: Text(profile.name)),
@@ -52,12 +51,11 @@ class EngineerDetailScreen extends StatelessWidget {
           ),
           const SizedBox(height: 12),
           if (engineer.status == EngineerStatus.waiting)
-            _WaitingWarningBanner(weeks: waitingWeeks, weeklyCost: weeklyCost),
+            _WaitingWarningBanner(weeks: waitingWeeks, monthlySalary: engineer.salary),
           _SectionCard(
             title: '基本情報',
             children: [
-              _Row('給与', formatYen(engineer.salary)),
-              _Row('今週のコスト', formatYen(weeklyCost)),
+              _Row('月給', formatYen(engineer.salary)),
               _Row('主言語', languageLabels[profile.mainLanguage] ?? profile.mainLanguage.name),
               if (profile.subLanguages.isNotEmpty)
                 _Row('副言語', profile.subLanguages.map((l) => languageLabels[l] ?? l.name).join(' / ')),
@@ -120,10 +118,10 @@ class EngineerDetailScreen extends StatelessWidget {
 }
 
 class _WaitingWarningBanner extends StatelessWidget {
-  const _WaitingWarningBanner({required this.weeks, required this.weeklyCost});
+  const _WaitingWarningBanner({required this.weeks, required this.monthlySalary});
 
   final int weeks;
-  final int weeklyCost;
+  final int monthlySalary;
 
   @override
   Widget build(BuildContext context) {
@@ -143,7 +141,7 @@ class _WaitingWarningBanner extends StatelessWidget {
           const SizedBox(width: 8),
           Expanded(
             child: Text(
-              '待機$weeks週目です。今週の給与コスト ${formatYen(weeklyCost)} が発生しています。',
+              '待機$weeks週目です。案件が決まらなくても月給 ${formatYen(monthlySalary)} は月末に満額発生します。',
               style: TextStyle(color: color, fontSize: 12.5, fontWeight: FontWeight.w600),
             ),
           ),

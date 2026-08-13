@@ -29,7 +29,12 @@ class SaveService {
       final prefs = await SharedPreferences.getInstance();
       final raw = prefs.getString(_key);
       if (raw == null) return null;
-      return GameState.fromJson(jsonDecode(raw) as Map<String, dynamic>);
+      final state = GameState.fromJson(jsonDecode(raw) as Map<String, dynamic>);
+      // A save from an older, incompatible schema (e.g. Playable 0.2's
+      // weekly-accounting model) can't be replayed under the new monthly
+      // rules — start a fresh game rather than risk crashing on it (§26).
+      if (state.schemaVersion != currentSchemaVersion) return null;
+      return state;
     } catch (_) {
       return null;
     }

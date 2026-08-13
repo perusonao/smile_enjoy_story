@@ -18,6 +18,7 @@ const List<Client> sampleClients = [
       ProjectType.infrastructure: 0.4,
       ProjectType.testSupport: 0.8,
     },
+    paymentTermDays: 30,
   ),
   Client(
     id: 'client-future-web',
@@ -32,6 +33,7 @@ const List<Client> sampleClients = [
       ProjectType.testSupport: 0.6,
       ProjectType.pl: 0.5,
     },
+    paymentTermDays: 60,
   ),
   Client(
     id: 'client-nova-infra',
@@ -46,6 +48,7 @@ const List<Client> sampleClients = [
       ProjectType.testSupport: 0.6,
       ProjectType.pl: 0.6,
     },
+    paymentTermDays: 60,
   ),
   Client(
     id: 'client-bright-solutions',
@@ -53,5 +56,6 @@ const List<Client> sampleClients = [
     specialty: ClientSpecialty.general,
     projectGenerationWeight: 1.0,
     // No overrides: uses the base ProjectType distribution as-is.
+    paymentTermDays: 30,
   ),
 ];

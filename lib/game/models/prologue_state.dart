@@ -57,8 +57,22 @@ class PrologueState {
 
   /// Which candidate the player chose to interview this week (§21) — kept
   /// distinct from "who got hired" so the UI can show "interviewing A" before
-  /// a hire/reject decision is made.
+  /// a hire/reject decision is made. Cleared back to `null` once a hire/
+  /// reject/decline decision resolves — [lastRecruitmentInterviewPrologueWeek]
+  /// below is what actually enforces the one-per-week rule, since this field
+  /// alone can't (it goes back to `null` well before the week ends).
   final String? interviewingCandidateId;
+
+  /// The [prologueWeek] value at which the player last *started* a
+  /// recruitment interview (§21: "1週間に1人まで") — set the moment
+  /// [PrologueEngine.selectCandidateForInterview] starts a session, and never
+  /// cleared afterward (unlike [interviewingCandidateId], which resets once
+  /// the hire/reject/decline decision resolves). A second candidate can't be
+  /// started in the same [prologueWeek] regardless of whether the first
+  /// interview is still in progress, was rejected, or the offer was
+  /// declined — only advancing to a new [prologueWeek] frees the slot again.
+  /// `null` means no interview has ever been started.
+  final int? lastRecruitmentInterviewPrologueWeek;
 
   /// The player has opened/confirmed the SkillSheet before starting
   /// pre-joining sales (§33-34) — an explicit fact, like `inspectSkillSheet`
@@ -96,6 +110,7 @@ class PrologueState {
     this.candidateAId,
     this.candidateBId,
     this.interviewingCandidateId,
+    this.lastRecruitmentInterviewPrologueWeek,
     this.skillSheetConfirmed = false,
     this.targetProjectId,
     this.triedProjectIds = const [],
@@ -117,6 +132,7 @@ class PrologueState {
     String? candidateAId,
     String? candidateBId,
     Object? interviewingCandidateId = _unset,
+    Object? lastRecruitmentInterviewPrologueWeek = _unset,
     bool? skillSheetConfirmed,
     Object? targetProjectId = _unset,
     List<String>? triedProjectIds,
@@ -132,6 +148,9 @@ class PrologueState {
       interviewingCandidateId: identical(interviewingCandidateId, _unset)
           ? this.interviewingCandidateId
           : interviewingCandidateId as String?,
+      lastRecruitmentInterviewPrologueWeek: identical(lastRecruitmentInterviewPrologueWeek, _unset)
+          ? this.lastRecruitmentInterviewPrologueWeek
+          : lastRecruitmentInterviewPrologueWeek as int?,
       skillSheetConfirmed: skillSheetConfirmed ?? this.skillSheetConfirmed,
       targetProjectId: identical(targetProjectId, _unset)
           ? this.targetProjectId
@@ -149,6 +168,7 @@ class PrologueState {
     'candidateAId': candidateAId,
     'candidateBId': candidateBId,
     'interviewingCandidateId': interviewingCandidateId,
+    'lastRecruitmentInterviewPrologueWeek': lastRecruitmentInterviewPrologueWeek,
     'skillSheetConfirmed': skillSheetConfirmed,
     'targetProjectId': targetProjectId,
     'triedProjectIds': triedProjectIds,
@@ -167,6 +187,7 @@ class PrologueState {
       candidateAId: json['candidateAId'] as String?,
       candidateBId: json['candidateBId'] as String?,
       interviewingCandidateId: json['interviewingCandidateId'] as String?,
+      lastRecruitmentInterviewPrologueWeek: json['lastRecruitmentInterviewPrologueWeek'] as int?,
       skillSheetConfirmed: json['skillSheetConfirmed'] as bool? ?? false,
       targetProjectId: json['targetProjectId'] as String?,
       triedProjectIds: (json['triedProjectIds'] as List? ?? const []).cast<String>(),

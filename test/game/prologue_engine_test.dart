@@ -165,6 +165,143 @@ void main() {
     expect(blocked.prologueState.interviewingCandidateId, firstId);
   });
 
+  group('One interview per week is enforced by PrologueState history, not just UI (regression)', () {
+    GameState twoCandidatesAtWeek2({int seed = 7}) {
+      var state = PrologueEngine.newGame(seed: seed);
+      state = PrologueEngine.postFreeRecruitment(state);
+      state = PrologueEngine.advanceWeek(state);
+      expect(state.applicants, hasLength(2));
+      return state;
+    }
+
+    void runFullInterview(GameState Function() getState, void Function(GameState) setState, String applicantId) {
+      var s = getState();
+      s = GameEngine.askRecruitmentQuestion(s, applicantId, InterviewQuestionCategory.technical);
+      s = GameEngine.askRecruitmentQuestion(s, applicantId, InterviewQuestionCategory.teamwork);
+      s = GameEngine.askRecruitmentQuestion(s, applicantId, InterviewQuestionCategory.workStyle);
+      s = GameEngine.answerRecruitmentReverseQuestion(s, applicantId, 0);
+      setState(s);
+    }
+
+    test('1. mid-interview: a second candidate cannot be started while the first is still in progress', () {
+      final state = twoCandidatesAtWeek2();
+      final firstId = state.applicants.first.applicant.id;
+      final secondId = state.applicants.last.applicant.id;
+
+      var s = PrologueEngine.selectCandidateForInterview(state, firstId);
+      expect(s.prologueState.interviewingCandidateId, firstId);
+      expect(s.prologueState.lastRecruitmentInterviewPrologueWeek, s.prologueState.prologueWeek);
+
+      final blocked = PrologueEngine.selectCandidateForInterview(s, secondId);
+      expect(blocked.prologueState.interviewingCandidateId, firstId);
+      expect(blocked.recruitmentInterviews.where((i) => i.applicantId == secondId), isEmpty);
+    });
+
+    test('2. rejected: after the first candidate is explicitly rejected, a second candidate is still blocked this week', () {
+      final state = twoCandidatesAtWeek2();
+      final firstId = state.applicants.first.applicant.id;
+      final secondId = state.applicants.last.applicant.id;
+      final week = state.prologueState.prologueWeek;
+
+      var s = PrologueEngine.selectCandidateForInterview(state, firstId);
+      GameState captured = s;
+      runFullInterview(() => captured, (v) => captured = v, firstId);
+      s = captured;
+      s = GameEngine.completeRecruitmentInterview(s, firstId, InterviewOutcome.rejected);
+      s = PrologueEngine.decideCandidate(s, firstId, hire: false);
+
+      // interviewingCandidateId is cleared by the decision, but the week-level
+      // history must still block a second interview this same week.
+      expect(s.prologueState.interviewingCandidateId, isNull);
+      expect(s.prologueState.lastRecruitmentInterviewPrologueWeek, week);
+
+      final blocked = PrologueEngine.selectCandidateForInterview(s, secondId);
+      expect(blocked.recruitmentInterviews.where((i) => i.applicantId == secondId), isEmpty);
+      expect(blocked.prologueState.interviewingCandidateId, isNull);
+    });
+
+    test('3. declined offer: after the first candidate declines, a second candidate is still blocked this week', () {
+      // Force a decline deterministically by driving many seeds until one
+      // produces a decline at the hire step (§27 allows up to ~15%), rather
+      // than asserting on a single seed that might happen to accept.
+      GameState? declinedState;
+      String? firstId0, secondId0;
+      var week0 = -1;
+      for (var seed = 0; seed < 200 && declinedState == null; seed++) {
+        var state = twoCandidatesAtWeek2(seed: seed);
+        final firstId = state.applicants.first.applicant.id;
+        final secondId = state.applicants.last.applicant.id;
+        var s = PrologueEngine.selectCandidateForInterview(state, firstId);
+        GameState captured = s;
+        runFullInterview(() => captured, (v) => captured = v, firstId);
+        s = captured;
+        s = GameEngine.completeRecruitmentInterview(s, firstId, InterviewOutcome.hired);
+        final beforeHireCount = s.engineers.length;
+        s = PrologueEngine.decideCandidate(s, firstId, hire: true);
+        if (s.engineers.length == beforeHireCount) {
+          declinedState = s;
+          firstId0 = firstId;
+          secondId0 = secondId;
+          week0 = state.prologueState.prologueWeek;
+        }
+      }
+      expect(declinedState, isNotNull, reason: 'expected at least one decline within 200 seeds');
+      expect(declinedState!.engineers, isEmpty);
+      expect(declinedState.prologueState.interviewingCandidateId, isNull);
+      expect(declinedState.prologueState.lastRecruitmentInterviewPrologueWeek, week0);
+
+      final blocked = PrologueEngine.selectCandidateForInterview(declinedState, secondId0!);
+      expect(blocked.recruitmentInterviews.where((i) => i.applicantId == secondId0), isEmpty);
+      // Sanity: secondId0/firstId0 are genuinely distinct candidates.
+      expect(secondId0, isNot(firstId0));
+    });
+
+    test('4. next prologueWeek: the remaining/new applicant becomes interviewable again', () {
+      final state = twoCandidatesAtWeek2();
+      final firstId = state.applicants.first.applicant.id;
+      final secondId = state.applicants.last.applicant.id;
+
+      var s = PrologueEngine.selectCandidateForInterview(state, firstId);
+      GameState captured = s;
+      runFullInterview(() => captured, (v) => captured = v, firstId);
+      s = captured;
+      s = GameEngine.completeRecruitmentInterview(s, firstId, InterviewOutcome.rejected);
+      s = PrologueEngine.decideCandidate(s, firstId, hire: false);
+
+      // Still blocked same week.
+      expect(PrologueEngine.selectCandidateForInterview(s, secondId).prologueState.interviewingCandidateId, isNull);
+
+      // Advance to the next prologueWeek — the rescue/remaining candidate
+      // pool restocks per _ensureRescueCandidateIfNeeded, and the slot frees.
+      s = PrologueEngine.advanceWeek(s);
+      expect(s.applicants, isNotEmpty);
+      final nextId = s.applicants.first.applicant.id;
+      final resumed = PrologueEngine.selectCandidateForInterview(s, nextId);
+      expect(resumed.prologueState.interviewingCandidateId, nextId);
+      expect(resumed.recruitmentInterviews.where((i) => i.applicantId == nextId), isNotEmpty);
+    });
+
+    test('5. save/reload: the one-per-week constraint survives a JSON round-trip', () {
+      final state = twoCandidatesAtWeek2();
+      final firstId = state.applicants.first.applicant.id;
+      final secondId = state.applicants.last.applicant.id;
+
+      var s = PrologueEngine.selectCandidateForInterview(state, firstId);
+      GameState captured = s;
+      runFullInterview(() => captured, (v) => captured = v, firstId);
+      s = captured;
+      s = GameEngine.completeRecruitmentInterview(s, firstId, InterviewOutcome.rejected);
+      s = PrologueEngine.decideCandidate(s, firstId, hire: false);
+
+      final reloaded = GameState.fromJson(s.toJson());
+      expect(reloaded.prologueState.lastRecruitmentInterviewPrologueWeek, s.prologueState.lastRecruitmentInterviewPrologueWeek);
+      expect(reloaded.prologueState.interviewingCandidateId, isNull);
+
+      final blocked = PrologueEngine.selectCandidateForInterview(reloaded, secondId);
+      expect(blocked.recruitmentInterviews.where((i) => i.applicantId == secondId), isEmpty);
+    });
+  });
+
   test('recruitment interview → hire produces a real Engineer, not a PendingHire (§27-31)', () {
     var state = playThroughToHireDecision(seed: 3);
     expect(state.engineers, hasLength(1));

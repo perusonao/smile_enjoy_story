@@ -264,11 +264,24 @@ class PrologueEngine {
     );
   }
 
+  /// §21: "1週間に1人まで" — enforced against
+  /// [PrologueState.lastRecruitmentInterviewPrologueWeek], which (unlike
+  /// [PrologueState.interviewingCandidateId]) is never cleared once an
+  /// interview starts this [PrologueState.prologueWeek], regardless of
+  /// whether that interview is still in progress or has already been
+  /// decided (hired/rejected/declined). Only advancing to the next
+  /// prologueWeek frees the slot again.
   static GameState selectCandidateForInterview(GameState state, String applicantId) {
     if (state.prologueState.interviewingCandidateId != null) return state;
+    if (state.prologueState.lastRecruitmentInterviewPrologueWeek == state.prologueState.prologueWeek) return state;
     if (!state.applicants.any((e) => e.applicant.id == applicantId)) return state;
     final withSession = GameEngine.interviewApplicant(state, applicantId);
-    return withSession.copyWith(prologueState: withSession.prologueState.copyWith(interviewingCandidateId: applicantId));
+    return withSession.copyWith(
+      prologueState: withSession.prologueState.copyWith(
+        interviewingCandidateId: applicantId,
+        lastRecruitmentInterviewPrologueWeek: state.prologueState.prologueWeek,
+      ),
+    );
   }
 
   /// 85-95% acceptance for the Prologue's first hire (§27) — deliberately not

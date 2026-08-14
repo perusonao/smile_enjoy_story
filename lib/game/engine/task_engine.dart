@@ -1,5 +1,6 @@
 import '../../domain/domain.dart';
 import '../models/models.dart';
+import 'employee_workflow_engine.dart';
 import 'finance_engine.dart';
 import 'morale_engine.dart';
 
@@ -121,8 +122,18 @@ class TaskEngine {
       );
     }
 
+    // Playable 0.4C.4 §21-27: `waitingStreak` accrues for any engineer whose
+    // raw `EngineerStatus` is still `waiting` — which includes employees who
+    // are actively selling, mid-selection, or scheduled to start. Salary
+    // keeps accruing for them too, but that's ordinary "economic waiting",
+    // not something the player forgot to act on — only genuinely idle
+    // (EmployeeWorkflowState.waiting, i.e. not selling either) employees
+    // should ever surface as a Critical/Warning "start selling" nag.
+    bool genuinelyIdle(String engineerId) =>
+        EmployeeWorkflowEngine.forEngineer(state, engineerId) == EmployeeWorkflowState.waiting;
+
     final longWaiters =
-        state.waitingStreak.entries.where((e) => e.value >= 3).toList()
+        state.waitingStreak.entries.where((e) => e.value >= 3 && genuinelyIdle(e.key)).toList()
           ..sort((a, b) => b.value.compareTo(a.value));
     for (final entry in longWaiters.take(_maxIndividualWaitingTasks)) {
       final engineer = state.engineers
@@ -154,7 +165,7 @@ class TaskEngine {
 
     // --- Warning --------------------------------------------------------
     final twoWeekWaiters =
-        state.waitingStreak.entries.where((e) => e.value == 2).toList()
+        state.waitingStreak.entries.where((e) => e.value == 2 && genuinelyIdle(e.key)).toList()
           ..sort((a, b) => b.value.compareTo(a.value));
     for (final entry in twoWeekWaiters.take(_maxIndividualWaitingTasks)) {
       final engineer = state.engineers
@@ -173,7 +184,7 @@ class TaskEngine {
     }
 
     final freshWaiters = state.waitingStreak.entries
-        .where((e) => e.value == 1)
+        .where((e) => e.value == 1 && genuinelyIdle(e.key))
         .length;
     if (freshWaiters > 0) {
       tasks.add(
@@ -234,6 +245,29 @@ class TaskEngine {
     }
 
     // --- Info -------------------------------------------------------------
+    // Playable 0.4C.4 §21-27: employees who are busy (selling, mid-selection,
+    // scheduled) but have nonetheless been "待機" a while economically get a
+    // quiet Info line instead of no visibility at all — the player can see
+    // salary is still accruing without it reading as something to fix.
+    final busyLongWaiters = state.waitingStreak.entries
+        .where((e) => e.value >= 3 && !genuinelyIdle(e.key))
+        .toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+    for (final entry in busyLongWaiters.take(_maxIndividualWaitingTasks)) {
+      final engineer = state.engineers.where((e) => e.id == entry.key).firstOrNull;
+      if (engineer == null) continue;
+      final workflowLabel = EmployeeWorkflowEngine.labels[EmployeeWorkflowEngine.forEngineer(state, entry.key)];
+      tasks.add(
+        HomeTask(
+          id: 'waiting-busy-info-${entry.key}',
+          priority: TaskPriority.info,
+          title: '${engineer.profile.name} が待機${entry.value}週目・$workflowLabel',
+          targetType: TaskTargetType.employeeDetail,
+          targetId: engineer.id,
+        ),
+      );
+    }
+
     final newApplicants = state.applicants
         .where((e) => e.appearedWeek == state.week)
         .length;

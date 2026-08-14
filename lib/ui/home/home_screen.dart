@@ -221,10 +221,16 @@ class _HomeScreenState extends State<HomeScreen> {
     final tutorialActive = ProgressionEngine.showFoundingMission(state);
     final guided = ProgressionEngine.guidedAction(state);
     final allTasks = TaskEngine.generateTasks(state);
-    final criticalTasks = allTasks.where((t) => t.priority == TaskPriority.critical).toList();
+    final allCriticalTasks = allTasks.where((t) => t.priority == TaskPriority.critical).toList();
     // During the tutorial, only Critical ever appears in the primary list —
     // everything else collapses under "その他" so "今やること" stays the
-    // one obvious next step (§9-11, §33-34, §45).
+    // one obvious next step (§9-11, §33-34, §45). Playable 0.4C.4 §21-27:
+    // even Critical is capped at 2 expanded cards during the tutorial — any
+    // further ones still exist (the Next Week Guard still lists every one
+    // of them) but collapse under "その他" too, so a burst of notices never
+    // buries the single guided action.
+    const maxTutorialCriticalCards = 2;
+    final criticalTasks = tutorialActive ? allCriticalTasks.take(maxTutorialCriticalCards).toList() : allCriticalTasks;
     final primaryTasks = tutorialActive ? criticalTasks : RecommendationEngine.recommendedActions(state);
     final primaryIds = primaryTasks.map((t) => t.id).toSet();
     final collapsedTasks = allTasks.where((t) => !primaryIds.contains(t.id)).toList();

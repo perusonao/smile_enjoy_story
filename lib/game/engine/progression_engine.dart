@@ -1,5 +1,6 @@
 import '../../domain/domain.dart';
 import '../models/models.dart';
+import 'employee_workflow_engine.dart';
 
 /// The single "今やること" (do-this-next) action for the guided founding
 /// flow (Playable 0.4C.2 §9-10, §47). Home, the employee-detail banner and
@@ -173,6 +174,20 @@ class ProgressionEngine {
   // without altering anyone's actual ability.
   // -------------------------------------------------------------------
 
+  /// Playable 0.4C.4 §37-41 balance-priority lever 5: a small, tightly
+  /// scoped selection-success-rate safety net — active only for the guided
+  /// tutorial's focus employee, before their first assignment, and never in
+  /// free/skipped mode. Root-cause simulation (tool/simulate_first_assignment.dart)
+  /// found the dominant blocker wasn't project mix or Fit (the deterministic
+  /// founder roster already has a well-fit initial project) but the flat
+  /// -35 `fromInterviewOffer` selection-rate penalty compounding across
+  /// 3-4 sequential steps — this narrows that penalty by 10pt in exactly
+  /// this scope, never guarantees a pass, and never touches Free Mode.
+  static bool guidedSafetyNetActive(GameState state, String engineerId) =>
+      !state.foundingProgress.tutorialSkipped &&
+      focusEmployeeId(state) == engineerId &&
+      !state.foundingProgress.has(FoundingMilestone.firstAssignment);
+
   static String? focusEmployeeId(GameState state) {
     if (state.engineers.isEmpty) return null;
     final founders = state.engineers.where((e) => e.id.startsWith('engineer-founder-')).toList();
@@ -274,123 +289,195 @@ class ProgressionEngine {
           canAdvanceWeek: true,
         );
       case FoundingStage.clientInterview:
-        final pendingInterviewOffer = focusId == null
-            ? const <InterviewOffer>[]
-            : state.interviewOffers
-                .where((o) => o.employeeId == focusId && o.status == InterviewOfferStatus.pending)
-                .toList();
-        final pendingClientInterview = focusId == null
-            ? const <ProjectProposal>[]
-            : state.proposals
-                .where(
-                  (p) =>
-                      p.engineerId == focusId &&
-                      p.status == ApplicationStatus.active &&
-                      p.currentStep == SelectionStep.clientInterview &&
-                      !state.clientInterviews.any(
-                        (s) => s.applicationId == p.id && s.completed,
-                      ),
-                )
-                .toList();
-        if (pendingClientInterview.isNotEmpty) {
+        // Playable 0.4C.4 §15-19: the sub-message is derived from
+        // EmployeeWorkflowEngine's *current* state, not from ad-hoc
+        // pending-list checks — so it immediately reflects reality after a
+        // selection/client-interview failure or a declined interview
+        // request (the employee reverts to `selling`, not to some stuck
+        // "選考が進行中" limbo) instead of going stale.
+        if (focusId == null) {
           return GuidedAction(
             stage: stage,
             stepNumber: stepNumber,
             totalSteps: totalSteps,
-            title: '初めての客先面談です',
-            description:
-                '${focus?.profile.name ?? '社員'}さんが客先から質問を受けます。\n'
-                'あなたは営業として、必要に応じてフォローします。',
-            ctaLabel: '面談をプレイ',
-            targetType: TaskTargetType.employeeDetail,
-            targetId: focusId,
-          );
-        }
-        if (pendingInterviewOffer.isNotEmpty) {
-          return GuidedAction(
-            stage: stage,
-            stepNumber: stepNumber,
-            totalSteps: totalSteps,
-            title: '面談依頼が届きました',
-            description: 'まずは面談を経験することをおすすめします（断ることもできます）。',
-            ctaLabel: '面談依頼を見る',
-            targetType: TaskTargetType.employeeDetail,
-            targetId: focusId,
-          );
-        }
-        // Nothing pending: either a selection step is quietly progressing
-        // (advance week), or sales stopped somehow and needs restarting.
-        final stillActive = focus != null && focus.salesStatus != SalesStatus.notSelling;
-        if (!stillActive) {
-          return GuidedAction(
-            stage: stage,
-            stepNumber: stepNumber,
-            totalSteps: totalSteps,
-            title: '営業を再開しましょう',
-            description: '営業が停止しています。営業を再開すると、選考の続きが進むようになります。',
-            ctaLabel: '営業を再開する',
-            targetType: TaskTargetType.employeeDetail,
-            targetId: focusId,
-          );
-        }
-        return GuidedAction(
-          stage: stage,
-          stepNumber: stepNumber,
-          totalSteps: totalSteps,
-          title: '選考結果を待っています',
-          description: '次の週へ進めると、選考が進みます。',
-          canAdvanceWeek: true,
-        );
-      case FoundingStage.awaitingAssignment:
-        final pendingOffer = focusId == null
-            ? null
-            : state.offers.where((o) => o.employeeId == focusId && o.status == OfferStatus.pending).firstOrNull;
-        if (pendingOffer != null) {
-          return GuidedAction(
-            stage: stage,
-            stepNumber: stepNumber,
-            totalSteps: totalSteps,
-            title: '参画オファーが届きました',
-            description: '${focus?.profile.name ?? '社員'}さんに参画オファーが届いています。受けるか判断してください。',
-            ctaLabel: '参画オファーを確認',
-            targetType: TaskTargetType.employeeDetail,
-            targetId: focusId,
-          );
-        }
-        final accepted = focusId == null
-            ? null
-            : state.proposalForEngineer(focusId);
-        if (accepted != null && accepted.status == ApplicationStatus.accepted) {
-          return GuidedAction(
-            stage: stage,
-            stepNumber: stepNumber,
-            totalSteps: totalSteps,
-            title: '参画開始を待っています',
-            description: '${focus?.profile.name ?? '社員'}さんは来週から案件に参画予定です。',
+            title: '選考結果を待っています',
+            description: '次の週へ進めましょう。',
             canAdvanceWeek: true,
           );
         }
-        final stillActive = focus != null && focus.salesStatus != SalesStatus.notSelling;
-        if (!stillActive) {
+        switch (EmployeeWorkflowEngine.forEngineer(state, focusId)) {
+          case EmployeeWorkflowState.clientInterviewActionRequired:
+            return GuidedAction(
+              stage: stage,
+              stepNumber: stepNumber,
+              totalSteps: totalSteps,
+              title: '初めての客先面談です',
+              description:
+                  '${focus?.profile.name ?? '社員'}さんが客先から質問を受けます。\n'
+                  'あなたは営業として、必要に応じてフォローします。',
+              ctaLabel: '面談をプレイ',
+              targetType: TaskTargetType.employeeDetail,
+              targetId: focusId,
+            );
+          case EmployeeWorkflowState.interviewRequestPending:
+            return GuidedAction(
+              stage: stage,
+              stepNumber: stepNumber,
+              totalSteps: totalSteps,
+              title: '面談依頼が届きました',
+              description: 'まずは面談を経験することをおすすめします（断ることもできます）。',
+              ctaLabel: '面談依頼を見る',
+              targetType: TaskTargetType.employeeDetail,
+              targetId: focusId,
+            );
+          case EmployeeWorkflowState.finalOfferPending:
+            return GuidedAction(
+              stage: stage,
+              stepNumber: stepNumber,
+              totalSteps: totalSteps,
+              title: '参画オファーが届きました',
+              description: '${focus?.profile.name ?? '社員'}さんに参画オファーが届いています。受けるか判断してください。',
+              ctaLabel: '参画オファーを確認',
+              targetType: TaskTargetType.employeeDetail,
+              targetId: focusId,
+            );
+          case EmployeeWorkflowState.waitingSelectionResult:
+            return GuidedAction(
+              stage: stage,
+              stepNumber: stepNumber,
+              totalSteps: totalSteps,
+              title: '選考結果を待っています',
+              description: '次の週へ進めると、選考が進みます。',
+              canAdvanceWeek: true,
+            );
+          case EmployeeWorkflowState.assignmentScheduled:
+          case EmployeeWorkflowState.assigned:
+            return GuidedAction(
+              stage: stage,
+              stepNumber: stepNumber,
+              totalSteps: totalSteps,
+              title: '次の週へ進めましょう',
+              description: '選考が進んでいます。',
+              canAdvanceWeek: true,
+            );
+          case EmployeeWorkflowState.selling:
+            return GuidedAction(
+              stage: stage,
+              stepNumber: stepNumber,
+              totalSteps: totalSteps,
+              title: '営業を続けています',
+              description: '次の面談依頼を待ちましょう。次の週へ進めても大丈夫です。',
+              secondaryInfo: '現在 ${state.unlockedClientCount}社へSkillSheet公開中',
+              canAdvanceWeek: true,
+            );
+          case EmployeeWorkflowState.waiting:
+            return GuidedAction(
+              stage: stage,
+              stepNumber: stepNumber,
+              totalSteps: totalSteps,
+              title: '営業を再開しましょう',
+              description: '営業が停止しています。営業を再開すると、選考の続きが進むようになります。',
+              ctaLabel: '営業を再開する',
+              targetType: TaskTargetType.employeeDetail,
+              targetId: focusId,
+            );
+        }
+      case FoundingStage.awaitingAssignment:
+        // Playable 0.4C.4 §15-19: same EmployeeWorkflowEngine-driven
+        // derivation as the clientInterview stage above — "選考が進行中で
+        // す" is only ever shown when a selection is genuinely active.
+        if (focusId == null) {
           return GuidedAction(
             stage: stage,
             stepNumber: stepNumber,
             totalSteps: totalSteps,
-            title: '営業を再開しましょう',
-            description: '営業が停止しています。1人目の案件参画を目指し、営業を再開しましょう。',
-            ctaLabel: '営業を再開する',
-            targetType: TaskTargetType.employeeDetail,
-            targetId: focusId,
+            title: '次の目標: 1人目の案件参画',
+            description: '次の週へ進めましょう。',
+            canAdvanceWeek: true,
           );
         }
-        return GuidedAction(
-          stage: stage,
-          stepNumber: stepNumber,
-          totalSteps: totalSteps,
-          title: '次の目標: 1人目の案件参画',
-          description: '選考が進行中です。次の週へ進めましょう。',
-          canAdvanceWeek: true,
-        );
+        switch (EmployeeWorkflowEngine.forEngineer(state, focusId)) {
+          case EmployeeWorkflowState.finalOfferPending:
+            return GuidedAction(
+              stage: stage,
+              stepNumber: stepNumber,
+              totalSteps: totalSteps,
+              title: '参画オファーが届きました',
+              description: '${focus?.profile.name ?? '社員'}さんに参画オファーが届いています。受けるか判断してください。',
+              ctaLabel: '参画オファーを確認',
+              targetType: TaskTargetType.employeeDetail,
+              targetId: focusId,
+            );
+          case EmployeeWorkflowState.assignmentScheduled:
+            return GuidedAction(
+              stage: stage,
+              stepNumber: stepNumber,
+              totalSteps: totalSteps,
+              title: '参画開始を待っています',
+              description: '${focus?.profile.name ?? '社員'}さんは来週から案件に参画予定です。',
+              canAdvanceWeek: true,
+            );
+          case EmployeeWorkflowState.assigned:
+            return GuidedAction(
+              stage: stage,
+              stepNumber: stepNumber,
+              totalSteps: totalSteps,
+              title: '次の週へ進めましょう',
+              description: '参画が始まっています。',
+              canAdvanceWeek: true,
+            );
+          case EmployeeWorkflowState.clientInterviewActionRequired:
+            return GuidedAction(
+              stage: stage,
+              stepNumber: stepNumber,
+              totalSteps: totalSteps,
+              title: '客先面談があります',
+              description: '${focus?.profile.name ?? '社員'}さんの客先面談です。今週中にプレイするか、社員に任せてください。',
+              ctaLabel: '面談を確認',
+              targetType: TaskTargetType.employeeDetail,
+              targetId: focusId,
+            );
+          case EmployeeWorkflowState.interviewRequestPending:
+            return GuidedAction(
+              stage: stage,
+              stepNumber: stepNumber,
+              totalSteps: totalSteps,
+              title: '面談依頼が届きました',
+              description: '受けるか断るか判断してください。',
+              ctaLabel: '面談依頼を見る',
+              targetType: TaskTargetType.employeeDetail,
+              targetId: focusId,
+            );
+          case EmployeeWorkflowState.waitingSelectionResult:
+            return GuidedAction(
+              stage: stage,
+              stepNumber: stepNumber,
+              totalSteps: totalSteps,
+              title: '次の目標: 1人目の案件参画',
+              description: '選考が進行中です。次の週へ進めましょう。',
+              canAdvanceWeek: true,
+            );
+          case EmployeeWorkflowState.selling:
+            return GuidedAction(
+              stage: stage,
+              stepNumber: stepNumber,
+              totalSteps: totalSteps,
+              title: '次の目標: 1人目の案件参画',
+              description: '営業を続けています。次の面談依頼を待ちましょう。',
+              canAdvanceWeek: true,
+            );
+          case EmployeeWorkflowState.waiting:
+            return GuidedAction(
+              stage: stage,
+              stepNumber: stepNumber,
+              totalSteps: totalSteps,
+              title: '営業を再開しましょう',
+              description: '営業が停止しています。1人目の案件参画を目指し、営業を再開しましょう。',
+              ctaLabel: '営業を再開する',
+              targetType: TaskTargetType.employeeDetail,
+              targetId: focusId,
+            );
+        }
       case FoundingStage.recruitment:
         final activeListing = state.listings.any((l) => l.isActiveOn(state.week));
         final uninterviewed = state.applicants
@@ -520,8 +607,4 @@ class ProgressionEngine {
     OneTimeEvent.contractRenewalTutorial,
     OneTimeEvent.clientUnlockTutorial,
   ];
-}
-
-extension _FirstOrNull<T> on Iterable<T> {
-  T? get firstOrNull => isEmpty ? null : first;
 }

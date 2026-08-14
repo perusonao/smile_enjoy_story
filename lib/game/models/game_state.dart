@@ -1,6 +1,7 @@
 import '../../domain/domain.dart';
 import 'accounts_receivable.dart';
 import 'applicant_entry.dart';
+import 'founding_progress.dart';
 import 'game_log_entry.dart';
 import 'game_stats.dart';
 import 'game_status.dart';
@@ -17,6 +18,11 @@ import 'client_interview.dart';
 /// Bumped whenever a save-incompatible change is made to [GameState]'s
 /// shape (Playable 0.3A §26). [SaveService] resets to a new game rather
 /// than crashing when a loaded save's version doesn't match.
+///
+/// [foundingProgress] was added in Playable 0.4C.1 without bumping this —
+/// [FoundingProgress.fromJson] treats a missing key as "this save predates
+/// the guided-founding tutorial" and grants full access instead (§48), so
+/// existing 0.4C saves keep loading normally rather than being wiped.
 const int currentSchemaVersion = 6;
 const int maxParallelProposalsPerEmployee = 3;
 const int maxActiveCompanyProposals = 6;
@@ -66,6 +72,9 @@ class GameState {
   final List<GameLogEntry> events;
   final GameStats stats;
   final GameStatus status;
+
+  /// Guided-founding progression (Playable 0.4C.1 §4, §48).
+  final FoundingProgress foundingProgress;
 
   /// Lent-laptop assignments, one entry per employee (Playable 0.4C §12).
   final List<EmployeeEquipment> equipment;
@@ -122,6 +131,7 @@ class GameState {
     required this.events,
     required this.stats,
     required this.status,
+    this.foundingProgress = FoundingProgress.initial,
     this.equipment = const [],
     this.lastHealthCheckWeek,
     this.lastBonusWeek,
@@ -254,6 +264,7 @@ class GameState {
     List<GameLogEntry>? events,
     GameStats? stats,
     GameStatus? status,
+    FoundingProgress? foundingProgress,
     List<EmployeeEquipment>? equipment,
     int? lastHealthCheckWeek,
     int? lastBonusWeek,
@@ -290,6 +301,7 @@ class GameState {
       events: events ?? this.events,
       stats: stats ?? this.stats,
       status: status ?? this.status,
+      foundingProgress: foundingProgress ?? this.foundingProgress,
       equipment: equipment ?? this.equipment,
       lastHealthCheckWeek: lastHealthCheckWeek ?? this.lastHealthCheckWeek,
       lastBonusWeek: lastBonusWeek ?? this.lastBonusWeek,
@@ -339,6 +351,7 @@ class GameState {
     'events': events.map((e) => e.toJson()).toList(),
     'stats': stats.toJson(),
     'status': status.jsonValue,
+    'foundingProgress': foundingProgress.toJson(),
     'equipment': equipment.map((e) => e.toJson()).toList(),
     'lastHealthCheckWeek': lastHealthCheckWeek,
     'lastBonusWeek': lastBonusWeek,
@@ -404,6 +417,9 @@ class GameState {
         .toList(),
     stats: GameStats.fromJson(json['stats'] as Map<String, dynamic>),
     status: GameStatus.fromJson(json['status'] as String),
+    foundingProgress: FoundingProgress.fromJson(
+      json['foundingProgress'] as Map<String, dynamic>?,
+    ),
     equipment: (json['equipment'] as List? ?? const [])
         .map((e) => EmployeeEquipment.fromJson(e as Map<String, dynamic>))
         .toList(),

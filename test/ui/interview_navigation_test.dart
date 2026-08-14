@@ -59,11 +59,17 @@ void main(){
   testWidgets('hire result CTA returns to recruitment without dead-end',(tester)async{
     await _openSummary(tester); await tester.tap(find.text('採用する')); await tester.pumpAndSettle();
     expect(find.textContaining('内定'),findsWidgets); await tester.tap(find.text('採用画面へ戻る')); await tester.pumpAndSettle();
+    // First-ever recruitment interview also surfaces a one-time founding
+    // celebration dialog (Playable 0.4C.1 §23) before returning.
+    expect(find.text('初めての採用面接が終わりました'),findsOneWidget);
+    await tester.tap(find.text('OK')); await tester.pumpAndSettle();
     expect(find.text('採用画面'),findsOneWidget); expect(tester.takeException(),isNull);
   });
   testWidgets('reject result CTA returns to recruitment without dead-end',(tester)async{
     await _openSummary(tester); await tester.tap(find.text('不採用')); await tester.pumpAndSettle();
     expect(find.text('不採用'),findsOneWidget); await tester.tap(find.text('採用画面へ戻る')); await tester.pumpAndSettle();
+    expect(find.text('初めての採用面接が終わりました'),findsOneWidget);
+    await tester.tap(find.text('OK')); await tester.pumpAndSettle();
     expect(find.text('採用画面'),findsOneWidget); expect(tester.takeException(),isNull);
   });
 }

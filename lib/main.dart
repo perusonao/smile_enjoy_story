@@ -9,6 +9,7 @@ import 'ui/result/game_over_screen.dart';
 import 'ui/result/result_screen.dart';
 import 'ui/theme.dart';
 import 'ui/widgets/phone_frame.dart';
+import 'ui/widgets/start_choice_screen.dart';
 
 void main() {
   runApp(SesApp(controller: GameController()));
@@ -52,6 +53,9 @@ class _GameRoot extends StatelessWidget {
           return const PhoneFrame(
             child: Scaffold(body: Center(child: CircularProgressIndicator())),
           );
+        }
+        if (controller.showStartChoice) {
+          return const PhoneFrame(child: StartChoiceScreen());
         }
         switch (controller.state.status) {
           case GameStatus.playing:

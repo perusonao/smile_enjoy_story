@@ -3,6 +3,7 @@ import '../../app/game_scope.dart';
 import '../../app/nav_scope.dart';
 import '../../game/game.dart';
 import '../main_shell.dart';
+import '../widgets/founding_dialogs.dart';
 
 class RecruitmentInterviewScreen extends StatelessWidget {
   const RecruitmentInterviewScreen({super.key, required this.applicantId});
@@ -63,6 +64,23 @@ class _Summary extends StatelessWidget {
         actions: [FilledButton(onPressed: () => Navigator.of(dialogContext).pop(), child: const Text('採用画面へ戻る'))],
       ),
     );
+    // Use `navigator`'s own (stable) context, not the original `_Summary`
+    // BuildContext — hiring/rejecting removes the applicant from
+    // `state.applicants`, which unmounts `_Summary` on the next rebuild
+    // (RecruitmentInterviewScreen falls back to its "not found" branch).
+    final stableContext = navigator.context;
+    for (final event in ProgressionEngine.pendingEvents(controller.state, const [
+      OneTimeEvent.recruitmentInterviewCelebration,
+      OneTimeEvent.welfareUnlockCelebration,
+    ])) {
+      if (!stableContext.mounted) break;
+      final dialog = buildFoundingEventDialog(event, controller.state);
+      controller.markTutorialSeen(event);
+      if (dialog != null && stableContext.mounted) {
+        await showFoundingEventDialog(stableContext, dialog);
+      }
+    }
+    if (!stableContext.mounted) return;
     tabIndex.value = SesTab.recruitment;
     navigator.popUntil((route) => route.isFirst);
   }

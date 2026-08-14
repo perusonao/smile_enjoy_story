@@ -7,6 +7,7 @@ export 'calendar.dart';
 export 'client_interview.dart';
 export 'company_type.dart';
 export 'fit_result.dart';
+export 'founding_progress.dart';
 export 'game_log_entry.dart';
 export 'game_rank.dart';
 export 'game_state.dart';

@@ -3,6 +3,7 @@ import '../models/models.dart';
 import 'finance_engine.dart';
 import 'matching_engine.dart';
 import 'morale_engine.dart';
+import 'progression_engine.dart';
 import 'project_interview_engine.dart';
 import 'recruitment_engine.dart';
 import 'recruitment_interview_engine.dart';
@@ -21,6 +22,38 @@ import 'welfare_engine.dart';
 /// except [newGame]'s market seed (only when the caller doesn't supply one).
 class GameEngine {
   const GameEngine._();
+
+  // ---------------------------------------------------------------------
+  // Guided founding progression (Playable 0.4C.1)
+  // ---------------------------------------------------------------------
+
+  /// Marks [milestone] complete (idempotent — see
+  /// [FoundingProgress.withMilestone]). Used both for state-driven
+  /// milestones recorded internally below, and for the two purely
+  /// UI-driven ones (`inspectEmployee`, `inspectSkillSheet`) that the
+  /// controller calls directly when those screens are opened.
+  static GameState recordMilestone(GameState state, FoundingMilestone milestone) =>
+      state.copyWith(
+        foundingProgress: state.foundingProgress.withMilestone(milestone, state.week),
+      );
+
+  /// Marks a one-time celebration/contextual-tutorial [event] as shown.
+  static GameState markTutorialSeen(GameState state, OneTimeEvent event) =>
+      state.copyWith(
+        foundingProgress: state.foundingProgress.withTutorialSeen(event),
+      );
+
+  /// "自由に開始" at new-game start (§41-42): unlocks every feature and
+  /// hides the founding-mission guidance for the rest of the playthrough.
+  static GameState skipFoundingTutorial(GameState state) =>
+      state.copyWith(
+        foundingProgress: state.foundingProgress.withTutorialSkipped(),
+      );
+
+  /// The player tapped "経営を続ける" on the final founding-mission step
+  /// (§27-28) — moves to free management.
+  static GameState completeFoundingTutorial(GameState state) =>
+      recordMilestone(state, FoundingMilestone.freeManagement);
 
   /// Fixed seed for the two founding engineers/projects, so every new game
   /// starts from the same roster regardless of the chosen market [seed]
@@ -168,7 +201,7 @@ class GameEngine {
     if (index < 0 || !state.recruitmentInterviews[index].conversationComplete) return state;
     final sessions = [...state.recruitmentInterviews];
     sessions[index] = sessions[index].copyWith(completed: true, outcome: outcome);
-    return state.copyWith(recruitmentInterviews: sessions, interviewedApplicantIds: {...state.interviewedApplicantIds, applicantId});
+    return recordMilestone(state, FoundingMilestone.firstRecruitmentInterview).copyWith(recruitmentInterviews: sessions, interviewedApplicantIds: {...state.interviewedApplicantIds, applicantId});
   }
 
   static GameState rejectApplicant(GameState state, String applicantId) {
@@ -1096,6 +1129,13 @@ class GameEngine {
       next = next.copyWith(stats: next.stats.withRunwaySample(runway));
     }
 
+    if (generatedInterviewOffers.isNotEmpty) {
+      next = recordMilestone(next, FoundingMilestone.receiveInterviewOffer);
+    }
+    if (newAssignments.isNotEmpty) {
+      next = recordMilestone(next, FoundingMilestone.firstAssignment);
+    }
+
     return next;
   }
 
@@ -1212,6 +1252,22 @@ class GameEngine {
       'bankruptMonth': GameCalendar.absoluteMonth(state.bankruptWeek!),
     if (state.stats.averageCashRunwayMonths != null)
       'averageCashRunway': state.stats.averageCashRunwayMonths,
+    // Guided founding (Playable 0.4C.1 §49) --------------------------------
+    'tutorialEnabled': !state.foundingProgress.tutorialSkipped,
+    'tutorialSkipped': state.foundingProgress.tutorialSkipped,
+    'tutorialCompleted': ProgressionEngine.currentStage(state) == FoundingStage.freeManagement,
+    'tutorialCompletionWeek': state.foundingProgress.milestoneWeeks[FoundingMilestone.freeManagement],
+    'timeToFirstSalesStart': state.foundingProgress.milestoneWeeks[FoundingMilestone.startSales],
+    'timeToFirstInterviewOffer': state.foundingProgress.milestoneWeeks[FoundingMilestone.receiveInterviewOffer],
+    'timeToFirstClientInterview': state.foundingProgress.milestoneWeeks[FoundingMilestone.completeClientInterview],
+    'timeToFirstAssignment': state.foundingProgress.milestoneWeeks[FoundingMilestone.firstAssignment],
+    'timeToRecruitmentUnlock': state.foundingProgress.milestoneWeeks[FoundingMilestone.firstAssignment],
+    'timeToWelfareUnlock': (() {
+      final assignmentWeek = state.foundingProgress.milestoneWeeks[FoundingMilestone.firstAssignment];
+      final interviewWeek = state.foundingProgress.milestoneWeeks[FoundingMilestone.firstRecruitmentInterview];
+      if (assignmentWeek == null || interviewWeek == null) return null;
+      return assignmentWeek > interviewWeek ? assignmentWeek : interviewWeek;
+    })(),
   };
   static GameState editSkillSheet(GameState state, SkillSheet requested) {
     final index=state.engineers.indexWhere((e)=>e.id==requested.employeeId); if(index<0) return state;
@@ -1226,7 +1282,7 @@ class GameEngine {
     final index=state.engineers.indexWhere((e)=>e.id==employeeId); if(index<0) return state; final engineer=state.engineers[index];
     if(engineer.salesStatus==SalesStatus.selling || engineer.salesStatus==SalesStatus.interviewing) return state;
     final engineers=[...state.engineers]; engineers[index]=engineer.copyWith(salesStatus:SalesStatus.selling,availableFromWeek:engineer.status==EngineerStatus.assigned?state.assignmentForEngineer(employeeId)!.contractEndWeek+1:state.week);
-    return state.copyWith(engineers:engineers).withLog('${engineer.profile.name}さんの営業を開始しました（公開先 ${state.unlockedClientCount}社）');
+    return recordMilestone(state.copyWith(engineers:engineers),FoundingMilestone.startSales).withLog('${engineer.profile.name}さんの営業を開始しました（公開先 ${state.unlockedClientCount}社）');
   }
 
   static GameState acceptInterviewOffer(GameState state,String offerId){
@@ -1256,7 +1312,7 @@ class GameEngine {
 
   static GameState autoResolveClientInterview(GameState state,String applicationId){final p=state.proposals.where((p)=>p.id==applicationId&&p.status==ApplicationStatus.active&&p.currentStep==SelectionStep.clientInterview).firstOrNull;if(p==null)return state;final e=state.engineerById(p.engineerId),sheet=state.skillSheetFor(e.id);final (next,id)=state.mintId('client-interview');final qs=ClientInterviewEngine.questions(seed:state.seed,employee:e,project:p.project,sheet:sheet);var s=ClientInterviewSession(id:id,applicationId:p.id,employeeId:e.id,projectId:p.project.id,clientId:p.project.clientId,startedWeek:state.week,questions:qs);for(var i=0;i<3;i++){final a=ClientInterviewEngine.answer(e,p.project,qs[i]);final o=ClientInterviewEngine.evaluate(e,qs[i],a,ClientInterviewFollowUp.letEmployeeHandle,state.seed,id);s=s.copyWith(currentQuestionIndex:i,employeeAnswers:[...s.employeeAnswers,a],playerFollowUps:[...s.playerFollowUps,ClientInterviewFollowUp.letEmployeeHandle],interviewerReactions:[...s.interviewerReactions,o.reaction],accumulatedEvaluation:s.accumulatedEvaluation.add(technical:o.evaluation.technical,experience:o.evaluation.experience,communication:o.evaluation.communication,credibility:o.evaluation.credibility,clientFit:o.evaluation.clientFit));}return _completeClientInterview(next,s,p,e,played:false);}
 
-  static GameState _completeClientInterview(GameState state,ClientInterviewSession s,ProjectProposal p,Engineer e,{required bool played}){final rate=ClientInterviewEngine.finalRate(e,p.project,s,fromInterviewOffer:p.fromInterviewOffer);final passed=SelectionEngine.roll(rate:rate,seed:state.seed,week:s.startedWeek,salt:'client-conversation:${s.id}:${s.playerFollowUps.map((e)=>e.name).join(',')}');final result=passed?ClientInterviewResult.passed:ClientInterviewResult.failed;final history=SelectionStepHistory(week:state.week,step:SelectionStep.clientInterview,result:passed?SelectionStepResult.passed:SelectionStepResult.failed,successRate:rate);final completed=s.copyWith(completed:true,result:result,mismatchFailure:s.mismatchFailure||(!passed&&s.questions.any((q)=>q.mismatch>=2)));final trustDelta=completed.mismatchFailure?-2:(passed&&s.questions.every((q)=>q.mismatch<2)?1:0);final engineers=[for(final x in state.engineers)if(x.id==e.id)x.copyWith(companyTrust:(x.companyTrust+trustDelta).clamp(0,100),salesStatus:passed?SalesStatus.interviewing:SalesStatus.selling)else x];final proposals=[for(final x in state.proposals)if(x.id==p.id)x.copyWith(currentStepIndex:passed?x.currentStepIndex+1:x.currentStepIndex,status:passed?ApplicationStatus.active:ApplicationStatus.rejected,stage:passed?x.stage:ProposalStage.interviewFailed,stepHistory:[...x.stepHistory,history],interviewWeek:state.week,interviewSuccessRate:rate,rejectionReason:passed?null:(completed.mismatchFailure?'SkillSheet記載に対して具体的な経験が不足していました':'他候補がより案件要件に合致しました'))else x];return state.copyWith(clientInterviews:[...state.clientInterviews.where((x)=>x.id!=s.id),completed],proposals:proposals,engineers:engineers,stats:state.stats.copyWith(projectInterviewCount:state.stats.projectInterviewCount+1,projectInterviewSuccess:state.stats.projectInterviewSuccess+(passed?1:0),clientInterviewPassed:state.stats.clientInterviewPassed+(passed?1:0))).withLog('客先面談 ${passed?'通過！':'不合格'} ${e.profile.name} / ${p.project.title}',category:passed?GameLogCategory.interviewPassed:GameLogCategory.interviewFailed);}
+  static GameState _completeClientInterview(GameState state,ClientInterviewSession s,ProjectProposal p,Engineer e,{required bool played}){final rate=ClientInterviewEngine.finalRate(e,p.project,s,fromInterviewOffer:p.fromInterviewOffer);final passed=SelectionEngine.roll(rate:rate,seed:state.seed,week:s.startedWeek,salt:'client-conversation:${s.id}:${s.playerFollowUps.map((e)=>e.name).join(',')}');final result=passed?ClientInterviewResult.passed:ClientInterviewResult.failed;final history=SelectionStepHistory(week:state.week,step:SelectionStep.clientInterview,result:passed?SelectionStepResult.passed:SelectionStepResult.failed,successRate:rate);final completed=s.copyWith(completed:true,result:result,mismatchFailure:s.mismatchFailure||(!passed&&s.questions.any((q)=>q.mismatch>=2)));final trustDelta=completed.mismatchFailure?-2:(passed&&s.questions.every((q)=>q.mismatch<2)?1:0);final engineers=[for(final x in state.engineers)if(x.id==e.id)x.copyWith(companyTrust:(x.companyTrust+trustDelta).clamp(0,100),salesStatus:passed?SalesStatus.interviewing:SalesStatus.selling)else x];final proposals=[for(final x in state.proposals)if(x.id==p.id)x.copyWith(currentStepIndex:passed?x.currentStepIndex+1:x.currentStepIndex,status:passed?ApplicationStatus.active:ApplicationStatus.rejected,stage:passed?x.stage:ProposalStage.interviewFailed,stepHistory:[...x.stepHistory,history],interviewWeek:state.week,interviewSuccessRate:rate,rejectionReason:passed?null:(completed.mismatchFailure?'SkillSheet記載に対して具体的な経験が不足していました':'他候補がより案件要件に合致しました'))else x];return recordMilestone(state,FoundingMilestone.completeClientInterview).copyWith(clientInterviews:[...state.clientInterviews.where((x)=>x.id!=s.id),completed],proposals:proposals,engineers:engineers,stats:state.stats.copyWith(projectInterviewCount:state.stats.projectInterviewCount+1,projectInterviewSuccess:state.stats.projectInterviewSuccess+(passed?1:0),clientInterviewPassed:state.stats.clientInterviewPassed+(passed?1:0))).withLog('客先面談 ${passed?'通過！':'不合格'} ${e.profile.name} / ${p.project.title}',category:passed?GameLogCategory.interviewPassed:GameLogCategory.interviewFailed);}
 
   /// §34-35: the player can override the employee's own preference (visible
   /// via [MoraleEngine.contractPreference] in the UI) — doing so is a

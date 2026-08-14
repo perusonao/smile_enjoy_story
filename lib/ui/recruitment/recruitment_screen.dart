@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 
 import '../../app/game_scope.dart';
+import '../../app/nav_scope.dart';
 import '../../game/game.dart';
+import '../main_shell.dart';
 import '../theme.dart';
 import '../widgets/labels.dart';
 import 'applicant_detail_screen.dart';
@@ -13,6 +15,9 @@ class RecruitmentScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final controller = context.game;
     final state = controller.state;
+    if (!ProgressionEngine.canUseRecruitment(state)) {
+      return const _RecruitmentLockedScreen();
+    }
     final applicants = [...state.applicants]
       ..sort((a, b) => b.appearedWeek.compareTo(a.appearedWeek));
 
@@ -236,6 +241,45 @@ class _Tag extends StatelessWidget {
       child: Text(
         text,
         style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.bold),
+      ),
+    );
+  }
+}
+
+/// Shown instead of the recruitment tab's content until the player has
+/// achieved [FoundingMilestone.firstAssignment] (§20-21) — kept visible in
+/// the bottom navigation rather than hidden, so the feature doesn't read as
+/// missing.
+class _RecruitmentLockedScreen extends StatelessWidget {
+  const _RecruitmentLockedScreen();
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('採用')),
+      body: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Text('🔒', style: TextStyle(fontSize: 40)),
+            const SizedBox(height: 16),
+            Text('採用', style: Theme.of(context).textTheme.titleLarge),
+            const SizedBox(height: 10),
+            const Text(
+              'まず既存社員を1名案件参画させると解放されます。',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: Colors.black54),
+            ),
+            const SizedBox(height: 20),
+            FilledButton(
+              onPressed: () {
+                NavScope.of(context).value = SesTab.employees;
+              },
+              child: const Text('社員を見る'),
+            ),
+          ],
+        ),
       ),
     );
   }

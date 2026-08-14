@@ -181,6 +181,9 @@ class _WelfareSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final state = context.game.state;
+    if (!ProgressionEngine.canUseWelfare(state)) {
+      return const _WelfareLockedCard();
+    }
     final pcCounts = <PcTier, int>{for (final tier in PcTier.values) tier: 0};
     for (final e in state.engineers) {
       final tier = state.equipmentFor(e.id)?.pcTier ?? PcTier.standardLaptop;
@@ -227,6 +230,26 @@ class _WelfareSection extends StatelessWidget {
             onPressed: hasEmployees ? () => _showCompanyTripDialog(context) : null,
             child: const Text('社員旅行を検討する'),
           ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Shown instead of the welfare cards until [ProgressionEngine.canUseWelfare]
+/// (§24-25) — the rest of "その他" (会社情報・オフィス・取引先等) stays
+/// visible; only this section is gated.
+class _WelfareLockedCard extends StatelessWidget {
+  const _WelfareLockedCard();
+
+  @override
+  Widget build(BuildContext context) {
+    return _SectionCard(
+      title: '🔒 福利厚生 / 社員環境',
+      children: const [
+        Text(
+          '社員1名を案件参画させ、採用面接を経験すると解放されます。',
+          style: TextStyle(fontSize: 12.5, color: Colors.black54),
         ),
       ],
     );

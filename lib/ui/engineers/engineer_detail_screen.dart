@@ -20,7 +20,8 @@ class EngineerDetailScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final state = context.game.state;
+    final controller = context.game;
+    final state = controller.state;
     Engineer? engineer;
     for (final e in state.engineers) {
       if (e.id == engineerId) {
@@ -30,6 +31,13 @@ class EngineerDetailScreen extends StatelessWidget {
     }
     if (engineer == null) {
       return const Scaffold(body: Center(child: Text('社員が見つかりません。')));
+    }
+    if (!state.foundingProgress.has(FoundingMilestone.inspectEmployee)) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!controller.state.foundingProgress.has(FoundingMilestone.inspectEmployee)) {
+          controller.recordMilestone(FoundingMilestone.inspectEmployee);
+        }
+      });
     }
     final profile = engineer.profile;
     final assignment = state.assignmentForEngineer(engineerId);
@@ -203,6 +211,7 @@ class EngineerDetailScreen extends StatelessWidget {
   }
 
   Future<void> _editSkillSheet(BuildContext context,Engineer engineer,SkillSheet original) async {
+    context.game.recordMilestone(FoundingMilestone.inspectSkillSheet);
     var months=original.displayedLanguageExperience[engineer.profile.mainLanguage] ?? 0; var backend=original.displayedBackend; var leader=original.displayedLeader;
     await showDialog<void>(context:context,builder:(dialog)=>StatefulBuilder(builder:(context,setState){
       final actualMonths=engineer.profile.skillFor(engineer.profile.mainLanguage).actualExperienceMonths;

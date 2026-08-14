@@ -20,17 +20,39 @@ class GameController extends ChangeNotifier {
 
   GameState _state = GameEngine.newGame();
   bool _isLoading = true;
+  bool _showStartChoice = false;
 
   GameState get state => _state;
   bool get isLoading => _isLoading;
+
+  /// True right after boot when this is a brand-new game with no prior
+  /// save — shows the "ガイド付きで開始 / 自由に開始" picker once (§41-42).
+  /// Not persisted: it only ever matters for the very first frame of a
+  /// fresh playthrough.
+  bool get showStartChoice => _showStartChoice;
 
   Future<void> _bootstrap() async {
     final loaded = await _saveService.load();
     if (loaded != null) {
       _state = loaded;
+    } else {
+      _showStartChoice = true;
     }
     _isLoading = false;
     notifyListeners();
+  }
+
+  /// "ガイド付きで開始" (§41): just dismiss the picker, tutorial stays on.
+  void chooseGuidedStart() {
+    _showStartChoice = false;
+    notifyListeners();
+  }
+
+  /// "自由に開始" (§41-42): unlock everything immediately, for experienced
+  /// players / testing.
+  void chooseFreeStart() {
+    _showStartChoice = false;
+    _apply(GameEngine.skipFoundingTutorial);
   }
 
   void _apply(GameState Function(GameState) mutate) {
@@ -89,6 +111,20 @@ class GameController extends ChangeNotifier {
   void payBonus(BonusPlan plan) => _apply((s)=>GameEngine.payBonus(s,plan));
   void conductCompanyTrip(CompanyTripType type) => _apply((s)=>GameEngine.conductCompanyTrip(s,type));
 
+  // --- Guided founding (Playable 0.4C.1) --------------------------------
+
+  void recordMilestone(FoundingMilestone milestone) =>
+      _apply((s) => GameEngine.recordMilestone(s, milestone));
+
+  void markTutorialSeen(OneTimeEvent event) =>
+      _apply((s) => GameEngine.markTutorialSeen(s, event));
+
+  void skipFoundingTutorial() =>
+      _apply(GameEngine.skipFoundingTutorial);
+
+  void completeFoundingTutorial() =>
+      _apply(GameEngine.completeFoundingTutorial);
+
   // --- Turn ----------------------------------------------------------------
 
   void advanceWeek() => _apply(GameEngine.advanceWeek);
@@ -98,6 +134,7 @@ class GameController extends ChangeNotifier {
   Future<void> restart({int? seed}) async {
     await _saveService.clear();
     _state = GameEngine.newGame(seed: seed);
+    _showStartChoice = true;
     notifyListeners();
     unawaited(_saveService.save(_state));
   }

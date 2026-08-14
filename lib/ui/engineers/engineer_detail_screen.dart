@@ -48,8 +48,8 @@ class EngineerDetailScreen extends StatelessWidget {
       });
     }
     final profile = engineer.profile;
+    final workflowState = EmployeeWorkflowEngine.forEngineer(state, engineerId);
     final assignment = state.assignmentForEngineer(engineerId);
-    final proposal = state.proposalForEngineer(engineerId);
     final applications = state
         .applicationsForEngineer(engineerId)
         .where(
@@ -109,11 +109,16 @@ class EngineerDetailScreen extends StatelessWidget {
                   ),
                 ),
               ),
-              EngineerStatusChip(status: engineer.status),
+              EngineerStatusChip(state: workflowState),
             ],
           ),
+          const SizedBox(height: 10),
+          // "現在の状況" first, above skills/personality/history — a
+          // first-time player needs one glance to know what this employee
+          // is doing right now, not a scroll (Playable 0.4C.3 §27-32).
+          _CurrentStatusCard(state: state, engineer: engineer, workflowState: workflowState),
           const SizedBox(height: 12),
-          if (engineer.status == EngineerStatus.waiting)
+          if (workflowState == EmployeeWorkflowState.waiting)
             _WaitingWarningBanner(
               weeks: waitingWeeks,
               monthlySalary: engineer.salary,
@@ -129,13 +134,13 @@ class EngineerDetailScreen extends StatelessWidget {
             _Row(languageLabels[profile.mainLanguage] ?? profile.mainLanguage.name,'実際 ${formatExperience(profile.skillFor(profile.mainLanguage).actualExperienceMonths)} / 記載 ${formatExperience(skillSheet.displayedLanguageExperience[profile.mainLanguage] ?? 0)}'),
             _Row('Backend','実際 Lv.${profile.techSkills.backend} / 記載 Lv.${skillSheet.displayedBackend}'),
             _Row('Leader','実際 Lv.${profile.techSkills.leader} / 記載 Lv.${skillSheet.displayedLeader}'),
-            _Row('営業状態',engineer.salesStatus==SalesStatus.selling?'営業中（公開先 ${state.unlockedClientCount}社）':engineer.salesStatus.name),
+            _Row('営業状態',engineer.salesStatus==SalesStatus.selling?'営業中（公開先 ${state.unlockedClientCount}社）':EmployeeWorkflowEngine.labels[workflowState]!),
             _Row('参画可能','Week ${engineer.availableFromWeek}〜'),
             const Text('会社信頼が低い社員は、現場の増員情報を持ち帰りにくくなります。',style:TextStyle(fontSize:12,color:Colors.black54)),
             Row(children:[Expanded(child:OutlinedButton(onPressed:()=>_editSkillSheet(context,engineer!,skillSheet),child:const Text('営業用記載を編集'))),const SizedBox(width:8),Expanded(child:FilledButton(onPressed:engineer.salesStatus==SalesStatus.selling?null:()=>_confirmSalesStart(context,engineer!,skillSheet),child:const Text('営業を開始する')))]),
           ]),
           if(interviewOffers.isNotEmpty)...[const SizedBox(height:12),_SectionCard(title:'面談依頼',children:[for(final offer in interviewOffers) _InterviewOfferCard(offer:offer,project:state.openProjects.firstWhere((e)=>e.project.id==offer.projectId).project)])],
-          if(assignment != null && assignment.remainingWeeks <= 4 && assignment.contractDecision==ContractDecision.undecided)...[const SizedBox(height:12),_SectionCard(title:'契約更新判断（終了4週前）',children:[Text('${assignment.project.title} / 残り${assignment.remainingWeeks}週'),Row(children:[Expanded(child:FilledButton(onPressed:()=>context.game.decideContract(engineerId,extend:true),child:const Text('延長する'))),const SizedBox(width:8),Expanded(child:OutlinedButton(onPressed:()=>context.game.decideContract(engineerId,extend:false),child:const Text('撤退する')))])])],
+          if(assignment != null && assignment.remainingWeeks <= 4 && assignment.contractDecision==ContractDecision.undecided)...[const SizedBox(height:12),_SectionCard(title:'契約更新判断（終了4週前）',children:[Text('${assignment.project.title} / 残り${assignment.remainingWeeks}週'),Row(children:[Expanded(child:FilledButton(onPressed:(){context.game.decideContract(engineerId,extend:true);ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text('${assignment.project.title}の契約延長を決めました')));},child:const Text('延長する'))),const SizedBox(width:8),Expanded(child:OutlinedButton(onPressed:(){context.game.decideContract(engineerId,extend:false);ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text('${assignment.project.title}は満了で撤退します')));},child:const Text('撤退する')))])])],
           _SectionCard(
             title: '基本情報',
             children: [
@@ -178,34 +183,6 @@ class EngineerDetailScreen extends StatelessWidget {
               _Row('コミュ力', '★' * profile.personality.communication),
               _Row('アルコール耐性', '★' * profile.personality.alcoholTolerance),
               _Row('真面目度', '★' * profile.personality.seriousness),
-            ],
-          ),
-          const SizedBox(height: 12),
-          _SectionCard(
-            title: '現在の状況',
-            children: [
-              if (assignment != null) ...[
-                _Row('現在案件', assignment.project.title),
-                _Row('残り期間', '${assignment.remainingWeeks}週'),
-                _Row('案件単価', formatYen(assignment.project.monthlyRate)),
-                _Row(
-                  '月間想定粗利',
-                  formatYen(
-                    MatchingEngine.monthlyProfit(engineer, assignment.project),
-                  ),
-                ),
-              ] else if (proposal != null) ...[
-                _Row('提案先', proposal.project.title),
-                _Row(
-                  '状況',
-                  proposal.stage == ProposalStage.interviewPassed
-                      ? '面談合格・参画待ち'
-                      : '面談待ち',
-                ),
-              ] else ...[
-                _Row('現在案件', 'なし(待機中)'),
-                _Row('待機週数', '$waitingWeeks 週目'),
-              ],
             ],
           ),
           const SizedBox(height: 12),
@@ -258,6 +235,100 @@ class EngineerDetailScreen extends StatelessWidget {
     final state=context.game.state; final clients=sampleClients.where((c)=>state.relationFor(c.id).unlocked).map((c)=>c.name).join('\n');
     final accepted=await showDialog<bool>(context:context,builder:(c)=>AlertDialog(title:Text('${engineer.profile.name}の営業を開始します'),content:Text('公開先:\n$clients\n\n参画可能: ${engineer.availableFromWeek<=state.week?'現在':'Week ${engineer.availableFromWeek}'}\nスキルシート: ${SalesEngine.riskLabel(SalesEngine.riskFor(engineer,sheet))}\n\n条件に合う案件があると、取引先から面談依頼が届きます。'),actions:[TextButton(onPressed:()=>Navigator.pop(c,false),child:const Text('戻る')),FilledButton(onPressed:()=>Navigator.pop(c,true),child:const Text('営業開始'))]));
     if(accepted==true&&context.mounted)context.game.startSales(engineer.id);
+  }
+}
+
+/// The single "what is this employee doing right now" block, driven by
+/// [EmployeeWorkflowState] — the same derived state Home and the employee
+/// list use (Playable 0.4C.3 §12-17, §27-32). Deliberately placed right
+/// under the header so a first-time player never has to scroll to find it.
+class _CurrentStatusCard extends StatelessWidget {
+  const _CurrentStatusCard({required this.state, required this.engineer, required this.workflowState});
+
+  final GameState state;
+  final Engineer engineer;
+  final EmployeeWorkflowState workflowState;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = switch (workflowState) {
+      EmployeeWorkflowState.assigned => Colors.blue,
+      EmployeeWorkflowState.finalOfferPending => Colors.red,
+      EmployeeWorkflowState.assignmentScheduled => Colors.purple,
+      EmployeeWorkflowState.clientInterviewActionRequired => Colors.deepOrange,
+      EmployeeWorkflowState.waitingSelectionResult => Colors.orange,
+      EmployeeWorkflowState.interviewRequestPending => Colors.deepOrange,
+      EmployeeWorkflowState.selling => Colors.teal,
+      EmployeeWorkflowState.waiting => Colors.red,
+    };
+
+    String detail;
+    Widget? action;
+    switch (workflowState) {
+      case EmployeeWorkflowState.assigned:
+        final a = state.assignmentForEngineer(engineer.id)!;
+        detail = '${a.project.title}\n'
+            '残り${a.remainingWeeks}週 / 単価 ${formatYen(a.project.monthlyRate)}\n'
+            '月間想定粗利 ${formatYen(MatchingEngine.monthlyProfit(engineer, a.project))}';
+      case EmployeeWorkflowState.assignmentScheduled:
+        final p = state.proposals.firstWhere((p) => p.engineerId == engineer.id && p.status == ApplicationStatus.accepted);
+        detail = '${p.project.title}\n'
+            'Week ${p.assignWeek} から参画開始\n'
+            '参画開始までは待機給与が発生します。';
+      case EmployeeWorkflowState.finalOfferPending:
+        final o = state.offers.firstWhere((o) => o.employeeId == engineer.id && o.status == OfferStatus.pending);
+        detail = '${state.proposals.firstWhere((p) => p.id == o.applicationId).project.title}\n'
+            '月単価 ${formatYen(o.monthlyRate)}\n'
+            '下記「参画オファー比較・回答」から回答してください。';
+      case EmployeeWorkflowState.clientInterviewActionRequired:
+        final p = state.proposals.firstWhere((p) =>
+            p.engineerId == engineer.id &&
+            p.status == ApplicationStatus.active &&
+            p.currentStep == SelectionStep.clientInterview);
+        detail = '${p.project.title}\n今週中に面談をプレイするか、社員に任せてください。';
+        action = FilledButton(
+          onPressed: () => Navigator.of(context).push(
+            MaterialPageRoute(builder: (_) => ClientInterviewScreen(applicationId: p.id)),
+          ),
+          child: const Text('面談をプレイ'),
+        );
+      case EmployeeWorkflowState.waitingSelectionResult:
+        final p = state.proposals.firstWhere((p) => p.engineerId == engineer.id && p.status == ApplicationStatus.active);
+        detail = '${p.project.title}\n'
+            '現在: ${selectionStepLabels[p.currentStep]}\n'
+            '次の週へ進めると選考が進みます。';
+      case EmployeeWorkflowState.interviewRequestPending:
+        detail = '下記「面談依頼」から回答してください。';
+      case EmployeeWorkflowState.selling:
+        detail = 'SkillSheet公開先 ${state.unlockedClientCount}社\n面談依頼待ちです。';
+      case EmployeeWorkflowState.waiting:
+        detail = '営業を開始すると、案件の面談依頼が届くようになります。';
+    }
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.06),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: color.withValues(alpha: 0.35)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            EmployeeWorkflowEngine.labels[workflowState]!,
+            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: color.withValues(alpha: 0.95)),
+          ),
+          const SizedBox(height: 6),
+          Text(detail, style: const TextStyle(fontSize: 12.5, height: 1.4)),
+          if (action != null) ...[
+            const SizedBox(height: 10),
+            SizedBox(width: double.infinity, child: action),
+          ],
+        ],
+      ),
+    );
   }
 }
 
@@ -391,7 +462,21 @@ class _ContractPreferenceHint extends StatelessWidget {
   }
 }
 
-class _InterviewOfferCard extends StatelessWidget { const _InterviewOfferCard({required this.offer,required this.project}); final InterviewOffer offer; final Project project; @override Widget build(BuildContext context){final good=<String>[if(offer.skillSheetMatch>=70)'スキルシートとの相性が高い',if(project.paymentTermDays==30)'30日サイト'];final cautions=<String>[if(project.competitionLevel>=4)'競争度が高い',if(project.difficulty>=4)'要求水準が高い'];return Card(color:Colors.blue.shade50,child:Padding(padding:const EdgeInsets.all(12),child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[const Text('面談依頼！',style:TextStyle(fontSize:17,fontWeight:FontWeight.bold)),Text('${clientNameById(project.clientId)}  ${project.title}',style:const TextStyle(fontWeight:FontWeight.bold)),Text('単価 ${formatYen(project.monthlyRate)} / ${project.location.name} / ${project.industry.name}'),Text('契約 ${project.contractTermMonths}か月 / 支払 ${project.paymentTermDays}日'),if(good.isNotEmpty)Text('良い点\n・${good.take(2).join('\n・')}'),if(cautions.isNotEmpty)Text('注意点\n・${cautions.take(2).join('\n・')}'),Row(children:[Expanded(child:OutlinedButton(onPressed:()=>context.game.declineInterviewOffer(offer.id),child:const Text('断る'))),const SizedBox(width:8),Expanded(child:FilledButton(onPressed:()=>context.game.acceptInterviewOffer(offer.id),child:const Text('面談へ進む')))])]))); } }
+class _InterviewOfferCard extends StatelessWidget { const _InterviewOfferCard({required this.offer,required this.project}); final InterviewOffer offer; final Project project; @override Widget build(BuildContext context){
+  // `Project.paymentTermDays` is never populated by ProjectGenerator (it
+  // just sits at the class default of 30) — `paymentTermDaysById` looks up
+  // the real, canonical value from the client instead. Reading the dead
+  // field here was why this card could show "30日" while Selection/Offer
+  // screens correctly showed the client's actual (possibly 60-day) term
+  // for the very same project (Playable 0.4C.3 §22-26).
+  final paymentTermDays=paymentTermDaysById(project.clientId);
+  final good=<String>[if(offer.skillSheetMatch>=70)'スキルシートとの相性が高い',if(paymentTermDays==30)'30日サイト'];final cautions=<String>[if(project.competitionLevel>=4)'競争度が高い',if(project.difficulty>=4)'要求水準が高い'];
+  // Both mutations remove `offer` from the pending list this card is built
+  // from, unmounting the card itself — capture the messenger first (same
+  // stale-context class of bug as `_OfferRow._accept`/`_decline`).
+  void decline(){final messenger=ScaffoldMessenger.of(context);context.game.declineInterviewOffer(offer.id);messenger.showSnackBar(SnackBar(content:Text('${project.title}の面談依頼を断りました')));}
+  void accept(){final messenger=ScaffoldMessenger.of(context);context.game.acceptInterviewOffer(offer.id);messenger.showSnackBar(SnackBar(content:Text('${project.title}の選考に進みます')));}
+  return Card(color:Colors.blue.shade50,child:Padding(padding:const EdgeInsets.all(12),child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[const Text('面談依頼！',style:TextStyle(fontSize:17,fontWeight:FontWeight.bold)),Text('${clientNameById(project.clientId)}  ${project.title}',style:const TextStyle(fontWeight:FontWeight.bold)),Text('単価 ${formatYen(project.monthlyRate)} / ${project.location.name} / ${project.industry.name}'),Text('契約 ${project.contractTermMonths}か月 / 支払 $paymentTermDays日'),if(good.isNotEmpty)Text('良い点\n・${good.take(2).join('\n・')}'),if(cautions.isNotEmpty)Text('注意点\n・${cautions.take(2).join('\n・')}'),Row(children:[Expanded(child:OutlinedButton(onPressed:decline,child:const Text('断る'))),const SizedBox(width:8),Expanded(child:FilledButton(onPressed:accept,child:const Text('面談へ進む')))])]))); } }
 
 class _ApplicationRow extends StatelessWidget {
   const _ApplicationRow({required this.application});
@@ -421,11 +506,25 @@ class _ApplicationRow extends StatelessWidget {
         ),
         Text(
           application.status == ApplicationStatus.active
-              ? '結果待ち・次週に判定されます'
+              ? (application.currentStep == SelectionStep.clientInterview
+                  // Client interviews resolve immediately when played/auto
+                  // -resolved, not on next week's tick — saying "次週に判定
+                  // されます" here directly contradicted the action buttons
+                  // shown below for the same card (Playable 0.4C.3 §17-20).
+                  ? '操作が必要・客先面談を進めてください'
+                  : '結果待ち・次週に判定されます')
               : application.status == ApplicationStatus.offered
                   ? 'Offer獲得・今週中に回答してください'
                   : '選考終了',
-          style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.bold, color: application.status == ApplicationStatus.active ? Colors.orange.shade800 : Colors.black54),
+          style: TextStyle(
+            fontSize: 12.5,
+            fontWeight: FontWeight.bold,
+            color: application.status != ApplicationStatus.active
+                ? Colors.black54
+                : application.currentStep == SelectionStep.clientInterview
+                    ? Colors.deepOrange
+                    : Colors.orange.shade800,
+          ),
         ),
         if (application.status == ApplicationStatus.active && application.currentStepIndex + 1 < application.project.selectionFlow.steps.length)
           Text('次: ${selectionStepLabels[application.project.selectionFlow.steps[application.currentStepIndex + 1]]}', style: const TextStyle(fontSize: 12.5)),
@@ -482,6 +581,46 @@ class _OfferRow extends StatelessWidget {
   final Offer offer;
   final ProjectApplication application;
 
+  Future<void> _accept(BuildContext context) async {
+    final controller = context.game;
+    // Capture a context that survives the coming rebuild — accepting
+    // removes `offer` from `pendingOffers`, which unmounts this whole
+    // "参画オファー比較・回答" section (and this widget's own `context`
+    // with it) the instant `acceptOffer` calls notifyListeners. Same class
+    // of bug as the recruitment-interview stale-context fix in 0.4C.1/§54.
+    final stableContext = Navigator.of(context).context;
+    controller.acceptOffer(offer.id);
+    if (!stableContext.mounted) return;
+    final engineer = controller.state.engineerById(offer.employeeId);
+    // The whole point: the player must never wonder "did that work? when do
+    // they start?" after accepting — say so immediately, explicitly
+    // (Playable 0.4C.3 §5, §54).
+    await showDialog<void>(
+      context: stableContext,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('参画オファーを受諾しました'),
+        content: Text(
+          '${engineer.profile.name}\n\n'
+          '${application.project.title}\n\n'
+          '月単価: ${formatYen(offer.monthlyRate)}\n'
+          '参画開始: Week ${offer.startWeek}\n\n'
+          '現在: 参画開始待ち',
+        ),
+        actions: [FilledButton(onPressed: () => Navigator.of(dialogContext).pop(), child: const Text('OK'))],
+      ),
+    );
+  }
+
+  void _decline(BuildContext context) {
+    // Same reasoning as `_accept`: capture the messenger before the
+    // mutation removes this row from the tree.
+    final messenger = ScaffoldMessenger.of(context);
+    context.game.declineOffer(offer.id);
+    messenger.showSnackBar(
+      SnackBar(content: Text('${application.project.title} の参画オファーを辞退しました')),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final deadline = offer.responseDeadlineWeek == context.game.state.week
@@ -498,8 +637,11 @@ class _OfferRow extends StatelessWidget {
               application.project.title,
               style: const TextStyle(fontWeight: FontWeight.bold),
             ),
-            Text(
-              '月単価 ${formatYen(offer.monthlyRate)} / Fit ${application.fitScore}',
+            Row(
+              children: [
+                Text('月単価 ${formatYen(offer.monthlyRate)} / '),
+                FitBadge(fit: PlayerVisibleFit.fromScore(application.fitScore)),
+              ],
             ),
             Text(
               '支払 ${paymentTermDaysById(application.project.clientId)}日 / 回答期限 $deadline',
@@ -513,14 +655,14 @@ class _OfferRow extends StatelessWidget {
               children: [
                 Expanded(
                   child: FilledButton(
-                    onPressed: () => context.game.acceptOffer(offer.id),
+                    onPressed: () => _accept(context),
                     child: const Text('受諾'),
                   ),
                 ),
                 const SizedBox(width: 8),
                 Expanded(
                   child: OutlinedButton(
-                    onPressed: () => context.game.declineOffer(offer.id),
+                    onPressed: () => _decline(context),
                     child: const Text('辞退'),
                   ),
                 ),

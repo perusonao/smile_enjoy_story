@@ -61,6 +61,11 @@ void main() {
     await tester.pumpAndSettle();
 
     // Landed on a real employee detail screen, not a dead end.
+    await tester.dragUntilVisible(
+      find.textContaining('スキルシート / 営業'),
+      find.byType(ListView),
+      const Offset(0, -300),
+    );
     expect(find.textContaining('スキルシート / 営業'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });

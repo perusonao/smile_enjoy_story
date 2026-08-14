@@ -38,18 +38,26 @@ class StatTile extends StatelessWidget {
             overflow: TextOverflow.ellipsis,
           ),
           const SizedBox(height: 2),
-          Text(
-            value,
-            style:
-                (emphasis
-                        ? theme.textTheme.titleLarge
-                        : theme.textTheme.titleMedium)
-                    ?.copyWith(
-                      fontWeight: FontWeight.bold,
-                      color: valueColor ?? theme.colorScheme.onSurface,
-                    ),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
+          // FittedBox instead of a fixed style + ellipsis: a 3-column row at
+          // 360px leaves each tile ~85px of usable width, and a value like
+          // "約3.8か月" at titleLarge silently truncated to "約3.8か…"
+          // (Playable 0.4C.3 §52) — shrinking to fit keeps the full string
+          // always readable instead of clipping it.
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerLeft,
+            child: Text(
+              value,
+              style:
+                  (emphasis
+                          ? theme.textTheme.titleLarge
+                          : theme.textTheme.titleMedium)
+                      ?.copyWith(
+                        fontWeight: FontWeight.bold,
+                        color: valueColor ?? theme.colorScheme.onSurface,
+                      ),
+              maxLines: 1,
+            ),
           ),
         ],
       ),

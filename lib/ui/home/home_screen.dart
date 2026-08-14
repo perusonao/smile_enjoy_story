@@ -300,9 +300,25 @@ class _HomeScreenState extends State<HomeScreen> {
           const SizedBox(height: 18),
 
           if (tutorialActive) ...[
-            // --- Critical exceptions only (§11, §34) — the guided card
-            // below stays the one obvious next step. ---------------------
+            // --- "今やること" leads (§9-11, §33-37) — a labeled Critical
+            // section can follow when one genuinely exists, but it never
+            // competes visually with the guided card as "just another
+            // recommendation": it's a clearly-marked exception, not a peer.
+            if (guided != null)
+              _GuidedActionCard(
+                action: guided,
+                onCta: guided.ctaLabel == null ? null : () => _onGuidedActionCta(context, guided),
+              ),
             if (criticalTasks.isNotEmpty) ...[
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  const Icon(Icons.error_outline, size: 15, color: Colors.red),
+                  const SizedBox(width: 4),
+                  Text('重要なお知らせ', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.bold, color: Colors.red.shade700)),
+                ],
+              ),
+              const SizedBox(height: 6),
               for (final task in criticalTasks)
                 TaskCard(
                   task: task,
@@ -310,13 +326,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       ? null
                       : () => _onTaskTap(context, task.targetType, task.targetId),
                 ),
-              const SizedBox(height: 10),
             ],
-            if (guided != null)
-              _GuidedActionCard(
-                action: guided,
-                onCta: guided.ctaLabel == null ? null : () => _onGuidedActionCta(context, guided),
-              ),
             if (collapsedTasks.isNotEmpty)
               Padding(
                 padding: const EdgeInsets.only(top: 10),
@@ -404,6 +414,13 @@ class _SimplifiedDashboard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final outflow = FinanceEngine.expectedOutflowThisMonth(state);
+    // "待機人数" alone reads as "nothing is happening" even right after
+    // sales started — a selling-but-unassigned employee is still counted
+    // as waiting for salary purposes, but the player needs to see that
+    // activity separately (Playable 0.4C.3 §41-43).
+    final sellingCount = state.engineers
+        .where((e) => e.salesStatus != SalesStatus.notSelling && state.assignmentForEngineer(e.id) == null)
+        .length;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
@@ -418,7 +435,12 @@ class _SimplifiedDashboard extends StatelessWidget {
           Container(width: 1, height: 24, color: Colors.black12),
           _Metric('今月支払予定', formatCompactYen(outflow)),
           Container(width: 1, height: 24, color: Colors.black12),
-          _Metric('待機人数', '${state.waitingEngineerCount}名', color: state.waitingEngineerCount > 0 ? Colors.red : null),
+          _Metric(
+            '待機人数',
+            '${state.waitingEngineerCount}名',
+            color: state.waitingEngineerCount > 0 ? Colors.red : null,
+            caption: sellingCount > 0 ? 'うち営業中 $sellingCount' : null,
+          ),
         ],
       ),
     );
@@ -527,6 +549,9 @@ class _HeadcountLine extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final sellingCount = state.engineers
+        .where((e) => e.salesStatus != SalesStatus.notSelling && state.assignmentForEngineer(e.id) == null)
+        .length;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
@@ -541,7 +566,12 @@ class _HeadcountLine extends StatelessWidget {
           _divider(),
           _Metric('稼働', '${state.assignedEngineerCount}'),
           _divider(),
-          _Metric('待機', '${state.waitingEngineerCount}', color: state.waitingEngineerCount > 0 ? Colors.red : null),
+          _Metric(
+            '待機',
+            '${state.waitingEngineerCount}',
+            color: state.waitingEngineerCount > 0 ? Colors.red : null,
+            caption: sellingCount > 0 ? 'うち営業中 $sellingCount' : null,
+          ),
           _divider(),
           _Metric('応募', '${state.applicants.where((e) => e.appearedWeek == state.week).length}'),
           _divider(),
@@ -555,11 +585,14 @@ class _HeadcountLine extends StatelessWidget {
 }
 
 class _Metric extends StatelessWidget {
-  const _Metric(this.label, this.value, {this.color});
+  const _Metric(this.label, this.value, {this.color, this.caption});
 
   final String label;
   final String value;
   final Color? color;
+
+  /// Small extra line under the label, e.g. "うち営業中 1" (§41-43).
+  final String? caption;
 
   @override
   Widget build(BuildContext context) {
@@ -567,6 +600,8 @@ class _Metric extends StatelessWidget {
       children: [
         Text(value, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13.5, color: color)),
         Text(label, style: const TextStyle(fontSize: 10, color: Colors.black54)),
+        if (caption != null)
+          Text(caption!, style: const TextStyle(fontSize: 9.5, color: Colors.teal, fontWeight: FontWeight.bold)),
       ],
     );
   }

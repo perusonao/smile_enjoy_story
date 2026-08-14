@@ -71,7 +71,9 @@ const Map<SelectionStep, String> selectionStepLabels = {
   SelectionStep.technicalInterview: '技術面談',
   SelectionStep.clientInterview: '客先面談',
   SelectionStep.finalInterview: '最終面談',
-  SelectionStep.offer: 'Offer',
+  // Playable 0.4C.3 §44-46: "参画オファー" everywhere in the UI, never a
+  // bare "Offer" — the internal enum value name stays unchanged.
+  SelectionStep.offer: '参画オファー',
 };
 
 const Map<SelectionStep, String> selectionStepShortLabels = {
@@ -80,7 +82,7 @@ const Map<SelectionStep, String> selectionStepShortLabels = {
   SelectionStep.technicalInterview: '技術',
   SelectionStep.clientInterview: '客先',
   SelectionStep.finalInterview: '最終',
-  SelectionStep.offer: 'Offer',
+  SelectionStep.offer: 'オファー',
 };
 
 const Map<ClientSpecialty, String> clientSpecialtyLabels = {

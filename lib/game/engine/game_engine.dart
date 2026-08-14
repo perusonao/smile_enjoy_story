@@ -706,7 +706,7 @@ class GameEngine {
           ),
         );
         log(
-          '${engineer.profile.name} に「${proposal.project.title}」のオファーが届きました。回答期限は今週です。',
+          '${engineer.profile.name} に「${proposal.project.title}」の参画オファーが届きました。回答期限は今週です。',
           GameLogCategory.offerReceived,
         );
         continue;

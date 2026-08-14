@@ -1,6 +1,7 @@
 /// Barrel export for the Playable 0.1 simulation engine.
 library;
 
+export 'employee_workflow_engine.dart';
 export 'finance_engine.dart';
 export 'game_engine.dart';
 export 'matching_engine.dart';

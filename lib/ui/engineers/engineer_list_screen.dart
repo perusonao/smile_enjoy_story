@@ -64,7 +64,13 @@ class _EngineerCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final state = context.game.state;
     final profile = engineer.profile;
-    final isWaiting = engineer.status == EngineerStatus.waiting;
+    final workflowState = EmployeeWorkflowEngine.forEngineer(state, engineer.id);
+    // "Idle" (red tint / border) means truly nothing is happening — not
+    // merely unassigned. An employee who's selling, has a pending
+    // interview request, or is mid-selection is doing something, and the
+    // waiting-weeks badge is shown alongside that instead of being hidden
+    // behind it (Playable 0.4C.3 §41-43).
+    final isIdle = workflowState == EmployeeWorkflowState.waiting;
     final waitingWeeks = state.waitingStreakFor(engineer.id);
 
     final applications = state
@@ -109,13 +115,13 @@ class _EngineerCard extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
-          color: isWaiting ? Colors.red.withValues(alpha: 0.06) : Colors.white,
+          color: isIdle ? Colors.red.withValues(alpha: 0.06) : Colors.white,
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
-            color: isWaiting
+            color: isIdle
                 ? Colors.red.withValues(alpha: 0.4)
                 : Theme.of(context).colorScheme.outlineVariant,
-            width: isWaiting ? 1.4 : 1,
+            width: isIdle ? 1.4 : 1,
           ),
         ),
         child: Column(
@@ -132,7 +138,7 @@ class _EngineerCard extends StatelessWidget {
                     ),
                   ),
                 ),
-                if (isWaiting && waitingWeeks > 0)
+                if (waitingWeeks > 0)
                   Padding(
                     padding: const EdgeInsets.only(right: 6),
                     child: _WaitingBadge(
@@ -140,7 +146,7 @@ class _EngineerCard extends StatelessWidget {
                       color: waitingColor,
                     ),
                   ),
-                EngineerStatusChip(status: engineer.status),
+                EngineerStatusChip(state: workflowState),
               ],
             ),
             const SizedBox(height: 6),
@@ -175,7 +181,13 @@ class _EngineerCard extends StatelessWidget {
               const SizedBox(height: 7),
             ],
             if (assignment == null) ...[
-              if(engineer.salesStatus==SalesStatus.selling)
+              if (workflowState == EmployeeWorkflowState.assignmentScheduled)
+                _ScheduledBanner(
+                  proposal: state.proposals.firstWhere(
+                    (p) => p.engineerId == engineer.id && p.status == ApplicationStatus.accepted,
+                  ),
+                )
+              else if(engineer.salesStatus==SalesStatus.selling)
                 Container(width:double.infinity,padding:const EdgeInsets.all(8),margin:const EdgeInsets.only(bottom:6),color:Colors.blue.shade50,child:Text('営業中\n公開先 ${state.unlockedClientCount}社 / 参画可能 ${engineer.availableFromWeek<=state.week?'現在':'Week ${engineer.availableFromWeek}'}\n面談依頼待ち',style:const TextStyle(fontSize:12,fontWeight:FontWeight.bold))),
               _SalesCapacity(count: applications.length),
               for (final application in applications.take(3))
@@ -322,6 +334,27 @@ class _OfferBanner extends StatelessWidget {
           ),
         ),
       ],
+    ),
+  );
+}
+
+/// Shown instead of the "営業中" banner once a final Offer has been
+/// accepted but the assignment hasn't started yet (Playable 0.4C.3 §5-7) —
+/// the whole point being that "参画予定" is never just a status-chip word
+/// with nothing backing it up on the card itself.
+class _ScheduledBanner extends StatelessWidget {
+  const _ScheduledBanner({required this.proposal});
+  final ProjectApplication proposal;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    width: double.infinity,
+    padding: const EdgeInsets.all(8),
+    margin: const EdgeInsets.only(bottom: 6),
+    color: Colors.purple.shade50,
+    child: Text(
+      '参画予定\n${proposal.project.title}\nWeek ${proposal.assignWeek} から参画',
+      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
     ),
   );
 }

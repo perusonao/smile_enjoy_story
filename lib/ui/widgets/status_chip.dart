@@ -1,21 +1,28 @@
 import 'package:flutter/material.dart';
 
-import '../../domain/domain.dart';
+import '../../game/game.dart';
 
-/// Small color-coded chip for an [EngineerStatus]. Sales activity is shown
-/// separately; employees remain waiting until they actually join a project.
+/// Small color-coded chip for an [EmployeeWorkflowState] — the single
+/// derived "what is this employee doing right now" used by every screen
+/// (Playable 0.4C.3 §12-17), not the raw [EngineerStatus] enum, which stays
+/// `waiting` through the entire modern sales/selection/offer pipeline and
+/// so can't tell "待機中" apart from "参画予定" or "客先面談あり".
 class EngineerStatusChip extends StatelessWidget {
-  const EngineerStatusChip({super.key, required this.status});
+  const EngineerStatusChip({super.key, required this.state});
 
-  final EngineerStatus status;
+  final EmployeeWorkflowState state;
 
   @override
   Widget build(BuildContext context) {
-    final (label, color) = switch (status) {
-      EngineerStatus.assigned => ('参画中', Colors.blue),
-      EngineerStatus.waiting => ('待機中', Colors.red),
-      EngineerStatus.proposed => ('待機中', Colors.red),
-      EngineerStatus.interviewScheduled => ('面談合格・参画予定', Colors.purple),
+    final color = switch (state) {
+      EmployeeWorkflowState.assigned => Colors.blue,
+      EmployeeWorkflowState.finalOfferPending => Colors.red,
+      EmployeeWorkflowState.assignmentScheduled => Colors.purple,
+      EmployeeWorkflowState.clientInterviewActionRequired => Colors.deepOrange,
+      EmployeeWorkflowState.waitingSelectionResult => Colors.orange,
+      EmployeeWorkflowState.interviewRequestPending => Colors.deepOrange,
+      EmployeeWorkflowState.selling => Colors.teal,
+      EmployeeWorkflowState.waiting => Colors.red,
     };
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
@@ -25,7 +32,7 @@ class EngineerStatusChip extends StatelessWidget {
         border: Border.all(color: color.withValues(alpha: 0.5)),
       ),
       child: Text(
-        label,
+        EmployeeWorkflowEngine.labels[state]!,
         style: TextStyle(
           color: color.withValues(alpha: 0.95),
           fontWeight: FontWeight.bold,

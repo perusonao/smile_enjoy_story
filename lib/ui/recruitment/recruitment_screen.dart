@@ -18,6 +18,12 @@ class RecruitmentScreen extends StatelessWidget {
     if (!ProgressionEngine.canUseRecruitment(state)) {
       return const _RecruitmentLockedScreen();
     }
+    // Playable 0.5A.1 §8: layered on top of ProgressionEngine's own gate —
+    // only ever narrows further, and only for a Prologue-completed game (see
+    // UnlockEngine.currentPhase).
+    if (!UnlockEngine.canUseRecruitment(state)) {
+      return _RecruitmentLockedScreen(reason: UnlockEngine.lockedReason(state, UnlockPhase.companyGrowth));
+    }
     final applicants = [...state.applicants]
       ..sort((a, b) => b.appearedWeek.compareTo(a.appearedWeek));
 
@@ -251,7 +257,8 @@ class _Tag extends StatelessWidget {
 /// the bottom navigation rather than hidden, so the feature doesn't read as
 /// missing.
 class _RecruitmentLockedScreen extends StatelessWidget {
-  const _RecruitmentLockedScreen();
+  const _RecruitmentLockedScreen({this.reason});
+  final String? reason;
 
   @override
   Widget build(BuildContext context) {
@@ -266,10 +273,10 @@ class _RecruitmentLockedScreen extends StatelessWidget {
             const SizedBox(height: 16),
             Text('採用', style: Theme.of(context).textTheme.titleLarge),
             const SizedBox(height: 10),
-            const Text(
-              'まず既存社員を1名案件参画させると解放されます。',
+            Text(
+              reason ?? 'まず既存社員を1名案件参画させると解放されます。',
               textAlign: TextAlign.center,
-              style: TextStyle(color: Colors.black54),
+              style: const TextStyle(color: Colors.black54),
             ),
             const SizedBox(height: 20),
             FilledButton(

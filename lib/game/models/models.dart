@@ -25,4 +25,5 @@ export 'prologue_state.dart';
 export 'recruitment_media.dart';
 export 'recruitment_interview.dart';
 export 'sales_models.dart';
+export 'unlock_phase.dart';
 export 'welfare.dart';

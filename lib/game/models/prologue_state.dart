@@ -1,3 +1,5 @@
+import 'recruitment_media.dart';
+
 /// The ordered stages of the Founding Prologue (Playable 0.5A §12-64).
 ///
 /// Unlike the old 0.4C founding tutorial (which starts with two employed
@@ -103,6 +105,14 @@ class PrologueState {
   /// to free management.
   final bool completed;
 
+  /// Which recruitment medium the player chose in March Week 1 (Playable
+  /// 0.5A.1 §3) — `null` only ever means "not chosen yet" (the
+  /// [PrologueStage.week1Recruitment] screen requires an explicit pick, no
+  /// medium is auto-selected). Kept purely so [PrologueEngine] can flavor
+  /// the two March Week 2 candidates and the 総務 dialogue by what was
+  /// chosen; nothing here changes the one-interview-per-week invariant.
+  final RecruitmentMediaType? recruitmentMediaType;
+
   const PrologueState({
     this.active = false,
     this.prologueWeek = 1,
@@ -116,6 +126,7 @@ class PrologueState {
     this.triedProjectIds = const [],
     this.failedAttempts = 0,
     this.completed = false,
+    this.recruitmentMediaType,
   });
 
   /// Every Free Mode game, and every save from before Playable 0.5A: no
@@ -138,6 +149,7 @@ class PrologueState {
     List<String>? triedProjectIds,
     int? failedAttempts,
     bool? completed,
+    Object? recruitmentMediaType = _unset,
   }) {
     return PrologueState(
       active: active ?? this.active,
@@ -158,6 +170,9 @@ class PrologueState {
       triedProjectIds: triedProjectIds ?? this.triedProjectIds,
       failedAttempts: failedAttempts ?? this.failedAttempts,
       completed: completed ?? this.completed,
+      recruitmentMediaType: identical(recruitmentMediaType, _unset)
+          ? this.recruitmentMediaType
+          : recruitmentMediaType as RecruitmentMediaType?,
     );
   }
 
@@ -174,6 +189,7 @@ class PrologueState {
     'triedProjectIds': triedProjectIds,
     'failedAttempts': failedAttempts,
     'completed': completed,
+    'recruitmentMediaType': recruitmentMediaType?.jsonValue,
   };
 
   /// `null` means this save predates Playable 0.5A, or is a Free Mode game —
@@ -193,6 +209,7 @@ class PrologueState {
       triedProjectIds: (json['triedProjectIds'] as List? ?? const []).cast<String>(),
       failedAttempts: json['failedAttempts'] as int? ?? 0,
       completed: json['completed'] as bool? ?? false,
+      recruitmentMediaType: json['recruitmentMediaType'] == null ? null : RecruitmentMediaType.fromJson(json['recruitmentMediaType'] as String),
     );
   }
 }

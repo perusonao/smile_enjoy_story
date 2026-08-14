@@ -184,6 +184,11 @@ class _WelfareSection extends StatelessWidget {
     if (!ProgressionEngine.canUseWelfare(state)) {
       return const _WelfareLockedCard();
     }
+    // Playable 0.5A.1 §8: additionally requires UnlockPhase.employeeManagement
+    // for a Prologue-completed game — see UnlockEngine.currentPhase.
+    if (!UnlockEngine.canUseWelfare(state)) {
+      return _WelfareLockedCard(reason: UnlockEngine.lockedReason(state, UnlockPhase.employeeManagement));
+    }
     final pcCounts = <PcTier, int>{for (final tier in PcTier.values) tier: 0};
     for (final e in state.engineers) {
       final tier = state.equipmentFor(e.id)?.pcTier ?? PcTier.standardLaptop;
@@ -240,16 +245,17 @@ class _WelfareSection extends StatelessWidget {
 /// (§24-25) — the rest of "その他" (会社情報・オフィス・取引先等) stays
 /// visible; only this section is gated.
 class _WelfareLockedCard extends StatelessWidget {
-  const _WelfareLockedCard();
+  const _WelfareLockedCard({this.reason});
+  final String? reason;
 
   @override
   Widget build(BuildContext context) {
     return _SectionCard(
       title: '🔒 福利厚生 / 社員環境',
-      children: const [
+      children: [
         Text(
-          '社員1名を案件参画させ、採用面接を経験すると解放されます。',
-          style: TextStyle(fontSize: 12.5, color: Colors.black54),
+          reason ?? '社員1名を案件参画させ、採用面接を経験すると解放されます。',
+          style: const TextStyle(fontSize: 12.5, color: Colors.black54),
         ),
       ],
     );

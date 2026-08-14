@@ -16,7 +16,7 @@ import 'package:smile_enjoy_story/game/game.dart';
 /// Returns the final [GameState].
 GameState playThroughPrologue(int seed, {bool preferCandidateB = false, int maxAdvances = 40}) {
   var state = PrologueEngine.newGame(seed: seed);
-  state = PrologueEngine.setPresidentName(state, 'テスト社長');
+  state = PrologueEngine.confirmCompanySetup(state, presidentName: 'テスト社長', companyName: 'テスト会社');
   state = PrologueEngine.markIntroSeen(state);
   state = PrologueEngine.postFreeRecruitment(state);
   state = PrologueEngine.advanceWeek(state); // -> March Week 2, candidates appear
@@ -96,6 +96,7 @@ void main() {
       expect(state.gameMode, GameMode.beginner);
       expect(state.prologueState.active, isTrue);
       expect(state.company.presidentName, isEmpty);
+      expect(state.company.name, isEmpty);
     });
 
     test('deterministic navigator: same seed produces the same name', () {
@@ -126,6 +127,58 @@ void main() {
       final state = PrologueEngine.newGame(seed: 1);
       final next = PrologueEngine.setPresidentName(state, '  ${'あ' * 40}  ');
       expect(next.company.presidentName.length, PrologueEngine.presidentNameMaxLength);
+    });
+  });
+
+  group('Company Setup: president + company name (Playable 0.5A.1 §1)', () {
+    test('empty company name is rejected', () {
+      final state = PrologueEngine.newGame(seed: 1);
+      final next = PrologueEngine.setCompanyName(state, '   ');
+      expect(next.company.name, isEmpty);
+    });
+
+    test('company name is trimmed and capped to the mobile-friendly length', () {
+      final state = PrologueEngine.newGame(seed: 1);
+      final next = PrologueEngine.setCompanyName(state, '  ${'あ' * 40}  ');
+      expect(next.company.name.length, PrologueEngine.companyNameMaxLength);
+    });
+
+    test('stage stays on presidentNaming until BOTH president name and company name are set', () {
+      var state = PrologueEngine.newGame(seed: 1);
+      expect(PrologueEngine.stage(state), PrologueStage.presidentNaming);
+      state = PrologueEngine.setPresidentName(state, 'テスト社長');
+      expect(PrologueEngine.stage(state), PrologueStage.presidentNaming, reason: 'company name still missing');
+      state = PrologueEngine.setCompanyName(state, 'テスト会社');
+      expect(PrologueEngine.stage(state), PrologueStage.intro);
+    });
+
+    test('confirmCompanySetup sets both fields together and logs once', () {
+      final state = PrologueEngine.newGame(seed: 1);
+      final next = PrologueEngine.confirmCompanySetup(state, presidentName: 'テスト社長', companyName: 'テスト会社');
+      expect(next.company.presidentName, 'テスト社長');
+      expect(next.company.name, 'テスト会社');
+      expect(PrologueEngine.stage(next), PrologueStage.intro);
+    });
+
+    test('confirmCompanySetup does nothing if either field is blank', () {
+      final state = PrologueEngine.newGame(seed: 1);
+      final missingCompany = PrologueEngine.confirmCompanySetup(state, presidentName: 'テスト社長', companyName: '  ');
+      expect(missingCompany.company.presidentName, isEmpty);
+      expect(missingCompany.company.name, isEmpty);
+    });
+
+    test('companyName round-trips through save/reload', () {
+      var state = PrologueEngine.newGame(seed: 1);
+      state = PrologueEngine.confirmCompanySetup(state, presidentName: 'テスト社長', companyName: '株式会社テスト');
+      final reloaded = GameState.fromJson(state.toJson());
+      expect(reloaded.company.name, '株式会社テスト');
+      expect(reloaded.company.presidentName, 'テスト社長');
+    });
+
+    test('総務 dialogue uses the president/company name once set', () {
+      var state = playThroughToHireDecision(seed: 3);
+      expect(state.company.presidentName, isNotEmpty);
+      expect(state.company.name, isNotEmpty);
     });
   });
 
@@ -435,7 +488,7 @@ void main() {
 /// behavior.
 GameState playThroughToHireDecision({required int seed}) {
   var state = PrologueEngine.newGame(seed: seed);
-  state = PrologueEngine.setPresidentName(state, 'テスト社長');
+  state = PrologueEngine.confirmCompanySetup(state, presidentName: 'テスト社長', companyName: 'テスト会社');
   state = PrologueEngine.markIntroSeen(state);
   state = PrologueEngine.postFreeRecruitment(state);
   state = PrologueEngine.advanceWeek(state);

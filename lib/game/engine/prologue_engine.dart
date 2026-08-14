@@ -67,7 +67,10 @@ class PrologueEngine {
 
     final company = Company(
       id: 'company-player',
-      name: 'あなたのSES会社',
+      // Empty on purpose (Playable 0.5A.1 §1): [stage] stays on
+      // [PrologueStage.presidentNaming] until the player sets a real
+      // company name, same as [Company.presidentName] below.
+      name: '',
       cash: startingCash,
       credit: startingCredit,
       currentWeek: 1,
@@ -119,20 +122,73 @@ class PrologueEngine {
     final trimmed = rawName.trim();
     if (trimmed.isEmpty) return state;
     final name = trimmed.length > presidentNameMaxLength ? trimmed.substring(0, presidentNameMaxLength) : trimmed;
-    return state.copyWith(company: state.company.copyWith(presidentName: name)).withLog('$name社長のもと、会社を設立しました。');
+    return state.copyWith(company: state.company.copyWith(presidentName: name));
+  }
+
+  /// Mobile-friendly cap for the free-text company-name field (§79, mirrors
+  /// [presidentNameMaxLength]).
+  static const int companyNameMaxLength = 24;
+
+  static GameState setCompanyName(GameState state, String rawName) {
+    final trimmed = rawName.trim();
+    if (trimmed.isEmpty) return state;
+    final name = trimmed.length > companyNameMaxLength ? trimmed.substring(0, companyNameMaxLength) : trimmed;
+    return state.copyWith(company: state.company.copyWith(name: name));
+  }
+
+  /// Confirms Company Setup (Playable 0.5A.1 §1): both the president's name
+  /// and the company name must be set together before [stage] leaves
+  /// [PrologueStage.presidentNaming] — see that method. Logging the founding
+  /// message here (rather than in [setPresidentName]/[setCompanyName]
+  /// individually) means it only fires once, after both names are final,
+  /// instead of once per field edit.
+  static GameState confirmCompanySetup(GameState state, {required String presidentName, required String companyName}) {
+    var next = setPresidentName(state, presidentName);
+    next = setCompanyName(next, companyName);
+    if (next.company.presidentName.isEmpty || next.company.name.isEmpty) return state;
+    return next.withLog('${next.company.presidentName}社長のもと、「${next.company.name}」を設立しました。');
   }
 
   static GameState markIntroSeen(GameState state) => state.copyWith(prologueState: state.prologueState.copyWith(introSeen: true));
 
   // ---------------------------------------------------------------------
-  // March Week 1: free recruitment (§12-16)
+  // March Week 1: player-chosen recruitment listing (§12-16, Playable
+  // 0.5A.1 §3) — the player must explicitly pick a medium; nothing here
+  // ever auto-selects one, even in Beginner Mode (the 総務 only
+  // *recommends* free recruitment via UI copy).
   // ---------------------------------------------------------------------
 
-  static GameState postFreeRecruitment(GameState state) => GameEngine.postRecruitmentMedia(state, RecruitmentMediaType.freeWork);
+  static GameState postFreeRecruitment(GameState state) => postRecruitment(state, RecruitmentMediaType.freeWork);
+
+  static GameState postRecruitment(GameState state, RecruitmentMediaType type) {
+    final next = GameEngine.postRecruitmentMedia(state, type);
+    if (identical(next, state)) return state; // e.g. not enough cash — no listing posted, don't record a choice that didn't happen
+    return next.copyWith(prologueState: next.prologueState.copyWith(recruitmentMediaType: type));
+  }
 
   // ---------------------------------------------------------------------
   // March Week 2: two candidates, one interview (§17-29)
   // ---------------------------------------------------------------------
+
+  /// (skill multiplier, salary multiplier, extra IT-experience months) per
+  /// recruitment medium (Playable 0.5A.1 §3) — reuses
+  /// [recruitmentMediaConfigs]'s existing "若手中心 / 経験者中心 / 高スキル
+  /// 寄り" tendencies (already real, cost-differentiated media in the
+  /// general recruitment system) to flavor the two scripted March Week 2
+  /// candidates, instead of inventing a parallel tuning table. `null`
+  /// (nothing chosen yet, or an old save) reads as [RecruitmentMediaType.
+  /// freeWork]'s baseline.
+  static (double, double, int) _mediaTendency(RecruitmentMediaType? type) {
+    switch (type) {
+      case RecruitmentMediaType.engineerCareer:
+        return (1.15, 1.12, 18);
+      case RecruitmentMediaType.directScout:
+        return (1.4, 1.3, 36);
+      case RecruitmentMediaType.freeWork:
+      case null:
+        return (1.0, 1.0, 0);
+    }
+  }
 
   static GameState _ensureCandidates(GameState state) {
     if (state.prologueState.candidateAId != null || state.engineers.isNotEmpty) return state;
@@ -140,6 +196,8 @@ class PrologueEngine {
     final rng = Random(weekSeed(state.seed, 0, 'beginner-candidates'));
     double salaryJitter() => 1.0 + (rng.nextDouble() - 0.5) * 0.08;
     int skillJitter() => rng.nextInt(7) - 3;
+    final mediaType = state.prologueState.recruitmentMediaType;
+    final (skillMult, salaryMult, expBonus) = _mediaTendency(mediaType);
 
     final candidateA = _buildCandidate(
       seed: state.seed,
@@ -147,36 +205,52 @@ class PrologueEngine {
       name: '${surnamePool[rng.nextInt(surnamePool.length)]} ${_maleGivenNames[rng.nextInt(_maleGivenNames.length)]}',
       type: ApplicantType.midLevelEngineer,
       age: 30,
-      totalItExperienceMonths: 66,
+      totalItExperienceMonths: 66 + expBonus,
       backend: (4 + skillJitter()).clamp(2, 5),
       frontend: 2,
       database: 2,
-      mainSkill: (70 + skillJitter() * 2).clamp(50, 90),
+      mainSkill: ((70 + skillJitter() * 2) * skillMult).round().clamp(50, 95),
       communication: 2,
-      desiredMonthlySalary: (520000 * salaryJitter()).round(),
+      desiredMonthlySalary: (520000 * salaryJitter() * salaryMult).round(),
       japaneseLevel: 5,
       qualifications: const ['基本情報技術者'],
     );
+
+    // 人材紹介 (agency, §3) introduces a single well-vetted candidate rather
+    // than a pair — fewer applicants, but higher quality, mirroring
+    // [RecruitmentMediaConfig.weeklyApplicants] narrowing to 1 for
+    // [RecruitmentMediaType.directScout] in the general recruitment system.
+    if (mediaType == RecruitmentMediaType.directScout) {
+      final entry = ApplicantEntry(applicant: candidateA, appearedWeek: state.week, source: mediaType!);
+      return state
+          .copyWith(
+            applicants: [...state.applicants, entry],
+            prologueState: state.prologueState.copyWith(candidateAId: candidateA.id),
+          )
+          .withLog('人材紹介会社から候補者が1名紹介されました。');
+    }
+
     final candidateB = _buildCandidate(
       seed: state.seed,
       salt: 'candidate-b',
       name: '${surnamePool[rng.nextInt(surnamePool.length)]} ${_femaleGivenNames[rng.nextInt(_femaleGivenNames.length)]}',
       type: ApplicantType.juniorProgrammer,
       age: 26,
-      totalItExperienceMonths: 30,
+      totalItExperienceMonths: 30 + expBonus,
       backend: (2 + skillJitter()).clamp(1, 4),
       frontend: 2,
       database: 1,
-      mainSkill: (50 + skillJitter() * 2).clamp(35, 70),
+      mainSkill: ((50 + skillJitter() * 2) * skillMult).round().clamp(35, 80),
       communication: 4,
-      desiredMonthlySalary: (380000 * salaryJitter()).round(),
+      desiredMonthlySalary: (380000 * salaryJitter() * salaryMult).round(),
       japaneseLevel: 5,
       qualifications: const [],
     );
 
+    final source = mediaType ?? RecruitmentMediaType.freeWork;
     final entries = [
-      ApplicantEntry(applicant: candidateA, appearedWeek: state.week, source: RecruitmentMediaType.freeWork),
-      ApplicantEntry(applicant: candidateB, appearedWeek: state.week, source: RecruitmentMediaType.freeWork),
+      ApplicantEntry(applicant: candidateA, appearedWeek: state.week, source: source),
+      ApplicantEntry(applicant: candidateB, appearedWeek: state.week, source: source),
     ];
     return state
         .copyWith(
@@ -547,7 +621,7 @@ class PrologueEngine {
 
   static PrologueStage stage(GameState state) {
     final ps = state.prologueState;
-    if (state.company.presidentName.isEmpty) return PrologueStage.presidentNaming;
+    if (state.company.presidentName.isEmpty || state.company.name.isEmpty) return PrologueStage.presidentNaming;
     if (!ps.introSeen) return PrologueStage.intro;
 
     final hiredId = _hiredEngineerId(state);
@@ -592,6 +666,71 @@ class PrologueEngine {
 
     return PrologueStage.week4AwaitingRequest;
   }
+
+  // ---------------------------------------------------------------------
+  // Dead-end invariant (Playable 0.5A.1 §P0): every [PrologueStage] must
+  // offer at least one enabled, real action — either a stage-specific CTA
+  // or "次の週へ" — with nothing on screen that *looks* actionable but
+  // silently no-ops. [PrologueStage.week2CandidateSelect] is the one stage
+  // where a real action (interviewing a specific candidate) can become
+  // blocked mid-stage (the "1週間に1人まで" rule, §21) while the stage
+  // itself doesn't change — [canInterviewThisWeek] lets the UI both grey
+  // out the blocked button *and* always render a "次の週へ" fallback next
+  // to it, so tapping something on screen is never a no-op. See
+  // `test/game/prologue_dead_end_test.dart` for the regression this fixes.
+  // ---------------------------------------------------------------------
+
+  static bool canInterviewThisWeek(GameState state) {
+    final ps = state.prologueState;
+    if (ps.interviewingCandidateId != null) return false;
+    return ps.lastRecruitmentInterviewPrologueWeek != ps.prologueWeek;
+  }
+
+  // ---------------------------------------------------------------------
+  // Reset / recovery (Playable 0.5A.1 §7)
+  // ---------------------------------------------------------------------
+
+  /// Repairs [PrologueState]/[GameState] combinations that a normal play
+  /// session could never produce but a corrupted, hand-edited, or
+  /// older-schema save might — e.g. [PrologueState.interviewingCandidateId]
+  /// pointing at an applicant that's no longer in [GameState.applicants]
+  /// (and never became a real interview session either). Nothing here
+  /// *invents* progress; it only clears references to data that no longer
+  /// exists, falling back to a stage [stage] can always resolve cleanly
+  /// from. Called from [GameController] after every load/mutation, mirroring
+  /// [ProgressionEngine.reconcile] — pure and idempotent, safe to call on
+  /// every state regardless of whether anything is actually broken.
+  static GameState reconcileState(GameState state) {
+    if (!state.prologueState.active) return state;
+    var ps = state.prologueState;
+
+    final interviewing = ps.interviewingCandidateId;
+    if (interviewing != null) {
+      final stillApplicant = state.applicants.any((e) => e.applicant.id == interviewing);
+      final hasSession = state.recruitmentInterviews.any((s) => s.applicantId == interviewing);
+      if (!stillApplicant && !hasSession) {
+        ps = ps.copyWith(interviewingCandidateId: null);
+      }
+    }
+
+    // A hired engineer already exists but candidateAId/BId still linger from
+    // before the hire — harmless for [stage] (it checks `hiredId == null`
+    // first), but clearing it keeps [PrologueState] internally consistent
+    // for anything (tooling, future refactors) that reads those fields
+    // directly instead of going through [stage].
+    if (state.engineers.isNotEmpty && (ps.candidateAId != null || ps.candidateBId != null) && state.applicants.isEmpty) {
+      ps = ps.copyWith(candidateAId: null, candidateBId: null);
+    }
+
+    if (identical(ps, state.prologueState)) return state;
+    return state.copyWith(prologueState: ps);
+  }
+
+  /// Discards the current playthrough and starts a brand-new Beginner Mode
+  /// game (Playable 0.5A.1 §7 "初心者モードを最初からやり直す"). The caller
+  /// ([GameController.restartBeginnerMode]) is responsible for clearing the
+  /// persisted save first — this only builds the fresh [GameState].
+  static GameState restart({int? seed}) => newGame(seed: seed);
 }
 
 extension _ProposalTargetMatch on ProjectProposal {

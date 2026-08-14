@@ -36,8 +36,10 @@ class GameController extends ChangeNotifier {
     if (loaded != null) {
       // Reconcile on load (Playable 0.4C.2 §7, §50): a refreshed/reopened
       // save must never resume a tutorial stage behind what the saved
-      // GameState already shows happened.
-      _state = ProgressionEngine.reconcile(loaded);
+      // GameState already shows happened. PrologueEngine.reconcileState
+      // (Playable 0.5A.1 §7) additionally repairs a broken/older-schema
+      // PrologueState so a corrupted save can never strand the player.
+      _state = ProgressionEngine.reconcile(PrologueEngine.reconcileState(loaded));
     } else {
       _showStartChoice = true;
     }
@@ -72,7 +74,10 @@ class GameController extends ChangeNotifier {
     // Reconcile after every mutation (§7): the single point every player
     // action and every weekly turn passes through, so a milestone can never
     // silently fall behind the GameState that actually earned it.
-    _state = ProgressionEngine.reconcile(mutate(_state));
+    // PrologueEngine.reconcileState runs first (Playable 0.5A.1 §7): a
+    // repaired PrologueState is what ProgressionEngine.reconcile should
+    // then read milestones from, not the other way around.
+    _state = ProgressionEngine.reconcile(PrologueEngine.reconcileState(mutate(_state)));
     notifyListeners();
     unawaited(_saveService.save(_state));
   }
@@ -144,8 +149,12 @@ class GameController extends ChangeNotifier {
   // --- Founding Prologue (Playable 0.5A) --------------------------------
 
   void setPresidentName(String name) => _apply((s) => PrologueEngine.setPresidentName(s, name));
+  void setCompanyName(String name) => _apply((s) => PrologueEngine.setCompanyName(s, name));
+  void confirmPrologueCompanySetup({required String presidentName, required String companyName}) =>
+      _apply((s) => PrologueEngine.confirmCompanySetup(s, presidentName: presidentName, companyName: companyName));
   void markPrologueIntroSeen() => _apply(PrologueEngine.markIntroSeen);
   void postPrologueFreeRecruitment() => _apply(PrologueEngine.postFreeRecruitment);
+  void postPrologueRecruitment(RecruitmentMediaType type) => _apply((s) => PrologueEngine.postRecruitment(s, type));
   void selectPrologueCandidate(String applicantId) => _apply((s) => PrologueEngine.selectCandidateForInterview(s, applicantId));
   void decidePrologueCandidate(String applicantId, {required bool hire}) => _apply((s) => PrologueEngine.decideCandidate(s, applicantId, hire: hire));
   void confirmPrologueSkillSheet() => _apply(PrologueEngine.confirmSkillSheet);
@@ -154,6 +163,17 @@ class GameController extends ChangeNotifier {
   void finalizePrologueContractIfReady() => _apply(PrologueEngine.finalizeContractIfReady);
   void advancePrologueWeek() => _apply(PrologueEngine.advanceWeek);
   void completePrologue() => _apply(PrologueEngine.completePrologue);
+
+  /// "初心者モードを最初からやり直す" (Playable 0.5A.1 §7) — always
+  /// reachable from within the Founding Prologue. Clears the save first so a
+  /// crash/reload mid-restart can't resurrect the abandoned playthrough,
+  /// same ordering as [restart].
+  Future<void> restartBeginnerMode({int? seed}) async {
+    await _saveService.clear();
+    _state = ProgressionEngine.reconcile(PrologueEngine.restart(seed: seed));
+    notifyListeners();
+    unawaited(_saveService.save(_state));
+  }
 
   // --- Turn ----------------------------------------------------------------
 

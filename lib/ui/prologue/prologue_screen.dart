@@ -5,6 +5,7 @@ import '../../domain/domain.dart';
 import '../../game/game.dart';
 import '../projects/client_interview_screen.dart';
 import '../theme.dart';
+import '../widgets/labels.dart';
 import '../widgets/navigator_card.dart';
 import 'prologue_interview_screen.dart';
 
@@ -12,6 +13,11 @@ import 'prologue_interview_screen.dart';
 /// the Prologue is always exactly one [NavigatorCard] (§66), driven by
 /// [PrologueEngine.stage] rather than a UI-only flag, so a save/reload or a
 /// widget dispose mid-flow always resumes at the right place (§71).
+///
+/// The AppBar also always carries a "最初からやり直す" reset action
+/// (Playable 0.5A.1 §7) — reachable from every stage, not just a subset —
+/// alongside the P0 dead-end invariant [PrologueEngine.canInterviewThisWeek]
+/// enforces stage-by-stage below.
 class PrologueScreen extends StatelessWidget {
   const PrologueScreen({super.key});
 
@@ -27,6 +33,13 @@ class PrologueScreen extends StatelessWidget {
         return Scaffold(
           appBar: AppBar(
             title: Text('創業プロローグ ・ 3月${state.prologueState.prologueWeek.clamp(1, 4)}週'),
+            actions: [
+              IconButton(
+                icon: const Icon(Icons.restart_alt),
+                tooltip: '最初からやり直す',
+                onPressed: () => _confirmRestart(context),
+              ),
+            ],
           ),
           body: SafeArea(
             child: ListView(
@@ -37,6 +50,29 @@ class PrologueScreen extends StatelessWidget {
         );
       },
     );
+  }
+}
+
+/// Playable 0.5A.1 §7: always reachable, always confirmed before it fires —
+/// a single mistap can never wipe a playthrough.
+Future<void> _confirmRestart(BuildContext context) async {
+  final confirmed = await showDialog<bool>(
+    context: context,
+    builder: (dialogContext) => AlertDialog(
+      title: const Text('初心者モードを最初からやり直しますか？'),
+      content: const Text('現在の創業プロローグの進行状況(社長名・会社名・採用状況など)はすべて失われます。この操作は取り消せません。'),
+      actions: [
+        TextButton(onPressed: () => Navigator.of(dialogContext).pop(false), child: const Text('キャンセル')),
+        FilledButton(
+          style: FilledButton.styleFrom(backgroundColor: Colors.red.shade600),
+          onPressed: () => Navigator.of(dialogContext).pop(true),
+          child: const Text('やり直す'),
+        ),
+      ],
+    ),
+  );
+  if (confirmed == true && context.mounted) {
+    await context.game.restartBeginnerMode();
   }
 }
 
@@ -51,17 +87,11 @@ class _StageContent extends StatelessWidget {
     final controller = context.game;
     switch (stage) {
       case PrologueStage.presidentNaming:
-        return _PresidentNaming(navigatorName: navigatorName);
+        return _CompanySetup(navigatorName: navigatorName);
       case PrologueStage.intro:
-        return _Intro(navigatorName: navigatorName, presidentName: state.company.presidentName);
+        return _Intro(navigatorName: navigatorName, presidentName: state.company.presidentName, companyName: state.company.name);
       case PrologueStage.week1Recruitment:
-        return NavigatorCard(
-          navigatorName: navigatorName,
-          message: 'まずは案件に参画してもらう技術者を採用しましょう。\n最初は資金を節約するため、無料の募集から始めてみましょう。',
-          secondaryMessage: '無料募集: ¥0 / 有料募集: 掲載費はかかりますが応募数や質にメリットがあります(将来使えます)。',
-          ctaLabel: '無料で技術者を募集する',
-          onCta: () => controller.postPrologueFreeRecruitment(),
-        );
+        return _RecruitmentMediaSelect(navigatorName: navigatorName, state: state);
       case PrologueStage.week2AwaitingReply:
         return NavigatorCard(
           navigatorName: navigatorName,
@@ -92,7 +122,9 @@ class _StageContent extends StatelessWidget {
       case PrologueStage.week4AwaitingRequest:
         return NavigatorCard(
           navigatorName: navigatorName,
-          message: state.prologueState.failedAttempts > 0 ? '残念でした。SES営業では珍しいことではありません。\n次の案件を探しましょう。' : '面談依頼を待ちましょう。',
+          message: state.prologueState.failedAttempts > 0
+              ? '残念ながら今回の面談は不合格でした。SES営業では珍しいことではありません。\n${state.company.presidentName}社長、次の案件を探しましょう。'
+              : '面談依頼を待ちましょう。次の週へ進めると、案件を探し直します。',
           ctaLabel: '次の週へ',
           onCta: () => controller.advancePrologueWeek(),
         );
@@ -112,18 +144,20 @@ class _StageContent extends StatelessWidget {
   }
 }
 
-class _PresidentNaming extends StatefulWidget {
-  const _PresidentNaming({required this.navigatorName});
+class _CompanySetup extends StatefulWidget {
+  const _CompanySetup({required this.navigatorName});
   final String navigatorName;
   @override
-  State<_PresidentNaming> createState() => _PresidentNamingState();
+  State<_CompanySetup> createState() => _CompanySetupState();
 }
 
-class _PresidentNamingState extends State<_PresidentNaming> {
-  final _controller = TextEditingController();
+class _CompanySetupState extends State<_CompanySetup> {
+  final _presidentController = TextEditingController();
+  final _companyController = TextEditingController();
   @override
   void dispose() {
-    _controller.dispose();
+    _presidentController.dispose();
+    _companyController.dispose();
     super.dispose();
   }
 
@@ -134,13 +168,19 @@ class _PresidentNamingState extends State<_PresidentNaming> {
       children: [
         NavigatorCard(
           navigatorName: widget.navigatorName,
-          message: 'おはようございます。\n今日からいよいよ会社設立ですね。\n\nまず、社長のお名前を教えていただけますか？',
+          message: 'おはようございます。\n今日からいよいよ会社設立ですね。\n\nまず、社長のお名前と会社名を教えていただけますか？',
         ),
         const SizedBox(height: 14),
         TextField(
-          controller: _controller,
+          controller: _presidentController,
           maxLength: PrologueEngine.presidentNameMaxLength,
           decoration: const InputDecoration(labelText: '社長のお名前', border: OutlineInputBorder()),
+        ),
+        const SizedBox(height: 8),
+        TextField(
+          controller: _companyController,
+          maxLength: PrologueEngine.companyNameMaxLength,
+          decoration: const InputDecoration(labelText: '会社名', border: OutlineInputBorder()),
           onSubmitted: (_) => _submit(context),
         ),
         FilledButton(onPressed: () => _submit(context), child: const Text('会社を設立する')),
@@ -149,14 +189,14 @@ class _PresidentNamingState extends State<_PresidentNaming> {
   }
 
   void _submit(BuildContext context) {
-    if (_controller.text.trim().isEmpty) return;
-    context.game.setPresidentName(_controller.text);
+    if (_presidentController.text.trim().isEmpty || _companyController.text.trim().isEmpty) return;
+    context.game.confirmPrologueCompanySetup(presidentName: _presidentController.text, companyName: _companyController.text);
   }
 }
 
 class _Intro extends StatefulWidget {
-  const _Intro({required this.navigatorName, required this.presidentName});
-  final String navigatorName, presidentName;
+  const _Intro({required this.navigatorName, required this.presidentName, required this.companyName});
+  final String navigatorName, presidentName, companyName;
   @override
   State<_Intro> createState() => _IntroState();
 }
@@ -164,7 +204,7 @@ class _Intro extends StatefulWidget {
 class _IntroState extends State<_Intro> {
   int _index = 0;
   List<String> get _messages => [
-    '${widget.presidentName}社長、あらためまして。\nこれから一緒に会社を経営していきます。',
+    '${widget.presidentName}社長、あらためまして。\n「${widget.companyName}」、これから一緒に経営していきましょう。',
     'この会社でやることはシンプルです。\n・技術者を採用する\n・案件へ参画させる\n・取引先から売上を得る',
     '取引実績を積んで信頼を得て、新しい取引先を増やし、会社を成長させましょう。\nただし、現金が尽きると経営は続けられません。',
     '続いて事務所についてです。\n現在の事務所は小規模オフィス、家賃は月${formatCompactYen(officeConfigs[OfficeType.smallOffice]!.monthlyRent)}です。',
@@ -194,26 +234,133 @@ class _IntroState extends State<_Intro> {
   }
 }
 
+/// March Week 1 (Playable 0.5A.1 §3): the player picks a recruitment medium
+/// — nothing is ever auto-posted, even in Beginner Mode. The 総務 only
+/// *recommends* 無料求人 via [secondaryMessage]; every option below stays a
+/// real, tappable choice.
+class _RecruitmentMediaSelect extends StatelessWidget {
+  const _RecruitmentMediaSelect({required this.navigatorName, required this.state});
+  final String navigatorName;
+  final GameState state;
+
+  static const _tendencyLabels = {
+    RecruitmentMediaType.freeWork: '若手中心の応募が多い傾向',
+    RecruitmentMediaType.engineerCareer: '経験者中心の応募が多い傾向',
+    RecruitmentMediaType.directScout: '高スキル人材寄りの候補者を紹介',
+  };
+
+  @override
+  Widget build(BuildContext context) {
+    final controller = context.game;
+    final cash = state.company.cash;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        NavigatorCard(
+          navigatorName: navigatorName,
+          message: '${state.company.presidentName}社長、まずは案件に参画してもらう技術者を採用しましょう。\nどの募集方法を使いますか？',
+          secondaryMessage: 'おすすめ: 最初は資金を節約できる「無料求人」から始めるのが安心です。ただし選ぶのは社長次第です。',
+        ),
+        const SizedBox(height: 12),
+        for (final type in RecruitmentMediaType.values)
+          _MediaOptionCard(
+            type: type,
+            tendency: _tendencyLabels[type]!,
+            affordable: cash >= recruitmentMediaConfigs[type]!.cost,
+            onSelect: () => controller.postPrologueRecruitment(type),
+          ),
+      ],
+    );
+  }
+}
+
+class _MediaOptionCard extends StatelessWidget {
+  const _MediaOptionCard({required this.type, required this.tendency, required this.affordable, required this.onSelect});
+  final RecruitmentMediaType type;
+  final String tendency;
+  final bool affordable;
+  final VoidCallback onSelect;
+
+  static const _labels = {
+    RecruitmentMediaType.freeWork: '無料求人',
+    RecruitmentMediaType.engineerCareer: '有料求人サイト',
+    RecruitmentMediaType.directScout: '人材紹介',
+  };
+
+  @override
+  Widget build(BuildContext context) {
+    final config = recruitmentMediaConfigs[type]!;
+    return Card(
+      margin: const EdgeInsets.only(bottom: 10),
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(child: Text(_labels[type]!, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15))),
+                Text(config.cost == 0 ? '無料' : formatCompactYen(config.cost), style: TextStyle(fontWeight: FontWeight.bold, color: config.cost == 0 ? Colors.green.shade700 : Colors.black87)),
+              ],
+            ),
+            const SizedBox(height: 4),
+            Text(tendency, style: const TextStyle(fontSize: 12.5, color: Colors.black54)),
+            const SizedBox(height: 10),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton(
+                onPressed: affordable ? onSelect : null,
+                child: Text(affordable ? 'この方法で募集する' : '資金が足りません'),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// March Week 2 (Playable 0.5A §17-29, Playable 0.5A.1 §1 P0 fix).
+///
+/// Every render includes a "次の週へ" fallback alongside the candidate
+/// cards — [PrologueEngine.canInterviewThisWeek] can go false mid-stage
+/// (after a reject/decline decision, §21's "1週間に1人まで" already blocks
+/// the *other* candidate this same week) while [PrologueStage] itself stays
+/// [PrologueStage.week2CandidateSelect]; without this fallback, that combo
+/// was the P0 dead end (面接する looked enabled but silently no-opped, and
+/// nothing else on screen advanced the game).
 class _CandidateSelect extends StatelessWidget {
   const _CandidateSelect({required this.navigatorName, required this.state});
   final String navigatorName;
   final GameState state;
   @override
   Widget build(BuildContext context) {
+    final canInterview = PrologueEngine.canInterviewThisWeek(state);
+    final single = state.applicants.length == 1;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        NavigatorCard(navigatorName: navigatorName, message: '応募者が2名届きました。\n今週面談できるのは1人です。どちらと会うか決めましょう。'),
+        NavigatorCard(
+          navigatorName: navigatorName,
+          message: single ? '候補者が1名届きました。スキルシートを確認してから、面談するか決めましょう。' : '応募者が2名届きました。\n今週面談できるのは1人です。どちらと会うか決めましょう。',
+          secondaryMessage: canInterview ? null : '今週はすでに面談を1件行いました。残りの候補者とは来週以降に面談できます。',
+        ),
         const SizedBox(height: 12),
-        for (final entry in state.applicants) _CandidateCard(applicant: entry.applicant),
+        for (final entry in state.applicants) _CandidateCard(applicant: entry.applicant, canInterview: canInterview),
+        const SizedBox(height: 4),
+        OutlinedButton(
+          onPressed: () => context.game.advancePrologueWeek(),
+          child: const Text('次の週へ'),
+        ),
       ],
     );
   }
 }
 
 class _CandidateCard extends StatelessWidget {
-  const _CandidateCard({required this.applicant});
+  const _CandidateCard({required this.applicant, required this.canInterview});
   final Applicant applicant;
+  final bool canInterview;
   @override
   Widget build(BuildContext context) {
     final skill = applicant.skillFor(applicant.mainLanguage);
@@ -225,19 +372,116 @@ class _CandidateCard extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(applicant.name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
-            Text('${applicant.age}歳 / ${applicant.mainLanguage.jsonValue} 経験${(skill.displayedExperienceMonths / 12).toStringAsFixed(1)}年'),
+            Text('${applicant.age}歳 / ${languageLabels[applicant.mainLanguage] ?? applicant.mainLanguage.jsonValue} 経験${(skill.displayedExperienceMonths / 12).toStringAsFixed(1)}年'),
             Text('希望年収: ${formatCompactYen(applicant.desiredMonthlySalary * 12)}'),
             Text('コミュニケーション: ${'★' * applicant.personality.communication}${'☆' * (5 - applicant.personality.communication)}'),
             const SizedBox(height: 10),
-            SizedBox(
-              width: double.infinity,
-              child: FilledButton(onPressed: () => context.game.selectPrologueCandidate(applicant.id), child: const Text('面接する')),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: () => showCandidateSkillSheetDialog(context, applicant, canInterview: canInterview),
+                    child: const Text('スキルシートを見る'),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: FilledButton(
+                    onPressed: canInterview ? () => context.game.selectPrologueCandidate(applicant.id) : null,
+                    child: const Text('面接する'),
+                  ),
+                ),
+              ],
             ),
           ],
         ),
       ),
     );
   }
+}
+
+/// Playable 0.5A.1 §4: the candidate SkillSheet modal. Shown from the
+/// candidate card *and* re-openable here via "この人と面談する", so the
+/// player can look at the SkillSheet first and decide from inside the modal
+/// (§4's flow), without losing the option to just tap 面接する on the card
+/// directly.
+Future<void> showCandidateSkillSheetDialog(BuildContext context, Applicant applicant, {required bool canInterview}) {
+  final tech = applicant.techSkills;
+  String stars(int level) => '${'★' * level}${'☆' * (5 - level)}';
+  final topDomain = [
+    ('バックエンド', tech.backend),
+    ('フロントエンド', tech.frontend),
+    ('DB', tech.database),
+  ].reduce((a, b) => a.$2 >= b.$2 ? a : b).$1;
+  return showDialog<void>(
+    context: context,
+    builder: (dialogContext) => AlertDialog(
+      title: Text('${applicant.name} さんのスキルシート'),
+      content: SizedBox(
+        width: double.maxFinite,
+        child: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _SheetRow('年齢', '${applicant.age}歳'),
+              _SheetRow('希望年収', formatCompactYen(applicant.desiredMonthlySalary * 12)),
+              _SheetRow('経験年数', formatExperience(applicant.totalItExperienceMonths)),
+              const Divider(),
+              const Text('言語', style: TextStyle(fontWeight: FontWeight.bold)),
+              _SheetRow(languageLabels[applicant.mainLanguage] ?? applicant.mainLanguage.name, '${formatExperience(applicant.skillFor(applicant.mainLanguage).displayedExperienceMonths)} / ${stars((applicant.skillFor(applicant.mainLanguage).actualSkill / 20).round().clamp(0, 5))}'),
+              for (final lang in applicant.subLanguages)
+                _SheetRow(languageLabels[lang] ?? lang.name, formatExperience(applicant.skillFor(lang).displayedExperienceMonths)),
+              const Divider(),
+              const Text('DB / Infrastructure 等', style: TextStyle(fontWeight: FontWeight.bold)),
+              _SheetRow('DB', stars(tech.database)),
+              _SheetRow('Network', stars(tech.network)),
+              _SheetRow('Infrastructure', stars(tech.infrastructure)),
+              _SheetRow('Frontend', stars(tech.frontend)),
+              _SheetRow('Backend', stars(tech.backend)),
+              const Divider(),
+              const Text('業界経験', style: TextStyle(fontWeight: FontWeight.bold)),
+              _SheetRow('区分', applicantTypeLabels[applicant.type] ?? applicant.type.name),
+              _SheetRow('IT業界経験', formatExperience(applicant.totalItExperienceMonths)),
+              _SheetRow('転職回数', '${applicant.jobChangeCount}回'),
+              const Divider(),
+              const Text('役割経験', style: TextStyle(fontWeight: FontWeight.bold)),
+              _SheetRow('主な役割', topDomain),
+              _SheetRow('リーダー経験', stars(tech.leader)),
+              _SheetRow('マネージャー経験', stars(tech.manager)),
+            ],
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.of(dialogContext).pop(), child: const Text('閉じる')),
+        FilledButton(
+          onPressed: canInterview
+              ? () {
+                  Navigator.of(dialogContext).pop();
+                  context.game.selectPrologueCandidate(applicant.id);
+                }
+              : null,
+          child: const Text('この人と面談する'),
+        ),
+      ],
+    ),
+  );
+}
+
+class _SheetRow extends StatelessWidget {
+  const _SheetRow(this.label, this.value);
+  final String label, value;
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.symmetric(vertical: 3),
+    child: Row(
+      children: [
+        SizedBox(width: 96, child: Text(label, style: const TextStyle(color: Colors.black54, fontSize: 12.5))),
+        Expanded(child: Text(value, style: const TextStyle(fontSize: 13))),
+      ],
+    ),
+  );
 }
 
 class _SkillSheetConfirm extends StatelessWidget {
@@ -261,7 +505,7 @@ class _SkillSheetConfirm extends StatelessWidget {
               children: [
                 const Text('SkillSheet(営業用経歴)', style: TextStyle(fontWeight: FontWeight.bold)),
                 const SizedBox(height: 6),
-                Text('主な技術: ${engineer.profile.mainLanguage.jsonValue}'),
+                Text('主な技術: ${languageLabels[engineer.profile.mainLanguage] ?? engineer.profile.mainLanguage.jsonValue}'),
                 Text('Backend: ${sheet.displayedBackend} / DB: ${sheet.displayedDatabase} / Frontend: ${sheet.displayedFrontend}'),
                 const SizedBox(height: 8),
                 const Text('取引先へ見せる営業用経歴です。実態より強く記載することもできますが、差が大きいと面談リスクや信頼低下につながります。\n最初は実態に忠実な内容で営業してみましょう。', style: TextStyle(fontSize: 12.5, color: Colors.black54)),
@@ -338,25 +582,47 @@ class _UpperInterviewIntro extends StatelessWidget {
   }
 }
 
-class _ClientInterviewAuto extends StatelessWidget {
+/// March Week 4, 客先面談 (Playable 0.5A §50-52, Playable 0.5A.1 §6).
+///
+/// Deliberately requires an explicit player tap between "客先面談が始まり
+/// ました" and the pass/fail reveal — auto-resolving both in the same frame
+/// (the previous behavior) was reported as "客先面談がなかったように感じ
+/// る": nothing forced the player to actually notice the beat before the
+/// result replaced it. The three-line rhythm below (総務の一言 → プレイヤー
+/// 操作 → 総務のリアクション, §2) is what makes the client interview read
+/// as a real, distinct step instead of a flash between two messages.
+class _ClientInterviewAuto extends StatefulWidget {
   const _ClientInterviewAuto({required this.navigatorName, required this.state});
   final String navigatorName;
   final GameState state;
   @override
+  State<_ClientInterviewAuto> createState() => _ClientInterviewAutoState();
+}
+
+class _ClientInterviewAutoState extends State<_ClientInterviewAuto> {
+  bool _resolving = false;
+
+  @override
   Widget build(BuildContext context) {
+    final state = widget.state;
     final engineer = state.engineers.first;
     final proposal = state.proposals.firstWhere((p) => p.engineerId == engineer.id && p.status == ApplicationStatus.active);
     final session = state.clientInterviews.where((s) => s.applicationId == proposal.id && s.step == SelectionStep.clientInterview).toList();
     if (session.isEmpty) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (context.mounted) context.game.autoResolveClientInterview(proposal.id);
-      });
       return Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          NavigatorCard(navigatorName: navigatorName, message: '上位会社面談 通過！\n\n次は実際の客先との面談です。今回は営業の私たちは同席できません。${engineer.profile.name}さんに任せて結果を待ちましょう。'),
-          const SizedBox(height: 24),
-          const Center(child: CircularProgressIndicator()),
+          NavigatorCard(
+            navigatorName: widget.navigatorName,
+            message: '上位会社面談 通過！\n\n次は客先面談です。社長であるあなたはこの面談に同席できません。${engineer.profile.name}さんに任せましょう。',
+            ctaLabel: _resolving ? '結果を確認しています…' : '結果を確認する',
+            onCta: _resolving
+                ? null
+                : () {
+                    setState(() => _resolving = true);
+                    context.game.autoResolveClientInterview(proposal.id);
+                  },
+          ),
         ],
       );
     }
@@ -366,8 +632,10 @@ class _ClientInterviewAuto extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         NavigatorCard(
-          navigatorName: navigatorName,
-          message: passed ? '客先面談 合格！\n\n${engineer.profile.name}さんが選ばれました。' : '客先面談 不合格でした。\n\n残念でした。SES営業では珍しいことではありません。次の案件を探しましょう。',
+          navigatorName: widget.navigatorName,
+          message: passed
+              ? '客先面談 合格！\n\n${engineer.profile.name}さんが選ばれました。'
+              : '客先面談 不合格でした。\n\n残念でした。SES営業では珍しいことではありません。次の案件を探しましょう。',
           ctaLabel: '続ける',
           onCta: () => context.game.advancePrologueWeek(),
         ),
@@ -395,7 +663,7 @@ class _Contract extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        NavigatorCard(navigatorName: navigatorName, message: 'これで4月の入社と同時に案件へ参画できます！'),
+        NavigatorCard(navigatorName: navigatorName, message: '${state.company.presidentName}社長、これで4月の入社と同時に案件へ参画できます！'),
         const SizedBox(height: 12),
         Card(
           child: Padding(
@@ -452,9 +720,11 @@ class _Complete extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 16),
-        const Center(child: Text('━━━━━━━━━━━━\n創業準備 完了\n━━━━━━━━━━━━', textAlign: TextAlign.center, style: TextStyle(fontWeight: FontWeight.bold))),
+        Center(child: Text('━━━━━━━━━━━━\n「${state.company.name}」創業準備 完了\n━━━━━━━━━━━━', textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.bold))),
         const SizedBox(height: 8),
         const Text('最初の社員を採用し、最初の案件を獲得しました。\nここからは、社長の判断で会社を経営していきましょう。', textAlign: TextAlign.center),
+        const SizedBox(height: 8),
+        const Text('まずは売上・給与・家賃などの基本的な経営に慣れましょう。採用や福利厚生は、経営に慣れてから少しずつ使えるようになります。', textAlign: TextAlign.center, style: TextStyle(fontSize: 12, color: Colors.black54)),
         const SizedBox(height: 16),
         FilledButton(onPressed: () => context.game.completePrologue(), child: const Text('経営を始める')),
       ],

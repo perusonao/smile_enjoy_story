@@ -19,5 +19,6 @@ export 'client_interview_content.dart';
 export 'sales_engine.dart';
 export 'rng.dart';
 export 'task_engine.dart';
+export 'unlock_engine.dart';
 export 'weekly_summary_engine.dart';
 export 'welfare_engine.dart';

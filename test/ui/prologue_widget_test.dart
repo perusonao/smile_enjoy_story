@@ -21,7 +21,7 @@ import 'package:smile_enjoy_story/ui/main_shell.dart';
 /// to the requested [PrologueStage], picking Candidate A throughout.
 GameState _stateAt(PrologueStage target, {int seed = 5}) {
   var state = PrologueEngine.newGame(seed: seed);
-  state = PrologueEngine.setPresidentName(state, 'テスト社長');
+  state = PrologueEngine.confirmCompanySetup(state, presidentName: 'テスト社長', companyName: 'テスト会社');
   state = PrologueEngine.markIntroSeen(state);
   if (target == PrologueStage.week1Recruitment) return state;
   state = PrologueEngine.postFreeRecruitment(state);
@@ -116,8 +116,10 @@ void main() {
     await tester.tap(find.text('【初心者モード】おすすめ'));
     await tester.pumpAndSettle();
 
-    expect(find.byType(TextField), findsOneWidget);
-    await tester.enterText(find.byType(TextField), 'テスト社長');
+    // Company Setup (Playable 0.5A.1 §1): president name + company name.
+    expect(find.byType(TextField), findsNWidgets(2));
+    await tester.enterText(find.byType(TextField).first, 'テスト社長');
+    await tester.enterText(find.byType(TextField).last, 'テスト会社');
     await tester.tap(find.text('会社を設立する'));
     await tester.pumpAndSettle();
 
@@ -131,8 +133,12 @@ void main() {
     await tester.tap(find.text('次へ進む'));
     await tester.pumpAndSettle();
 
-    expect(find.text('無料で技術者を募集する'), findsOneWidget);
-    await tester.tap(find.text('無料で技術者を募集する'));
+    // Week 1 recruitment (Playable 0.5A.1 §3): player picks a medium — no
+    // auto-select, three real options.
+    expect(find.text('無料求人'), findsOneWidget);
+    expect(find.text('有料求人サイト'), findsOneWidget);
+    expect(find.text('人材紹介'), findsOneWidget);
+    await tester.tap(find.text('この方法で募集する').first);
     await tester.pumpAndSettle();
     expect(find.text('次の週へ'), findsOneWidget);
   });
@@ -140,6 +146,7 @@ void main() {
   for (final width in [360.0, 390.0]) {
     testWidgets('Prologue screens do not overflow at ${width.toInt()}px', (tester) async {
       for (final stage in [
+        PrologueStage.week1Recruitment,
         PrologueStage.week2CandidateSelect,
         PrologueStage.week3SkillSheet,
         PrologueStage.week3Sales,
@@ -169,5 +176,90 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byType(MainShell), findsOneWidget);
+  });
+
+  testWidgets('P0 regression: after a same-week reject, Home still offers a real action (次の週へ)', (tester) async {
+    // Reproduces the exact combination that caused the reported dead end:
+    // week2CandidateSelect stays the stage, but the remaining candidate's
+    // 面接する is blocked by the one-interview-per-week rule.
+    var state = PrologueEngine.newGame(seed: 7);
+    state = PrologueEngine.confirmCompanySetup(state, presidentName: 'テスト社長', companyName: 'テスト会社');
+    state = PrologueEngine.markIntroSeen(state);
+    state = PrologueEngine.postFreeRecruitment(state);
+    state = PrologueEngine.advanceWeek(state);
+    final firstId = state.applicants.first.applicant.id;
+    state = PrologueEngine.selectCandidateForInterview(state, firstId);
+    state = GameEngine.askRecruitmentQuestion(state, firstId, InterviewQuestionCategory.technical);
+    state = GameEngine.askRecruitmentQuestion(state, firstId, InterviewQuestionCategory.teamwork);
+    state = GameEngine.askRecruitmentQuestion(state, firstId, InterviewQuestionCategory.workStyle);
+    state = GameEngine.answerRecruitmentReverseQuestion(state, firstId, 0);
+    state = GameEngine.completeRecruitmentInterview(state, firstId, InterviewOutcome.rejected);
+    state = PrologueEngine.decideCandidate(state, firstId, hire: false);
+    expect(PrologueEngine.stage(state), PrologueStage.week2CandidateSelect);
+    expect(PrologueEngine.canInterviewThisWeek(state), isFalse);
+
+    await _pumpSeeded(tester, state, 390);
+
+    // The fallback action is on screen and enabled.
+    final nextWeekButton = find.widgetWithText(OutlinedButton, '次の週へ');
+    expect(nextWeekButton, findsOneWidget);
+    expect(tester.widget<OutlinedButton>(nextWeekButton).onPressed, isNotNull);
+
+    // The blocked candidate's 面接する is visibly disabled, not a silent no-op.
+    final interviewButton = find.widgetWithText(FilledButton, '面接する');
+    expect(interviewButton, findsOneWidget);
+    expect(tester.widget<FilledButton>(interviewButton).onPressed, isNull);
+
+    // Tapping the fallback actually progresses the game.
+    await tester.tap(nextWeekButton);
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('Candidate SkillSheet modal shows required fields and leads into the interview (§4)', (tester) async {
+    final state = _stateAt(PrologueStage.week2CandidateSelect);
+    await _pumpSeeded(tester, state, 390);
+
+    await tester.tap(find.widgetWithText(OutlinedButton, 'スキルシートを見る').first);
+    await tester.pumpAndSettle();
+
+    expect(find.text('年齢'), findsOneWidget);
+    expect(find.text('希望年収'), findsOneWidget);
+    expect(find.text('経験年数'), findsOneWidget);
+    expect(find.text('言語'), findsOneWidget);
+    expect(find.text('DB / Infrastructure 等'), findsOneWidget);
+    expect(find.text('業界経験'), findsOneWidget);
+    expect(find.text('役割経験'), findsOneWidget);
+    expect(find.text('この人と面談する'), findsOneWidget);
+
+    await tester.tap(find.text('この人と面談する'));
+    await tester.pumpAndSettle();
+    // Modal closed and navigated into the interview flow.
+    expect(find.text('この人と面談する'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('Reset entry point is always visible and requires confirmation (§7)', (tester) async {
+    final state = _stateAt(PrologueStage.week3Sales);
+    await _pumpSeeded(tester, state, 390);
+
+    expect(find.byIcon(Icons.restart_alt), findsOneWidget);
+    await tester.tap(find.byIcon(Icons.restart_alt));
+    await tester.pumpAndSettle();
+
+    expect(find.text('初心者モードを最初からやり直しますか？'), findsOneWidget);
+    // Cancelling leaves the playthrough untouched.
+    await tester.tap(find.text('キャンセル'));
+    await tester.pumpAndSettle();
+    expect(find.text('営業を開始する'), findsOneWidget, reason: 'still on week3Sales after cancelling');
+
+    await tester.tap(find.byIcon(Icons.restart_alt));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('やり直す'));
+    await tester.pumpAndSettle();
+
+    // Back to a brand-new Company Setup screen.
+    expect(find.text('会社を設立する'), findsOneWidget);
+    expect(find.byType(TextField), findsNWidgets(2));
   });
 }

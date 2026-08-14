@@ -38,7 +38,7 @@ class _Outcome {
 _Outcome _playOne(int seed, {required bool candidateB}) {
   final outcome = _Outcome();
   var state = PrologueEngine.newGame(seed: seed);
-  state = PrologueEngine.setPresidentName(state, 'テスト社長');
+  state = PrologueEngine.confirmCompanySetup(state, presidentName: 'テスト社長', companyName: 'テスト会社');
   state = PrologueEngine.markIntroSeen(state);
   state = PrologueEngine.postFreeRecruitment(state);
   state = PrologueEngine.advanceWeek(state);

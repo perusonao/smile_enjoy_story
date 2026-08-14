@@ -32,11 +32,11 @@ FoundingEventDialog? buildFoundingEventDialog(OneTimeEvent event, GameState stat
       final employee = state.engineers.where((e) => e.id == offer.employeeId).firstOrNull;
       final project = state.openProjects.where((e) => e.project.id == offer.projectId).firstOrNull?.project;
       return FoundingEventDialog(
-        title: '🎉 面談オファーが届きました！',
+        title: '🎉 面談依頼が届きました！',
         body: '${clientNameById(project?.clientId ?? '')}から\n'
             '${employee?.profile.name ?? '社員'}さんへ面談依頼があります。\n\n'
             '案件:\n${project?.title ?? ''}',
-        primaryLabel: '面談オファーを見る',
+        primaryLabel: '面談依頼を見る',
         celebration: true,
       );
     case OneTimeEvent.firstAssignmentCelebration:
@@ -62,7 +62,7 @@ FoundingEventDialog? buildFoundingEventDialog(OneTimeEvent event, GameState stat
       return const FoundingEventDialog(
         title: '初めての客先面談が終わりました',
         body: '営業では不合格になることもあります。\n'
-            'SkillSheetを見直すか、次の面談オファーを待ちましょう。',
+            'SkillSheetを見直すか、次の面談依頼を待ちましょう。',
         primaryLabel: 'OK',
       );
     case OneTimeEvent.recruitmentInterviewCelebration:
@@ -81,8 +81,8 @@ FoundingEventDialog? buildFoundingEventDialog(OneTimeEvent event, GameState stat
       );
     case OneTimeEvent.firstOfferTutorial:
       return const FoundingEventDialog(
-        title: 'Offerとは',
-        body: '選考を通過すると、正式な案件Offerが届きます。\n'
+        title: '参画オファーとは',
+        body: '選考を通過すると、正式な参画オファーが届きます。\n'
             '回答期限までに受諾するか辞退するか判断してください。',
       );
     case OneTimeEvent.firstArTutorial:

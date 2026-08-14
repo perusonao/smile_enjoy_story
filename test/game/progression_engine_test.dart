@@ -1,11 +1,12 @@
-// Guided-founding progression tests (Playable 0.4C.1 §54-57).
+// Guided-founding progression tests (Playable 0.4C.1 §54-57, 0.4C.2 §58-60).
 //
 // Covers: stage advancement, feature gates, failure-safe paths, save
-// round-trips (including the legacy-save "grant full access" branch), and
-// that navigation from every founding-mission step lands somewhere real
-// (no dead ends).
+// round-trips (including the legacy-save "grant full access" branch),
+// reconciliation, the tutorial focus employee, and that navigation from
+// every guided action lands somewhere real (no dead ends).
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:smile_enjoy_story/domain/domain.dart';
 import 'package:smile_enjoy_story/game/game.dart';
 
 void main() {
@@ -14,7 +15,7 @@ void main() {
       final state = GameEngine.newGame(seed: 1);
       expect(ProgressionEngine.currentStage(state), FoundingStage.employeeIntro);
       expect(ProgressionEngine.showFoundingMission(state), isTrue);
-      expect(ProgressionEngine.missionStep(state)!.stepNumber, 1);
+      expect(ProgressionEngine.guidedAction(state)!.stepNumber, 1);
     });
 
     test('inspecting an employee advances to Stage 2 (skillSheet)', () {
@@ -82,13 +83,20 @@ void main() {
       expect(ProgressionEngine.canUseWelfare(state), isTrue);
     });
 
-    test('completing the founding tutorial moves to free management', () {
+    test('viewing an employee after Welfare unlocks moves to Stage 9 (tutorialComplete, §35-37)', () {
       var state = _stateAtStage(FoundingStage.welfare);
+      state = GameEngine.recordMilestone(state, FoundingMilestone.welfareIntroSeen);
+      expect(ProgressionEngine.currentStage(state), FoundingStage.tutorialComplete);
+      expect(ProgressionEngine.guidedAction(state)!.ctaLabel, '自由経営を始める');
+    });
+
+    test('completing the founding tutorial moves to free management', () {
+      var state = _stateAtStage(FoundingStage.tutorialComplete);
       expect(ProgressionEngine.showFoundingMission(state), isTrue);
       state = GameEngine.completeFoundingTutorial(state);
       expect(ProgressionEngine.currentStage(state), FoundingStage.freeManagement);
       expect(ProgressionEngine.showFoundingMission(state), isFalse);
-      expect(ProgressionEngine.missionStep(state), isNull);
+      expect(ProgressionEngine.guidedAction(state), isNull);
     });
 
     test('milestones only move forward — recording twice keeps the first week', () {
@@ -99,6 +107,132 @@ void main() {
       state = GameEngine.advanceWeek(state); // week 3
       state = GameEngine.recordMilestone(state, FoundingMilestone.inspectEmployee);
       expect(state.foundingProgress.milestoneWeeks[FoundingMilestone.inspectEmployee], 2);
+    });
+  });
+
+  group('Tutorial focus employee (§13-15, §58)', () {
+    test('focusEmployeeId picks one of the two founders, deterministically for a given seed', () {
+      final a = ProgressionEngine.focusEmployeeId(GameEngine.newGame(seed: 42));
+      final b = ProgressionEngine.focusEmployeeId(GameEngine.newGame(seed: 42));
+      expect(a, isNotNull);
+      expect(a, b);
+      expect(GameEngine.newGame(seed: 42).engineers.map((e) => e.id), contains(a));
+    });
+
+    test('does not alter either founder\'s abilities (§14)', () {
+      final before = GameEngine.newGame(seed: 7);
+      final snapshot = {for (final e in before.engineers) e.id: e.profile};
+      ProgressionEngine.focusEmployeeId(before);
+      for (final e in before.engineers) {
+        expect(e.profile, snapshot[e.id]);
+      }
+    });
+
+    test('early-stage guided actions target the focus employee specifically', () {
+      final state = GameEngine.newGame(seed: 1);
+      final focusId = ProgressionEngine.focusEmployeeId(state);
+      final action = ProgressionEngine.guidedAction(state)!;
+      expect(action.targetId, focusId);
+    });
+  });
+
+  group('Reconciliation (§5-8, §50, §59)', () {
+    test('a milestone missed by explicit recording is backfilled from GameState facts', () {
+      // Simulate a save/desync where startSales happened for real but the
+      // milestone was somehow never recorded.
+      var state = GameEngine.newGame(seed: 1);
+      final engineer = state.engineers.first;
+      state = state.copyWith(
+        engineers: [engineer.copyWith(salesStatus: SalesStatus.selling), ...state.engineers.skip(1)],
+      );
+      expect(state.foundingProgress.has(FoundingMilestone.startSales), isFalse);
+
+      final reconciled = ProgressionEngine.reconcile(state);
+
+      expect(reconciled.foundingProgress.has(FoundingMilestone.startSales), isTrue);
+    });
+
+    test('reconcile is idempotent — reconciling twice gives the same result (§59)', () {
+      var state = GameEngine.newGame(seed: 3);
+      final engineer = state.engineers.first;
+      state = state.copyWith(
+        activeAssignments: [
+          ActiveAssignment(engineerId: engineer.id, project: state.openProjects.first.project, remainingWeeks: 4, assignedWeek: 1),
+        ],
+      );
+      final once = ProgressionEngine.reconcile(state);
+      final twice = ProgressionEngine.reconcile(once);
+      expect(twice.foundingProgress.completedMilestones, once.foundingProgress.completedMilestones);
+      expect(twice.foundingProgress.milestoneWeeks, once.foundingProgress.milestoneWeeks);
+    });
+
+    test('reconcile never un-completes a milestone (monotonic)', () {
+      var state = GameEngine.newGame(seed: 1);
+      state = GameEngine.recordMilestone(state, FoundingMilestone.firstAssignment);
+      // No active assignments and no assignmentsStarted stat — a naive,
+      // non-monotonic reconcile might try to "correct" this back to false.
+      final reconciled = ProgressionEngine.reconcile(state);
+      expect(reconciled.foundingProgress.has(FoundingMilestone.firstAssignment), isTrue);
+    });
+
+    test('reconcile does not touch the purely UI-driven milestones (§6)', () {
+      var state = GameEngine.newGame(seed: 1);
+      state = state.copyWith(
+        activeAssignments: [
+          ActiveAssignment(engineerId: state.engineers.first.id, project: state.openProjects.first.project, remainingWeeks: 4, assignedWeek: 1),
+        ],
+      );
+      final reconciled = ProgressionEngine.reconcile(state);
+      expect(reconciled.foundingProgress.has(FoundingMilestone.inspectEmployee), isFalse);
+      expect(reconciled.foundingProgress.has(FoundingMilestone.inspectSkillSheet), isFalse);
+      expect(reconciled.foundingProgress.has(FoundingMilestone.welfareIntroSeen), isFalse);
+      expect(reconciled.foundingProgress.has(FoundingMilestone.freeManagement), isFalse);
+    });
+
+    test('a save from mid-tutorial reconciles to the correct stage on load, never regressing (§50)', () {
+      // A save whose engineer state clearly shows sales already started and
+      // an assignment already active, but whose FoundingProgress is still
+      // completely empty (as if written by a broken older build).
+      var state = GameEngine.newGame(seed: 5);
+      final engineer = state.engineers.first;
+      state = state.copyWith(
+        engineers: [engineer.copyWith(salesStatus: SalesStatus.assigned), ...state.engineers.skip(1)],
+        activeAssignments: [
+          ActiveAssignment(engineerId: engineer.id, project: state.openProjects.first.project, remainingWeeks: 4, assignedWeek: 1),
+        ],
+      );
+      final reloaded = ProgressionEngine.reconcile(GameState.fromJson(state.toJson()));
+      // firstAssignment (derivable) must be reconciled even though
+      // inspectEmployee/inspectSkillSheet (not derivable) legitimately
+      // weren't recorded — currentStage must never claim to be behind an
+      // assignment that already exists.
+      expect(reloaded.foundingProgress.has(FoundingMilestone.firstAssignment), isTrue);
+      expect(ProgressionEngine.canUseRecruitment(reloaded), isTrue);
+    });
+  });
+
+  group('Impossible-stage fallback (§8)', () {
+    test('awaitingOffer falls back to "restart sales" if the focus employee is no longer selling', () {
+      var state = _stateAtStage(FoundingStage.awaitingOffer);
+      final focusId = ProgressionEngine.focusEmployeeId(state)!;
+      final focus = state.engineerById(focusId);
+      // Force the impossible combination: stage says "waiting for an
+      // offer" but sales isn't actually running.
+      state = state.copyWith(
+        engineers: [for (final e in state.engineers) if (e.id == focusId) e.copyWith(salesStatus: SalesStatus.notSelling) else e],
+      );
+      final action = ProgressionEngine.guidedAction(state)!;
+      expect(action.ctaLabel, isNotNull);
+      expect(action.targetType, TaskTargetType.employeeDetail);
+      expect(action.targetId, focus.id);
+      expect(action.title, contains('営業'));
+    });
+
+    test('a genuinely waiting player (still selling) gets the plain waiting message, not the fallback', () {
+      final state = _stateAtStage(FoundingStage.awaitingOffer);
+      final action = ProgressionEngine.guidedAction(state)!;
+      expect(action.canAdvanceWeek, isTrue);
+      expect(action.title, isNot(contains('再開')));
     });
   });
 
@@ -223,28 +357,42 @@ void main() {
     });
   });
 
-  group('Mission-step navigation has no dead ends (§57)', () {
+  group('Guided-action navigation has no dead ends (§57, §59)', () {
     test('every stage before freeManagement has either a CTA target or is purely informational', () {
       for (final stage in FoundingStage.values) {
         if (stage == FoundingStage.freeManagement) continue;
         final state = _stateAtStage(stage);
-        final step = ProgressionEngine.missionStep(state);
-        expect(step, isNotNull, reason: '$stage should have a mission step');
-        if (step!.ctaLabel != null) {
+        final action = ProgressionEngine.guidedAction(state);
+        expect(action, isNotNull, reason: '$stage should have a guided action');
+        if (action!.ctaLabel != null) {
           final validTarget =
-              step.targetType != TaskTargetType.none ||
-              step.stage == FoundingStage.welfare; // "経営を続ける" is handled specially by Home, not a nav target.
-          expect(validTarget, isTrue, reason: '$stage CTA "${step.ctaLabel}" must lead somewhere');
+              action.targetType != TaskTargetType.none ||
+              action.stage == FoundingStage.tutorialComplete; // "自由経営を始める" is handled specially by Home, not a nav target.
+          expect(validTarget, isTrue, reason: '$stage CTA "${action.ctaLabel}" must lead somewhere');
+        } else {
+          // No CTA is only acceptable when "次の週へ" is the real action.
+          expect(action.canAdvanceWeek, isTrue, reason: '$stage has neither a CTA nor canAdvanceWeek — a dead end');
         }
+      }
+    });
+
+    test('exactly one primary guided action exists at every stage (never zero, never ambiguous)', () {
+      for (final stage in FoundingStage.values) {
+        if (stage == FoundingStage.freeManagement) continue;
+        final state = _stateAtStage(stage);
+        // guidedAction returns a single object, not a list — this is
+        // structurally guaranteed, but assert non-null explicitly so a
+        // future refactor that makes it nullable-by-mistake fails loudly.
+        expect(ProgressionEngine.guidedAction(state), isNotNull, reason: '$stage');
       }
     });
   });
 }
 
-/// Builds a [GameState] whose [FoundingProgress] already satisfies every
-/// milestone gating a stage *before* [stage] — i.e. the tutorial is
-/// currently sitting at [stage], ready for its gating milestone to be
-/// recorded next.
+/// Builds a [GameState] whose [FoundingProgress] (and, where relevant,
+/// underlying engineer state) already satisfies every milestone gating a
+/// stage *before* [stage] — i.e. the tutorial is currently sitting at
+/// [stage], ready for its gating milestone to be recorded next.
 GameState _stateAtStage(FoundingStage stage) {
   const order = [
     FoundingStage.employeeIntro,
@@ -255,20 +403,29 @@ GameState _stateAtStage(FoundingStage stage) {
     FoundingStage.awaitingAssignment,
     FoundingStage.recruitment,
     FoundingStage.welfare,
+    FoundingStage.tutorialComplete,
   ];
   const gates = {
     FoundingStage.employeeIntro: FoundingMilestone.inspectEmployee,
     FoundingStage.skillSheet: FoundingMilestone.inspectSkillSheet,
-    FoundingStage.salesStart: FoundingMilestone.startSales,
     FoundingStage.awaitingOffer: FoundingMilestone.receiveInterviewOffer,
     FoundingStage.clientInterview: FoundingMilestone.completeClientInterview,
     FoundingStage.awaitingAssignment: FoundingMilestone.firstAssignment,
     FoundingStage.recruitment: FoundingMilestone.firstRecruitmentInterview,
+    FoundingStage.welfare: FoundingMilestone.welfareIntroSeen,
   };
   var state = GameEngine.newGame(seed: 1);
   final index = order.indexOf(stage);
   for (var i = 0; i < index; i++) {
-    final milestone = gates[order[i]];
+    final s = order[i];
+    if (s == FoundingStage.salesStart) {
+      // Actually start sales (not just mark the milestone) so downstream
+      // stages' guided-action fallback logic sees a real `selling` status
+      // instead of tripping the "sales stopped" branch.
+      state = GameEngine.startSales(state, ProgressionEngine.focusEmployeeId(state)!);
+      continue;
+    }
+    final milestone = gates[s];
     if (milestone != null) {
       state = GameEngine.recordMilestone(state, milestone);
     }

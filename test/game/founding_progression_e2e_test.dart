@@ -106,7 +106,12 @@ void main() {
     expect(ProgressionEngine.canUseWelfare(s), isTrue);
     expect(ProgressionEngine.currentStage(s), FoundingStage.welfare);
 
-    // Stage 8: the player finishes the tutorial explicitly (§27-28).
+    // Stage 8: the player looks at an employee's condition once Welfare is
+    // unlocked (§35-37) — this is what actually moves to tutorialComplete.
+    s = GameEngine.recordMilestone(s, FoundingMilestone.welfareIntroSeen);
+    expect(ProgressionEngine.currentStage(s), FoundingStage.tutorialComplete);
+
+    // Stage 9: the player finishes the tutorial explicitly (§27-28, §37).
     s = GameEngine.completeFoundingTutorial(s);
     expect(ProgressionEngine.currentStage(s), FoundingStage.freeManagement);
     expect(ProgressionEngine.showFoundingMission(s), isFalse);

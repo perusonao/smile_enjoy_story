@@ -51,11 +51,13 @@ void main() {
   ) async {
     await _pumpWithSave(tester, GameEngine.newGame(seed: 1));
 
-    expect(find.text('創業ミッション'), findsOneWidget);
-    expect(find.text('STEP 1 / 8'), findsOneWidget);
-    await tester.ensureVisible(find.text('社員を見る'));
+    expect(find.text('今やること'), findsOneWidget);
+    expect(find.text('STEP 1 / 9'), findsOneWidget);
+    final cta = find.textContaining('さんを見る');
+    expect(cta, findsOneWidget);
+    await tester.ensureVisible(cta);
     await tester.pumpAndSettle();
-    await tester.tap(find.text('社員を見る'));
+    await tester.tap(cta);
     await tester.pumpAndSettle();
 
     // Landed on a real employee detail screen, not a dead end.
@@ -132,7 +134,7 @@ void main() {
   ) async {
     await _pumpWithSave(tester, GameEngine.skipFoundingTutorial(GameEngine.newGame(seed: 1)));
 
-    expect(find.text('創業ミッション'), findsNothing);
+    expect(find.text('今やること'), findsNothing);
 
     await tester.tap(
       find.descendant(of: find.byType(NavigationBar), matching: find.text('採用')),

@@ -15,8 +15,8 @@ void main(){
       SharedPreferences.setMockInitialValues({'ses_playable_save_v1':jsonEncode(state.toJson()),'ses_founding_tutorial_seen':true});
       await tester.pumpWidget(SesApp(controller:GameController()));await tester.pumpAndSettle();
       expect(find.text('1億円'),findsOneWidget);
-      expect(find.text('今週のおすすめ行動'),findsOneWidget);
-      expect(find.text('創業ミッション'),findsOneWidget);
+      expect(find.text('今やること'),findsOneWidget);
+      expect(find.text('STEP 1 / 9'),findsOneWidget);
       expect(tester.takeException(),isNull);
     });
   }

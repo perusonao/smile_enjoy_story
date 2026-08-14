@@ -389,7 +389,7 @@ class GameEngine {
           ),
         )
         .withLog(
-          '案件オファーを受諾しました。Week ${offer.startWeek} に参画予定です。',
+          '参画オファーを受諾しました。Week ${offer.startWeek} に参画予定です。',
           category: GameLogCategory.offerAccepted,
         );
   }
@@ -397,8 +397,17 @@ class GameEngine {
   static GameState declineOffer(GameState state, String offerId) {
     final offer = state.offers.where((item) => item.id == offerId).firstOrNull;
     if (offer == null || offer.status != OfferStatus.pending) return state;
+    // Same fix as the offer-expiration path in advanceWeek (§4 case F):
+    // without this, a declined offer leaves the engineer stuck at
+    // `interviewing` forever, unable to restart sales or receive new
+    // interview offers.
+    final engineers = state.engineers.map((e) {
+      if (e.id != offer.employeeId || e.salesStatus != SalesStatus.interviewing) return e;
+      return e.copyWith(salesStatus: SalesStatus.selling);
+    }).toList();
     return state
         .copyWith(
+          engineers: engineers,
           offers: state.offers
               .map(
                 (item) => item.id == offerId
@@ -417,7 +426,7 @@ class GameEngine {
             offersDeclined: state.stats.offersDeclined + 1,
           ),
         )
-        .withLog('案件オファーを辞退しました。', category: GameLogCategory.offerDeclined);
+        .withLog('参画オファーを辞退しました。', category: GameLogCategory.offerDeclined);
   }
 
   /// Posts a recruitment listing, deducting its cost immediately and
@@ -579,7 +588,7 @@ class GameEngine {
     final offers = state.offers.map((offer) {
       if (offer.status == OfferStatus.pending &&
           newWeek > offer.responseDeadlineWeek) {
-        log('案件オファーの回答期限が切れました。', GameLogCategory.offerDeclined);
+        log('参画オファーの回答期限が切れました。', GameLogCategory.offerDeclined);
         return offer.copyWith(status: OfferStatus.expired);
       }
       return offer;
@@ -612,6 +621,18 @@ class GameEngine {
                 )
               : proposal,
         );
+        // An expired offer must return its engineer to `selling`, same as a
+        // failed selection step does — otherwise `salesStatus` stays stuck
+        // at `interviewing` forever: `startSales` refuses to restart anyone
+        // already `interviewing`, and offer generation only considers
+        // `selling` engineers, so the engineer becomes permanently
+        // unreachable by new sales activity (Playable 0.4C.2 §4 case F).
+        if (expired) {
+          final engineer = engineersById[proposal.engineerId];
+          if (engineer != null && engineer.salesStatus == SalesStatus.interviewing) {
+            engineersById[proposal.engineerId] = engineer.copyWith(salesStatus: SalesStatus.selling);
+          }
+        }
         continue;
       }
       final engineer = engineersById[proposal.engineerId];
@@ -873,7 +894,7 @@ class GameEngine {
     final expiredInterviewOffers=[for(final o in state.interviewOffers) if(o.status==InterviewOfferStatus.pending && o.expiresWeek<newWeek)o.copyWith(status:InterviewOfferStatus.expired) else o];
     final salesSnapshot=state.copyWith(engineers:engineers,openProjects:openProjects,clientRelations:clientRelations,interviewOffers:expiredInterviewOffers,idCounter:idCounter);
     final generatedInterviewOffers=SalesEngine.generateOffers(salesSnapshot,newWeek,mintId);
-    for(final o in generatedInterviewOffers){ final project=openProjects.firstWhere((e)=>e.project.id==o.projectId).project; log('面談オファー！ ${engineers.firstWhere((e)=>e.id==o.employeeId).profile.name}さん / ${project.title}',GameLogCategory.interviewOffer); }
+    for(final o in generatedInterviewOffers){ final project=openProjects.firstWhere((e)=>e.project.id==o.projectId).project; log('面談依頼！ ${engineers.firstWhere((e)=>e.id==o.employeeId).profile.name}さん / ${project.title}',GameLogCategory.interviewOffer); }
     final waitingCountThisWeek = engineersById.values
         .where((e) => e.status == EngineerStatus.waiting)
         .length;
@@ -1287,13 +1308,20 @@ class GameEngine {
 
   static GameState acceptInterviewOffer(GameState state,String offerId){
     final offer=state.interviewOffers.where((o)=>o.id==offerId).firstOrNull; if(offer==null||offer.status!=InterviewOfferStatus.pending||state.week>offer.expiresWeek)return state;
-    final entry=state.openProjects.where((e)=>e.project.id==offer.projectId).firstOrNull; if(entry==null)return state;
+    final entry=state.openProjects.where((e)=>e.project.id==offer.projectId).firstOrNull;
+    if(entry==null){
+      // The underlying project can leave the marketplace (deadline/filled)
+      // between when this offer was generated and when the player acts on
+      // it. Without this, accepting silently did nothing and the offer sat
+      // "pending" forever with no feedback (Playable 0.4C.2 §4 case D).
+      return state.copyWith(interviewOffers:[for(final o in state.interviewOffers) if(o.id==offerId)o.copyWith(status:InterviewOfferStatus.expired) else o]).withLog('${FinanceEngine.clientById(offer.clientId).name}の面談依頼は案件の募集終了により無効になりました');
+    }
     final (next,id)=state.mintId('proposal'); final proposal=ProjectProposal(id:id,engineerId:offer.employeeId,project:entry.project,proposedWeek:state.week,stage:ProposalStage.proposed,currentStepIndex:entry.project.selectionFlow.steps.length>1?1:0,fitScore:offer.skillSheetMatch,fromInterviewOffer:true);
     final engineers=[...next.engineers]; final i=engineers.indexWhere((e)=>e.id==offer.employeeId); engineers[i]=engineers[i].copyWith(salesStatus:SalesStatus.interviewing);
-    return next.copyWith(engineers:engineers,interviewOffers:[for(final o in next.interviewOffers) if(o.id==offerId)o.copyWith(status:InterviewOfferStatus.accepted) else o],proposals:[...next.proposals,proposal],stats:next.stats.copyWith(proposalCount:next.stats.proposalCount+1)).withLog('${entry.project.title} の面談オファーを受けました');
+    return next.copyWith(engineers:engineers,interviewOffers:[for(final o in next.interviewOffers) if(o.id==offerId)o.copyWith(status:InterviewOfferStatus.accepted) else o],proposals:[...next.proposals,proposal],stats:next.stats.copyWith(proposalCount:next.stats.proposalCount+1)).withLog('${entry.project.title} の面談依頼を受けました');
   }
 
-  static GameState declineInterviewOffer(GameState state,String offerId)=>state.copyWith(interviewOffers:[for(final o in state.interviewOffers) if(o.id==offerId)o.copyWith(status:InterviewOfferStatus.declined) else o]).withLog('面談オファーを辞退しました');
+  static GameState declineInterviewOffer(GameState state,String offerId)=>state.copyWith(interviewOffers:[for(final o in state.interviewOffers) if(o.id==offerId)o.copyWith(status:InterviewOfferStatus.declined) else o]).withLog('面談依頼を辞退しました');
 
   static GameState startClientInterview(GameState state,String applicationId){
     final existing=state.clientInterviews.where((s)=>s.applicationId==applicationId&&!s.completed).firstOrNull;if(existing!=null)return state;

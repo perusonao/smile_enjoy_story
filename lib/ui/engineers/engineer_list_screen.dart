@@ -176,7 +176,7 @@ class _EngineerCard extends StatelessWidget {
             ],
             if (assignment == null) ...[
               if(engineer.salesStatus==SalesStatus.selling)
-                Container(width:double.infinity,padding:const EdgeInsets.all(8),margin:const EdgeInsets.only(bottom:6),color:Colors.blue.shade50,child:Text('営業中\n公開先 ${state.unlockedClientCount}社 / 参画可能 ${engineer.availableFromWeek<=state.week?'現在':'Week ${engineer.availableFromWeek}'}\n面談オファー待ち',style:const TextStyle(fontSize:12,fontWeight:FontWeight.bold))),
+                Container(width:double.infinity,padding:const EdgeInsets.all(8),margin:const EdgeInsets.only(bottom:6),color:Colors.blue.shade50,child:Text('営業中\n公開先 ${state.unlockedClientCount}社 / 参画可能 ${engineer.availableFromWeek<=state.week?'現在':'Week ${engineer.availableFromWeek}'}\n面談依頼待ち',style:const TextStyle(fontSize:12,fontWeight:FontWeight.bold))),
               _SalesCapacity(count: applications.length),
               for (final application in applications.take(3))
                 _ApplicationSummary(application: application),
@@ -302,7 +302,7 @@ class _OfferBanner extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const Text(
-                'OFFER',
+                '参画オファー',
                 style: TextStyle(
                   color: Colors.red,
                   fontWeight: FontWeight.bold,

@@ -20,6 +20,9 @@ enum TaskTargetType {
   /// Requires [HomeTask.targetId] to be an engineer id.
   employeeDetail,
 
+  /// Requires [HomeTask.targetId] to be an applicant id (Playable 0.4C.2 §16).
+  applicantDetail,
+
   /// Shows this week's resolved project-interview results.
   interviewResults,
 }
@@ -55,6 +58,7 @@ class HomeTask {
     TaskTargetType.projectsTab => 'おすすめ案件を見る',
     TaskTargetType.othersTab => '福利厚生を見る',
     TaskTargetType.employeeDetail => '社員とOfferを確認',
+    TaskTargetType.applicantDetail => '応募者を確認',
     TaskTargetType.interviewResults => '選考結果を見る',
     TaskTargetType.none => '確認する',
   };

@@ -67,8 +67,8 @@ void main() {
     await tester.tap(find.text('ガイド付きで開始'));
     await tester.pumpAndSettle();
 
-    expect(find.text('創業ミッション'), findsOneWidget);
-    expect(find.text('STEP 1 / 8'), findsOneWidget);
+    expect(find.text('今やること'), findsOneWidget);
+    expect(find.text('STEP 1 / 9'), findsOneWidget);
     expect(find.text('まず社員を確認しましょう'), findsOneWidget);
   });
 

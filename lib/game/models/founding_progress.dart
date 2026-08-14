@@ -25,6 +25,11 @@ enum FoundingMilestone {
   /// Completed at least one recruitment interview conversation (§23).
   firstRecruitmentInterview,
 
+  /// Opened an employee's detail screen after Welfare unlocked, to look at
+  /// their Morale/Trust/PC (Playable 0.4C.2 §35-37) — the last guided step
+  /// before the player explicitly ends the tutorial.
+  welfareIntroSeen,
+
   /// The player explicitly finished the founding tutorial and moved to
   /// free management (§27-28).
   freeManagement,
@@ -41,6 +46,10 @@ enum FoundingStage {
   awaitingAssignment,
   recruitment,
   welfare,
+
+  /// The player has seen the Welfare intro and just needs to tap "自由経営
+  /// を始める" to finish (Playable 0.4C.2 §37).
+  tutorialComplete,
   freeManagement,
 }
 

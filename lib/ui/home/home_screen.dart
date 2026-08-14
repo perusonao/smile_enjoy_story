@@ -3,10 +3,13 @@ import 'package:flutter/material.dart';
 import '../../app/game_controller.dart';
 import '../../app/game_scope.dart';
 import '../../app/nav_scope.dart';
+import '../../domain/domain.dart';
 import '../../game/game.dart';
 import '../engineers/engineer_detail_screen.dart';
 import '../main_shell.dart';
+import '../projects/client_interview_screen.dart';
 import '../projects/interview_results_screen.dart';
+import '../recruitment/applicant_detail_screen.dart';
 import '../theme.dart';
 import '../widgets/expense_breakdown_sheet.dart';
 import '../widgets/founding_dialogs.dart';
@@ -25,6 +28,17 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   Future<void> _onNextWeek(BuildContext context) async {
     final controller = context.game;
+
+    // A pending client interview is a genuine hard block (advanceWeek
+    // itself refuses to run and just logs a line — Playable 0.4C.2 §54,
+    // §57): resolve it explicitly instead of letting the generic Critical
+    // confirmation below silently do nothing when the player taps "それで
+    // も進む" (0.4C.2 §4 case H — the real dead-end this session's bug
+    // audit was written for).
+    if (!await _resolvePendingClientInterviews(context, controller) || !context.mounted) {
+      return;
+    }
+
     // Every Critical task, not just the top-3 "おすすめ行動" summary — a
     // player must never be able to accidentally skip past one (§34).
     final critical = TaskEngine.generateTasks(controller.state)
@@ -56,8 +70,55 @@ class _HomeScreenState extends State<HomeScreen> {
     // out would fight that transition.
     state = controller.state;
     if (state.status == GameStatus.playing && context.mounted) {
-      await showWeekSummaryDialog(context, state);
+      await showWeekSummaryDialog(context, state, guidedAction: ProgressionEngine.guidedAction(state));
     }
+  }
+
+  /// Returns `true` once it's safe to call `advanceWeek` — either there was
+  /// nothing pending, or the player chose to auto-resolve everything.
+  /// Returns `false` if the player went to play a interview instead (or
+  /// cancelled), in which case Home just stays put (§57).
+  Future<bool> _resolvePendingClientInterviews(BuildContext context, GameController controller) async {
+    final state = controller.state;
+    final pending = state.proposals
+        .where((p) =>
+            p.status == ApplicationStatus.active &&
+            p.currentStep == SelectionStep.clientInterview &&
+            !state.clientInterviews.any((s) => s.applicationId == p.id && s.completed))
+        .toList();
+    if (pending.isEmpty) return true;
+
+    final choice = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('客先面談が残っています'),
+        content: Text(
+          pending.length == 1
+              ? '${state.engineerById(pending.first.engineerId).profile.name}さんの客先面談が残っています。\n面談をプレイするか、社員に任せて進めてください。'
+              : '客先面談が${pending.length}件残っています。\n面談をプレイするか、社員に任せて進めてください。',
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogContext, 'cancel'), child: const Text('戻る')),
+          OutlinedButton(onPressed: () => Navigator.pop(dialogContext, 'auto'), child: const Text('社員に任せて進む')),
+          FilledButton(onPressed: () => Navigator.pop(dialogContext, 'play'), child: const Text('面談をプレイ')),
+        ],
+      ),
+    );
+    if (choice == 'play') {
+      if (context.mounted) {
+        await Navigator.of(context).push(
+          MaterialPageRoute(builder: (_) => ClientInterviewScreen(applicationId: pending.first.id)),
+        );
+      }
+      return false;
+    }
+    if (choice == 'auto') {
+      for (final p in pending) {
+        controller.autoResolveClientInterview(p.id);
+      }
+      return true;
+    }
+    return false;
   }
 
   /// Shows every not-yet-seen [OneTimeEvent] among [candidates] whose
@@ -128,6 +189,13 @@ class _HomeScreenState extends State<HomeScreen> {
             MaterialPageRoute(builder: (_) => EngineerDetailScreen(engineerId: targetId)),
           );
         }
+      case TaskTargetType.applicantDetail:
+        context.switchTab(SesTab.recruitment);
+        if (targetId != null) {
+          Navigator.of(context).push(
+            MaterialPageRoute(builder: (_) => ApplicantDetailScreen(applicantId: targetId)),
+          );
+        }
       case TaskTargetType.interviewResults:
         Navigator.of(context).push(
           MaterialPageRoute(builder: (_) => const InterviewResultsScreen()),
@@ -135,14 +203,14 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  Future<void> _onMissionCta(BuildContext context, FoundingMissionStep step) async {
-    if (step.stage == FoundingStage.welfare) {
-      // Final step: "経営を続ける" finishes the tutorial instead of
-      // navigating anywhere (§27-28).
+  void _onGuidedActionCta(BuildContext context, GuidedAction action) {
+    if (action.stage == FoundingStage.tutorialComplete) {
+      // Final step: "自由経営を始める" finishes the tutorial instead of
+      // navigating anywhere (§37).
       context.game.completeFoundingTutorial();
       return;
     }
-    _onTaskTap(context, step.targetType, step.targetId);
+    _onTaskTap(context, action.targetType, action.targetId);
   }
 
   @override
@@ -151,12 +219,12 @@ class _HomeScreenState extends State<HomeScreen> {
     final state = controller.state;
     final company = state.company;
     final tutorialActive = ProgressionEngine.showFoundingMission(state);
-    final missionStep = ProgressionEngine.missionStep(state);
+    final guided = ProgressionEngine.guidedAction(state);
     final allTasks = TaskEngine.generateTasks(state);
     final criticalTasks = allTasks.where((t) => t.priority == TaskPriority.critical).toList();
     // During the tutorial, only Critical ever appears in the primary list —
-    // everything else collapses under "その他" so the Founding Mission card
-    // stays the single obvious next step (§33-34).
+    // everything else collapses under "その他" so "今やること" stays the
+    // one obvious next step (§9-11, §33-34, §45).
     final primaryTasks = tutorialActive ? criticalTasks : RecommendationEngine.recommendedActions(state);
     final primaryIds = primaryTasks.map((t) => t.id).toSet();
     final collapsedTasks = allTasks.where((t) => !primaryIds.contains(t.id)).toList();
@@ -231,52 +299,72 @@ class _HomeScreenState extends State<HomeScreen> {
             _SimplifiedDashboard(state: state),
           const SizedBox(height: 18),
 
-          // --- 今週の経営判断 (チュートリアル中はCriticalのみ、§33-34) -------
-          Row(
-            children: [
-              Text('今週のおすすめ行動', style: Theme.of(context).textTheme.titleMedium),
-              const SizedBox(width: 6),
-              const Text('今週の経営判断', style: TextStyle(fontSize: 10, color: Colors.black45)),
-              const SizedBox(width: 6),
-              if (primaryTasks.isNotEmpty)
-                Text('(${primaryTasks.length})', style: const TextStyle(color: Colors.black45, fontSize: 13)),
+          if (tutorialActive) ...[
+            // --- Critical exceptions only (§11, §34) — the guided card
+            // below stays the one obvious next step. ---------------------
+            if (criticalTasks.isNotEmpty) ...[
+              for (final task in criticalTasks)
+                TaskCard(
+                  task: task,
+                  onTap: task.targetType == TaskTargetType.none
+                      ? null
+                      : () => _onTaskTap(context, task.targetType, task.targetId),
+                ),
+              const SizedBox(height: 10),
             ],
-          ),
-          const SizedBox(height: 8),
-          if (primaryTasks.isEmpty && !tutorialActive)
-            Container(
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
+            if (guided != null)
+              _GuidedActionCard(
+                action: guided,
+                onCta: guided.ctaLabel == null ? null : () => _onGuidedActionCta(context, guided),
               ),
-              child: const Text('今週やることは特にありません。「次の週へ」進めましょう。'),
-            )
-          else
-            for (final task in primaryTasks)
-              TaskCard(
-                task: task,
-                onTap: task.targetType == TaskTargetType.none
-                    ? null
-                    : () => _onTaskTap(context, task.targetType, task.targetId),
+            if (collapsedTasks.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(top: 10),
+                child: ExpansionTile(
+                  tilePadding: EdgeInsets.zero,
+                  title: Text('その他 ${collapsedTasks.length}件', style: const TextStyle(fontSize: 13, color: Colors.black45)),
+                  children: [for (final task in collapsedTasks) TaskCard(task: task, onTap: task.targetType == TaskTargetType.none ? null : () => _onTaskTap(context, task.targetType, task.targetId))],
+                ),
               ),
-          if (collapsedTasks.isNotEmpty)
-            ExpansionTile(
-              tilePadding: EdgeInsets.zero,
-              title: Text('その他 ${collapsedTasks.length}件', style: const TextStyle(fontSize: 13)),
-              children: [for (final task in collapsedTasks) TaskCard(task: task, onTap: task.targetType == TaskTargetType.none ? null : () => _onTaskTap(context, task.targetType, task.targetId))],
+          ] else ...[
+            // --- 今週の経営判断 (free management: unchanged 0.4C behavior) --
+            Row(
+              children: [
+                Text('今週のおすすめ行動', style: Theme.of(context).textTheme.titleMedium),
+                const SizedBox(width: 6),
+                const Text('今週の経営判断', style: TextStyle(fontSize: 10, color: Colors.black45)),
+                const SizedBox(width: 6),
+                if (primaryTasks.isNotEmpty)
+                  Text('(${primaryTasks.length})', style: const TextStyle(color: Colors.black45, fontSize: 13)),
+              ],
             ),
-          if (state.listings.where((listing) => listing.isActiveOn(state.week)).isEmpty)
-            const Padding(padding: EdgeInsets.only(top: 4), child: Text('求人媒体が掲載されていません', style: TextStyle(fontSize: 11, color: Colors.black54))),
-
-          if (missionStep != null) ...[
-            const SizedBox(height: 12),
-            _FoundingMissionCard(
-              state: state,
-              step: missionStep,
-              onCta: missionStep.ctaLabel == null ? null : () => _onMissionCta(context, missionStep),
-            ),
+            const SizedBox(height: 8),
+            if (primaryTasks.isEmpty)
+              Container(
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
+                ),
+                child: const Text('今週やることは特にありません。「次の週へ」進めましょう。'),
+              )
+            else
+              for (final task in primaryTasks)
+                TaskCard(
+                  task: task,
+                  onTap: task.targetType == TaskTargetType.none
+                      ? null
+                      : () => _onTaskTap(context, task.targetType, task.targetId),
+                ),
+            if (collapsedTasks.isNotEmpty)
+              ExpansionTile(
+                tilePadding: EdgeInsets.zero,
+                title: Text('その他 ${collapsedTasks.length}件', style: const TextStyle(fontSize: 13)),
+                children: [for (final task in collapsedTasks) TaskCard(task: task, onTap: task.targetType == TaskTargetType.none ? null : () => _onTaskTap(context, task.targetType, task.targetId))],
+              ),
+            if (state.listings.where((listing) => listing.isActiveOn(state.week)).isEmpty)
+              const Padding(padding: EdgeInsets.only(top: 4), child: Text('求人媒体が掲載されていません', style: TextStyle(fontSize: 11, color: Colors.black54))),
           ],
 
           const SizedBox(height: 10),
@@ -337,13 +425,13 @@ class _SimplifiedDashboard extends StatelessWidget {
   }
 }
 
-/// Home最上部の「創業ミッション」カード (§45-46): 現在のステップだけを見せ、
-/// 全体進捗はコンパクトなドット表示にとどめる。
-class _FoundingMissionCard extends StatelessWidget {
-  const _FoundingMissionCard({required this.state, required this.step, required this.onCta});
+/// Home最上部の「今やること」カード (0.4C.2 §9-11, §45-46): 現在のステップを
+/// ただ1件だけ、他の何とも同格に並べずに見せる。全体進捗は
+/// "STEP n / total" の1行だけにとどめ、チェックリストは出さない。
+class _GuidedActionCard extends StatelessWidget {
+  const _GuidedActionCard({required this.action, required this.onCta});
 
-  final GameState state;
-  final FoundingMissionStep step;
+  final GuidedAction action;
   final VoidCallback? onCta;
 
   @override
@@ -362,75 +450,34 @@ class _FoundingMissionCard extends StatelessWidget {
             children: [
               const Icon(Icons.flag_outlined, color: Colors.indigo, size: 18),
               const SizedBox(width: 6),
-              Text('創業ミッション', style: Theme.of(context).textTheme.titleMedium?.copyWith(color: Colors.indigo.shade900)),
+              Text('今やること', style: Theme.of(context).textTheme.titleMedium?.copyWith(color: Colors.indigo.shade900)),
               const Spacer(),
               Text(
-                'STEP ${step.stepNumber} / ${step.totalSteps}',
+                'STEP ${action.stepNumber} / ${action.totalSteps}',
                 style: TextStyle(fontWeight: FontWeight.bold, color: Colors.indigo.shade700, fontSize: 12),
               ),
             ],
           ),
           const SizedBox(height: 8),
-          Text(step.title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+          Text(action.title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
           const SizedBox(height: 4),
-          Text(step.description, style: const TextStyle(fontSize: 12.5, height: 1.4)),
-          const SizedBox(height: 10),
-          _MissionProgressDots(state: state),
-          if (step.ctaLabel != null) ...[
+          Text(action.description, style: const TextStyle(fontSize: 12.5, height: 1.4)),
+          if (action.secondaryInfo != null) ...[
+            const SizedBox(height: 4),
+            Text(action.secondaryInfo!, style: const TextStyle(fontSize: 11.5, color: Colors.black54)),
+          ],
+          if (action.ctaLabel != null) ...[
             const SizedBox(height: 10),
             SizedBox(
               width: double.infinity,
-              child: FilledButton(onPressed: onCta, child: Text(step.ctaLabel!)),
+              child: FilledButton(onPressed: onCta, child: Text(action.ctaLabel!)),
             ),
+          ] else if (action.canAdvanceWeek) ...[
+            const SizedBox(height: 8),
+            const Text('↓ 下の「次の週へ」で進めます', style: TextStyle(fontSize: 11.5, color: Colors.black45)),
           ],
         ],
       ),
-    );
-  }
-}
-
-const Map<FoundingStage, String> _stageShortLabels = {
-  FoundingStage.employeeIntro: '社員確認',
-  FoundingStage.skillSheet: 'Sheet',
-  FoundingStage.salesStart: '営業開始',
-  FoundingStage.awaitingOffer: '面談Offer',
-  FoundingStage.clientInterview: '客先面談',
-  FoundingStage.awaitingAssignment: '初参画',
-  FoundingStage.recruitment: '採用',
-  FoundingStage.welfare: '福利厚生',
-};
-
-class _MissionProgressDots extends StatelessWidget {
-  const _MissionProgressDots({required this.state});
-  final GameState state;
-
-  @override
-  Widget build(BuildContext context) {
-    final current = ProgressionEngine.currentStage(state);
-    final stages = _stageShortLabels.keys.toList();
-    final currentIndex = stages.indexOf(current);
-    return Wrap(
-      spacing: 10,
-      runSpacing: 4,
-      children: [
-        for (var i = 0; i < stages.length; i++)
-          Text(
-            '${i < currentIndex
-                ? '✓'
-                : i == currentIndex
-                    ? '●'
-                    : '○'} ${_stageShortLabels[stages[i]]}',
-            style: TextStyle(
-              fontSize: 11,
-              fontWeight: i == currentIndex ? FontWeight.bold : FontWeight.normal,
-              color: i < currentIndex
-                  ? Colors.green.shade700
-                  : i == currentIndex
-                      ? Colors.indigo.shade700
-                      : Colors.black45,
-            ),
-          ),
-      ],
     );
   }
 }

@@ -34,7 +34,10 @@ class GameController extends ChangeNotifier {
   Future<void> _bootstrap() async {
     final loaded = await _saveService.load();
     if (loaded != null) {
-      _state = loaded;
+      // Reconcile on load (Playable 0.4C.2 §7, §50): a refreshed/reopened
+      // save must never resume a tutorial stage behind what the saved
+      // GameState already shows happened.
+      _state = ProgressionEngine.reconcile(loaded);
     } else {
       _showStartChoice = true;
     }
@@ -56,7 +59,10 @@ class GameController extends ChangeNotifier {
   }
 
   void _apply(GameState Function(GameState) mutate) {
-    _state = mutate(_state);
+    // Reconcile after every mutation (§7): the single point every player
+    // action and every weekly turn passes through, so a milestone can never
+    // silently fall behind the GameState that actually earned it.
+    _state = ProgressionEngine.reconcile(mutate(_state));
     notifyListeners();
     unawaited(_saveService.save(_state));
   }

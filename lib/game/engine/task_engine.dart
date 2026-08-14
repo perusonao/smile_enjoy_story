@@ -21,7 +21,7 @@ class TaskEngine {
 
     for(final offer in state.interviewOffers.where((o)=>o.status==InterviewOfferStatus.pending)){
       final employee=state.engineerById(offer.employeeId);
-      tasks.add(HomeTask(id:'interview-offer-${offer.id}',priority:TaskPriority.critical,title:'${employee.profile.name}さんに面談オファーがあります',subtitle:'受けるか断るか判断してください',targetType:TaskTargetType.employeeDetail,targetId:employee.id));
+      tasks.add(HomeTask(id:'interview-offer-${offer.id}',priority:TaskPriority.critical,title:'${employee.profile.name}さんに面談依頼があります',subtitle:'受けるか断るか判断してください',targetType:TaskTargetType.employeeDetail,targetId:employee.id));
     }
     final salesCandidate=state.engineers.where((e)=>e.status==EngineerStatus.waiting && e.salesStatus==SalesStatus.notSelling).firstOrNull;
     if(salesCandidate!=null && state.week!=1) tasks.add(HomeTask(id:'sales-start-${salesCandidate.id}',priority:TaskPriority.warning,title:'${salesCandidate.profile.name}さんが待機中です',subtitle:'スキルシートを確認して営業開始しましょう',targetType:TaskTargetType.employeeDetail,targetId:salesCandidate.id));
@@ -41,7 +41,7 @@ class TaskEngine {
         HomeTask(
           id: 'offer-deadline-${offer.id}',
           priority: TaskPriority.critical,
-          title: '${engineer.profile.name}さんの案件オファー回答期限が今週です',
+          title: '${engineer.profile.name}さんの参画オファー回答期限が今週です',
           subtitle: '何もしないで週を送ると期限切れになります',
           targetType: TaskTargetType.employeeDetail,
           targetId: engineer.id,

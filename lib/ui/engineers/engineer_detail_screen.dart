@@ -39,6 +39,14 @@ class EngineerDetailScreen extends StatelessWidget {
         }
       });
     }
+    if (ProgressionEngine.currentStage(state) == FoundingStage.welfare &&
+        !state.foundingProgress.has(FoundingMilestone.welfareIntroSeen)) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!controller.state.foundingProgress.has(FoundingMilestone.welfareIntroSeen)) {
+          controller.recordMilestone(FoundingMilestone.welfareIntroSeen);
+        }
+      });
+    }
     final profile = engineer.profile;
     final assignment = state.assignmentForEngineer(engineerId);
     final proposal = state.proposalForEngineer(engineerId);
@@ -60,12 +68,36 @@ class EngineerDetailScreen extends StatelessWidget {
     final waitingWeeks = state.waitingStreakFor(engineerId);
     final skillSheet = state.skillSheetFor(engineerId);
     final interviewOffers = state.interviewOffers.where((o)=>o.employeeId==engineerId && o.status==InterviewOfferStatus.pending).toList();
+    final guided = ProgressionEngine.guidedAction(state);
+    final isGuideTarget = guided != null && guided.targetType == TaskTargetType.employeeDetail && guided.targetId == engineerId;
 
     return Scaffold(
       appBar: AppBar(title: Text(profile.name)),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(14, 14, 14, 24),
         children: [
+          if (guided != null) ...[
+            _GuideBanner(
+              action: guided,
+              highlighted: isGuideTarget,
+              // Only wired for the two cases that are genuine navigation
+              // shortcuts (opening a modal / a different screen) — every
+              // other guided sub-case already has its matching button
+              // inline on this same screen (SkillSheet/sales-start card,
+              // the InterviewOffer/Offer cards), so duplicating that
+              // wiring here would risk drifting out of sync with
+              // [ProgressionEngine.guidedAction]'s own sub-case logic.
+              onCta: !isGuideTarget
+                  ? null
+                  : switch (guided.stage) {
+                      FoundingStage.skillSheet => () => _editSkillSheet(context, engineer!, skillSheet),
+                      FoundingStage.clientInterview when state.proposalForEngineer(engineerId)?.currentStep == SelectionStep.clientInterview =>
+                        () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => ClientInterviewScreen(applicationId: state.proposalForEngineer(engineerId)!.id))),
+                      _ => null,
+                    },
+            ),
+            const SizedBox(height: 12),
+          ],
           Row(
             children: [
               Expanded(
@@ -102,7 +134,7 @@ class EngineerDetailScreen extends StatelessWidget {
             const Text('会社信頼が低い社員は、現場の増員情報を持ち帰りにくくなります。',style:TextStyle(fontSize:12,color:Colors.black54)),
             Row(children:[Expanded(child:OutlinedButton(onPressed:()=>_editSkillSheet(context,engineer!,skillSheet),child:const Text('営業用記載を編集'))),const SizedBox(width:8),Expanded(child:FilledButton(onPressed:engineer.salesStatus==SalesStatus.selling?null:()=>_confirmSalesStart(context,engineer!,skillSheet),child:const Text('営業を開始する')))]),
           ]),
-          if(interviewOffers.isNotEmpty)...[const SizedBox(height:12),_SectionCard(title:'面談オファー',children:[for(final offer in interviewOffers) _InterviewOfferCard(offer:offer,project:state.openProjects.firstWhere((e)=>e.project.id==offer.projectId).project)])],
+          if(interviewOffers.isNotEmpty)...[const SizedBox(height:12),_SectionCard(title:'面談依頼',children:[for(final offer in interviewOffers) _InterviewOfferCard(offer:offer,project:state.openProjects.firstWhere((e)=>e.project.id==offer.projectId).project)])],
           if(assignment != null && assignment.remainingWeeks <= 4 && assignment.contractDecision==ContractDecision.undecided)...[const SizedBox(height:12),_SectionCard(title:'契約更新判断（終了4週前）',children:[Text('${assignment.project.title} / 残り${assignment.remainingWeeks}週'),Row(children:[Expanded(child:FilledButton(onPressed:()=>context.game.decideContract(engineerId,extend:true),child:const Text('延長する'))),const SizedBox(width:8),Expanded(child:OutlinedButton(onPressed:()=>context.game.decideContract(engineerId,extend:false),child:const Text('撤退する')))])])],
           _SectionCard(
             title: '基本情報',
@@ -187,13 +219,13 @@ class EngineerDetailScreen extends StatelessWidget {
                 const Divider(height: 18),
               ],
               if (applications.isEmpty && engineer.salesStatus == SalesStatus.selling)
-                Text('面談オファー待ち\n現在${state.unlockedClientCount}社へ公開中です。条件に合う案件が見つかると面談オファーが届きます。'),
+                Text('面談依頼待ち\n現在${state.unlockedClientCount}社へ公開中です。条件に合う案件が見つかると面談依頼が届きます。'),
             ],
           ),
           if (pendingOffers.isNotEmpty) ...[
             const SizedBox(height: 12),
             _SectionCard(
-              title: 'オファー比較・回答',
+              title: '参画オファー比較・回答',
               children: [
                 for (final offer in pendingOffers)
                   _OfferRow(
@@ -224,7 +256,7 @@ class EngineerDetailScreen extends StatelessWidget {
 
   Future<void> _confirmSalesStart(BuildContext context,Engineer engineer,SkillSheet sheet) async {
     final state=context.game.state; final clients=sampleClients.where((c)=>state.relationFor(c.id).unlocked).map((c)=>c.name).join('\n');
-    final accepted=await showDialog<bool>(context:context,builder:(c)=>AlertDialog(title:Text('${engineer.profile.name}の営業を開始します'),content:Text('公開先:\n$clients\n\n参画可能: ${engineer.availableFromWeek<=state.week?'現在':'Week ${engineer.availableFromWeek}'}\nスキルシート: ${SalesEngine.riskLabel(SalesEngine.riskFor(engineer,sheet))}\n\n条件に合う案件があると、取引先から面談オファーが届きます。'),actions:[TextButton(onPressed:()=>Navigator.pop(c,false),child:const Text('戻る')),FilledButton(onPressed:()=>Navigator.pop(c,true),child:const Text('営業開始'))]));
+    final accepted=await showDialog<bool>(context:context,builder:(c)=>AlertDialog(title:Text('${engineer.profile.name}の営業を開始します'),content:Text('公開先:\n$clients\n\n参画可能: ${engineer.availableFromWeek<=state.week?'現在':'Week ${engineer.availableFromWeek}'}\nスキルシート: ${SalesEngine.riskLabel(SalesEngine.riskFor(engineer,sheet))}\n\n条件に合う案件があると、取引先から面談依頼が届きます。'),actions:[TextButton(onPressed:()=>Navigator.pop(c,false),child:const Text('戻る')),FilledButton(onPressed:()=>Navigator.pop(c,true),child:const Text('営業開始'))]));
     if(accepted==true&&context.mounted)context.game.startSales(engineer.id);
   }
 }
@@ -359,7 +391,7 @@ class _ContractPreferenceHint extends StatelessWidget {
   }
 }
 
-class _InterviewOfferCard extends StatelessWidget { const _InterviewOfferCard({required this.offer,required this.project}); final InterviewOffer offer; final Project project; @override Widget build(BuildContext context){final good=<String>[if(offer.skillSheetMatch>=70)'スキルシートとの相性が高い',if(project.paymentTermDays==30)'30日サイト'];final cautions=<String>[if(project.competitionLevel>=4)'競争度が高い',if(project.difficulty>=4)'要求水準が高い'];return Card(color:Colors.blue.shade50,child:Padding(padding:const EdgeInsets.all(12),child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[const Text('面談オファー！',style:TextStyle(fontSize:17,fontWeight:FontWeight.bold)),Text('${clientNameById(project.clientId)}  ${project.title}',style:const TextStyle(fontWeight:FontWeight.bold)),Text('単価 ${formatYen(project.monthlyRate)} / ${project.location.name} / ${project.industry.name}'),Text('契約 ${project.contractTermMonths}か月 / 支払 ${project.paymentTermDays}日'),if(good.isNotEmpty)Text('良い点\n・${good.take(2).join('\n・')}'),if(cautions.isNotEmpty)Text('注意点\n・${cautions.take(2).join('\n・')}'),Row(children:[Expanded(child:OutlinedButton(onPressed:()=>context.game.declineInterviewOffer(offer.id),child:const Text('断る'))),const SizedBox(width:8),Expanded(child:FilledButton(onPressed:()=>context.game.acceptInterviewOffer(offer.id),child:const Text('面談へ進む')))])]))); } }
+class _InterviewOfferCard extends StatelessWidget { const _InterviewOfferCard({required this.offer,required this.project}); final InterviewOffer offer; final Project project; @override Widget build(BuildContext context){final good=<String>[if(offer.skillSheetMatch>=70)'スキルシートとの相性が高い',if(project.paymentTermDays==30)'30日サイト'];final cautions=<String>[if(project.competitionLevel>=4)'競争度が高い',if(project.difficulty>=4)'要求水準が高い'];return Card(color:Colors.blue.shade50,child:Padding(padding:const EdgeInsets.all(12),child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[const Text('面談依頼！',style:TextStyle(fontSize:17,fontWeight:FontWeight.bold)),Text('${clientNameById(project.clientId)}  ${project.title}',style:const TextStyle(fontWeight:FontWeight.bold)),Text('単価 ${formatYen(project.monthlyRate)} / ${project.location.name} / ${project.industry.name}'),Text('契約 ${project.contractTermMonths}か月 / 支払 ${project.paymentTermDays}日'),if(good.isNotEmpty)Text('良い点\n・${good.take(2).join('\n・')}'),if(cautions.isNotEmpty)Text('注意点\n・${cautions.take(2).join('\n・')}'),Row(children:[Expanded(child:OutlinedButton(onPressed:()=>context.game.declineInterviewOffer(offer.id),child:const Text('断る'))),const SizedBox(width:8),Expanded(child:FilledButton(onPressed:()=>context.game.acceptInterviewOffer(offer.id),child:const Text('面談へ進む')))])]))); } }
 
 class _ApplicationRow extends StatelessWidget {
   const _ApplicationRow({required this.application});
@@ -496,6 +528,61 @@ class _OfferRow extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// 創業ガイド banner (Playable 0.4C.2 §18, §38): a small "STEP n/total"
+/// badge on every screen while the tutorial is active, plus — only on the
+/// screen the current [GuidedAction] actually targets — the action itself,
+/// so it never gets buried at the bottom of a long SkillSheet/営業 card.
+class _GuideBanner extends StatelessWidget {
+  const _GuideBanner({required this.action, required this.highlighted, required this.onCta});
+
+  final GuidedAction action;
+  final bool highlighted;
+  final VoidCallback? onCta;
+
+  @override
+  Widget build(BuildContext context) {
+    if (!highlighted) {
+      return Align(
+        alignment: Alignment.centerLeft,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+          decoration: BoxDecoration(color: Colors.indigo.shade50, borderRadius: BorderRadius.circular(20)),
+          child: Text(
+            '創業ガイド STEP ${action.stepNumber} / ${action.totalSteps}',
+            style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.indigo.shade700),
+          ),
+        ),
+      );
+    }
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.indigo.shade50,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: Colors.indigo.withValues(alpha: 0.3)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '創業ガイド STEP ${action.stepNumber} / ${action.totalSteps}',
+            style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.indigo.shade700),
+          ),
+          const SizedBox(height: 4),
+          Text(action.title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14.5)),
+          const SizedBox(height: 3),
+          Text(action.description, style: const TextStyle(fontSize: 12.5, height: 1.4)),
+          if (onCta != null) ...[
+            const SizedBox(height: 8),
+            SizedBox(width: double.infinity, child: FilledButton(onPressed: onCta, child: Text(action.ctaLabel ?? '確認する'))),
+          ],
+        ],
       ),
     );
   }

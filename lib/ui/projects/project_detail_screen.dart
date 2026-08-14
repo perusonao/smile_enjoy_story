@@ -91,7 +91,7 @@ class ProjectDetailScreen extends StatelessWidget {
           const SizedBox(height: 20),
           Text('市場情報', style: Theme.of(context).textTheme.titleMedium),
           const SizedBox(height: 8),
-          const _InfoBox(text: 'この画面は取引先の需要を知るための市場情報です。\n社員のスキルシートを整え、社員詳細から営業を開始すると、条件に合う案件から面談オファーが届きます。'),
+          const _InfoBox(text: 'この画面は取引先の需要を知るための市場情報です。\n社員のスキルシートを整え、社員詳細から営業を開始すると、条件に合う案件から面談依頼が届きます。'),
         ],
       ),
     );

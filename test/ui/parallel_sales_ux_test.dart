@@ -96,7 +96,7 @@ void main() {
 
   testWidgets('employee card prioritizes a pending Offer', (tester) async {
     await _openEmployees(tester, _stateWithApplications(2, offer: true));
-    expect(find.text('OFFER'), findsOneWidget);
+    expect(find.text('参画オファー'), findsOneWidget);
     expect(find.textContaining('回答期限: 今週'), findsOneWidget);
     expect(find.text('並行営業 2 / 3'), findsWidgets);
   });

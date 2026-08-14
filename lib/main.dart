@@ -5,6 +5,7 @@ import 'app/game_scope.dart';
 import 'app/nav_scope.dart';
 import 'game/game.dart';
 import 'ui/main_shell.dart';
+import 'ui/prologue/prologue_screen.dart';
 import 'ui/result/game_over_screen.dart';
 import 'ui/result/result_screen.dart';
 import 'ui/theme.dart';
@@ -59,6 +60,9 @@ class _GameRoot extends StatelessWidget {
         }
         switch (controller.state.status) {
           case GameStatus.playing:
+            if (controller.state.prologueState.active) {
+              return const PhoneFrame(child: PrologueScreen());
+            }
             return const MainShell();
           case GameStatus.finished:
             return const PhoneFrame(child: ResultScreen());

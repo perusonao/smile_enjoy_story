@@ -11,6 +11,11 @@ class Company {
   final List<String> engineerIds;
   final List<String> clientIds;
 
+  /// The player-chosen president's name (Playable 0.5A §5), captured during
+  /// the Founding Prologue. Empty for Free Mode games and for any save from
+  /// before 0.5A — never required outside Beginner Mode.
+  final String presidentName;
+
   const Company({
     required this.id,
     required this.name,
@@ -19,6 +24,7 @@ class Company {
     required this.currentWeek,
     required this.engineerIds,
     required this.clientIds,
+    this.presidentName = '',
   });
 
   /// A freshly-founded company with the Phase 0 starting values.
@@ -42,6 +48,7 @@ class Company {
     int? currentWeek,
     List<String>? engineerIds,
     List<String>? clientIds,
+    String? presidentName,
   }) {
     return Company(
       id: id ?? this.id,
@@ -51,6 +58,7 @@ class Company {
       currentWeek: currentWeek ?? this.currentWeek,
       engineerIds: engineerIds ?? this.engineerIds,
       clientIds: clientIds ?? this.clientIds,
+      presidentName: presidentName ?? this.presidentName,
     );
   }
 
@@ -62,6 +70,7 @@ class Company {
     'currentWeek': currentWeek,
     'engineerIds': engineerIds,
     'clientIds': clientIds,
+    'presidentName': presidentName,
   };
 
   factory Company.fromJson(Map<String, dynamic> json) {
@@ -73,6 +82,7 @@ class Company {
       currentWeek: json['currentWeek'] as int,
       engineerIds: (json['engineerIds'] as List).cast<String>(),
       clientIds: (json['clientIds'] as List).cast<String>(),
+      presidentName: json['presidentName'] as String? ?? '',
     );
   }
 

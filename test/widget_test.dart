@@ -12,14 +12,26 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:smile_enjoy_story/app/game_controller.dart';
+import 'package:smile_enjoy_story/app/game_scope.dart';
 import 'package:smile_enjoy_story/main.dart';
 
 Future<void> _skipToFreeManagement(WidgetTester tester) async {
-  final button = find.text('自由に開始');
+  final button = find.text('【自由モード】');
   if (button.evaluate().isNotEmpty) {
     await tester.tap(button);
     await tester.pumpAndSettle();
   }
+}
+
+/// Playable 0.5A replaced the start picker's "ガイド付きで開始" button with
+/// the Founding Prologue (§3) — the old 0.4C.1 guided-founding tutorial
+/// (2 already-employed founders, [FoundingStage] gating) still exists in
+/// full for saves that predate 0.5A, but is no longer reachable by tapping
+/// through the picker, so tests exercising it call the controller directly.
+Future<void> _chooseGuidedStart(WidgetTester tester) async {
+  final context = tester.element(find.byType(MaterialApp));
+  GameScope.of(context).chooseGuidedStart();
+  await tester.pumpAndSettle();
 }
 
 void main() {
@@ -31,8 +43,8 @@ void main() {
     await tester.pumpWidget(SesApp(controller: GameController()));
     await tester.pumpAndSettle();
 
-    expect(find.text('ガイド付きで開始'), findsOneWidget);
-    expect(find.text('自由に開始'), findsOneWidget);
+    expect(find.text('【初心者モード】おすすめ'), findsOneWidget);
+    expect(find.text('【自由モード】'), findsOneWidget);
   });
 
   testWidgets('app boots into the Home screen with bottom navigation', (
@@ -64,8 +76,7 @@ void main() {
     await tester.pumpAndSettle();
 
     // "ガイド付きで開始" just dismisses the picker — tutorial stays on.
-    await tester.tap(find.text('ガイド付きで開始'));
-    await tester.pumpAndSettle();
+    await _chooseGuidedStart(tester);
 
     expect(find.text('今やること'), findsOneWidget);
     expect(find.text('STEP 1 / 9'), findsOneWidget);
@@ -126,8 +137,7 @@ void main() {
     SharedPreferences.setMockInitialValues({});
     await tester.pumpWidget(SesApp(controller: GameController()));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('ガイド付きで開始'));
-    await tester.pumpAndSettle();
+    await _chooseGuidedStart(tester);
 
     await tester.tap(
       find.descendant(of: find.byType(NavigationBar), matching: find.text('採用')),

@@ -3,13 +3,16 @@ import 'accounts_receivable.dart';
 import 'applicant_entry.dart';
 import 'founding_progress.dart';
 import 'game_log_entry.dart';
+import 'game_mode.dart';
 import 'game_stats.dart';
 import 'game_status.dart';
+import 'general_affairs_staff.dart';
 import 'monthly_closing.dart';
 import 'office.dart';
 import 'pc_equipment.dart';
 import 'project_entry.dart';
 import 'project_proposal.dart';
+import 'prologue_state.dart';
 import 'recruitment_media.dart';
 import 'recruitment_interview.dart';
 import 'sales_models.dart';
@@ -76,6 +79,17 @@ class GameState {
   /// Guided-founding progression (Playable 0.4C.1 §4, §48).
   final FoundingProgress foundingProgress;
 
+  /// Which onboarding path this playthrough started from (Playable 0.5A §3).
+  final GameMode gameMode;
+
+  /// Founding Prologue progression — only meaningful while [gameMode] is
+  /// [GameMode.beginner] (Playable 0.5A §69-71).
+  final PrologueState prologueState;
+
+  /// The company's one 総務 employee, seeded at Beginner Mode start
+  /// (Playable 0.5A §6-8). `null` for Free Mode games and pre-0.5A saves.
+  final GeneralAffairsStaff? generalAffairsStaff;
+
   /// Lent-laptop assignments, one entry per employee (Playable 0.4C §12).
   final List<EmployeeEquipment> equipment;
 
@@ -132,6 +146,9 @@ class GameState {
     required this.stats,
     required this.status,
     this.foundingProgress = FoundingProgress.initial,
+    this.gameMode = GameMode.free,
+    this.prologueState = PrologueState.notActive,
+    this.generalAffairsStaff,
     this.equipment = const [],
     this.lastHealthCheckWeek,
     this.lastBonusWeek,
@@ -265,6 +282,9 @@ class GameState {
     GameStats? stats,
     GameStatus? status,
     FoundingProgress? foundingProgress,
+    GameMode? gameMode,
+    PrologueState? prologueState,
+    GeneralAffairsStaff? generalAffairsStaff,
     List<EmployeeEquipment>? equipment,
     int? lastHealthCheckWeek,
     int? lastBonusWeek,
@@ -302,6 +322,9 @@ class GameState {
       stats: stats ?? this.stats,
       status: status ?? this.status,
       foundingProgress: foundingProgress ?? this.foundingProgress,
+      gameMode: gameMode ?? this.gameMode,
+      prologueState: prologueState ?? this.prologueState,
+      generalAffairsStaff: generalAffairsStaff ?? this.generalAffairsStaff,
       equipment: equipment ?? this.equipment,
       lastHealthCheckWeek: lastHealthCheckWeek ?? this.lastHealthCheckWeek,
       lastBonusWeek: lastBonusWeek ?? this.lastBonusWeek,
@@ -352,6 +375,9 @@ class GameState {
     'stats': stats.toJson(),
     'status': status.jsonValue,
     'foundingProgress': foundingProgress.toJson(),
+    'gameMode': gameMode.jsonValue,
+    'prologueState': prologueState.toJson(),
+    'generalAffairsStaff': generalAffairsStaff?.toJson(),
     'equipment': equipment.map((e) => e.toJson()).toList(),
     'lastHealthCheckWeek': lastHealthCheckWeek,
     'lastBonusWeek': lastBonusWeek,
@@ -420,6 +446,15 @@ class GameState {
     foundingProgress: FoundingProgress.fromJson(
       json['foundingProgress'] as Map<String, dynamic>?,
     ),
+    gameMode: GameMode.fromJson(json['gameMode'] as String?),
+    prologueState: PrologueState.fromJson(
+      json['prologueState'] as Map<String, dynamic>?,
+    ),
+    generalAffairsStaff: json['generalAffairsStaff'] == null
+        ? null
+        : GeneralAffairsStaff.fromJson(
+            json['generalAffairsStaff'] as Map<String, dynamic>,
+          ),
     equipment: (json['equipment'] as List? ?? const [])
         .map((e) => EmployeeEquipment.fromJson(e as Map<String, dynamic>))
         .toList(),

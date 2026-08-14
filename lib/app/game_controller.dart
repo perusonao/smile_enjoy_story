@@ -58,6 +58,16 @@ class GameController extends ChangeNotifier {
     _apply(GameEngine.skipFoundingTutorial);
   }
 
+  /// "創業プロローグから始めます" (Playable 0.5A §3): replaces the previous
+  /// "ガイド付きで開始" with a full scripted founding sequence, starting from
+  /// zero engineers instead of two already-employed founders (§4).
+  void chooseBeginnerStart() {
+    _showStartChoice = false;
+    _state = ProgressionEngine.reconcile(PrologueEngine.newGame());
+    notifyListeners();
+    unawaited(_saveService.save(_state));
+  }
+
   void _apply(GameState Function(GameState) mutate) {
     // Reconcile after every mutation (§7): the single point every player
     // action and every weekly turn passes through, so a milestone can never
@@ -105,9 +115,9 @@ class GameController extends ChangeNotifier {
   void startSales(String employeeId) => _apply((s)=>GameEngine.startSales(s,employeeId));
   void acceptInterviewOffer(String offerId) => _apply((s)=>GameEngine.acceptInterviewOffer(s,offerId));
   void declineInterviewOffer(String offerId) => _apply((s)=>GameEngine.declineInterviewOffer(s,offerId));
-  void startClientInterview(String applicationId) => _apply((s)=>GameEngine.startClientInterview(s,applicationId));
+  void startClientInterview(String applicationId, {SelectionStep step = SelectionStep.clientInterview}) => _apply((s)=>GameEngine.startClientInterview(s,applicationId,step:step,questionCount: step==SelectionStep.upperCompanyInterview?1:3));
   void chooseClientInterviewFollowUp(String sessionId,ClientInterviewFollowUp choice) => _apply((s)=>GameEngine.chooseClientInterviewFollowUp(s,sessionId,choice));
-  void autoResolveClientInterview(String applicationId) => _apply((s)=>GameEngine.autoResolveClientInterview(s,applicationId));
+  void autoResolveClientInterview(String applicationId, {SelectionStep step = SelectionStep.clientInterview}) => _apply((s)=>GameEngine.autoResolveClientInterview(s,applicationId,step:step));
   void decideContract(String employeeId,{required bool extend}) => _apply((s)=>GameEngine.decideContract(s,employeeId,extend));
 
   // --- Welfare ---------------------------------------------------------
@@ -130,6 +140,20 @@ class GameController extends ChangeNotifier {
 
   void completeFoundingTutorial() =>
       _apply(GameEngine.completeFoundingTutorial);
+
+  // --- Founding Prologue (Playable 0.5A) --------------------------------
+
+  void setPresidentName(String name) => _apply((s) => PrologueEngine.setPresidentName(s, name));
+  void markPrologueIntroSeen() => _apply(PrologueEngine.markIntroSeen);
+  void postPrologueFreeRecruitment() => _apply(PrologueEngine.postFreeRecruitment);
+  void selectPrologueCandidate(String applicantId) => _apply((s) => PrologueEngine.selectCandidateForInterview(s, applicantId));
+  void decidePrologueCandidate(String applicantId, {required bool hire}) => _apply((s) => PrologueEngine.decideCandidate(s, applicantId, hire: hire));
+  void confirmPrologueSkillSheet() => _apply(PrologueEngine.confirmSkillSheet);
+  void startProloguePreJoiningSales() => _apply(PrologueEngine.startPreJoiningSales);
+  void acceptPrologueInterviewRequest() => _apply(PrologueEngine.acceptPrologueInterviewRequest);
+  void finalizePrologueContractIfReady() => _apply(PrologueEngine.finalizeContractIfReady);
+  void advancePrologueWeek() => _apply(PrologueEngine.advanceWeek);
+  void completePrologue() => _apply(PrologueEngine.completePrologue);
 
   // --- Turn ----------------------------------------------------------------
 

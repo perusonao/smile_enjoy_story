@@ -46,9 +46,13 @@ class FinanceEngine {
   }
 
   /// Full monthly salary for every current engineer, regardless of
-  /// status — waiting engineers draw 100% salary too (§7).
+  /// status — waiting engineers draw 100% salary too (§7). Includes the
+  /// 総務 employee's salary when Beginner Mode has seeded one (Playable
+  /// 0.5A §8) — general affairs draws salary from day one, same as any
+  /// other employee.
   static int monthlySalaryTotal(GameState state) =>
-      state.engineers.fold<int>(0, (sum, e) => sum + e.salary);
+      state.engineers.fold<int>(0, (sum, e) => sum + e.salary) +
+      (state.generalAffairsStaff?.salary ?? 0);
 
   static int monthlyRent(GameState state) =>
       officeConfigs[state.officeType]!.monthlyRent;

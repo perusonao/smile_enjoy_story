@@ -27,13 +27,13 @@ class StartChoiceScreen extends StatelessWidget {
               ),
               const SizedBox(height: 32),
               FilledButton(
-                onPressed: () => context.game.chooseGuidedStart(),
+                onPressed: () => context.game.chooseBeginnerStart(),
                 style: FilledButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 16)),
-                child: const Text('ガイド付きで開始'),
+                child: const Text('【初心者モード】おすすめ'),
               ),
               const SizedBox(height: 6),
               const Text(
-                '創業直後にやることを順番に案内します。初めての方はこちら。',
+                '創業プロローグから始めます。会社を立ち上げ、最初の技術者を採用し、最初の案件を獲得するまでを体験できます。初めての方はこちら。',
                 textAlign: TextAlign.center,
                 style: TextStyle(fontSize: 12, color: Colors.black54),
               ),
@@ -41,11 +41,11 @@ class StartChoiceScreen extends StatelessWidget {
               OutlinedButton(
                 onPressed: () => context.game.chooseFreeStart(),
                 style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 16)),
-                child: const Text('自由に開始'),
+                child: const Text('【自由モード】'),
               ),
               const SizedBox(height: 6),
               const Text(
-                '案内なしで全ての機能を最初から使います。経験者向け。',
+                '最初から自由に経営します。案内なしで全ての機能を最初から使います。経験者向け。',
                 textAlign: TextAlign.center,
                 style: TextStyle(fontSize: 12, color: Colors.black54),
               ),

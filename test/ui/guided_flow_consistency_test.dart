@@ -24,8 +24,12 @@ void main() {
     await tester.pumpAndSettle();
 
     // "開始モーダル" — the guided-start picker shown on a genuinely fresh boot.
-    expect(find.text('ガイド付きで開始'), findsOneWidget);
-    await tester.tap(find.text('ガイド付きで開始'));
+    // Playable 0.5A replaced "ガイド付きで開始" with the Founding Prologue
+    // (§3); the old 0.4C.1 guided-founding tutorial this test exercises
+    // still exists in full (for saves that predate 0.5A), just no longer
+    // reachable by tapping through the picker.
+    expect(find.text('【初心者モード】おすすめ'), findsOneWidget);
+    GameScope.of(tester.element(find.byType(MaterialApp))).chooseGuidedStart();
     await tester.pumpAndSettle();
 
     expect(find.text('今やること'), findsOneWidget);

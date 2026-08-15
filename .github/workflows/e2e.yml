@@ -68,6 +68,10 @@ jobs:
         env:
           SES_E2E_SEEDS: ${{ github.event.inputs.seeds }}
           CI: "true"
+          # Always keep video, not just on failure — playwright.config.ts's
+          # default is retain-on-failure, so a passing run otherwise leaves
+          # no recording to review.
+          SES_E2E_VIDEO: "on"
         run: npx playwright test
 
       - name: Upload ses-playwright-results

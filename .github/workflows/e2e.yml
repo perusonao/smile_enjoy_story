@@ -60,9 +60,6 @@ on:
 
 permissions:
   contents: read
-  pages: write
-  id-token: write
-  actions: read # to download this run's own e2e-replay-package artifact in `build`
 
 jobs:
   e2e:
@@ -216,6 +213,13 @@ jobs:
     concurrency:
       group: pages
       cancel-in-progress: false
+    # Least privilege (Codex review, PR #7): only build/deploy need Pages
+    # credentials — kept off the workflow-level default so `e2e` (which
+    # runs npm ci / Playwright / test code on every PR) never holds them.
+    permissions:
+      contents: read
+      pages: write
+      actions: read # to download this run's own e2e-replay-package artifact
     steps:
       - uses: actions/checkout@v4
         with:
@@ -290,6 +294,10 @@ jobs:
     concurrency:
       group: pages
       cancel-in-progress: false
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}

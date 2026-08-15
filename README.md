@@ -14,3 +14,11 @@ A few resources to get you started if this is your first Flutter project:
 For help getting started with Flutter development, view the
 [online documentation](https://docs.flutter.dev/), which offers tutorials,
 samples, guidance on mobile development, and a full API reference.
+
+## Playwright E2E (QA / UX audit)
+
+`/e2e` drives the real, built Web app on mobile device profiles from a
+brand-new game through the Founding Prologue to the first案件参画, the same
+way a first-time player would — independent from the Dart headless
+simulations under `/tool`. See [`e2e/README.md`](e2e/README.md) for setup,
+local runs, and how to read a failure's video/screenshots/action trace.

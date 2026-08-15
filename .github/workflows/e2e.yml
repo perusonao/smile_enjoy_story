@@ -1,0 +1,82 @@
+name: Playwright E2E (S.E.S.)
+
+# Independent from deploy.yml on purpose (§20/§28 of the E2E brief) — this
+# workflow never builds for or touches GitHub Pages, and deploy.yml is
+# untouched by this change. Real-UI QA/UX audit layer: Flutter analyze/test
+# still gate correctness; this adds a Playwright pass over the actual built
+# Web app on mobile device profiles.
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      seeds:
+        description: "Comma-separated seed list for founding-first-assignment.spec.ts (default: fast 3-seed sample; use the 10-seed set for a full validation pass)"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: e2e
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.44.9"
+          channel: stable
+
+      - name: flutter pub get
+        working-directory: .
+        run: flutter pub get
+
+      - name: flutter analyze
+        working-directory: .
+        run: flutter analyze
+
+      - name: flutter test
+        working-directory: .
+        run: flutter test
+
+      - name: flutter build web (release, no CDN — self-contained for the local static server)
+        working-directory: .
+        run: flutter build web --release --no-web-resources-cdn
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install E2E dependencies
+        run: npm ci
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium webkit
+
+      - name: Run Playwright E2E (mobile-chromium + mobile-webkit)
+        env:
+          SES_E2E_SEEDS: ${{ github.event.inputs.seeds }}
+          CI: "true"
+        run: npx playwright test
+
+      - name: Upload ses-playwright-results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ses-playwright-results
+          path: |
+            e2e/test-results/**
+            e2e/playwright-report/**
+          retention-days: 10
+          if-no-files-found: warn

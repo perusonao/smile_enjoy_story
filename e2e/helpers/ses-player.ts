@@ -203,7 +203,32 @@ export async function playFoundingToFirstAssignment(page: Page, options: PlayOpt
   let stallReason: string | null = null;
 
   while (true) {
-    if (completed) break;
+    // Read the current snapshot and check for completion FIRST, always —
+    // before any cap/timeout can fail the run (Codex review on PR #3, item
+    // 3). The bug this fixes: when the very last permitted action (the
+    // 100th action, or the 12th week-advancing action) is the one that
+    // actually reaches first assignment, the *previous* ordering checked
+    // `actionCount >= maxActions` / `weekAdvances >= maxWeeks` before ever
+    // reading the resulting screen, so a genuine completion on the final
+    // allowed action was reported as a cap failure instead of a success.
+    // Observing the result of the last legal action before judging the cap
+    // it landed on is the fix — not raising the caps, which would only
+    // move the same boundary bug one action/week later.
+    let snap = await readStableSemantics(page);
+    let screen = classifyScreen(snap);
+
+    if (options.onScreen) await options.onScreen(screen, snap);
+
+    if (screen === 'complete' || hasText(snap, '初案件参画')) {
+      completed = true;
+      trace.push({ action: actionCount + 1, elapsedMs: Date.now() - start, screen, primaryCTA: null, primaryCTACount: 0, clicked: '(observed completion)', advancedWeek: false });
+      if (options.onAction) await options.onAction(trace[trace.length - 1]);
+      break;
+    }
+
+    // Only once this snapshot is confirmed *not* a completion do the caps
+    // apply — they bound the next action about to be considered, not the
+    // observation of one that already happened.
     if (actionCount >= options.maxActions) {
       stallDetected = true;
       stallReason = `max actions (${options.maxActions}) exceeded without reaching first assignment`;
@@ -220,18 +245,6 @@ export async function playFoundingToFirstAssignment(page: Page, options: PlayOpt
     if (Date.now() - lastActivityAt > options.idleTimeoutMs) {
       stallDetected = true;
       stallReason = `no legal action found for ${options.idleTimeoutMs}ms (dead-end)`;
-      break;
-    }
-
-    let snap = await readStableSemantics(page);
-    let screen = classifyScreen(snap);
-
-    if (options.onScreen) await options.onScreen(screen, snap);
-
-    if (screen === 'complete' || hasText(snap, '初案件参画')) {
-      completed = true;
-      trace.push({ action: actionCount + 1, elapsedMs: Date.now() - start, screen, primaryCTA: null, primaryCTACount: 0, clicked: '(observed completion)', advancedWeek: false });
-      if (options.onAction) await options.onAction(trace[trace.length - 1]);
       break;
     }
 

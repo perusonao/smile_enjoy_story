@@ -38,21 +38,29 @@ export default defineConfig({
     screenshot: 'only-on-failure',
     actionTimeout: 15_000,
     navigationTimeout: 30_000,
-    // Escape hatch for environments with a pre-cached browser binary at a
-    // fixed path (e.g. a sandboxed CI image) instead of Playwright's own
-    // managed install — unset for everyone else, incl. normal CI, which
-    // installs its own matching browsers via `playwright install`.
-    launchOptions: process.env.SES_E2E_CHROMIUM_PATH ? { executablePath: process.env.SES_E2E_CHROMIUM_PATH } : undefined,
   },
   projects: [
     {
       // Android/Chrome-equivalent mobile profile (§4).
       name: 'mobile-chromium',
-      use: { ...devices['Pixel 7'] },
+      use: {
+        ...devices['Pixel 7'],
+        // Escape hatch for environments with a pre-cached Chromium binary
+        // at a fixed path (e.g. a sandboxed CI image) instead of
+        // Playwright's own managed install — unset for everyone else,
+        // incl. normal CI, which installs its own matching browsers via
+        // `playwright install`. Scoped to this project only (Codex review
+        // on PR #3): a top-level `use.launchOptions` here would also apply
+        // to mobile-webkit below, launching WebKit against a Chromium
+        // executable and breaking it outright.
+        launchOptions: process.env.SES_E2E_CHROMIUM_PATH ? { executablePath: process.env.SES_E2E_CHROMIUM_PATH } : undefined,
+      },
     },
     {
       // iPhone/Safari-equivalent mobile profile (§4, first-choice target —
-      // S.E.S. is primarily a smartphone-portrait game).
+      // S.E.S. is primarily a smartphone-portrait game). Never touches
+      // SES_E2E_CHROMIUM_PATH — always launches its own managed/matching
+      // WebKit binary.
       name: 'mobile-webkit',
       use: { ...devices['iPhone 14'] },
     },

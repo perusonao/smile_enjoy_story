@@ -5,6 +5,7 @@
 import { test, expect } from '@playwright/test';
 import { emptyPlayResult, playFoundingToFirstAssignment, type PlayResult } from '../helpers/ses-player';
 import { buildResultJson, captureMilestone, watchForErrors, writeArtifacts } from '../helpers/artifacts';
+import { parseSeeds } from '../helpers/seeds';
 
 // §24: "最低10ゲーム、異なるseedで" — the full 10-seed batch is the
 // project's own validation deliverable (see e2e/README.md "10-seed
@@ -13,9 +14,12 @@ import { buildResultJson, captureMilestone, watchForErrors, writeArtifacts } fro
 // that same set so day-to-day CI stays quick without weakening what a
 // developer sees on every push.
 const DEFAULT_SEEDS = [100001, 100002, 100003, 100004, 100005, 100006, 100007, 100008, 100009, 100010];
-const SEEDS = process.env.SES_E2E_SEEDS
-  ? process.env.SES_E2E_SEEDS.split(',').map((s) => Number(s.trim())).filter((n) => Number.isFinite(n))
-  : DEFAULT_SEEDS.slice(0, 3);
+// parseSeeds (helpers/seeds.ts, Codex review on PR #3): an invalid or
+// entirely-empty SES_E2E_SEEDS previously filtered down to an empty array
+// here, registering zero tests below and letting the scenario workflow
+// pass without ever running its primary scenario. `parsedSeeds.error` is
+// checked below and turned into an explicit failing test instead.
+const parsedSeeds = parseSeeds(process.env.SES_E2E_SEEDS, DEFAULT_SEEDS.slice(0, 3));
 
 // §13: existing tool/simulate_prologue.dart buckets its own "eventual"
 // first-assignment rate at prologueWeek <= 12 (assignedApril3) — reused
@@ -33,7 +37,18 @@ const MILESTONE_SCREEN_LABELS: Record<string, string> = {
   'upper-interview': '04-client-interview',
 };
 
-for (const seed of SEEDS) {
+if (parsedSeeds.error) {
+  // Registered instead of the per-seed tests below — a bare `test.fail()`
+  // or throwing at module scope would either not report per-project or
+  // would abort the whole file's collection; an explicit failing test is
+  // the one shape Playwright always surfaces as a red result, on every
+  // project, in every reporter.
+  test('SES_E2E_SEEDS is invalid', () => {
+    throw new Error(parsedSeeds.error!);
+  });
+}
+
+for (const seed of parsedSeeds.seeds) {
   test(`Founding First Assignment (seed ${seed})`, async ({ page }, testInfo) => {
     const errors = watchForErrors(page);
     const startedAt = Date.now();

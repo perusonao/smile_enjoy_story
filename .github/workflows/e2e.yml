@@ -72,6 +72,15 @@ jobs:
       - name: Install E2E dependencies
         run: npm ci
 
+      # Pure Node unit tests for the Replay Viewer's own build tooling
+      # (manifest builder, latest-main deploy guard, viewer escaping/
+      # filtering logic) — no browser needed, so this runs before the
+      # (much slower) Playwright browser install/run below and fails fast.
+      # No continue-on-error: a failure here must fail this job exactly
+      # like any other step.
+      - name: Replay unit tests
+        run: npm run test:replay-unit
+
       - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium webkit
 

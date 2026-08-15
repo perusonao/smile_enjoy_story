@@ -256,6 +256,49 @@ the regression by running the same tests against the pre-fix
 `artifacts.ts`: the interleaved-order cases fail there and pass against the
 fix.
 
+### Major (fixed, second re-review): a real, non-empty no-action frame was also mistaken for a dead-end
+
+**Symptom.** The transient-empty fix above only guarded against a fully
+*empty* semantics tree. An independent WebKit run still failed 4/10 on a
+10-repeat seed-100001 stress test, on a different (but structurally
+identical) transient screen: right after a hire decision, `screen =
+candidate-select` briefly read `buttons=[]`, `texts=["応募者が見つかりません"]`
+— genuinely non-empty, so `readStableSemantics` passed it straight through,
+`decideAction` correctly found no legal action on it, and the single read
+was reported as an immediate dead-end. Company Setup failures and empty-
+semantics failures were both confirmed at 0 across the same run, ruling out
+the previous two fixes as the cause — this was a new, distinct gap.
+
+**Fix.** A new, deliberately content-agnostic `waitForActionableOrStableDeadEnd()`
+(`helpers/ses-player.ts`) runs whenever `decideAction()` finds no legal
+action on a snapshot, generalizing the same "don't trust a single
+mid-transition read" principle to *any* no-action snapshot, not just empty
+ones. Bounded polling (`NO_ACTION_POLL_INTERVAL_MS`=150ms,
+`NO_ACTION_STABILITY_WINDOW_MS`=2000ms — the same order of magnitude as the
+empty-recovery window above) against three outcomes:
+- a later read becomes actionable → hand that back to the caller as normal;
+- the tree changes to some *other* non-actionable state → returns
+  `'transitioning'` immediately (does not keep polling inside the same
+  call — the main loop's `continue` re-enters fresh next tick, so a long
+  chain of transitions is still bounded by the loop's own idle-timeout
+  watchdog, not by nested timeouts inside this helper);
+- the snapshot never changes for the entire window → `'stable-dead-end'`,
+  reported exactly as before.
+
+Deliberately never checks for `"応募者が見つかりません"` or any other specific
+string — matching only "did the accessibility tree actually stop changing"
+keeps this general against whatever the next transient screen turns out to
+be, rather than allowlisting today's specific symptom.
+
+`tests/ses-player.deadEndStability.spec.ts` exercises this against a real
+Playwright `page` (plain HTML driven via `page.evaluate()`, not Flutter, so
+the actual `ariaSnapshot()`-parsing path is exercised end to end) covering:
+a transient non-empty/no-action frame resolving to actionable; a genuinely
+stable non-empty/no-action dead-end; a fully-empty frame inside the window
+still recovering (confirms the empty-recovery fix above isn't broken by
+this one); and multiple distinct transitional frames before landing on an
+actionable screen.
+
 ## Local setup
 
 ### Windows / macOS / Linux

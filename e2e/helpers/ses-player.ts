@@ -223,8 +223,8 @@ export async function playFoundingToFirstAssignment(page: Page, options: PlayOpt
       break;
     }
 
-    const snap = await readStableSemantics(page);
-    const screen = classifyScreen(snap);
+    let snap = await readStableSemantics(page);
+    let screen = classifyScreen(snap);
 
     if (options.onScreen) await options.onScreen(screen, snap);
 
@@ -244,9 +244,31 @@ export async function playFoundingToFirstAssignment(page: Page, options: PlayOpt
       }
     }
 
-    const decision = decideAction(snap, {
-      forceRejectFirstCandidate: !!options.forceRejectFirstCandidate && !rejectedOnce,
-    });
+    const decideOpts = { forceRejectFirstCandidate: !!options.forceRejectFirstCandidate && !rejectedOnce };
+    let decision = decideAction(snap, decideOpts);
+
+    if (!decision) {
+      // No legal action on this read — but before treating that as a
+      // dead-end, confirm it's not just a transient no-action frame mid
+      // route-transition (§1-9 of the re-review: WebKit can render a real,
+      // *non-empty* "応募者が見つかりません"/buttons=[] intermediate screen
+      // for a tick or two right after a hire decision, before the actual
+      // next screen's semantics attach — readStableSemantics only guards
+      // against a fully *empty* tree, not this). Bounded, content-agnostic:
+      // never special-cases any particular screen or string.
+      const check = await waitForActionableOrStableDeadEnd(page, snap, decideOpts);
+      if (check.status === 'transitioning') {
+        // The tree moved on to some other still-non-actionable state rather
+        // than settling — not evidence either way yet. Re-enter the outer
+        // loop fresh: the idle-timeout watchdog above (lastActivityAt is
+        // deliberately not touched here) still catches a genuinely stuck
+        // sequence of repeated transitioning ticks.
+        continue;
+      }
+      snap = check.snapshot;
+      screen = check.screen;
+      decision = check.decision;
+    }
 
     // Primary-CTA audit (§7): count currently-enabled buttons that look like
     // "the thing to do" (excludes the AppBar restart icon, which never
@@ -264,7 +286,7 @@ export async function playFoundingToFirstAssignment(page: Page, options: PlayOpt
 
     if (!decision) {
       stallDetected = true;
-      stallReason = `dead-end at screen="${screen}": no Primary CTA, no pending event, and no "次の週へ" available. Visible buttons: [${snap.buttons.map((b) => `${b.name}${b.enabled ? '' : '(disabled)'}`).join(', ')}]. Visible text: ${JSON.stringify(snap.texts)}`;
+      stallReason = `dead-end at screen="${screen}": no Primary CTA, no pending event, and no "次の週へ" available (confirmed stable for ${NO_ACTION_STABILITY_WINDOW_MS}ms, not a transient mid-transition frame). Visible buttons: [${snap.buttons.map((b) => `${b.name}${b.enabled ? '' : '(disabled)'}`).join(', ')}]. Visible text: ${JSON.stringify(snap.texts)}`;
       break;
     }
 
@@ -557,6 +579,67 @@ async function waitForSemanticsChange(page: Page, before: ScreenSnapshot, maxWai
       return;
     }
   }
+}
+
+// How long a genuinely *non-empty* but no-legal-action snapshot gets to
+// either become actionable or keep changing before it's treated as a real,
+// stable dead-end. Same order of magnitude as EMPTY_SEMANTICS_RECOVERY_MS
+// above (§6 of the re-review: keep new timing consistent with what's
+// already proven out in this harness) — this is the non-empty counterpart:
+// readStableSemantics only ever protects against a *fully empty* tree, not
+// a real, populated-but-not-yet-actionable one (e.g. WebKit's genuine
+// "応募者が見つかりません" / buttons=[] frame right after a hire decision).
+export const NO_ACTION_POLL_INTERVAL_MS = 150;
+export const NO_ACTION_STABILITY_WINDOW_MS = 2_000;
+
+export type DeadEndCheck =
+  | { status: 'actionable'; snapshot: ScreenSnapshot; screen: ScreenLabel; decision: Decision }
+  | { status: 'transitioning'; snapshot: ScreenSnapshot; screen: ScreenLabel; decision: null }
+  | { status: 'stable-dead-end'; snapshot: ScreenSnapshot; screen: ScreenLabel; decision: null };
+
+/** Called only once decideAction() has already found no legal action on the
+ * current snapshot. Rather than failing on that single read, polls
+ * (bounded, driven by the accessibility tree actually changing — never a
+ * fixed sleep, never a check on any particular screen or string) for one of
+ * three outcomes:
+ *
+ * - a later read becomes actionable -> `{ status: 'actionable', ... }`,
+ *   handing back that snapshot/decision for the caller to act on as normal;
+ * - the tree changes to some *other* non-actionable state ->
+ *   `{ status: 'transitioning', ... }` — the caller re-enters its own
+ *   top-of-loop bookkeeping (idle timeout, same-fingerprint stall
+ *   detection, a fresh readStableSemantics) fresh next tick, rather than
+ *   this helper accumulating its own unbounded nested wait across however
+ *   many further transitions follow (§10 of the re-review: no nested-
+ *   timeout complexity — this helper never calls itself or restarts its
+ *   own window);
+ * - the snapshot stays byte-identical to the one decideAction already
+ *   failed on for the *entire* bounded window -> `{ status:
+ *   'stable-dead-end', ... }` — a real, confirmed-stable dead-end
+ *   candidate, not hidden behind further retry. */
+export async function waitForActionableOrStableDeadEnd(
+  page: Page,
+  initialSnapshot: ScreenSnapshot,
+  decideOpts: { forceRejectFirstCandidate: boolean },
+  maxWaitMs = NO_ACTION_STABILITY_WINDOW_MS,
+): Promise<DeadEndCheck> {
+  const initialFingerprint = fingerprintOf(initialSnapshot);
+  const start = Date.now();
+  while (Date.now() - start < maxWaitMs) {
+    await page.waitForTimeout(NO_ACTION_POLL_INTERVAL_MS);
+    const snap = await readStableSemantics(page);
+    const decision = decideAction(snap, decideOpts);
+    if (decision) {
+      return { status: 'actionable', snapshot: snap, screen: classifyScreen(snap), decision };
+    }
+    if (fingerprintOf(snap) !== initialFingerprint) {
+      // Still transitioning (into some other non-actionable state) rather
+      // than stuck — bail out to the caller's own per-tick loop instead of
+      // restarting this same bounded window over again here.
+      return { status: 'transitioning', snapshot: snap, screen: classifyScreen(snap), decision: null };
+    }
+  }
+  return { status: 'stable-dead-end', snapshot: initialSnapshot, screen: classifyScreen(initialSnapshot), decision: null };
 }
 
 interface Decision {

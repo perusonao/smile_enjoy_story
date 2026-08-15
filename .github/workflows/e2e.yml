@@ -1,20 +1,50 @@
 name: Playwright E2E (S.E.S.)
 
-# Independent from deploy.yml on purpose (§20/§28 of the E2E brief) — this
-# workflow never calls actions/deploy-pages itself and never touches the
-# live game deployment. Real-UI QA/UX audit layer: Flutter analyze/test
-# still gate correctness; this adds a Playwright pass over the actual built
-# Web app on mobile device profiles.
+# Single workflow for validation + E2E + Replay Package + Pages deploy.
 #
-# E2E Replay Viewer (dev/QA tool, see e2e/replay-viewer/): on a push to
-# main only, this workflow additionally packages the run's videos/
-# result.json/action-trace.json into an `e2e-replay-package` artifact
-# (MP4-transcoded via ffmpeg, installed on the runner below via apt —
-# ubuntu-latest does NOT ship ffmpeg by default, no new production/Flutter
-# dependency). deploy.yml — the *only* workflow that calls deploy-pages —
-# picks this artifact up via a `workflow_run` trigger and folds it into
-# the single Pages deployment alongside the game. The existing
-# `ses-playwright-results` artifact/its retention are untouched.
+# Previously this repo used two workflows: this one (validation/E2E, all
+# events) and a separate deploy.yml triggered by `workflow_run` once this
+# one completed on main. That cross-workflow `workflow_run` trigger never
+# fired in practice across two independent main pushes (confirmed via the
+# GitHub API: zero workflow_run-triggered runs, repo-wide, ever) despite
+# the trigger being correctly configured (name match, no branches filter,
+# no job-if skip involved — the run itself was never created). Root cause
+# on GitHub's side could not be confirmed from the repo alone, so rather
+# than keep depending on that cross-workflow event, deploy is now just
+# more jobs in this same workflow run, wired together with `needs:` —
+# no event hand-off, nothing to fail to fire.
+#
+# jobs:
+#   e2e            — pull_request / push / workflow_dispatch. Flutter
+#                    analyze/test/build, Playwright (mobile-chromium +
+#                    mobile-webkit), and (push only) the E2E Replay
+#                    Viewer's package build (ffmpeg MP4 transcode +
+#                    manifest). Same content as the old e2e.yml.
+#   check-latest   — push / workflow_dispatch only. Stale-run guard (see
+#                    e2e/scripts/check-latest-main.mjs): is this run's
+#                    commit still origin/main's actual tip?
+#   build          — Flutter web release build + fold in this *same run's*
+#                    e2e-replay-package artifact (no cross-run token/
+#                    run-id needed — it's the same workflow run) +
+#                    upload-pages-artifact.
+#   deploy         — re-verify the stale guard immediately before
+#                    actions/deploy-pages (build's flutter build web can
+#                    take minutes; re-check right at the point of no
+#                    return), then deploy.
+#
+# A failed `e2e` job does NOT by itself block check-latest/build/deploy —
+# matching the previous design's intent ("a red E2E run does not block
+# the game deployment"). What DOES block deploy: `check-latest`/`build`
+# actually failing (build re-runs flutter analyze/test against the same
+# commit as its own independent gate — deliberately not deduplicated
+# against `e2e`'s copy, so a broken build is never shipped regardless of
+# what happened in the Playwright/replay portion of `e2e`), the stale-SHA
+# guard failing either check, or `e2e` itself being cancelled/skipped
+# (e.g. superseded by a newer push — a cancelled run has no reliable
+# replay package and a newer run's chain deploys right behind it anyway).
+#
+# PRs only ever run the `e2e` job (see each downstream job's `if:`) — no
+# Pages deploy happens for pull_request events.
 
 on:
   pull_request:
@@ -31,14 +61,13 @@ on:
 permissions:
   contents: read
 
-concurrency:
-  group: e2e-${{ github.ref }}
-  cancel-in-progress: true
-
 jobs:
   e2e:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    concurrency:
+      group: e2e-${{ github.ref }}
+      cancel-in-progress: true
     defaults:
       run:
         working-directory: e2e
@@ -115,8 +144,8 @@ jobs:
       # a test failure still fails this job, on purpose (§ approved design:
       # "テスト失敗をgreenに変えてはいけません"). If this packaging step
       # itself breaks, it fails loudly here too (not a silent success) —
-      # deploy.yml is responsible for still shipping the game in that case,
-      # not this workflow pretending nothing went wrong.
+      # the deploy jobs below are responsible for still shipping the game
+      # in that case, not this job pretending nothing went wrong.
       # ubuntu-latest (24.04) does not ship ffmpeg/ffprobe — confirmed by
       # run 31894678795 failing with "spawnSync ffmpeg ENOENT" and by the
       # runner image's own installed-software list (actions/runner-images).
@@ -147,3 +176,150 @@ jobs:
           path: e2e/replay-package/**
           retention-days: 10
           if-no-files-found: warn
+
+  check-latest:
+    needs: e2e
+    if: |
+      always() &&
+      (github.event_name == 'push' || github.event_name == 'workflow_dispatch') &&
+      needs.e2e.result != 'cancelled' &&
+      needs.e2e.result != 'skipped'
+    runs-on: ubuntu-latest
+    concurrency:
+      group: pages
+      cancel-in-progress: false
+    outputs:
+      target_sha: ${{ steps.check.outputs.target_sha }}
+      is_latest: ${{ steps.check.outputs.is_latest }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Resolve target commit and check it is still main's current tip
+        id: check
+        run: node e2e/scripts/check-latest-main.mjs "${{ github.sha }}" "https://github.com/${{ github.repository }}.git" "main" >> "$GITHUB_OUTPUT"
+      - name: Stale run — log and skip
+        if: steps.check.outputs.is_latest != 'true'
+        run: echo "::warning::Stale run for commit ${{ steps.check.outputs.target_sha }} — main's current tip has moved on. Skipping the Pages deploy for this run to avoid rolling production back."
+
+  build:
+    needs: [e2e, check-latest]
+    if: |
+      always() &&
+      needs.check-latest.result == 'success' &&
+      needs.check-latest.outputs.is_latest == 'true'
+    runs-on: ubuntu-latest
+    concurrency:
+      group: pages
+      cancel-in-progress: false
+    # Least privilege (Codex review, PR #7): only build/deploy need Pages
+    # credentials — kept off the workflow-level default so `e2e` (which
+    # runs npm ci / Playwright / test code on every PR) never holds them.
+    permissions:
+      contents: read
+      pages: write
+      actions: read # to download this run's own e2e-replay-package artifact
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.check-latest.outputs.target_sha }}
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.44.9"
+          channel: stable
+
+      - run: flutter pub get
+
+      - name: Analyze
+        run: flutter analyze
+
+      - name: Test
+        run: flutter test
+
+      - name: Build web (release)
+        run: |
+          flutter build web --release \
+            --base-href "/${{ github.event.repository.name }}/" \
+            --no-web-resources-cdn
+
+      # --- E2E Replay Viewer (dev/QA tool) — folded into the same deploy ---
+      #
+      # Never touches lib/, web/, or any production build step above; this
+      # only adds a static subdirectory to the already-built output.
+      # Same workflow run as `e2e`, so no run-id/cross-run token needed —
+      # this simply downloads the artifact `e2e`'s own upload step produced
+      # a few jobs earlier in this run (absent when `e2e` didn't reach
+      # that push-only step, e.g. a workflow_dispatch run).
+      - name: Download e2e-replay-package
+        id: download_replay
+        continue-on-error: true # missing/failed artifact must not block the game deploy
+        uses: actions/download-artifact@v4
+        with:
+          name: e2e-replay-package
+          path: e2e-replay-download
+
+      - name: Assemble Replay Viewer into the Pages payload
+        if: steps.download_replay.outcome == 'success'
+        run: |
+          set -euo pipefail
+          mkdir -p build/web/e2e-replays
+          cp -r e2e/replay-viewer/. build/web/e2e-replays/
+          find build/web/e2e-replays -name '*.test.mjs' -delete
+          cp -r e2e-replay-download/. build/web/e2e-replays/
+          echo "Replay Viewer assembled at build/web/e2e-replays/ ($(find build/web/e2e-replays -type f | wc -l) files)"
+
+      - name: Replay package unavailable for this deployment
+        if: steps.download_replay.outcome != 'success'
+        run: |
+          echo "::warning::e2e-replay-package artifact not found for this run (event=${{ github.event_name }}) — deploying the game without updating /e2e-replays/ this time."
+
+      - uses: actions/configure-pages@v5
+        with:
+          enablement: true
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: build/web
+
+  deploy:
+    needs: [check-latest, build]
+    if: |
+      always() &&
+      needs.check-latest.result == 'success' &&
+      needs.build.result == 'success' &&
+      needs.check-latest.outputs.is_latest == 'true'
+    runs-on: ubuntu-latest
+    concurrency:
+      group: pages
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      # Re-verify RIGHT BEFORE the real deploy-pages call — the
+      # authoritative gate. `build`'s own `flutter build web` can take
+      # several minutes; a newer commit could have become main's tip during
+      # that window even though this run passed the check-latest job's
+      # earlier (best-effort/efficiency-only) check.
+      - name: Re-verify main has not moved since this run started
+        id: recheck
+        run: node e2e/scripts/check-latest-main.mjs "${{ needs.check-latest.outputs.target_sha }}" "https://github.com/${{ github.repository }}.git" "main" >> "$GITHUB_OUTPUT"
+
+      - name: Stale at deploy time — skip deploy-pages
+        if: steps.recheck.outputs.is_latest != 'true'
+        run: echo "::warning::main moved during this run (target ${{ needs.check-latest.outputs.target_sha }} vs current ${{ steps.recheck.outputs.current_sha }}) — refusing to deploy a stale commit over a newer one."
+
+      - id: deployment
+        if: steps.recheck.outputs.is_latest == 'true'
+        uses: actions/deploy-pages@v4

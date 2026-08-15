@@ -1,0 +1,265 @@
+/* E2E Replay Viewer — standalone dev/QA static page. Deliberately separate
+   from the game's own CSS/theme (lib/ui/theme.dart); nothing here is
+   shared with or loaded by the production game bundle. */
+
+:root {
+  --bg: #0f1216;
+  --panel: #171b21;
+  --panel-border: #2a2f38;
+  --text: #e7ebf0;
+  --text-dim: #9aa4b2;
+  --accent: #4f8cff;
+  --pass: #35c46b;
+  --fail: #ef5a5a;
+  --skip: #c9a227;
+  font-size: 16px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Hiragino Sans', 'Noto Sans JP', Roboto, sans-serif;
+  line-height: 1.5;
+}
+
+.header {
+  padding: 1.25rem 1rem 0.75rem;
+  border-bottom: 1px solid var(--panel-border);
+}
+.header h1 {
+  margin: 0 0 0.25rem;
+  font-size: 1.4rem;
+}
+.subtitle {
+  margin: 0;
+  color: var(--text-dim);
+  font-size: 0.85rem;
+}
+
+#app {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 1rem;
+}
+
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--panel-border);
+  border-radius: 10px;
+  padding: 1rem;
+  margin-bottom: 1rem;
+}
+.panel dl {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.25rem 0.75rem;
+  margin: 0;
+}
+.panel dt {
+  color: var(--text-dim);
+  font-size: 0.85rem;
+}
+.panel dd {
+  margin: 0;
+  font-size: 0.9rem;
+  word-break: break-word;
+}
+.panel .error-text {
+  color: var(--fail);
+}
+
+.filters {
+  margin-bottom: 1rem;
+}
+.filter-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.4rem;
+}
+.filter-label {
+  color: var(--text-dim);
+  font-size: 0.8rem;
+  min-width: 4.5rem;
+}
+.filter-group {
+  display: flex;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+.filter-btn {
+  background: var(--panel);
+  border: 1px solid var(--panel-border);
+  color: var(--text);
+  border-radius: 999px;
+  padding: 0.3rem 0.85rem;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+.filter-btn[aria-pressed='true'] {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 0.75rem;
+}
+
+.card {
+  background: var(--panel);
+  border: 1px solid var(--panel-border);
+  border-radius: 10px;
+  padding: 0.9rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+.card .status {
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+.card .status.passed {
+  color: var(--pass);
+}
+.card .status.failed {
+  color: var(--fail);
+}
+.card .status.skipped {
+  color: var(--skip);
+}
+.card .scenario {
+  font-size: 1.05rem;
+  font-weight: 600;
+}
+.card .meta {
+  color: var(--text-dim);
+  font-size: 0.85rem;
+}
+.card .warnings {
+  color: var(--skip);
+  font-size: 0.78rem;
+}
+.card .actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.4rem;
+  flex-wrap: wrap;
+}
+.card button {
+  flex: 1 1 auto;
+  min-width: 6.5rem;
+  background: var(--accent);
+  border: none;
+  color: #fff;
+  border-radius: 8px;
+  padding: 0.5rem 0.7rem;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+.card button:disabled {
+  background: var(--panel-border);
+  color: var(--text-dim);
+  cursor: not-allowed;
+}
+.card button.secondary {
+  background: transparent;
+  border: 1px solid var(--panel-border);
+  color: var(--text);
+}
+
+.modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  z-index: 10;
+}
+.modal.hidden {
+  display: none;
+}
+.modal-content {
+  background: var(--panel);
+  border: 1px solid var(--panel-border);
+  border-radius: 12px;
+  padding: 1rem;
+  max-width: 600px;
+  width: 100%;
+  max-height: 90vh;
+  overflow-y: auto;
+  position: relative;
+}
+.modal-close {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.5rem;
+  background: transparent;
+  border: none;
+  color: var(--text);
+  font-size: 1.4rem;
+  cursor: pointer;
+  line-height: 1;
+  padding: 0.25rem 0.5rem;
+}
+.modal-content video {
+  width: 100%;
+  max-height: 70vh;
+  border-radius: 8px;
+  background: #000;
+}
+.modal-content .playback-rates {
+  display: flex;
+  gap: 0.4rem;
+  margin-top: 0.5rem;
+}
+.modal-content .playback-rates button {
+  background: var(--panel-border);
+  border: none;
+  color: var(--text);
+  border-radius: 6px;
+  padding: 0.3rem 0.6rem;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+.modal-content .playback-rates button[aria-pressed='true'] {
+  background: var(--accent);
+  color: #fff;
+}
+
+.trace-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.82rem;
+}
+.trace-list li {
+  padding: 0.35rem 0;
+  border-bottom: 1px solid var(--panel-border);
+}
+.trace-list .trace-clicked {
+  color: var(--accent);
+}
+
+.empty-state {
+  color: var(--text-dim);
+  padding: 2rem 1rem;
+  text-align: center;
+}
+
+@media (max-width: 420px) {
+  .cards {
+    grid-template-columns: 1fr;
+  }
+}

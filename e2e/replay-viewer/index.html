@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="robots" content="noindex, nofollow" />
+<title>E2E Replay Viewer — S.E.S.</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Ctext y='13' font-size='13'%3E%F0%9F%8E%AC%3C/text%3E%3C/svg%3E" />
+<link rel="stylesheet" href="./style.css" />
+</head>
+<body>
+<header class="header">
+  <h1>E2E Replay Viewer</h1>
+  <p class="subtitle">S.E.S. Playwright E2E — dev/QA tool, independent from the game itself</p>
+</header>
+
+<main id="app">
+  <section id="run-summary" class="panel" aria-live="polite">
+    <p>Loading manifest…</p>
+  </section>
+
+  <section class="filters" aria-label="Filters">
+    <div class="filter-row">
+      <span class="filter-label">Browser</span>
+      <div id="browser-filter" class="filter-group" role="group" aria-label="Browser filter"></div>
+    </div>
+    <div class="filter-row">
+      <span class="filter-label">Status</span>
+      <div id="status-filter" class="filter-group" role="group" aria-label="Status filter"></div>
+    </div>
+  </section>
+
+  <section id="cards" class="cards"></section>
+</main>
+
+<div id="modal" class="modal hidden" role="dialog" aria-modal="true" aria-hidden="true">
+  <div class="modal-content">
+    <button id="modal-close" class="modal-close" type="button" aria-label="閉じる">×</button>
+    <div id="modal-body"></div>
+  </div>
+</div>
+
+<script type="module" src="./app.js"></script>
+</body>
+</html>

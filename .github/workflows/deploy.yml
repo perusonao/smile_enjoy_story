@@ -1,14 +1,34 @@
 name: Deploy Flutter Web to GitHub Pages
 
+# Triggered by the Playwright E2E workflow's completion on main (instead of
+# `push: [main]` directly) so this — the *only* workflow that ever calls
+# deploy-pages — can wait for e2e.yml's `e2e-replay-package` artifact and
+# fold the E2E Replay Viewer (dev/QA tool, e2e/replay-viewer/) into the
+# same single Pages deployment at /e2e-replays/, without a second workflow
+# racing it to deploy-pages. This does mean the game's Pages deployment now
+# happens a few minutes after merge (once E2E finishes) rather than
+# immediately on push — an accepted trade-off (approved design).
+#
+# A red E2E run does NOT block the game deployment: the steps below always
+# build+deploy the game, and only conditionally fold in replay data when
+# the e2e-replay-package artifact is actually available (e2e.yml packages
+# it with `if: always()`, so it exists for both passed and failed runs —
+# see e2e.yml for why a failed run's replay is exactly the interesting
+# one). If the artifact is missing for this run (e.g. e2e.yml failed before
+# reaching the packaging step), the game still deploys; only
+# /e2e-replays/ is temporarily absent from that one deployment, restored by
+# the next successful packaging run.
 on:
-  push:
-    branches: [main]
+  workflow_run:
+    workflows: ["Playwright E2E (S.E.S.)"]
+    types: [completed]
   workflow_dispatch:
 
 permissions:
   contents: read
   pages: write
   id-token: write
+  actions: read # to download e2e.yml's e2e-replay-package artifact (workflow_run cross-run download)
 
 concurrency:
   group: pages
@@ -17,8 +37,19 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
+    # Only ever deploy for: a manual dispatch, or an e2e.yml run that itself
+    # ran on a `push` to main (never a PR run) and wasn't cancelled (a
+    # cancelled run — e.g. superseded by a newer push — has no reliable
+    # replay package and a newer chain will deploy right behind it anyway).
+    if: |
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.event == 'push' &&
+       github.event.workflow_run.head_branch == 'main' &&
+       github.event.workflow_run.conclusion != 'cancelled')
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
 
       - uses: subosito/flutter-action@v2
         with:
@@ -38,6 +69,36 @@ jobs:
           flutter build web --release \
             --base-href "/${{ github.event.repository.name }}/" \
             --no-web-resources-cdn
+
+      # --- E2E Replay Viewer (dev/QA tool) — folded into the same deploy ---
+      #
+      # Never touches lib/, web/, or any production build step above; this
+      # only adds a static subdirectory to the already-built output.
+      - name: Download e2e-replay-package
+        if: github.event_name == 'workflow_run'
+        id: download_replay
+        continue-on-error: true # missing/failed artifact must not block the game deploy
+        uses: actions/download-artifact@v4
+        with:
+          name: e2e-replay-package
+          path: e2e-replay-download
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Assemble Replay Viewer into the Pages payload
+        if: github.event_name == 'workflow_run' && steps.download_replay.outcome == 'success'
+        run: |
+          set -euo pipefail
+          mkdir -p build/web/e2e-replays
+          cp -r e2e/replay-viewer/. build/web/e2e-replays/
+          find build/web/e2e-replays -name '*.test.mjs' -delete
+          cp -r e2e-replay-download/. build/web/e2e-replays/
+          echo "Replay Viewer assembled at build/web/e2e-replays/ ($(find build/web/e2e-replays -type f | wc -l) files)"
+
+      - name: Replay package unavailable for this deployment
+        if: github.event_name == 'workflow_run' && steps.download_replay.outcome != 'success'
+        run: |
+          echo "::warning::e2e-replay-package artifact not found for workflow_run ${{ github.event.workflow_run.id }} (conclusion=${{ github.event.workflow_run.conclusion }}) — deploying the game without updating /e2e-replays/ this time."
 
       - uses: actions/configure-pages@v5
         with:

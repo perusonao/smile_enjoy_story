@@ -10,7 +10,9 @@
     "test:chromium": "playwright test --project=mobile-chromium",
     "test:webkit": "playwright test --project=mobile-webkit",
     "report": "playwright show-report",
-    "seeds:10": "cross-env SES_E2E_SEEDS=100001,100002,100003,100004,100005,100006,100007,100008,100009,100010 playwright test tests/founding-first-assignment.spec.ts"
+    "seeds:10": "cross-env SES_E2E_SEEDS=100001,100002,100003,100004,100005,100006,100007,100008,100009,100010 playwright test tests/founding-first-assignment.spec.ts",
+    "build:replay": "node scripts/build-replay-manifest.mjs",
+    "test:replay-unit": "node --test scripts/*.test.mjs replay-viewer/lib/*.test.mjs"
   },
   "devDependencies": {
     "@playwright/test": "^1.55.0",

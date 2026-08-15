@@ -13,9 +13,17 @@
 //
 // Env (all optional):
 //   SES_REPLAY_REPORT   path to playwright-report.json
-//                        (default: test-results/playwright-report.json)
+//                        (default: test-results/playwright-report.json).
+//                        Its directory is also the *only* filesystem root
+//                        attachment paths are ever allowed to resolve
+//                        into — see validateAttachmentPath below.
 //   SES_REPLAY_OUT       output directory (default: replay-package)
 //   SES_REPLAY_FFMPEG    ffmpeg binary (default: "ffmpeg" on PATH)
+//   SES_REPLAY_FFPROBE   ffprobe binary for best-effort post-encode
+//                        verification (default: "ffprobe" on PATH; both
+//                        ship in the same OS package as ffmpeg on the
+//                        GitHub Actions runner image — never a separate
+//                        production/Flutter dependency)
 //   SES_REPLAY_RUN_ID / SES_REPLAY_RUN_URL / SES_REPLAY_COMMIT_SHA /
 //   SES_REPLAY_WORKFLOW / SES_REPLAY_EVENT — run metadata for the
 //     manifest header, taken from the GitHub Actions context by the
@@ -83,8 +91,53 @@ function findAttachment(attachments, name) {
   return found ? found.path : null;
 }
 
+/** Resolves `rawPath` to its real, symlink-free absolute path and verifies
+ * it lies within `allowedRootRealPath` (itself already realpath-resolved).
+ * playwright-report.json's attachment paths are trusted in the common
+ * case — they're paths this very CI job's own Playwright run just wrote
+ * under test-results/ — but this builder never assumes that: a
+ * corrupted/hand-edited report, or an attachment that happens to be a
+ * symlink pointing outside test-results/, must never result in this
+ * script reading, ffmpeg-processing, or copying a file from anywhere
+ * outside the one directory it's supposed to operate on.
+ *
+ * Uses realpath + path.relative — never a bare `startsWith` string check,
+ * which would wrongly accept a sibling directory that merely shares the
+ * root's name as a prefix (e.g. an attachment resolving into
+ * `test-results-evil/` would pass a naive `startsWith('.../test-results')`
+ * check even though it is a completely different directory). A relative
+ * path starting with `..` (or already absolute, e.g. on a different
+ * Windows drive) means "outside the root" on every platform. */
+export function validateAttachmentPath(rawPath, allowedRootRealPath, { realpathSync = fs.realpathSync, statSync = fs.statSync } = {}) {
+  if (typeof rawPath !== 'string' || rawPath.length === 0) {
+    return { ok: false, error: 'no path' };
+  }
+  let real;
+  try {
+    real = realpathSync(rawPath);
+  } catch (err) {
+    return { ok: false, error: `cannot resolve path: ${err.message}` };
+  }
+  const rel = path.relative(allowedRootRealPath, real);
+  if (rel === '') {
+    return { ok: false, error: 'resolves to the test-results root itself, not a file inside it' };
+  }
+  if (rel.startsWith('..') || path.isAbsolute(rel)) {
+    return { ok: false, error: `resolves outside the allowed test-results root (${real})` };
+  }
+  let stat;
+  try {
+    stat = statSync(real);
+  } catch (err) {
+    return { ok: false, error: `cannot stat resolved path: ${err.message}` };
+  }
+  if (!stat.isFile()) {
+    return { ok: false, error: 'resolved path is not a regular file' };
+  }
+  return { ok: true, realPath: real };
+}
+
 function readJsonFileSafe(filePath, readFile) {
-  if (!filePath) return { ok: false, error: 'not attached' };
   let text;
   try {
     text = readFile(filePath);
@@ -98,16 +151,18 @@ function readJsonFileSafe(filePath, readFile) {
   }
 }
 
-/** A skipped test is 'skipped'; anything else is judged strictly by its
- * final attempt's own Playwright status — never by whether the earlier
- * attempts passed, and never softened to "passed" just because the test
- * eventually stopped retrying. A missing status (shouldn't normally
- * happen) is treated as failed, never as a silent pass. */
+/** A skipped test is 'skipped'. Every other case is judged strictly by
+ * whether the final attempt's own Playwright status is exactly 'passed' —
+ * failed/timedOut/interrupted all map to 'failed', and so does a MISSING
+ * final status (an empty/partial or malformed report). This is a
+ * deliberately conservative policy: a report that doesn't clearly say a
+ * test passed is never treated as though it did — "unknown -> failed",
+ * not "unknown -> manifest build error" (one test's partial result
+ * shouldn't sink the whole replay package; see the per-test
+ * warning/degradation policy in buildManifestEntries). */
 export function mapStatus(testStatus, finalResultStatus) {
   if (testStatus === 'skipped') return 'skipped';
-  if (finalResultStatus === 'passed') return 'passed';
-  if (finalResultStatus) return 'failed'; // failed / timedOut / interrupted
-  return testStatus === 'unexpected' ? 'failed' : 'passed';
+  return finalResultStatus === 'passed' ? 'passed' : 'failed';
 }
 
 /** Pure — the exact ffmpeg argument vector, so the transcode policy
@@ -121,7 +176,7 @@ function runFfmpeg(ffmpegBin, inputPath, outputPath) {
   const res = spawnSync(ffmpegBin, buildFfmpegArgs(inputPath, outputPath), { stdio: ['ignore', 'pipe', 'pipe'] });
   if (res.error) {
     // ffmpeg itself couldn't be launched (e.g. ENOENT) — a systemic
-    // problem, not a per-video quirk; never CI/production `ffmpeg`
+    // problem, not a per-video quirk; never a CI/production `ffmpeg`
     // dependency, this is the OS binary already on the GitHub Actions
     // runner image.
     throw new ReplayBuildError(`ffmpeg could not be launched ("${ffmpegBin}"): ${res.error.message}`);
@@ -133,10 +188,55 @@ function runFfmpeg(ffmpegBin, inputPath, outputPath) {
   return { ok: true };
 }
 
+/** Runs after a successful ffmpeg exit: refuses to publish a missing or
+ * 0-byte MP4 (a truncated/corrupt encode must never end up linked from
+ * the manifest). Best-effort only beyond that: when ffprobe happens to be
+ * on PATH (the same OS package as ffmpeg on the runner image — never
+ * installed as a separate dependency here), it also confirms the encoded
+ * stream is really H.264/yuv420p as requested. If ffprobe itself isn't
+ * available, that extra check is simply skipped — an absent *verification*
+ * tool is not grounds to reject an otherwise successfully-encoded,
+ * non-empty file. */
+export function verifyMp4Output(outputPath, { ffprobeBin = 'ffprobe', statSync = fs.statSync, spawnSyncFn = spawnSync } = {}) {
+  let stat;
+  try {
+    stat = statSync(outputPath);
+  } catch (err) {
+    return { ok: false, error: `output file missing after ffmpeg: ${err.message}` };
+  }
+  if (!stat.isFile()) {
+    return { ok: false, error: 'ffmpeg output path is not a regular file' };
+  }
+  if (stat.size <= 0) {
+    return { ok: false, error: 'ffmpeg produced a 0-byte file' };
+  }
+
+  const probe = spawnSyncFn(ffprobeBin, ['-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=codec_name,pix_fmt', '-of', 'csv=p=0', outputPath], {
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  if (probe.error) {
+    // ffprobe not on PATH — best-effort codec verification skipped.
+    return { ok: true };
+  }
+  if (probe.status !== 0) {
+    return { ok: false, error: `ffprobe could not read the encoded output: ${(probe.stderr?.toString() || '').slice(-500)}` };
+  }
+  const [codec, pixFmt] = (probe.stdout?.toString() || '')
+    .trim()
+    .split(',')
+    .map((s) => s.trim());
+  if (codec !== 'h264' || pixFmt !== 'yuv420p') {
+    return { ok: false, error: `unexpected encoded stream (codec=${codec ?? '?'} pix_fmt=${pixFmt ?? '?'}), expected h264/yuv420p` };
+  }
+  return { ok: true };
+}
+
 /** Default fs-backed collaborators for buildManifest's injectable
- * copy/convert steps — swapped out in unit tests for hermetic fakes that
- * touch neither the filesystem nor a real ffmpeg binary. */
-export function makeFsCollaborators({ ffmpegBin }) {
+ * copy/convert/validate steps — swapped out in unit tests for hermetic
+ * fakes that touch neither the filesystem nor a real ffmpeg/ffprobe
+ * binary. `testResultsRootRealPath` must already be realpath-resolved
+ * (see validateAttachmentPath / main() below). */
+export function makeFsCollaborators({ ffmpegBin, ffprobeBin, testResultsRootRealPath }) {
   return {
     copyFile: (src, dest) => {
       fs.mkdirSync(path.dirname(dest), { recursive: true });
@@ -144,24 +244,37 @@ export function makeFsCollaborators({ ffmpegBin }) {
     },
     convertVideo: (inputPath, outputPath) => {
       fs.mkdirSync(path.dirname(outputPath), { recursive: true });
-      return runFfmpeg(ffmpegBin, inputPath, outputPath);
+      const converted = runFfmpeg(ffmpegBin, inputPath, outputPath);
+      if (!converted.ok) return converted;
+      return verifyMp4Output(outputPath, { ffprobeBin });
     },
     fileExists: (p) => fs.existsSync(p),
     readFile: (p) => fs.readFileSync(p, 'utf-8'),
+    validatePath: (rawPath) => validateAttachmentPath(rawPath, testResultsRootRealPath),
   };
 }
 
+function posixJoin(...parts) {
+  return parts.join('/');
+}
+
 /** Builds the flat `tests` array + collects any non-fatal per-test
- * warnings (missing video, missing result.json, malformed JSON, a failed
- * ffmpeg conversion, ...). A per-test problem degrades that one entry —
- * it never aborts the whole build and it never silently disappears: it's
- * recorded in that entry's `warnings` and also returned in
- * `buildWarnings` for the caller to log. */
-export function buildManifestEntries(report, { outDir, copyFile, convertVideo, fileExists, readFile }) {
+ * warnings (missing video, missing result.json, malformed JSON, a
+ * rejected/out-of-bounds attachment path, a failed ffmpeg conversion,
+ * ...). A per-test problem degrades that one entry — it never aborts the
+ * whole build and it never silently disappears: it's recorded in that
+ * entry's `warnings` and also returned in `buildWarnings` for the caller
+ * to log. */
+export function buildManifestEntries(report, { outDir, copyFile, convertVideo, fileExists, readFile, validatePath }) {
   const entries = collectTestEntries(report);
   const manifestTests = [];
   const buildWarnings = [];
-  const seenIds = new Set();
+  // Scoped by "browserSeg/baseName" — the actual filesystem collision
+  // domain (video/result.json/trace.json all live under relDir/baseName.*)
+  // — so two same-(browser, scenario, seed) entries always end up on two
+  // different baseNames instead of one silently overwriting the other's
+  // MP4/result/trace files on disk.
+  const seenBaseNames = new Set();
 
   for (const entry of entries) {
     const { browser, finalResult, testStatus, specTitle } = entry;
@@ -187,9 +300,27 @@ export function buildManifestEntries(report, { outDir, copyFile, convertVideo, f
     // still gets a full entry (with a warning) below.
     if (!resultPath && !tracePath) continue;
 
-    const resultRead = readJsonFileSafe(resultPath, readFile);
     const warnings = [];
-    if (!resultRead.ok) warnings.push(`result.json: ${resultRead.error}`);
+
+    // Every attachment path is boundary-validated before this builder ever
+    // touches the filesystem for it (see validateAttachmentPath). A
+    // rejected path is never read, never handed to ffmpeg, never copied —
+    // only recorded as a warning.
+    const resultCheck = resultPath ? validatePath(resultPath) : null;
+    const traceCheck = tracePath ? validatePath(tracePath) : null;
+    const videoCheck = videoPath ? validatePath(videoPath) : null;
+
+    let resultRead;
+    if (!resultPath) {
+      resultRead = { ok: false, error: 'not attached' };
+      warnings.push('result.json: not attached');
+    } else if (!resultCheck.ok) {
+      resultRead = { ok: false, error: resultCheck.error };
+      warnings.push(`result.json: rejected (${resultCheck.error})`);
+    } else {
+      resultRead = readJsonFileSafe(resultCheck.realPath, readFile);
+      if (!resultRead.ok) warnings.push(`result.json: ${resultRead.error}`);
+    }
 
     const scenarioRaw = resultRead.ok ? resultRead.data?.scenario : null;
     const seedRaw = resultRead.ok ? resultRead.data?.seed : null;
@@ -198,49 +329,57 @@ export function buildManifestEntries(report, { outDir, copyFile, convertVideo, f
     const seed = resultRead.ok && Number.isFinite(seedNum) ? Math.trunc(seedNum) : null;
     const browserSeg = sanitizeSegment(browser, 'unknown-browser');
     const seedSeg = seed === null ? 'noseed' : String(seed);
-
-    let id = `${browserSeg}__${scenario}__${seedSeg}`;
-    if (seenIds.has(id)) {
-      let n = 2;
-      while (seenIds.has(`${id}-${n}`)) n++;
-      id = `${id}-${n}`;
-    }
-    seenIds.add(id);
-
-    const baseName = `${scenario}-${seedSeg}`;
     const relDir = browserSeg;
 
+    // baseName is disambiguated FIRST, then used as the single source of
+    // truth for both the manifest id and every output filename below — a
+    // guaranteed 1:1 mapping, so two entries can never share (and one
+    // silently overwrite) the same video/result/trace file on disk.
+    let baseName = `${scenario}-${seedSeg}`;
+    const collisionKey = (name) => `${relDir}/${name}`;
+    if (seenBaseNames.has(collisionKey(baseName))) {
+      let n = 2;
+      while (seenBaseNames.has(collisionKey(`${baseName}-${n}`))) n++;
+      baseName = `${baseName}-${n}`;
+    }
+    seenBaseNames.add(collisionKey(baseName));
+    const id = `${browserSeg}__${baseName}`;
+
     let videoRel = null;
-    if (videoPath && fileExists(videoPath)) {
+    if (!videoPath) {
+      warnings.push('video attachment missing');
+    } else if (!videoCheck.ok) {
+      warnings.push(`video: rejected (${videoCheck.error})`);
+    } else {
       const mp4Rel = posixJoin(relDir, `${baseName}.mp4`);
       const mp4Abs = path.join(outDir, ...mp4Rel.split('/'));
-      const converted = convertVideo(videoPath, mp4Abs);
+      const converted = convertVideo(videoCheck.realPath, mp4Abs);
       if (converted.ok) {
         videoRel = mp4Rel;
       } else {
         warnings.push(`video conversion failed: ${converted.error}`);
       }
-    } else {
-      warnings.push('video attachment missing');
     }
 
-    // Only copy/link result.json into the package once it's confirmed valid
-    // JSON — a malformed file is recorded as a warning above, not
-    // republished as if it were a working Result Viewer payload.
+    // Only copy/link result.json into the package once it's confirmed
+    // boundary-valid AND valid JSON — never republished as if it were a
+    // working Result Viewer payload otherwise.
     let resultRel = null;
-    if (resultPath && resultRead.ok) {
+    if (resultRead.ok) {
       const rel = posixJoin(relDir, `${baseName}.result.json`);
-      copyFile(resultPath, path.join(outDir, ...rel.split('/')));
+      copyFile(resultCheck.realPath, path.join(outDir, ...rel.split('/')));
       resultRel = rel;
     }
 
     let traceRel = null;
-    if (tracePath && fileExists(tracePath)) {
-      const rel = posixJoin(relDir, `${baseName}.trace.json`);
-      copyFile(tracePath, path.join(outDir, ...rel.split('/')));
-      traceRel = rel;
-    } else {
+    if (!tracePath) {
       warnings.push('action-trace.json missing');
+    } else if (!traceCheck.ok) {
+      warnings.push(`action-trace.json: rejected (${traceCheck.error})`);
+    } else {
+      const rel = posixJoin(relDir, `${baseName}.trace.json`);
+      copyFile(traceCheck.realPath, path.join(outDir, ...rel.split('/')));
+      traceRel = rel;
     }
 
     const r = resultRead.ok && resultRead.data && typeof resultRead.data === 'object' ? resultRead.data : {};
@@ -277,12 +416,8 @@ export function buildManifestEntries(report, { outDir, copyFile, convertVideo, f
   return { manifestTests, buildWarnings };
 }
 
-function posixJoin(...parts) {
-  return parts.join('/');
-}
-
-export function buildManifest({ report, runMeta, outDir, copyFile, convertVideo, fileExists, readFile }) {
-  const { manifestTests, buildWarnings } = buildManifestEntries(report, { outDir, copyFile, convertVideo, fileExists, readFile });
+export function buildManifest({ report, runMeta, outDir, copyFile, convertVideo, fileExists, readFile, validatePath }) {
+  const { manifestTests, buildWarnings } = buildManifestEntries(report, { outDir, copyFile, convertVideo, fileExists, readFile, validatePath });
   const stats = manifestTests.reduce(
     (acc, t) => {
       acc.total += 1;
@@ -311,6 +446,7 @@ function main() {
   const reportPath = path.resolve(process.env.SES_REPLAY_REPORT || 'test-results/playwright-report.json');
   const outDir = path.resolve(process.env.SES_REPLAY_OUT || 'replay-package');
   const ffmpegBin = process.env.SES_REPLAY_FFMPEG || 'ffmpeg';
+  const ffprobeBin = process.env.SES_REPLAY_FFPROBE || 'ffprobe';
 
   if (!fs.existsSync(reportPath)) {
     throw new ReplayBuildError(`playwright-report.json not found at ${reportPath} — did Playwright run?`);
@@ -320,6 +456,14 @@ function main() {
     report = JSON.parse(fs.readFileSync(reportPath, 'utf-8'));
   } catch (err) {
     throw new ReplayBuildError(`playwright-report.json is not valid JSON: ${err.message}`);
+  }
+
+  const testResultsRoot = path.dirname(reportPath);
+  let testResultsRootRealPath;
+  try {
+    testResultsRootRealPath = fs.realpathSync(testResultsRoot);
+  } catch (err) {
+    throw new ReplayBuildError(`cannot resolve the test-results root (${testResultsRoot}): ${err.message}`);
   }
 
   fs.rmSync(outDir, { recursive: true, force: true });
@@ -335,7 +479,7 @@ function main() {
       eventName: process.env.SES_REPLAY_EVENT || null,
     },
     outDir,
-    ...makeFsCollaborators({ ffmpegBin }),
+    ...makeFsCollaborators({ ffmpegBin, ffprobeBin, testResultsRootRealPath }),
   });
 
   fs.writeFileSync(path.join(outDir, 'manifest.json'), JSON.stringify(manifest, null, 2), 'utf-8');
@@ -356,7 +500,8 @@ if (invokedDirectly) {
     main();
   } catch (err) {
     // Never a silent success: any hard error (missing/malformed report,
-    // ffmpeg unavailable) prints loudly and fails the CI step.
+    // unresolvable test-results root, ffmpeg unavailable) prints loudly
+    // and fails the CI step.
     console.error(`[build-replay-manifest] FAILED: ${err instanceof Error ? err.message : String(err)}`);
     process.exitCode = 1;
   }

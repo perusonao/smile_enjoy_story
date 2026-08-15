@@ -157,8 +157,13 @@ function renderCard(t) {
   card.className = 'card';
 
   const summary = t.resultSummary;
-  const metaLines = [`${escapeHtml(browserLabel(t.browser))}`, `Seed: ${escapeHtml(t.seed ?? '—')}`];
-  if (summary?.firstAssignmentWeek != null) metaLines.push(`First assignment: week ${escapeHtml(summary.firstAssignmentWeek)}`);
+  // Plain, unescaped strings here — escaping happens exactly once, in the
+  // `.map(escapeHtml)` at render time below. Escaping each value twice
+  // (once here, once there) doesn't weaken XSS protection by itself, but
+  // it's still wrong: any value that actually contained an HTML-special
+  // character would render as a literal `&amp;` instead of `&`.
+  const metaLines = [browserLabel(t.browser), `Seed: ${t.seed ?? '—'}`];
+  if (summary?.firstAssignmentWeek != null) metaLines.push(`First assignment: week ${summary.firstAssignmentWeek}`);
   if (t.durationMs != null) metaLines.push(`Duration: ${formatDurationMs(t.durationMs)}`);
 
   card.innerHTML = `
@@ -235,17 +240,16 @@ async function openTraceModal(t) {
     openModal(`<h2>Action Trace</h2><p class="empty-state">記録されたアクションがありません。</p>`);
     return;
   }
-  // Week number is derived from the running count of advancedWeek=true
-  // entries — it is not a field ActionTraceEntry carries directly, so
-  // it's clearly labeled as derived rather than presented as raw data.
-  let week = 0;
+  // No per-action week display: ActionTraceEntry has no raw `week` field
+  // (only `advancedWeek: boolean`), and a count-of-advancedWeek-so-far
+  // derived value is too easy to misread as GameState's actual week
+  // number — dropped rather than risk that (Codex Minor 5).
   const items = trace
     .map((entry, i) => {
       const hasElapsed = typeof entry?.elapsedMs === 'number';
       const seq = typeof entry?.action === 'number' ? entry.action : i + 1;
       const timeLabel = hasElapsed ? formatElapsed(entry.elapsedMs) : null;
-      const line = `#${escapeHtml(seq)}${timeLabel ? ` [${escapeHtml(timeLabel)}]` : ''} (週${escapeHtml(week)}) ${escapeHtml(entry?.screen ?? '?')} → <span class="trace-clicked">${escapeHtml(entry?.clicked ?? '?')}</span>`;
-      if (entry?.advancedWeek) week += 1;
+      const line = `#${escapeHtml(seq)}${timeLabel ? ` [${escapeHtml(timeLabel)}]` : ''} ${escapeHtml(entry?.screen ?? '?')} → <span class="trace-clicked">${escapeHtml(entry?.clicked ?? '?')}</span>`;
       return `<li>${line}</li>`;
     })
     .join('');

@@ -1,14 +1,23 @@
 // Unit tests for build-replay-manifest.mjs — run with `node --test`.
-// Deliberately hermetic: copyFile/convertVideo/fileExists are injected
-// fakes, so these never touch a real ffmpeg binary or leave files behind.
+// Deliberately hermetic: copyFile/convertVideo/fileExists/validatePath are
+// injected fakes, so these never touch a real ffmpeg/ffprobe binary or
+// leave files behind. validateAttachmentPath itself (the real boundary
+// check) is exercised directly against a real temp directory + real
+// fs.realpathSync/statSync further below, since that's exactly the
+// filesystem behavior (symlink resolution, prefix collisions) it exists
+// to get right.
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import {
   sanitizeSegment,
   collectTestEntries,
   mapStatus,
   buildFfmpegArgs,
+  validateAttachmentPath,
+  verifyMp4Output,
   buildManifestEntries,
   buildManifest,
   ReplayBuildError,
@@ -52,7 +61,14 @@ function makeReport(tests) {
   };
 }
 
-function fakeCollaborators({ files = {}, videoConvertsOk = true } = {}) {
+// Hermetic fakes for buildManifestEntries' injected collaborators.
+// validatePath here deliberately bypasses the real boundary-resolution
+// logic (any path present in `files` is treated as valid, resolving to
+// itself) — validateAttachmentPath's actual traversal/symlink/prefix-
+// collision behavior is covered on real fs further below, and the
+// "rejected attachment" integration wiring is covered by its own test
+// using an explicit reject list.
+function fakeCollaborators({ files = {}, videoConvertsOk = true, rejectPaths = [] } = {}) {
   const copied = [];
   const converted = [];
   return {
@@ -75,10 +91,15 @@ function fakeCollaborators({ files = {}, videoConvertsOk = true } = {}) {
       converted.push({ input, output });
       return videoConvertsOk ? { ok: true } : { ok: false, error: 'boom' };
     },
+    validatePath: (rawPath) => {
+      if (rejectPaths.includes(rawPath)) return { ok: false, error: 'rejected (fake, outside allowed root)' };
+      if (!Object.prototype.hasOwnProperty.call(files, rawPath)) return { ok: false, error: 'not found (fake)' };
+      return { ok: true, realPath: rawPath };
+    },
   };
 }
 
-// --- sanitizeSegment / path traversal --------------------------------
+// --- sanitizeSegment / path traversal (output-path sanitization) --------
 
 test('sanitizeSegment strips path traversal and separators', () => {
   assert.equal(sanitizeSegment('../../etc/passwd', 'fallback'), 'etc_passwd');
@@ -124,7 +145,7 @@ test('buildManifestEntries never writes outside outDir even with a hostile scena
   }
 });
 
-// --- status mapping ----------------------------------------------------
+// --- status mapping (Codex Major review, Minor 4) --------------------------
 
 test('mapStatus: skipped test is skipped regardless of result status', () => {
   assert.equal(mapStatus('skipped', 'passed'), 'skipped');
@@ -139,8 +160,20 @@ test('mapStatus: flaky (eventually passed after retry) reports the final attempt
   assert.equal(mapStatus('flaky', 'passed'), 'passed');
 });
 
-test('mapStatus: missing result status is never treated as a pass', () => {
+test('mapStatus: missing result status on an "unexpected" test is never treated as a pass', () => {
   assert.equal(mapStatus('unexpected', undefined), 'failed');
+});
+
+test('mapStatus: a partial report — attachments present, testStatus "expected", but NO final result status — is failed, not silently passed (Codex Minor 4)', () => {
+  // This is the exact gap Codex flagged: the old implementation's final
+  // fallback line returned 'passed' whenever testStatus wasn't literally
+  // 'unexpected', even with a missing finalResultStatus. Policy adopted
+  // here (documented on mapStatus itself and in e2e/README.md): any
+  // missing/unknown final status maps to 'failed', never to a build error
+  // and never to a silent pass.
+  assert.equal(mapStatus('expected', undefined), 'failed');
+  assert.equal(mapStatus('expected', null), 'failed');
+  assert.equal(mapStatus(undefined, undefined), 'failed');
 });
 
 // --- ffmpeg args ---------------------------------------------------------
@@ -148,6 +181,197 @@ test('mapStatus: missing result status is never treated as a pass', () => {
 test('buildFfmpegArgs uses H.264 / yuv420p / faststart, no audio track', () => {
   const args = buildFfmpegArgs('/in/video.webm', '/out/video.mp4');
   assert.deepEqual(args, ['-y', '-i', '/in/video.webm', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-movflags', '+faststart', '-an', '/out/video.mp4']);
+});
+
+// --- MP4 robustness: zero-byte + best-effort ffprobe verification --------
+
+test('verifyMp4Output rejects a 0-byte output file', () => {
+  const result = verifyMp4Output('/out/video.mp4', {
+    statSync: () => ({ isFile: () => true, size: 0 }),
+    spawnSyncFn: () => ({ status: 0, stdout: 'h264,yuv420p' }),
+  });
+  assert.equal(result.ok, false);
+  assert.match(result.error, /0-byte/);
+});
+
+test('verifyMp4Output rejects a missing output file (stat throws)', () => {
+  const result = verifyMp4Output('/out/video.mp4', {
+    statSync: () => {
+      throw new Error('ENOENT');
+    },
+  });
+  assert.equal(result.ok, false);
+  assert.match(result.error, /missing after ffmpeg/);
+});
+
+test('verifyMp4Output rejects a non-regular-file output path', () => {
+  const result = verifyMp4Output('/out/video.mp4', {
+    statSync: () => ({ isFile: () => false, size: 100 }),
+  });
+  assert.equal(result.ok, false);
+  assert.match(result.error, /not a regular file/);
+});
+
+test('verifyMp4Output accepts a non-empty file and confirms h264/yuv420p via ffprobe when available', () => {
+  const result = verifyMp4Output('/out/video.mp4', {
+    statSync: () => ({ isFile: () => true, size: 12345 }),
+    spawnSyncFn: () => ({ status: 0, stdout: 'h264,yuv420p\n', stderr: '' }),
+  });
+  assert.equal(result.ok, true);
+});
+
+test('verifyMp4Output rejects an encode whose ffprobe-reported codec/pix_fmt is not h264/yuv420p', () => {
+  const result = verifyMp4Output('/out/video.mp4', {
+    statSync: () => ({ isFile: () => true, size: 12345 }),
+    spawnSyncFn: () => ({ status: 0, stdout: 'vp9,yuv420p\n', stderr: '' }),
+  });
+  assert.equal(result.ok, false);
+  assert.match(result.error, /unexpected encoded stream/);
+});
+
+test('verifyMp4Output does not fail the build when ffprobe itself is unavailable (best-effort only)', () => {
+  const result = verifyMp4Output('/out/video.mp4', {
+    statSync: () => ({ isFile: () => true, size: 12345 }),
+    spawnSyncFn: () => ({ error: Object.assign(new Error('ENOENT'), { code: 'ENOENT' }) }),
+  });
+  assert.equal(result.ok, true);
+});
+
+test('verifyMp4Output rejects when ffprobe runs but exits non-zero (corrupt/unreadable encode)', () => {
+  const result = verifyMp4Output('/out/video.mp4', {
+    statSync: () => ({ isFile: () => true, size: 12345 }),
+    spawnSyncFn: () => ({ status: 1, stdout: '', stderr: 'Invalid data found' }),
+  });
+  assert.equal(result.ok, false);
+  assert.match(result.error, /ffprobe could not read/);
+});
+
+// --- Attachment source boundary (Codex Major 3) ---------------------------
+// validateAttachmentPath exercised against a REAL temp directory tree —
+// this is exactly the filesystem behavior (realpath resolution through
+// symlinks, prefix collisions) that matters here.
+
+test('validateAttachmentPath: 5 boundary cases on real fs', async (t) => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'ses-replay-boundary-'));
+  try {
+    const root = path.join(tmp, 'test-results');
+    fs.mkdirSync(root, { recursive: true });
+    const rootReal = fs.realpathSync(root);
+
+    await t.test('1. valid root-internal attachment -> accepted', () => {
+      const inner = path.join(root, 'some-test', 'result.json');
+      fs.mkdirSync(path.dirname(inner), { recursive: true });
+      fs.writeFileSync(inner, '{}');
+      const res = validateAttachmentPath(inner, rootReal);
+      assert.equal(res.ok, true);
+      assert.equal(res.realPath, fs.realpathSync(inner));
+    });
+
+    await t.test('2. ../ traversal -> rejected', () => {
+      const outsideFile = path.join(tmp, 'secret.json');
+      fs.writeFileSync(outsideFile, '{}');
+      const traversal = path.join(root, '..', 'secret.json');
+      const res = validateAttachmentPath(traversal, rootReal);
+      assert.equal(res.ok, false);
+      assert.match(res.error, /outside the allowed test-results root/);
+    });
+
+    await t.test('3. absolute path entirely outside root -> rejected', () => {
+      const outsideFile = path.join(tmp, 'elsewhere', 'result.json');
+      fs.mkdirSync(path.dirname(outsideFile), { recursive: true });
+      fs.writeFileSync(outsideFile, '{}');
+      const res = validateAttachmentPath(outsideFile, rootReal);
+      assert.equal(res.ok, false);
+      assert.match(res.error, /outside the allowed test-results root/);
+    });
+
+    await t.test('4. symlink inside root pointing outside root -> rejected', () => {
+      const secretFile = path.join(tmp, 'symlink-target.json');
+      fs.writeFileSync(secretFile, '{"secret":true}');
+      const linkPath = path.join(root, 'evil-link.json');
+      fs.symlinkSync(secretFile, linkPath);
+      const res = validateAttachmentPath(linkPath, rootReal);
+      assert.equal(res.ok, false);
+      assert.match(res.error, /outside the allowed test-results root/);
+    });
+
+    await t.test('5. sibling directory sharing the root name as a string prefix ("test-results-evil") -> rejected, not allowed by a naive startsWith', () => {
+      const evilRoot = path.join(tmp, 'test-results-evil');
+      const evilFile = path.join(evilRoot, 'result.json');
+      fs.mkdirSync(evilRoot, { recursive: true });
+      fs.writeFileSync(evilFile, '{}');
+      const res = validateAttachmentPath(evilFile, rootReal);
+      assert.equal(res.ok, false);
+      assert.match(res.error, /outside the allowed test-results root/);
+    });
+
+    await t.test('rejects a directory (not a regular file)', () => {
+      const dir = path.join(root, 'a-directory');
+      fs.mkdirSync(dir, { recursive: true });
+      const res = validateAttachmentPath(dir, rootReal);
+      assert.equal(res.ok, false);
+      assert.match(res.error, /not a regular file/);
+    });
+
+    await t.test('rejects a nonexistent path without throwing', () => {
+      const res = validateAttachmentPath(path.join(root, 'does-not-exist.json'), rootReal);
+      assert.equal(res.ok, false);
+      assert.match(res.error, /cannot resolve path/);
+    });
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('buildManifestEntries: a rejected (boundary-violating) attachment is never read/copied/converted, just warned — not a silent success', () => {
+  const outDir = '/tmp/replay-out';
+  const files = {
+    '/root/test-results/some-test/result.json': JSON.stringify({ scenario: 'founding-first-assignment', seed: 100001 }),
+    '/etc/passwd': 'root:x:0:0::/root:/bin/bash', // simulates a traversal/symlink-escape target
+  };
+  const report = makeReport([
+    {
+      results: [
+        makeResult({
+          attachments: [
+            attachment('result.json', '/root/test-results/some-test/result.json'),
+            attachment('video', '/etc/passwd'),
+            attachment('action-trace.json', '/etc/passwd'),
+          ],
+        }),
+      ],
+    },
+  ]);
+  const collab = fakeCollaborators({ files, rejectPaths: ['/etc/passwd'] });
+  const { manifestTests } = buildManifestEntries(report, { outDir, ...collab });
+  const t = manifestTests[0];
+  assert.equal(t.video, null);
+  assert.equal(t.actionTrace, null);
+  assert.ok(t.warnings.some((w) => w.includes('video: rejected')));
+  assert.ok(t.warnings.some((w) => w.includes('action-trace.json: rejected')));
+  // Never touched: no copyFile/convertVideo call was ever made with the
+  // rejected path.
+  assert.equal(collab.copied.some((c) => c.src === '/etc/passwd'), false);
+  assert.equal(collab.converted.some((c) => c.input === '/etc/passwd'), false);
+  // result.json (not rejected) still resolved normally.
+  assert.equal(t.scenario, 'founding-first-assignment');
+});
+
+test('buildManifestEntries: a rejected result.json is never parsed as JSON — scenario/seed fall back, not fabricated from the rejected file', () => {
+  const outDir = '/tmp/replay-out';
+  const files = {
+    '/evil/result.json': JSON.stringify({ scenario: 'should-never-be-used', seed: 999999 }),
+  };
+  const report = makeReport([
+    { specTitle: 'Founding First Assignment (seed 100001)', results: [makeResult({ attachments: [attachment('result.json', '/evil/result.json')] })] },
+  ]);
+  const collab = fakeCollaborators({ files, rejectPaths: ['/evil/result.json'] });
+  const { manifestTests } = buildManifestEntries(report, { outDir, ...collab });
+  const t = manifestTests[0];
+  assert.equal(t.result, null);
+  assert.equal(t.resultSummary, null);
+  assert.notEqual(t.scenario, 'should-never-be-used');
+  assert.ok(t.warnings.some((w) => w.includes('result.json: rejected')));
 });
 
 // --- Chromium/WebKit + scenario/seed mapping -----------------------------
@@ -365,17 +589,79 @@ test('buildManifest aggregates pass/fail/skipped stats accurately and carries ru
   assert.equal(manifest.schemaVersion, 1);
 });
 
-test('duplicate (browser, scenario, seed) ids are disambiguated instead of overwriting each other', () => {
+// --- duplicate (browser, scenario, seed) — Codex Major 2 --------------------
+
+test('duplicate (browser, scenario, seed): manifest IDs, video/result/trace paths, AND file contents are all distinct — no output overwrite', () => {
   const outDir = '/tmp/replay-out';
   const files = {
-    '/a/result.json': JSON.stringify({ scenario: 's', seed: 1 }),
-    '/b/result.json': JSON.stringify({ scenario: 's', seed: 1 }),
+    '/a/result.json': JSON.stringify({ scenario: 's', seed: 1, actions: 11 }),
+    '/a/video.webm': 'VIDEO-CONTENT-A',
+    '/a/action-trace.json': JSON.stringify([{ action: 1, clicked: 'first-run' }]),
+    '/b/result.json': JSON.stringify({ scenario: 's', seed: 1, actions: 22 }),
+    '/b/video.webm': 'VIDEO-CONTENT-B',
+    '/b/action-trace.json': JSON.stringify([{ action: 1, clicked: 'second-run' }]),
+    '/c/result.json': JSON.stringify({ scenario: 's', seed: 1, actions: 33 }),
+    '/c/video.webm': 'VIDEO-CONTENT-C',
+    '/c/action-trace.json': JSON.stringify([{ action: 1, clicked: 'third-run' }]),
   };
   const report = makeReport([
-    { results: [makeResult({ attachments: [attachment('result.json', '/a/result.json')] })] },
-    { results: [makeResult({ attachments: [attachment('result.json', '/b/result.json')] })] },
+    {
+      results: [
+        makeResult({ attachments: [attachment('result.json', '/a/result.json'), attachment('video', '/a/video.webm'), attachment('action-trace.json', '/a/action-trace.json')] }),
+      ],
+    },
+    {
+      results: [
+        makeResult({ attachments: [attachment('result.json', '/b/result.json'), attachment('video', '/b/video.webm'), attachment('action-trace.json', '/b/action-trace.json')] }),
+      ],
+    },
+    {
+      results: [
+        makeResult({ attachments: [attachment('result.json', '/c/result.json'), attachment('video', '/c/video.webm'), attachment('action-trace.json', '/c/action-trace.json')] }),
+      ],
+    },
   ]);
-  const { manifestTests } = buildManifestEntries(report, { outDir, ...fakeCollaborators({ files }) });
+  const collab = fakeCollaborators({ files });
+  const { manifestTests } = buildManifestEntries(report, { outDir, ...collab });
+
+  assert.equal(manifestTests.length, 3);
+
   const ids = manifestTests.map((t) => t.id);
-  assert.equal(new Set(ids).size, 2);
+  assert.equal(new Set(ids).size, 3, 'all 3 manifest IDs must be distinct');
+
+  const videoPaths = manifestTests.map((t) => t.video);
+  const resultPaths = manifestTests.map((t) => t.result);
+  const tracePaths = manifestTests.map((t) => t.actionTrace);
+  assert.equal(new Set(videoPaths).size, 3, 'all 3 video paths must be distinct');
+  assert.equal(new Set(resultPaths).size, 3, 'all 3 result paths must be distinct');
+  assert.equal(new Set(tracePaths).size, 3, 'all 3 actionTrace paths must be distinct');
+
+  // ID <-> filename 1:1 correspondence, per the requested example shape:
+  // founding-first-assignment-100001 / -100001-2 / -100001-3, and the SAME
+  // disambiguated basename used for every one of that entry's 3 files.
+  assert.deepEqual(
+    ids,
+    ['mobile-chromium__s-1', 'mobile-chromium__s-1-2', 'mobile-chromium__s-1-3'],
+  );
+  assert.deepEqual(videoPaths, ['mobile-chromium/s-1.mp4', 'mobile-chromium/s-1-2.mp4', 'mobile-chromium/s-1-3.mp4']);
+  assert.deepEqual(resultPaths, ['mobile-chromium/s-1.result.json', 'mobile-chromium/s-1-2.result.json', 'mobile-chromium/s-1-3.result.json']);
+  assert.deepEqual(tracePaths, ['mobile-chromium/s-1.trace.json', 'mobile-chromium/s-1-2.trace.json', 'mobile-chromium/s-1-3.trace.json']);
+
+  // Never a card-A-references-card-B mixup: each entry's own resultSummary
+  // (sourced from its own distinct result.json) matches its own source
+  // file's content, not a neighbor's.
+  assert.deepEqual(
+    manifestTests.map((t) => t.resultSummary.actions),
+    [11, 22, 33],
+  );
+
+  // The actual copy/convert calls used 3 distinct destinations too — this
+  // is what "no overwrite" means at the filesystem level, not just in the
+  // manifest's own bookkeeping.
+  const videoDestinations = collab.converted.map((c) => c.output);
+  const resultDestinations = collab.copied.filter((c) => c.dest.endsWith('.result.json')).map((c) => c.dest);
+  const traceDestinations = collab.copied.filter((c) => c.dest.endsWith('.trace.json')).map((c) => c.dest);
+  assert.equal(new Set(videoDestinations).size, 3);
+  assert.equal(new Set(resultDestinations).size, 3);
+  assert.equal(new Set(traceDestinations).size, 3);
 });

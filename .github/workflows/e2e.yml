@@ -1,13 +1,24 @@
 name: Playwright E2E (S.E.S.)
 
 # Independent from deploy.yml on purpose (§20/§28 of the E2E brief) — this
-# workflow never builds for or touches GitHub Pages, and deploy.yml is
-# untouched by this change. Real-UI QA/UX audit layer: Flutter analyze/test
+# workflow never calls actions/deploy-pages itself and never touches the
+# live game deployment. Real-UI QA/UX audit layer: Flutter analyze/test
 # still gate correctness; this adds a Playwright pass over the actual built
 # Web app on mobile device profiles.
+#
+# E2E Replay Viewer (dev/QA tool, see e2e/replay-viewer/): on a push to
+# main only, this workflow additionally packages the run's videos/
+# result.json/action-trace.json into an `e2e-replay-package` artifact
+# (MP4-transcoded via the ffmpeg already on the runner image — no new
+# production/Flutter dependency). deploy.yml — the *only* workflow that
+# calls deploy-pages — picks this artifact up via a `workflow_run` trigger
+# and folds it into the single Pages deployment alongside the game. The
+# existing `ses-playwright-results` artifact/its retention are untouched.
 
 on:
   pull_request:
+    branches: [main]
+  push:
     branches: [main]
   workflow_dispatch:
     inputs:
@@ -61,6 +72,15 @@ jobs:
       - name: Install E2E dependencies
         run: npm ci
 
+      # Pure Node unit tests for the Replay Viewer's own build tooling
+      # (manifest builder, latest-main deploy guard, viewer escaping/
+      # filtering logic) — no browser needed, so this runs before the
+      # (much slower) Playwright browser install/run below and fails fast.
+      # No continue-on-error: a failure here must fail this job exactly
+      # like any other step.
+      - name: Replay unit tests
+        run: npm run test:replay-unit
+
       - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium webkit
 
@@ -82,5 +102,35 @@ jobs:
           path: |
             e2e/test-results/**
             e2e/playwright-report/**
+          retention-days: 10
+          if-no-files-found: warn
+
+      # --- E2E Replay Viewer package (dev/QA tool) ---------------------
+      #
+      # main-only, and deliberately `if: always()`: a FAILED E2E run is
+      # exactly when the replay video is most worth having, so this must
+      # still run whether "Run Playwright E2E" above passed or failed.
+      # It must NOT and does not change that step's own pass/fail result —
+      # a test failure still fails this job, on purpose (§ approved design:
+      # "テスト失敗をgreenに変えてはいけません"). If this packaging step
+      # itself breaks, it fails loudly here too (not a silent success) —
+      # deploy.yml is responsible for still shipping the game in that case,
+      # not this workflow pretending nothing went wrong.
+      - name: Build E2E replay package
+        if: always() && github.event_name == 'push'
+        env:
+          SES_REPLAY_RUN_ID: ${{ github.run_id }}
+          SES_REPLAY_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          SES_REPLAY_COMMIT_SHA: ${{ github.sha }}
+          SES_REPLAY_WORKFLOW: ${{ github.workflow }}
+          SES_REPLAY_EVENT: ${{ github.event_name }}
+        run: npm run build:replay
+
+      - name: Upload e2e-replay-package
+        if: always() && github.event_name == 'push'
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-replay-package
+          path: e2e/replay-package/**
           retention-days: 10
           if-no-files-found: warn

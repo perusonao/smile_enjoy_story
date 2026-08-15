@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/semantics.dart';
 
 import 'app/game_controller.dart';
 import 'app/game_scope.dart';
@@ -13,7 +14,30 @@ import 'ui/widgets/phone_frame.dart';
 import 'ui/widgets/start_choice_screen.dart';
 
 void main() {
-  runApp(SesApp(controller: GameController()));
+  WidgetsFlutterBinding.ensureInitialized();
+  final launchParams = Uri.base.queryParameters;
+
+  // QA/E2E-only hook (Playwright harness — see /e2e/README.md), never set by
+  // a real player's URL. Flutter Web paints to a bare <canvas> with no DOM
+  // text at all until something enables the semantics tree (normally a
+  // screen-reader user tapping the "Enable accessibility" placeholder);
+  // headless CDP automation can't reliably trigger that placeholder click,
+  // so `?e2e=1` force-enables semantics up front instead. This only changes
+  // what's exposed to the accessibility tree/DOM for automation — it alters
+  // no game logic, no probabilities, and nothing a normal player sees.
+  if (launchParams['e2e'] == '1') {
+    SemanticsBinding.instance.ensureSemantics();
+  }
+
+  // QA/E2E-only market-seed override (`?seed=12345`), threaded into the
+  // existing `PrologueEngine`/`GameEngine` `seed` parameter so a Playwright
+  // run can reproduce one specific playthrough on demand. `null` for every
+  // normal launch, which keeps drawing a fresh random seed exactly as
+  // before this hook existed.
+  final seedParam = launchParams['seed'];
+  final debugSeed = seedParam != null ? int.tryParse(seedParam) : null;
+
+  runApp(SesApp(controller: GameController(debugSeed: debugSeed)));
 }
 
 class SesApp extends StatelessWidget {

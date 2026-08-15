@@ -11,12 +11,21 @@ import '../game/persistence/save_service.dart';
 /// applies player actions through the (pure) engine, autosaves after every
 /// mutation, and notifies listeners so widgets rebuild.
 class GameController extends ChangeNotifier {
-  GameController({SaveService? saveService})
+  GameController({SaveService? saveService, this.debugSeed})
     : _saveService = saveService ?? const SaveService() {
     _bootstrap();
   }
 
   final SaveService _saveService;
+
+  /// QA/E2E-only market seed override (Playwright harness, `?seed=`
+  /// launch param — see `main.dart`). `null` for every real player, in
+  /// which case [chooseBeginnerStart]/[restartBeginnerMode] keep drawing a
+  /// fresh random seed exactly as before this field existed. Never read by
+  /// any gameplay/balance logic — only threaded into the existing
+  /// `PrologueEngine.newGame`/`restart` `seed` parameter so an E2E run can
+  /// reproduce a specific playthrough on demand (§17 of the E2E brief).
+  final int? debugSeed;
 
   GameState _state = GameEngine.newGame();
   bool _isLoading = true;
@@ -65,7 +74,7 @@ class GameController extends ChangeNotifier {
   /// zero engineers instead of two already-employed founders (§4).
   void chooseBeginnerStart() {
     _showStartChoice = false;
-    _state = ProgressionEngine.reconcile(PrologueEngine.newGame());
+    _state = ProgressionEngine.reconcile(PrologueEngine.newGame(seed: debugSeed));
     notifyListeners();
     unawaited(_saveService.save(_state));
   }
@@ -170,7 +179,7 @@ class GameController extends ChangeNotifier {
   /// same ordering as [restart].
   Future<void> restartBeginnerMode({int? seed}) async {
     await _saveService.clear();
-    _state = ProgressionEngine.reconcile(PrologueEngine.restart(seed: seed));
+    _state = ProgressionEngine.reconcile(PrologueEngine.restart(seed: seed ?? debugSeed));
     notifyListeners();
     unawaited(_saveService.save(_state));
   }

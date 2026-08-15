@@ -573,9 +573,33 @@ class _UpperInterviewIntro extends StatelessWidget {
           navigatorName: navigatorName,
           message: 'まずは上位会社(協力会社)との面談です。\n${engineer.profile.name}さんが質問へ回答します。あなたは営業として、必要に応じてフォローしてください。',
           ctaLabel: '面談へ進む',
-          onCta: () => Navigator.of(context).push(MaterialPageRoute(
-            builder: (_) => ClientInterviewScreen(applicationId: proposal.id, step: SelectionStep.upperCompanyInterview, onResultContinue: () => Navigator.pop(context)),
-          )),
+          onCta: () {
+            // Capture the NavigatorState once, up front — not the
+            // BuildContext (bug found via Playwright E2E, see e2e/README.md
+            // "Findings"). ClientInterviewScreen's onResultContinue fires
+            // *later*, by which point answering the interview's one
+            // follow-up question has already mutated GameState: that
+            // mutation makes PrologueScreen's own (currently-occluded)
+            // AnimatedBuilder re-derive `stage()` and swap this exact
+            // Element's widget out from under it — a passed/failed Upper
+            // Company Interview changes `stage()` on the very same frame.
+            // Re-deriving Navigator.of(context) from that now-stale context
+            // inside onResultContinue risked resolving against a defunct
+            // element. `navigator` is a State belonging to the ancestor
+            // Navigator, unaffected by that swap, so capturing it once and
+            // checking `.mounted` — the same pattern PrologueInterviewScreen
+            // already uses for the identical hazard below — sidesteps it.
+            final navigator = Navigator.of(context);
+            navigator.push(MaterialPageRoute(
+              builder: (_) => ClientInterviewScreen(
+                applicationId: proposal.id,
+                step: SelectionStep.upperCompanyInterview,
+                onResultContinue: () {
+                  if (navigator.mounted) navigator.pop();
+                },
+              ),
+            ));
+          },
         ),
       ],
     );

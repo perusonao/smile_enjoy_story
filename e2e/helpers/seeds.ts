@@ -15,16 +15,25 @@ export interface ParsedSeeds {
   error: string | null;
 }
 
-/** `envValue === undefined` (the env var isn't set at all) is the only case
- * that falls back to `defaultSeeds` — every other input must yield at
- * least one seed or an explicit `error`. In particular: a value that is
- * set but entirely empty/whitespace/commas (e.g. `""`, `",,,"`), or that
+/** Falls back to `defaultSeeds` for `envValue === undefined` (the env var
+ * isn't set at all) *and* for an empty/whitespace-only string — CI (see
+ * .github/workflows/e2e.yml) sets `SES_E2E_SEEDS: ${{ github.event.inputs.seeds }}`
+ * unconditionally, which GitHub Actions renders as the env var *present but
+ * empty* (`""`), not absent, on every ordinary `pull_request` run (only
+ * `workflow_dispatch` ever supplies a real value). Treating a bare `""` as
+ * "no override" rather than "invalid" is what those normal runs actually
+ * need; nobody typed a seeds value in either case, so from the caller's
+ * intent they're the same thing.
+ *
+ * Every other input must yield at least one seed or an explicit `error`:
+ * a value that actually has content but resolves to nothing after
+ * splitting (e.g. `",,,"` — commas, but no seeds between them), or that
  * contains *any* non-numeric entry (e.g. `"abc"`, `"100001,abc"`), is
  * rejected outright rather than silently filtered down to whatever valid
  * entries happen to remain — a typo in one seed of a list should fail
  * loudly, not quietly run a shorter list. */
 export function parseSeeds(envValue: string | undefined, defaultSeeds: number[]): ParsedSeeds {
-  if (envValue === undefined) {
+  if (envValue === undefined || envValue.trim() === '') {
     return { seeds: defaultSeeds, error: null };
   }
 

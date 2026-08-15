@@ -40,10 +40,18 @@ test.describe('parseSeeds()', () => {
     expect(result.error).not.toBeNull();
   });
 
-  test('SES_E2E_SEEDS="" (empty string) -> error, not an empty silent success', () => {
+  test('SES_E2E_SEEDS="" (empty string) -> falls back to defaults, same as unset', () => {
+    // CI (.github/workflows/e2e.yml) sets SES_E2E_SEEDS: ${{ github.event.inputs.seeds }}
+    // unconditionally, which is a present-but-empty string on every normal
+    // `pull_request` run — must behave exactly like "not specified", or
+    // every ordinary PR run fails immediately.
     const result = parseSeeds('', DEFAULTS);
-    expect(result.seeds).toEqual([]);
-    expect(result.error).not.toBeNull();
+    expect(result).toEqual({ seeds: DEFAULTS, error: null });
+  });
+
+  test('SES_E2E_SEEDS=whitespace-only -> falls back to defaults, same as unset', () => {
+    const result = parseSeeds('   ', DEFAULTS);
+    expect(result).toEqual({ seeds: DEFAULTS, error: null });
   });
 
   test('SES_E2E_SEEDS=abc,xyz (all invalid) -> error', () => {

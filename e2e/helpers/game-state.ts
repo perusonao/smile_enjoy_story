@@ -23,9 +23,19 @@ export interface ScreenSnapshot {
 //   - button "この方法で募集する"
 //   - button "面接する" [disabled]
 //   - text: 応募者が2名届きました。
+//   - heading "中村 翔太との面接" [level=2]
 // Playwright's ariaSnapshot() is the supported replacement for the removed
 // `page.accessibility.snapshot()` API (Playwright >= ~1.50).
-const ARIA_LINE = /^-\s*([a-zA-Z]+)(?::\s*(.*)|\s+"((?:[^"\\]|\\.)*)")?\s*(\[disabled\])?\s*$/;
+//
+// The trailing-annotations group captures *any* number of `[...]` tags
+// (`[level=2]`, `[checked]`, `[disabled]`, ...), not just `[disabled]` —
+// an earlier version anchored the whole line to `[disabled]?` specifically,
+// so any OTHER bracket annotation (most commonly a heading's `[level=N]`)
+// made the regex fail to match at all, silently dropping that entire line
+// from both `texts` and `buttons`. Found via the Codex follow-up's
+// candidate-identity check turning up `null` for a screen whose heading
+// visibly had the name.
+const ARIA_LINE = /^-\s*([a-zA-Z]+)(?::\s*(.*?)|\s+"((?:[^"\\]|\\.)*)")?\s*((?:\[[a-zA-Z]+(?:=[^\]]*)?\]\s*)*)$/;
 
 // Two always-there pieces of chrome, excluded at the source so no decision
 // rule can ever pick them by accident and so they don't inflate the
@@ -53,7 +63,7 @@ export async function snapshotScreen(page: Page): Promise<ScreenSnapshot> {
     const name = (m[3] ?? m[2] ?? '').replace(/\\"/g, '"').trim();
     if (!name || CHROME_BUTTON_NAME.test(name)) continue;
     if (role === 'button') {
-      buttons.push({ name, enabled: !m[4] });
+      buttons.push({ name, enabled: !/\[disabled\]/.test(m[4] ?? '') });
     } else {
       texts.push(name);
     }
@@ -117,11 +127,30 @@ export type ScreenLabel = (typeof SCREEN_ORDER)[number] | 'unknown';
  * (§7 — "仕様上正当な複数選択肢") so a Primary-CTA-count > 1 there is
  * expected, not a warning. */
 export const MULTI_CHOICE_SCREENS: ReadonlySet<ScreenLabel> = new Set([
+  'start-choice', // 【初心者モード】 vs 【自由モード】 — a real, legitimate choice, not a design flaw.
   'recruitment-media-select',
   'candidate-select',
   'recruitment-interview',
   'client-interview',
 ]);
+
+// PrologueInterviewScreen's AppBar title is literally "${applicant.name}
+// との面接" (lib/ui/prologue/prologue_interview_screen.dart) — exactly what
+// a first-time player reads on screen, not an internal GameState value.
+const INTERVIEW_TITLE = /^(.+?)との面接$/;
+
+/** Best-effort extraction of the currently-interviewed candidate's name
+ * from the recruitment-interview screen's own semantics text (§12 of the
+ * Codex follow-up: Failure Recovery candidate identity). `null` when not
+ * on that screen or the title isn't present in the a11y tree for any
+ * reason — callers must treat that as "unknown", never guess. */
+export function extractInterviewCandidateName(snap: ScreenSnapshot): string | null {
+  for (const t of snap.texts) {
+    const m = INTERVIEW_TITLE.exec(t);
+    if (m) return m[1];
+  }
+  return null;
+}
 
 export function classifyScreen(snap: ScreenSnapshot): ScreenLabel {
   if (hasText(snap, '初案件参画')) return 'complete';

@@ -5,12 +5,13 @@
 // a pending interview/selection/offer step, or "次の週へ" when the screen is
 // legitimately just waiting. Never taps blindly; every rule below maps to a
 // concrete, currently-enabled button already rendered by production UI.
-import type { Page } from '@playwright/test';
+import type { Locator, Page } from '@playwright/test';
 import {
   anyEnabledButton,
   classifyScreen,
   CLIENT_INTERVIEW_FOLLOWUP_LABELS,
   enabledButton,
+  extractInterviewCandidateName,
   hasText,
   snapshotScreen,
   MULTI_CHOICE_SCREENS,
@@ -26,6 +27,20 @@ export interface ActionTraceEntry {
   primaryCTACount: number;
   clicked: string;
   advancedWeek: boolean;
+  /** Set only for a failed Company Setup submission (§6 of the Codex
+   * follow-up) — diagnostic info an "input/controller synchronization
+   * failure" report needs, without a production debug bridge. */
+  diagnostic?: CompanySetupDiagnostic;
+}
+
+export interface CompanySetupDiagnostic {
+  screen: 'company-setup';
+  presidentNameVisibleValue: string;
+  companyNameVisibleValue: string;
+  presidentFieldConfirmed: boolean;
+  companyFieldConfirmed: boolean;
+  submitAttempt: number;
+  transitionObserved: boolean;
 }
 
 export interface PrimaryCtaAuditEntry {
@@ -84,6 +99,15 @@ export interface PlayResult {
   primaryCtaWarnings: PrimaryCtaAuditEntry[];
   clientInterviewHistory: ClientInterviewTurn[];
   stageRegressionWarnings: StageRegressionWarning[];
+  /** §12 of the Codex follow-up (Failure Recovery candidate identity):
+   * the recruitment candidate's name at the moment of an explicit 不採用,
+   * and the name of whoever was eventually hired — read straight off the
+   * recruitment-interview screen's own AppBar title
+   * ("${name}との面接", PrologueInterviewScreen), never GameState. `null`
+   * when that action never happened or the name wasn't recoverable from
+   * the UI. */
+  rejectedCandidateName: string | null;
+  acceptedCandidateName: string | null;
 }
 
 const START_GAME = '【初心者モード】おすすめ';
@@ -123,6 +147,29 @@ const SCREEN_ORDER_INDEX: Partial<Record<ScreenLabel, number>> = {
 // round) — never counted as a stage-regression warning.
 const LEGITIMATE_REVISITS: ReadonlySet<ScreenLabel> = new Set(['candidate-select', 'recruitment-interview', 'interview-request', 'upper-interview']);
 
+/** A definitive-failure placeholder for callers that need a `PlayResult` to
+ * report even when `playFoundingToFirstAssignment` itself threw before
+ * returning one (Codex follow-up §15: artifacts must still be written on
+ * an early/unexpected exception, not just on a clean stall). */
+export function emptyPlayResult(reason: string): PlayResult {
+  return {
+    completed: false,
+    firstAssignmentWeek: null,
+    actions: 0,
+    clientInterviewCount: 0,
+    selectionFailureCount: 0,
+    stallDetected: true,
+    stallReason: reason,
+    actionTrace: [],
+    primaryCtaAudit: [],
+    primaryCtaWarnings: [],
+    clientInterviewHistory: [],
+    stageRegressionWarnings: [],
+    rejectedCandidateName: null,
+    acceptedCandidateName: null,
+  };
+}
+
 export async function playFoundingToFirstAssignment(page: Page, options: PlayOptions): Promise<PlayResult> {
   const start = Date.now();
 
@@ -142,6 +189,8 @@ export async function playFoundingToFirstAssignment(page: Page, options: PlayOpt
   let selectionFailureCount = 0;
   let clientInterviewCount = 0;
   let rejectedOnce = false;
+  let rejectedCandidateName: string | null = null;
+  let acceptedCandidateName: string | null = null;
   let previousClickedName: string | null = null;
   let lastFingerprint = '';
   let sameFingerprintStreak = 0;
@@ -159,7 +208,10 @@ export async function playFoundingToFirstAssignment(page: Page, options: PlayOpt
       stallReason = `max actions (${options.maxActions}) exceeded without reaching first assignment`;
       break;
     }
-    if (weekAdvances > options.maxWeeks) {
+    if (weekAdvances >= options.maxWeeks) {
+      // >= , not > : options.maxWeeks is "at most this many week-advancing
+      // actions total" (Codex follow-up §14 — the previous `>` let a
+      // maxWeeks=12 run attempt a 13th advance before stopping).
       stallDetected = true;
       stallReason = `max weeks (${options.maxWeeks}) exceeded without reaching first assignment`;
       break;
@@ -228,30 +280,48 @@ export async function playFoundingToFirstAssignment(page: Page, options: PlayOpt
       break;
     }
 
+    // Company Setup is handled entirely by its own dedicated, self-verifying
+    // submission routine (Codex follow-up §2-6) — it does its own fill,
+    // confirm, blur, submit, and transition-wait, with exactly one bounded
+    // retry of its own, and never falls through to the generic "click
+    // decision.name" path below (which would just be the same silently-
+    // retried submit the review flagged). A definitive outcome either way
+    // ends this tick.
     if (decision.kind === 'fill-company-setup') {
-      // getByRole('textbox', ...), not getByLabel — the surrounding
-      // NavigatorCard's own semantics group repeats these field labels in
-      // its message text, so getByLabel's substring match resolves to both
-      // the group and the input.
-      //
-      // Verified, not fire-and-forget: _submit() silently no-ops if either
-      // field reads empty, and an occasional fill() not landing before the
-      // very first click (observed under this sandbox's flaky font-fetch
-      // network conditions) would otherwise look identical to a genuine
-      // dead-end — retry a few times rather than misreport one as the other.
-      const president = page.getByRole('textbox', { name: '社長のお名前' });
-      const company = page.getByRole('textbox', { name: '会社名' });
-      for (let attempt = 0; attempt < 3; attempt++) {
-        await president.fill('E2Eテスト社長');
-        await company.fill('E2Eテスト株式会社');
-        const [presidentValue, companyValue] = await Promise.all([president.inputValue(), company.inputValue()]);
-        if (presidentValue === 'E2Eテスト社長' && companyValue === 'E2Eテスト株式会社') break;
+      const result = await submitCompanySetup(page);
+      actionCount++;
+      lastActivityAt = Date.now();
+      const entry: ActionTraceEntry = {
+        action: actionCount,
+        elapsedMs: Date.now() - start,
+        screen,
+        primaryCTA: decision.name,
+        primaryCTACount: enabledCount,
+        clicked: decision.name,
+        advancedWeek: false,
+        ...(result.ok ? {} : { diagnostic: result.diagnostic }),
+      };
+      trace.push(entry);
+      if (options.onAction) await options.onAction(entry);
+      if (result.ok) {
+        previousClickedName = decision.name;
+        continue;
       }
+      stallDetected = true;
+      stallReason = `Company Setup submission failed after ${result.diagnostic.submitAttempt} attempt(s) — input/controller synchronization failure: ${JSON.stringify(result.diagnostic)}`;
+      break;
     }
+
     if (decision.turn) clientInterviewHistory.push(decision.turn);
     if (decision.countsAsClientInterview) clientInterviewCount++;
     if (decision.countsAsSelectionFailure) selectionFailureCount++;
-    if (decision.kind === 'reject-candidate') rejectedOnce = true;
+    if (decision.kind === 'reject-candidate') {
+      rejectedOnce = true;
+      if (decision.candidateName) rejectedCandidateName = decision.candidateName;
+    }
+    if (decision.kind === 'hire-candidate' && decision.candidateName) {
+      acceptedCandidateName = decision.candidateName;
+    }
 
     if (decision.name === previousClickedName) {
       // Same button label as the immediately-preceding action (e.g. "面談へ
@@ -304,7 +374,105 @@ export async function playFoundingToFirstAssignment(page: Page, options: PlayOpt
     primaryCtaWarnings: primaryCtaAudit.filter((a) => a.warning),
     clientInterviewHistory,
     stageRegressionWarnings,
+    rejectedCandidateName,
+    acceptedCandidateName,
   };
+}
+
+// ---------------------------------------------------------------------
+// Company Setup (Codex follow-up §2-6): a dedicated, self-verifying
+// submission routine instead of a bare fill()+click() the outer per-tick
+// loop would otherwise retry blindly.
+//
+// Root cause (verified by reproduction, not guessed — see e2e/README.md
+// "Findings"): Playwright's `fill()` does a bulk DOM value assignment plus
+// one synthetic `input` event. Under slow/resource-constrained conditions
+// this can race Flutter Web's TextInputConnection/EditableText sync — the
+// DOM `<input>` (and even `inputValue()` right after) can end up *not*
+// reflecting what was requested, and even when it does, that alone never
+// proves Flutter's own TextEditingController received it (PrologueScreen's
+// `_submit()` reads the latter, not the DOM). Reproduced locally via CPU
+// throttling: bare `fill()` succeeded as low as 2/10 under 6x throttling;
+// real per-character keystrokes (`pressSequentially`) + an explicit blur
+// succeeded 10/10 under the identical throttling. This function uses the
+// latter.
+// ---------------------------------------------------------------------
+
+/** Fills one Company Setup field via real keystrokes and confirms the DOM
+ * value landed, retrying up to `maxAttempts` times. Never assumes a single
+ * `pressSequentially` call succeeded just because it didn't throw. */
+async function fillCompanySetupField(field: Locator, value: string, maxAttempts = 3): Promise<boolean> {
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    await field.click();
+    // Clear any existing content via select-all + delete — keystroke-based,
+    // like the fill itself, rather than fill('') racing the same way.
+    await field.press('Control+A').catch(() => {});
+    await field.press('Backspace').catch(() => {});
+    await field.pressSequentially(value, { delay: 12 });
+    const domValue = await field.inputValue().catch(() => null);
+    if (domValue === value) return true;
+  }
+  return false;
+}
+
+/** Waits for the Company Setup screen's own marker (its submit button) to
+ * actually disappear — a real, screen-specific transition signal, not the
+ * generic "any semantics change" `waitForSemanticsChange` uses elsewhere,
+ * which a transient focus/animation frame could satisfy without the submit
+ * having done anything. */
+async function waitForCompanySetupExit(page: Page, maxWaitMs: number): Promise<boolean> {
+  const start = Date.now();
+  while (Date.now() - start < maxWaitMs) {
+    const snap = await snapshotScreen(page);
+    if (!hasText(snap, FOUND_COMPANY)) return true;
+    await page.waitForTimeout(200);
+  }
+  return false;
+}
+
+async function submitCompanySetup(page: Page): Promise<{ ok: true } | { ok: false; diagnostic: CompanySetupDiagnostic }> {
+  const president = page.getByRole('textbox', { name: '社長のお名前' });
+  const company = page.getByRole('textbox', { name: '会社名' });
+  const submit = page.getByRole('button', { name: FOUND_COMPANY, exact: true }).first();
+  const PRESIDENT_NAME = 'E2Eテスト社長';
+  const COMPANY_NAME = 'E2Eテスト株式会社';
+
+  let lastDiagnostic: CompanySetupDiagnostic | null = null;
+
+  // Exactly one retry of the *whole* sequence (§5: no unbounded retry of
+  // the same submit) — two well-defined, individually-diagnosable attempts.
+  for (let submitAttempt = 1; submitAttempt <= 2; submitAttempt++) {
+    const presidentFieldConfirmed = await fillCompanySetupField(president, PRESIDENT_NAME);
+    const companyFieldConfirmed = await fillCompanySetupField(company, COMPANY_NAME);
+    // Commit: Tab off the last field so Flutter's EditableText finalizes
+    // the pending TextEditingValue instead of leaving it mid-composition,
+    // then give the TextInputConnection round-trip a brief, bounded moment
+    // to land before we act on it.
+    await company.press('Tab').catch(() => {});
+    await page.waitForTimeout(200);
+
+    const presidentNameVisibleValue = (await president.inputValue().catch(() => '')) ?? '';
+    const companyNameVisibleValue = (await company.inputValue().catch(() => '')) ?? '';
+
+    let transitionObserved = false;
+    if (presidentFieldConfirmed && companyFieldConfirmed) {
+      await submit.click();
+      transitionObserved = await waitForCompanySetupExit(page, 6_000);
+      if (transitionObserved) return { ok: true };
+    }
+
+    lastDiagnostic = {
+      screen: 'company-setup',
+      presidentNameVisibleValue,
+      companyNameVisibleValue,
+      presidentFieldConfirmed,
+      companyFieldConfirmed,
+      submitAttempt,
+      transitionObserved,
+    };
+  }
+
+  return { ok: false, diagnostic: lastDiagnostic! };
 }
 
 function fingerprintOf(snap: ScreenSnapshot): string {
@@ -339,7 +507,7 @@ async function waitForSemanticsChange(page: Page, before: ScreenSnapshot, maxWai
 
 interface Decision {
   name: string;
-  kind: 'click' | 'fill-company-setup' | 'reject-candidate';
+  kind: 'click' | 'fill-company-setup' | 'reject-candidate' | 'hire-candidate';
   advancesWeek: boolean;
   /** Recorded into clientInterviewHistory verbatim when set. */
   turn?: ClientInterviewTurn;
@@ -347,6 +515,9 @@ interface Decision {
   countsAsClientInterview?: boolean;
   /** Counts this action as one Selection failure (§18: selectionFailureCount). */
   countsAsSelectionFailure?: boolean;
+  /** Set on reject-candidate/hire-candidate decisions (§12 of the Codex
+   * follow-up) — the candidate's name as read off-screen at that moment. */
+  candidateName?: string | null;
 }
 
 function decideAction(snap: ScreenSnapshot, opts: { forceRejectFirstCandidate: boolean }): Decision | null {
@@ -387,7 +558,8 @@ function decideAction(snap: ScreenSnapshot, opts: { forceRejectFirstCandidate: b
     const wantsReject = opts.forceRejectFirstCandidate;
     const name = wantsReject ? REJECT_CANDIDATE : HIRE_CANDIDATE;
     const btn = enabledButton(snap, name);
-    if (btn) return { name, kind: wantsReject ? 'reject-candidate' : 'click', advancesWeek: false };
+    const candidateName = extractInterviewCandidateName(snap);
+    if (btn) return { name, kind: wantsReject ? 'reject-candidate' : 'hire-candidate', advancesWeek: false, candidateName };
   }
   if (hasText(snap, '応募者からの質問')) {
     // Reverse question: any of the FilledButton.tonal answer choices is a

@@ -11,9 +11,11 @@ export interface ErrorWatcher {
   crashed: boolean;
 }
 
-/** Known-harmless console noise, allowlisted with a reason (§19) — never
- * silently widened; add an entry here only with a one-line justification. */
-const CONSOLE_ALLOWLIST: { pattern: RegExp; reason: string }[] = [
+/** Known-harmless console noise that isn't about fonts, allowlisted with a
+ * reason (§19) — never silently widened; add an entry here only with a
+ * one-line justification. Font-fetch noise is handled separately below
+ * (Codex follow-up §9-11) because it needs a stricter, two-part check. */
+const OTHER_ALLOWLIST: { pattern: RegExp; reason: string }[] = [
   {
     // Headless Chromium/CI has no GPU, so Skia/CanvasKit falls back to a
     // software rasterizer. Purely an environment notice from the browser
@@ -26,34 +28,108 @@ const CONSOLE_ALLOWLIST: { pattern: RegExp; reason: string }[] = [
     pattern: /GroupMarkerNotSet\(crbug\.com\/242999\)/i,
     reason: 'Chromium DevTools tracing marker noise, not app-caused',
   },
-  {
-    // Flutter Web's CJK font fallback fetches Noto Sans SC/JP/HK glyph
-    // subsets from fonts.gstatic.com on demand; a network policy that
-    // blocks/resets that (seen consistently in this project's sandboxed CI)
-    // only degrades glyph rendering for those code points — Japanese text
-    // still renders via the bundled/system fallback, and nothing in the
-    // Guided Founding flow depends on network access. Confirmed present
-    // (and harmless) on all 10/10 of the seeded validation runs in the
-    // completion report.
-    pattern: /ERR_CONNECTION_RESET|Failed to load font|Flutter Web engine failed to complete HTTP request to fetch.*fonts\.gstatic\.com/i,
-    reason: 'CJK web-font fetch blocked by this environment\'s network policy — cosmetic only, not app-caused',
-  },
 ];
 
-function isAllowlisted(text: string): boolean {
-  return CONSOLE_ALLOWLIST.some((e) => e.pattern.test(text));
+// --- Font-fetch allowlist (Codex follow-up §9-11) -------------------------
+//
+// Flutter Web's CJK font fallback fetches Noto Sans SC/JP/HK glyph subsets
+// from fonts.gstatic.com on demand; this sandbox's network policy blocks
+// that, which only degrades glyph rendering for those code points — nothing
+// in the Guided Founding flow depends on network access.
+//
+// Deliberately NOT one wide OR-regex (the previous version's bug, per
+// review): a bare `ERR_CONNECTION_RESET` says nothing about *which* host
+// failed, and Chromium's "Failed to load resource: net::ERR_..." console
+// text never includes the URL at all — so text-matching alone can't prove
+// it was fonts.gstatic.com and not, say, an app asset or an unrelated host.
+// Three separate, named conditions instead:
+//   1. isKnownFontHost         — a request's URL host is a known Google
+//                                 Fonts CDN host.
+//   2. isKnownNetworkFailureCode — the request failed with a network-level
+//                                 (not app-level) error code.
+//   3. isFontMessageWithHost   — for the two console message *shapes* that
+//                                 already embed the host in their own text
+//                                 ("Failed to load font ... at
+//                                 https://fonts.gstatic.com/...", "Flutter
+//                                 Web engine failed ... fetch
+//                                 \"https://fonts.gstatic.com/...\"") — safe
+//                                 to allowlist by text alone since the host
+//                                 is verifiable right there.
+// The URL-less "Failed to load resource: net::ERR_..." message is only
+// ever allowlisted by *correlating* it with a `requestfailed` page event
+// that independently satisfies (1) AND (2) — see `watchForErrors` below.
+// It is never allowlisted by its own text alone.
+
+const KNOWN_FONT_HOSTS = ['fonts.gstatic.com'];
+
+export function isKnownFontHost(url: string): boolean {
+  try {
+    const host = new URL(url).host;
+    return KNOWN_FONT_HOSTS.some((h) => host === h || host.endsWith(`.${h}`));
+  } catch {
+    return false;
+  }
 }
 
-/** Wires console.error / pageerror / crash listeners (§19). Call before
- * `page.goto`. Fatal errors (uncaught page errors, a page crash) should
- * fail the test; console errors are recorded but only asserted on by the
- * caller so a genuinely-known-harmless one can be allowlisted above instead
- * of silently dropped. */
+const KNOWN_NETWORK_FAILURE_CODES = [
+  'net::ERR_CONNECTION_RESET',
+  'net::ERR_CONNECTION_REFUSED',
+  'net::ERR_CONNECTION_CLOSED',
+  'net::ERR_NAME_NOT_RESOLVED',
+  'net::ERR_INTERNET_DISCONNECTED',
+  'net::ERR_NETWORK_CHANGED',
+  'net::ERR_FAILED',
+];
+
+export function isKnownNetworkFailureCode(errorText: string): boolean {
+  return KNOWN_NETWORK_FAILURE_CODES.some((code) => errorText.includes(code));
+}
+
+const RESOURCE_LOAD_FAILURE_MESSAGE = /^\[error\] Failed to load resource: (net::[A-Z_]+)/;
+
+// These two shapes embed the failing host directly in the console text, so
+// a single text-level AND (shape + host substring) is sound on its own.
+const FONT_FETCH_MESSAGE_SHAPES = [/Failed to load font\b/i, /Flutter Web engine failed to complete HTTP request to fetch\b/i];
+
+export function isFontMessageWithHost(text: string): boolean {
+  return FONT_FETCH_MESSAGE_SHAPES.some((p) => p.test(text)) && isKnownFontHost(extractFirstUrl(text) ?? '');
+}
+
+function extractFirstUrl(text: string): string | null {
+  const m = /https?:\/\/[^\s"]+/.exec(text);
+  return m ? m[0] : null;
+}
+
+/** Wires console.error / pageerror / crash / requestfailed listeners
+ * (§19). Call before `page.goto`. Fatal errors (uncaught page errors, a
+ * page crash) should fail the test; an unallowlisted `console.error`
+ * fails it too (Codex follow-up §7-8) — only the narrowly-scoped font
+ * allowlist above (and the two other-noise entries) are recorded without
+ * failing. */
 export function watchForErrors(page: Page): ErrorWatcher {
   const watcher: ErrorWatcher = { consoleErrors: [], consoleWarnings: [], pageErrors: [], crashed: false };
+
+  // One pending slot per request that independently proves "a known font
+  // host failed with a known network-level error" — consumed by at most
+  // one correlated bare "Failed to load resource" console message each, so
+  // an unrelated resource failure that merely shares the same generic
+  // wording is never absorbed by a leftover slot.
+  let pendingKnownFontNetworkFailures = 0;
+  page.on('requestfailed', (request) => {
+    const errorText = request.failure()?.errorText ?? '';
+    if (isKnownFontHost(request.url()) && isKnownNetworkFailureCode(errorText)) {
+      pendingKnownFontNetworkFailures++;
+    }
+  });
+
   page.on('console', (msg) => {
     const text = `[${msg.type()}] ${msg.text()}`;
-    if (isAllowlisted(text)) return;
+    if (OTHER_ALLOWLIST.some((e) => e.pattern.test(text))) return;
+    if (isFontMessageWithHost(text)) return;
+    if (RESOURCE_LOAD_FAILURE_MESSAGE.test(text) && pendingKnownFontNetworkFailures > 0) {
+      pendingKnownFontNetworkFailures--;
+      return;
+    }
     if (msg.type() === 'error') watcher.consoleErrors.push(text);
     else if (msg.type() === 'warning') watcher.consoleWarnings.push(text);
   });
@@ -80,6 +156,9 @@ export interface SesResultJson {
   primaryCtaWarnings: unknown[];
   stageRegressionWarnings: unknown[];
   clientInterviewHistory: unknown[];
+  /** §12 of the Codex follow-up (Failure Recovery candidate identity). */
+  rejectedCandidateName: string | null;
+  acceptedCandidateName: string | null;
   consoleErrors: string[];
   consoleWarnings: string[];
   pageErrors: string[];
@@ -108,6 +187,8 @@ export function buildResultJson(args: {
     primaryCtaWarnings: args.play.primaryCtaWarnings,
     stageRegressionWarnings: args.play.stageRegressionWarnings,
     clientInterviewHistory: args.play.clientInterviewHistory,
+    rejectedCandidateName: args.play.rejectedCandidateName,
+    acceptedCandidateName: args.play.acceptedCandidateName,
     consoleErrors: args.errors.consoleErrors,
     consoleWarnings: args.errors.consoleWarnings,
     pageErrors: args.errors.pageErrors,

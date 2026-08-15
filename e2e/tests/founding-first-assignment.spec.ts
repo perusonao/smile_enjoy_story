@@ -3,7 +3,7 @@
 // driven purely by following the Guided Founding UI, exactly as a
 // first-time player would.
 import { test, expect } from '@playwright/test';
-import { playFoundingToFirstAssignment } from '../helpers/ses-player';
+import { emptyPlayResult, playFoundingToFirstAssignment, type PlayResult } from '../helpers/ses-player';
 import { buildResultJson, captureMilestone, watchForErrors, writeArtifacts } from '../helpers/artifacts';
 
 // §24: "最低10ゲーム、異なるseedで" — the full 10-seed batch is the
@@ -37,50 +37,65 @@ for (const seed of SEEDS) {
   test(`Founding First Assignment (seed ${seed})`, async ({ page }, testInfo) => {
     const errors = watchForErrors(page);
     const startedAt = Date.now();
+    let result: PlayResult | null = null;
+    let playError: unknown = null;
 
-    await page.goto(`/?e2e=1&seed=${seed}`);
+    // try/finally (Codex follow-up §15): result.json/action-trace.json must
+    // land even if something throws before the normal end of the test body
+    // — Playwright's own video/screenshot/trace still get produced either
+    // way, but the custom artifacts previously didn't.
+    try {
+      await page.goto(`/?e2e=1&seed=${seed}`);
 
-    const seenMilestones = new Set<string>();
-    const result = await playFoundingToFirstAssignment(page, {
-      maxWeeks: MAX_WEEKS,
-      maxActions: MAX_ACTIONS,
-      idleTimeoutMs: IDLE_TIMEOUT_MS,
-      stallRepeatThreshold: STALL_REPEAT_THRESHOLD,
-      onScreen: async (screen) => {
-        const label = MILESTONE_SCREEN_LABELS[screen];
-        if (label && !seenMilestones.has(label)) {
-          seenMilestones.add(label);
-          await captureMilestone(page, testInfo, label);
-        }
-      },
-    });
+      const seenMilestones = new Set<string>();
+      result = await playFoundingToFirstAssignment(page, {
+        maxWeeks: MAX_WEEKS,
+        maxActions: MAX_ACTIONS,
+        idleTimeoutMs: IDLE_TIMEOUT_MS,
+        stallRepeatThreshold: STALL_REPEAT_THRESHOLD,
+        onScreen: async (screen) => {
+          const label = MILESTONE_SCREEN_LABELS[screen];
+          if (label && !seenMilestones.has(label)) {
+            seenMilestones.add(label);
+            await captureMilestone(page, testInfo, label);
+          }
+        },
+      });
 
-    await captureMilestone(page, testInfo, result.completed ? '05-first-assignment' : '99-stopped-here');
+      await captureMilestone(page, testInfo, result.completed ? '05-first-assignment' : '99-stopped-here');
+    } catch (err) {
+      playError = err;
+    } finally {
+      const finalResult = result ?? emptyPlayResult(`playFoundingToFirstAssignment threw before returning: ${String(playError)}`);
+      const resultJson = buildResultJson({
+        scenario: 'founding-first-assignment',
+        device: testInfo.project.name,
+        seed,
+        play: finalResult,
+        errors,
+        durationMs: Date.now() - startedAt,
+      });
+      await writeArtifacts(testInfo, resultJson, finalResult.actionTrace);
 
-    const resultJson = buildResultJson({
-      scenario: 'founding-first-assignment',
-      device: testInfo.project.name,
-      seed,
-      play: result,
-      errors,
-      durationMs: Date.now() - startedAt,
-    });
-    await writeArtifacts(testInfo, resultJson, result.actionTrace);
-
-    if (!result.completed || result.stallDetected || errors.pageErrors.length > 0) {
-      // eslint-disable-next-line no-console
-      console.log(`[SES E2E] seed=${seed} device=${testInfo.project.name} FAILED — reproduce with ?e2e=1&seed=${seed}`, JSON.stringify(resultJson, null, 2));
+      if (!finalResult.completed || finalResult.stallDetected || errors.pageErrors.length > 0 || errors.consoleErrors.length > 0 || playError) {
+        // eslint-disable-next-line no-console
+        console.log(`[SES E2E] seed=${seed} device=${testInfo.project.name} FAILED — reproduce with ?e2e=1&seed=${seed}`, JSON.stringify(resultJson, null, 2));
+      }
     }
 
-    // Fatal errors (§19) always fail, regardless of whether the scenario
-    // otherwise "completed" — a silent JS exception mid-playthrough is not
-    // a pass just because a button happened to still be clickable after it.
+    if (playError) throw playError;
+
+    // Error policy (§8 of the Codex follow-up): pageerror/crash/an
+    // unallowlisted console.error all fail the test — a silent JS
+    // exception or error-level log mid-playthrough is not a pass just
+    // because a button happened to still be clickable after it.
     expect(errors.pageErrors, `uncaught page errors (seed=${seed})`).toEqual([]);
     expect(errors.crashed, `page crashed (seed=${seed})`).toBe(false);
+    expect(errors.consoleErrors, `unallowlisted console.error (seed=${seed})`).toEqual([]);
 
     // The actual thing this scenario exists to prove (§0, §29): the player
     // was never stuck, and reached the first assignment.
-    expect(result.stallDetected, `dead-end/stall (seed=${seed}): ${result.stallReason}`).toBe(false);
-    expect(result.completed, `did not reach first assignment within ${MAX_ACTIONS} actions / ${MAX_WEEKS} weeks (seed=${seed})`).toBe(true);
+    expect(result!.stallDetected, `dead-end/stall (seed=${seed}): ${result!.stallReason}`).toBe(false);
+    expect(result!.completed, `did not reach first assignment within ${MAX_ACTIONS} actions / ${MAX_WEEKS} weeks (seed=${seed})`).toBe(true);
   });
 }

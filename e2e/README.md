@@ -89,6 +89,81 @@ defensive-navigation fix, not a change to any probability, balance, Fit,
 SelectionFlow, or other gameplay logic — see "Existing Game Impact" in the
 completion report for the full accounting.
 
+### Major (fixed): Company Setup submission flaky under slow conditions
+
+**Symptom.** An independent Codex review of this harness found Company
+Setup ("会社を設立する") flaky on both browsers — worse on WebKit (0/4) than
+Chromium (2/2 pass, 2/2 fail across a small sample) — with the run stalling
+on repeated identical submit clicks.
+
+**Root cause, reproduced (not guessed).** Playwright's `fill()` performs a
+bulk DOM value assignment plus one synthetic `input` event. Under slow/
+resource-constrained conditions this can race Flutter Web's
+TextInputConnection/EditableText sync: the DOM `<input>` — and even
+`inputValue()` read immediately after — can end up *not* reflecting what was
+requested, and even when it does, that alone never proves Flutter's own
+`TextEditingController` (what `PrologueScreen`'s `_submit()` actually reads)
+received it. Confirmed locally with Chromium's CPU-throttling: bare
+`fill()` dropped to 2/10 success under 6x throttling; real per-character
+keystrokes (`pressSequentially`) + an explicit blur (`Tab`) held 10/10 under
+the identical throttling.
+
+**Fix.** `helpers/ses-player.ts`'s `submitCompanySetup()` now: fills each
+field via real keystrokes with its own confirm-and-retry loop
+(`fillCompanySetupField`), Tabs off the last field to force Flutter to
+finalize the pending value, submits, and waits specifically for the Company
+Setup screen's own marker to disappear (`waitForCompanySetupExit`) — not
+just "any semantics change". The whole sequence gets exactly **one** bounded
+retry (never an unbounded loop of the same submit); a definitive failure
+records a `CompanySetupDiagnostic` (visible field values, which attempt,
+whether a transition was ever observed) into the action trace instead of
+reporting a generic dead-end. No production code changed for this fix — it
+was entirely a harness-side interaction-timing bug.
+
+**WebKit note.** This sandbox has no network access to Playwright's WebKit
+download host, so the throttled reproduction and the fix's stress test
+(below) were both done on Chromium; the fix itself (real keystrokes +
+explicit blur + transition-wait) isn't Chromium-specific, but WebKit's own
+event timing should still be verified in CI, which does install and run
+both browsers.
+
+### Minor (fixed): console-error policy, font allowlist, and a parsing bug
+
+- **`console.error` now fails the test.** Previously recorded but never
+  asserted on; both scenario specs now `expect(errors.consoleErrors).toEqual([])`.
+- **Font allowlist narrowed.** The previous single `ERR_CONNECTION_RESET|
+  Failed to load font|...` OR-regex could allowlist a bare
+  `ERR_CONNECTION_RESET` regardless of which host it was for. Replaced with
+  three named, independently-testable conditions
+  (`isKnownFontHost`/`isKnownNetworkFailureCode`/`isFontMessageWithHost` in
+  `helpers/artifacts.ts`) — Chromium's bare "Failed to load resource"
+  console message never includes a URL, so that specific message is only
+  ever allowlisted by correlating it with a `requestfailed` page event that
+  independently proves both "known font host" and "known network-level
+  failure code". See `tests/artifacts.allowlist.spec.ts` for the
+  browser-free unit coverage of these conditions.
+- **ARIA-snapshot parsing bug.** The line parser only recognized a trailing
+  `[disabled]` annotation; any *other* bracket annotation (most commonly a
+  heading's `[level=N]`) made the whole line fail to match and get silently
+  dropped from both `texts` and `buttons`. Found via the candidate-identity
+  check below returning `null` for a screen whose heading visibly had the
+  name. Fixed in `helpers/game-state.ts`'s `ARIA_LINE` regex.
+- **`start-choice` no longer flagged as a Primary-CTA warning** — 【初心者
+  モード】 vs 【自由モード】 is a real, legitimate choice, added to
+  `MULTI_CHOICE_SCREENS`.
+- **`MAX_WEEKS` off-by-one fixed** — `weekAdvances > maxWeeks` allowed a
+  13th week-advance under `maxWeeks=12` before stopping; now `>=`, capping
+  at exactly 12.
+- **Early-failure artifacts.** Both scenario specs now wrap the play +
+  artifact-writing in `try/finally`, so `result.json`/`action-trace.json`
+  land even if something throws before the test body's normal end (not just
+  on a clean stall).
+- **Failure Recovery candidate identity.** `helpers/ses-player.ts` now
+  reads the rejected and eventually-hired candidate's names straight off
+  the recruitment-interview screen's own AppBar title
+  (`"${name}との面接"`, `PrologueInterviewScreen`) — never `GameState` — and
+  `failure-recovery.spec.ts` asserts they differ.
+
 ## Local setup
 
 ### Windows / macOS / Linux

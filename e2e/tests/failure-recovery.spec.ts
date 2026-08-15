@@ -67,22 +67,23 @@ test(`Failure Recovery — explicit 不採用 still reaches first assignment (se
   const actionsAfterReject = finalResult.actionTrace.filter((a) => a.action > rejectedAt);
   expect(actionsAfterReject.length, 'no further actions were possible after 不採用 (dead-end)').toBeGreaterThan(0);
 
-  // Identity (Codex follow-up §12): the rejected candidate and the one
-  // eventually hired must be different people, not the same name recorded
-  // twice — both names come straight off the recruitment-interview
-  // screen's own AppBar title, never GameState (see
-  // extractInterviewCandidateName in helpers/game-state.ts). Skipped
-  // (not failed) if either name wasn't recoverable from the UI, since
-  // that's a UI-visibility limitation, not evidence of a real dead-end.
+  // Identity (Codex follow-up §12, re-review §14): the rejected candidate
+  // and the one eventually hired must be different people, not the same
+  // name recorded twice — both names come straight off the
+  // recruitment-interview screen's own AppBar title, never GameState (see
+  // extractInterviewCandidateName in helpers/game-state.ts). Both names
+  // must actually be recoverable — a `null` here silently hid a real
+  // identity-tracking gap behind a UI-visibility excuse; now it's a hard
+  // failure rather than a skip.
   test.info().annotations.push({
     type: 'candidate-identity',
     description: `rejected="${finalResult.rejectedCandidateName}" accepted="${finalResult.acceptedCandidateName}"`,
   });
-  if (finalResult.rejectedCandidateName && finalResult.acceptedCandidateName) {
-    expect(finalResult.acceptedCandidateName, 'the hired candidate must not be the same person who was rejected').not.toBe(
-      finalResult.rejectedCandidateName,
-    );
-  }
+  expect(finalResult.rejectedCandidateName, 'rejected candidate name was not recoverable from the recruitment-interview screen').toBeTruthy();
+  expect(finalResult.acceptedCandidateName, 'accepted candidate name was not recoverable from the recruitment-interview screen').toBeTruthy();
+  expect(finalResult.acceptedCandidateName, 'the hired candidate must not be the same person who was rejected').not.toBe(
+    finalResult.rejectedCandidateName,
+  );
 
   expect(errors.pageErrors, 'uncaught page errors').toEqual([]);
   expect(errors.crashed, 'page crashed').toBe(false);

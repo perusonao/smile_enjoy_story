@@ -13,6 +13,7 @@ import {
   enabledButton,
   extractInterviewCandidateName,
   hasText,
+  isEmptySnapshot,
   snapshotScreen,
   MULTI_CHOICE_SCREENS,
   type ScreenLabel,
@@ -222,7 +223,7 @@ export async function playFoundingToFirstAssignment(page: Page, options: PlayOpt
       break;
     }
 
-    const snap = await snapshotScreen(page);
+    const snap = await readStableSemantics(page);
     const screen = classifyScreen(snap);
 
     if (options.onScreen) await options.onScreen(screen, snap);
@@ -423,8 +424,13 @@ async function fillCompanySetupField(field: Locator, value: string, maxAttempts 
 async function waitForCompanySetupExit(page: Page, maxWaitMs: number): Promise<boolean> {
   const start = Date.now();
   while (Date.now() - start < maxWaitMs) {
-    const snap = await snapshotScreen(page);
-    if (!hasText(snap, FOUND_COMPANY)) return true;
+    // readStableSemantics, not a bare snapshotScreen: the same transient-
+    // empty-mid-transition frame this fix addresses elsewhere (§3 of the
+    // review) could otherwise make a still-in-progress submission look like
+    // it already exited, the moment the marker briefly reads as "gone"
+    // during an empty frame rather than because the screen actually changed.
+    const snap = await readStableSemantics(page, 800);
+    if (!isEmptySnapshot(snap) && !hasText(snap, FOUND_COMPANY)) return true;
     await page.waitForTimeout(200);
   }
   return false;
@@ -479,20 +485,68 @@ function fingerprintOf(snap: ScreenSnapshot): string {
   return JSON.stringify([snap.texts.slice().sort(), snap.buttons.slice().sort((a, b) => a.name.localeCompare(b.name))]);
 }
 
+// How long a *transiently* empty semantics tree gets to recover before it's
+// treated as a real, stable state (either a genuine dead-end or — via the
+// normal decideAction() fallthrough — an unrecognized-but-populated screen,
+// see isEmptySnapshot in helpers/game-state.ts for the distinction this
+// exists to draw). Deliberately the same poll cadence
+// `waitForSemanticsChange` already used before this fix, just applied to a
+// state condition (non-empty reappeared) instead of a fixed sleep.
+const SEMANTICS_POLL_INTERVAL_MS = 150;
+const EMPTY_SEMANTICS_RECOVERY_MS = 2_000;
+
+/** Reads the accessibility tree, but does not trust a momentarily *empty*
+ * result (no texts, no buttons at all) as the screen itself. Reproducibly on
+ * WebKit, Flutter Web's semantics tree goes through a completely empty frame
+ * mid-route-transition (observed around the recruitment-interview questions
+ * / reverse-question screens) before the next real screen's semantics
+ * attach — reading during that gap previously got misclassified as
+ * `screen="unknown"` with no buttons/text and treated as an immediate
+ * dead-end.
+ *
+ * Bounded polling, not a fixed sleep: returns the instant a non-empty read
+ * shows up, and only returns the (still empty) snapshot once
+ * `maxWaitMs` has actually elapsed with no recovery — which the caller then
+ * legitimately treats as a stable-empty dead-end/unknown candidate. Never
+ * retried again beyond this one bounded window (§13 of the review: a truly
+ * broken screen must still surface as a failure, not be hidden behind
+ * unbounded retry). */
+async function readStableSemantics(page: Page, maxWaitMs = EMPTY_SEMANTICS_RECOVERY_MS): Promise<ScreenSnapshot> {
+  let snap = await snapshotScreen(page);
+  if (!isEmptySnapshot(snap)) return snap;
+  const start = Date.now();
+  while (Date.now() - start < maxWaitMs) {
+    await page.waitForTimeout(SEMANTICS_POLL_INTERVAL_MS);
+    snap = await snapshotScreen(page);
+    if (!isEmptySnapshot(snap)) return snap;
+  }
+  return snap;
+}
+
 /** Polls until the accessibility tree actually differs from just before the
- * click — i.e. Flutter produced a new semantics frame reacting to it —
- * instead of sleeping a fixed interval that either wastes time or (worse,
- * under headless software rendering's occasional multi-hundred-ms frame
- * lag) samples/re-clicks a still-stale, about-to-be-disposed node. Gives up
- * silently after `maxWaitMs` (a screen that legitimately looks identical
- * before and after — e.g. a blocked "次の週へ" retry — must not hang here;
- * the caller's own same-fingerprint stall detection handles that case). */
+ * click — i.e. Flutter produced a new *meaningful* semantics frame reacting
+ * to it — instead of sleeping a fixed interval that either wastes time or
+ * (worse, under headless software rendering's occasional multi-hundred-ms
+ * frame lag) samples/re-clicks a still-stale, about-to-be-disposed node.
+ *
+ * A transiently empty read is explicitly not accepted as "the transition
+ * completed" (§3/§5 of the review — WebKit's non-empty -> empty ->
+ * next-screen sequence during route transitions must not be mistaken for
+ * "screen changed" the moment it goes empty): it's skipped and polling
+ * continues within the same bounded budget, so a recovered non-empty frame
+ * later in that same window still gets picked up here rather than only on
+ * the caller's *next* tick. Gives up silently after `maxWaitMs` (a screen
+ * that legitimately looks identical before and after — e.g. a blocked "次の
+ * 週へ" retry, or semantics still stuck empty — must not hang here; the
+ * caller's own readStableSemantics + same-fingerprint stall detection
+ * handle those cases on the next tick). */
 async function waitForSemanticsChange(page: Page, before: ScreenSnapshot, maxWaitMs = 5_000): Promise<void> {
   const start = Date.now();
   const beforeFingerprint = fingerprintOf(before);
   while (Date.now() - start < maxWaitMs) {
     await page.waitForTimeout(150);
     const now = await snapshotScreen(page);
+    if (isEmptySnapshot(now)) continue;
     if (fingerprintOf(now) !== beforeFingerprint) {
       // Grace period after the *visible* semantics update: Flutter Web's
       // engine-side pointer/click-listener teardown for the just-disposed

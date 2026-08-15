@@ -30,19 +30,19 @@ const OTHER_ALLOWLIST: { pattern: RegExp; reason: string }[] = [
   },
 ];
 
-// --- Font-fetch allowlist (Codex follow-up §9-11) -------------------------
+// --- Font-fetch allowlist (Codex follow-up §9-11, re-review §9-13) --------
 //
 // Flutter Web's CJK font fallback fetches Noto Sans SC/JP/HK glyph subsets
 // from fonts.gstatic.com on demand; this sandbox's network policy blocks
 // that, which only degrades glyph rendering for those code points — nothing
 // in the Guided Founding flow depends on network access.
 //
-// Deliberately NOT one wide OR-regex (the previous version's bug, per
-// review): a bare `ERR_CONNECTION_RESET` says nothing about *which* host
-// failed, and Chromium's "Failed to load resource: net::ERR_..." console
-// text never includes the URL at all — so text-matching alone can't prove
-// it was fonts.gstatic.com and not, say, an app asset or an unrelated host.
-// Three separate, named conditions instead:
+// Deliberately NOT one wide OR-regex (the original bug, per review): a bare
+// `ERR_CONNECTION_RESET` says nothing about *which* host failed, and
+// Chromium's "Failed to load resource: net::ERR_..." console text
+// (`msg.text()`) never includes the URL at all — so text-matching alone
+// can't prove it was fonts.gstatic.com and not, say, an app asset or an
+// unrelated host. Three separate, named conditions instead:
 //   1. isKnownFontHost         — a request's URL host is a known Google
 //                                 Fonts CDN host.
 //   2. isKnownNetworkFailureCode — the request failed with a network-level
@@ -55,10 +55,38 @@ const OTHER_ALLOWLIST: { pattern: RegExp; reason: string }[] = [
 //                                 \"https://fonts.gstatic.com/...\"") — safe
 //                                 to allowlist by text alone since the host
 //                                 is verifiable right there.
-// The URL-less "Failed to load resource: net::ERR_..." message is only
-// ever allowlisted by *correlating* it with a `requestfailed` page event
-// that independently satisfies (1) AND (2) — see `watchForErrors` below.
-// It is never allowlisted by its own text alone.
+//
+// The URL-less "Failed to load resource: net::ERR_..." console message is
+// the hard case: `msg.text()` alone can never prove which resource it was
+// about. A first re-review fix used a single global `pendingKnownFont
+// NetworkFailures` counter, incremented on a matching `requestfailed` and
+// decremented by the *next* bare "Failed to load resource" console message
+// — but that message shape is generic (Chromium emits the exact same text
+// for *any* failed resource), so an unrelated resource's own bare console
+// error arriving between the font's `requestfailed` and its own bare
+// console message would consume the pending slot instead, silently
+// swallowing the unrelated failure.
+//
+// Investigated directly (real Chromium, `requestfailed` + `console`
+// listeners on a page with both a fonts.gstatic.com request and an
+// unrelated-host request failing, interleaved): Playwright's
+// `ConsoleMessage.location().url` — distinct from `msg.text()` — reliably
+// carries the exact URL of the resource that failed, for this specific
+// message shape, even though the message *text* never does. That gives a
+// real per-resource identity to correlate against, instead of a blind
+// count: `pendingKnownFontFailuresByUrl` below is keyed by the exact
+// failing URL, so a bare console message only gets allowlisted if its own
+// `location().url` matches a URL that independently satisfies (1) AND (2)
+// above — an unrelated host's bare error can never consume a font
+// failure's slot no matter how the events interleave, because the two
+// URLs are never equal.
+//
+// Safe fallback (§12 of the review): if a browser doesn't populate
+// `location().url` for this message shape, the message is simply left
+// unallowlisted (recorded as a real consoleError) rather than falling back
+// to any global/positional heuristic — a false negative (occasionally
+// flagging real font noise as a failure) is strictly preferred over a false
+// positive (hiding an unrelated resource's real failure).
 
 const KNOWN_FONT_HOSTS = ['fonts.gstatic.com'];
 
@@ -109,16 +137,19 @@ function extractFirstUrl(text: string): string | null {
 export function watchForErrors(page: Page): ErrorWatcher {
   const watcher: ErrorWatcher = { consoleErrors: [], consoleWarnings: [], pageErrors: [], crashed: false };
 
-  // One pending slot per request that independently proves "a known font
-  // host failed with a known network-level error" — consumed by at most
-  // one correlated bare "Failed to load resource" console message each, so
-  // an unrelated resource failure that merely shares the same generic
-  // wording is never absorbed by a leftover slot.
-  let pendingKnownFontNetworkFailures = 0;
+  // Keyed by the exact failing request URL, not a bare count: one entry per
+  // pending "a known font host failed with a known network-level error",
+  // consumed only by a bare "Failed to load resource" console message whose
+  // own `location().url` matches that *same* URL. An unrelated request's
+  // bare console error carries its own (different) URL, so it can never
+  // consume a font failure's slot, however the events interleave — see the
+  // investigation notes above `KNOWN_FONT_HOSTS`.
+  const pendingKnownFontFailuresByUrl = new Map<string, number>();
   page.on('requestfailed', (request) => {
     const errorText = request.failure()?.errorText ?? '';
     if (isKnownFontHost(request.url()) && isKnownNetworkFailureCode(errorText)) {
-      pendingKnownFontNetworkFailures++;
+      const url = request.url();
+      pendingKnownFontFailuresByUrl.set(url, (pendingKnownFontFailuresByUrl.get(url) ?? 0) + 1);
     }
   });
 
@@ -126,9 +157,16 @@ export function watchForErrors(page: Page): ErrorWatcher {
     const text = `[${msg.type()}] ${msg.text()}`;
     if (OTHER_ALLOWLIST.some((e) => e.pattern.test(text))) return;
     if (isFontMessageWithHost(text)) return;
-    if (RESOURCE_LOAD_FAILURE_MESSAGE.test(text) && pendingKnownFontNetworkFailures > 0) {
-      pendingKnownFontNetworkFailures--;
-      return;
+    if (RESOURCE_LOAD_FAILURE_MESSAGE.test(text)) {
+      const locationUrl = msg.location().url;
+      const pending = locationUrl ? pendingKnownFontFailuresByUrl.get(locationUrl) ?? 0 : 0;
+      if (locationUrl && pending > 0) {
+        pendingKnownFontFailuresByUrl.set(locationUrl, pending - 1);
+        return;
+      }
+      // No location URL, or it doesn't match any known-font-failure's exact
+      // URL: not certain enough to allowlist (safe fallback, §12) — falls
+      // through to be recorded as a real error below.
     }
     if (msg.type() === 'error') watcher.consoleErrors.push(text);
     else if (msg.type() === 'warning') watcher.consoleWarnings.push(text);

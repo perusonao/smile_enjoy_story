@@ -162,7 +162,99 @@ both browsers.
   reads the rejected and eventually-hired candidate's names straight off
   the recruitment-interview screen's own AppBar title
   (`"${name}との面接"`, `PrologueInterviewScreen`) — never `GameState` — and
-  `failure-recovery.spec.ts` asserts they differ.
+  `failure-recovery.spec.ts` asserts they differ. This assertion is now
+  required to actually run, not skipped: both names must be recoverable, or
+  the test fails instead of silently passing on a `null`.
+
+### Major (fixed, re-review): WebKit transient-empty semantics mistaken for a dead-end
+
+**Symptom.** On WebKit, a real screen transition (most reproducibly around
+the recruitment-interview questions/reverse-question screens) could pass
+through a semantics frame with *zero* texts and *zero* buttons for a tick or
+two before the next screen's semantics attached. `waitForSemanticsChange`
+treated that non-empty → empty transition as "the screen changed" and
+returned immediately; the next tick then read that same empty frame,
+classified it as `screen="unknown"` with nothing on it, and `decideAction`
+correctly (per its own rules) reported an unrecoverable dead-end — a false
+failure caused entirely by reading mid-transition, not by the game actually
+being stuck.
+
+**Fix.** Two changes in `helpers/ses-player.ts`, both keyed off a new
+`isEmptySnapshot()` (`helpers/game-state.ts`):
+- `waitForSemanticsChange` no longer accepts a transiently empty read as a
+  completed transition — it skips empty frames and keeps polling within its
+  existing bounded window for the next *meaningful* (non-empty) frame.
+- A new `readStableSemantics()` wraps every top-of-tick snapshot read (and
+  `waitForCompanySetupExit`'s own read, which had the identical hazard): if
+  the tree is empty, it polls briefly (bounded, event/state-driven — not a
+  fixed sleep) for a non-empty recovery; only once that bounded window
+  elapses with no recovery does it hand back the (now legitimately stable)
+  empty snapshot to the caller.
+
+This distinguishes three cases that were previously conflated into one
+"unknown, no buttons, no text" bucket:
+- **Transient empty** (WebKit mid-transition) — absorbed by
+  `readStableSemantics`/`waitForSemanticsChange`, never reaches
+  `decideAction` at all.
+- **Real unknown screen** — non-empty semantics `classifyScreen` doesn't
+  recognize; still reaches `decideAction` and can still legitimately dead-end
+  with real button/text content in the failure message, exactly as before.
+- **Stable empty** — genuinely empty even after the bounded recovery window;
+  a real dead-end/failure candidate, reported the same way as before (never
+  hidden behind further, unbounded retry).
+
+**WebKit note.** As with the Company Setup fix above, this sandbox has no
+network access to Playwright's WebKit download host (confirmed again for
+this fix: `npx playwright install webkit` gets a policy-denied 403 from
+both `cdn.playwright.dev` and `playwright.download.prss.microsoft.com`), so
+this fix could not be run against real WebKit in this environment. The
+transient-empty behavior itself was reported against WebKit by an
+independent review, not reproduced firsthand here; the fix (treat empty as
+not-yet-settled, bounded event-driven recovery, no unbounded retry) is
+browser-agnostic and applies as a pure `helpers/*.ts` change — verification
+against real WebKit still needs to happen in CI.
+
+### Major (fixed, re-review): font allowlist correlation was a blind global count
+
+**Symptom.** The bare "Failed to load resource: net::ERR_..." console
+message Chromium emits carries no URL in its own text, so the previous fix
+correlated it to a known font-host `requestfailed` via a single global
+`pendingKnownFontNetworkFailures` counter: increment on a matching
+`requestfailed`, decrement on the *next* bare console message of that shape.
+An unrelated resource's own bare failure arriving in between (e.g. font
+`requestfailed` → unrelated resource's bare console error → the font's own
+bare console error) would consume the pending slot instead — silently
+hiding the unrelated failure and reporting the font's own (genuinely
+harmless) message as a real error instead.
+
+**Investigated, not guessed.** A small standalone script against real
+Chromium (`requestfailed`/`console` listeners on a page with both a
+fonts.gstatic.com request and an unrelated-host request failing) found that
+Playwright's `ConsoleMessage.location()` — distinct from `msg.text()` —
+reliably carries the exact URL of the resource that failed, for this
+message shape, even though the text never does.
+
+**Fix.** `helpers/artifacts.ts`'s `watchForErrors()` now keys its pending
+map by the exact failing URL (`pendingKnownFontFailuresByUrl: Map<string,
+number>`) instead of a bare count, and only allowlists a bare console
+message when its own `location().url` matches a URL that independently
+proved "known font host + known network-level failure" via `requestfailed`.
+An unrelated URL can never consume a different URL's slot, regardless of
+event interleaving. If a message has no `location().url` at all, it is
+never allowlisted (§12 safe fallback: a false negative — occasionally
+flagging real font noise — is preferred over a false positive that could
+hide an unrelated resource's real failure).
+
+`tests/artifacts.watchForErrors.spec.ts` exercises this at the
+`watchForErrors()` level (not just the pure helper functions already
+covered in `tests/artifacts.allowlist.spec.ts`) against a minimal fake
+`Page` that fires `requestfailed`/`console` events in explicit, deterministic
+sequences — including the exact "font request fails, then an unrelated
+resource's bare console error arrives, then the font's own bare console
+error arrives" interleaving the bug depended on. Confirmed to actually catch
+the regression by running the same tests against the pre-fix
+`artifacts.ts`: the interleaved-order cases fail there and pass against the
+fix.
 
 ## Local setup
 

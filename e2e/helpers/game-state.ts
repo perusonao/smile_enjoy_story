@@ -75,6 +75,16 @@ export function hasText(snap: ScreenSnapshot, needle: string): boolean {
   return snap.texts.some((t) => t.includes(needle)) || snap.buttons.some((b) => b.name.includes(needle));
 }
 
+/** A snapshot with no texts and no buttons at all — the shape Flutter Web's
+ * semantics tree transiently produces mid-route-transition (observed on
+ * WebKit; see `readStableSemantics` in helpers/ses-player.ts), never a
+ * legitimate screen a real player would see. Distinct from "unknown": an
+ * `unknown` classification can still carry real (non-empty) semantics the
+ * classifier just doesn't recognize. */
+export function isEmptySnapshot(snap: ScreenSnapshot): boolean {
+  return snap.texts.length === 0 && snap.buttons.length === 0;
+}
+
 export function enabledButton(snap: ScreenSnapshot, name: string): ButtonInfo | undefined {
   return snap.buttons.find((b) => b.name === name && b.enabled);
 }

@@ -78,10 +78,14 @@ test.describe('Founding First Assignment — new presentation surfaces (§5-6, �
       onScreen: async (_screen, snap) => {
         // §5-6: the question-selection screen (classified by ses-player.ts
         // via the same "質問 N / 3" text this release's card UI renders)
-        // shows every category as a card with its info-type hint.
+        // shows every category as a card with its info-type hint. Playable
+        // 0.4C.4 §8 reworded the hint from a raw "情報：高/中/低" bucket
+        // (which read like an exposed hidden stat) to an icon + short
+        // "〜しやすい" phrase — this pattern matches any of the six
+        // interview_presentation.dart `questionInfoHints` entries.
         if (sawQuestionCards) return;
         const hasCategoryCard = ['技術経験', '役割・経歴', '転職理由', 'チームワーク', '将来像', '働き方'].some((label) => hasText(snap, label));
-        const infoHintPattern = /情報：(高|中|低)/;
+        const infoHintPattern = /(得やすい|把握しやすい|判断しやすい|知りやすい|確認しやすい)/;
         const hasInfoHint = snap.texts.some((t) => infoHintPattern.test(t)) || snap.buttons.some((b) => infoHintPattern.test(b.name));
         if (hasCategoryCard && hasInfoHint) sawQuestionCards = true;
       },

@@ -55,15 +55,100 @@ String applicantReactionEmoji(int companyImpression) {
 }
 
 /// What kind of understanding each question tends to surface — flavor text
-/// shown on the question card (Playable 0.4C.3 §5) so a player picks a
-/// question for a reason, without exposing the internal success-rate math
-/// behind it. Order mirrors `RecruitmentInterviewEngine.generateAnswer`'s
-/// dominant signal for each category.
+/// shown on the question card (Playable 0.4C.3 §5, reworded Playable 0.4C.4
+/// §8) so a player picks a question for a reason ("残り1問で何を聞こう？"),
+/// without exposing the internal success-rate math behind it. An icon +
+/// short "〜しやすい" phrase reads as a hint about *what you'll learn*, not
+/// a number to optimize — deliberately never "技術情報：高" (looks like a
+/// hidden stat) or a percentage. Order mirrors
+/// `RecruitmentInterviewEngine.generateAnswer`'s dominant signal for each
+/// category.
 const questionInfoHints = <InterviewQuestionCategory, List<String>>{
-  InterviewQuestionCategory.technical: ['技術情報：高', '人物情報：低'],
-  InterviewQuestionCategory.career: ['経歴情報：高', '人物情報：中'],
-  InterviewQuestionCategory.reasonForChange: ['定着情報：高', '人物情報：中'],
-  InterviewQuestionCategory.teamwork: ['チーム適性：高', '人物情報：中'],
-  InterviewQuestionCategory.futureCareer: ['成長意欲：高', '人物情報：中'],
-  InterviewQuestionCategory.workStyle: ['働き方傾向：高', '人物情報：低'],
+  InterviewQuestionCategory.technical: ['🔍 技術情報を得やすい'],
+  InterviewQuestionCategory.career: ['💼 実務での役割を把握しやすい'],
+  InterviewQuestionCategory.reasonForChange: ['🏠 定着性を判断しやすい'],
+  InterviewQuestionCategory.teamwork: ['👥 人柄・協調性を知りやすい'],
+  InterviewQuestionCategory.futureCareer: ['🌱 成長意欲を確認しやすい'],
+  InterviewQuestionCategory.workStyle: ['🏢 働き方の希望を確認しやすい'],
 };
+
+/// One of the four dimensions the interview summary's information gauge
+/// (Playable 0.4C.4 §7) reports on. Deliberately coarser than the six
+/// [InterviewQuestionCategory] values underneath — the player only ever
+/// asks 3 of 6 questions, so collapsing to 4 player-facing dimensions keeps
+/// "which ones did I actually cover" legible at a glance.
+enum InfoDimension { technical, role, retention, personality }
+
+const infoDimensionLabels = <InfoDimension, String>{
+  InfoDimension.technical: '技術経験',
+  InfoDimension.role: '役割経験',
+  InfoDimension.retention: '定着性',
+  InfoDimension.personality: '人物面',
+};
+
+/// Which [InfoDimension] each question's answer speaks to most directly —
+/// asking it fills this dimension's confidence gauge to full.
+const _primaryDimensionFor = <InterviewQuestionCategory, InfoDimension>{
+  InterviewQuestionCategory.technical: InfoDimension.technical,
+  InterviewQuestionCategory.career: InfoDimension.role,
+  InterviewQuestionCategory.reasonForChange: InfoDimension.retention,
+  InterviewQuestionCategory.teamwork: InfoDimension.personality,
+  InterviewQuestionCategory.futureCareer: InfoDimension.role,
+  InterviewQuestionCategory.workStyle: InfoDimension.retention,
+};
+
+/// The dimension each question's answer speaks to *second most* — asking it
+/// only partially fills this dimension's gauge, reflecting that you learned
+/// something about it incidentally, not that you asked about it directly.
+const _secondaryDimensionFor = <InterviewQuestionCategory, InfoDimension>{
+  InterviewQuestionCategory.technical: InfoDimension.personality,
+  InterviewQuestionCategory.career: InfoDimension.personality,
+  InterviewQuestionCategory.reasonForChange: InfoDimension.personality,
+  InterviewQuestionCategory.teamwork: InfoDimension.role,
+  InterviewQuestionCategory.futureCareer: InfoDimension.personality,
+  InterviewQuestionCategory.workStyle: InfoDimension.personality,
+};
+
+/// Per-dimension read for the Information Confidence / Impression gauge
+/// (Playable 0.4C.4 §7) — the two are tracked separately on purpose:
+///
+/// - [confidenceLevel] (0-5): *how much* was learned about this dimension —
+///   full (5) once its question was asked directly, partial (3) when only
+///   touched on incidentally by a different question, minimal (1) when
+///   nothing about it came up at all ("情報不足", never literal zero so the
+///   gauge always renders something).
+/// - [impression]: *what* was learned, i.e. the same [ObservationTag] the
+///   Talk Card already shows — `null` when there's no signal at all yet
+///   (confidenceLevel stayed at 1), so the UI can render "不明" instead of
+///   guessing a sentiment from zero data.
+///
+/// Neither field is a raw internal ability number — both are derived
+/// entirely from what the player already asked and saw during this
+/// interview.
+class DimensionInfo {
+  const DimensionInfo({required this.confidenceLevel, required this.impression});
+  final int confidenceLevel;
+  final ObservationTag? impression;
+}
+
+const int _fullConfidence = 5;
+const int _partialConfidence = 3;
+const int _minimalConfidence = 1;
+
+Map<InfoDimension, DimensionInfo> computeInfoDimensions(RecruitmentInterviewSession session) {
+  final confidence = {for (final d in InfoDimension.values) d: _minimalConfidence};
+  final impression = <InfoDimension, ObservationTag?>{for (final d in InfoDimension.values) d: null};
+  for (var i = 0; i < session.observations.length && i < session.applicantAnswers.length; i++) {
+    final category = session.observations[i].category;
+    final tag = observationTagFor(session.applicantAnswers[i], session.observations[i]);
+    final primary = _primaryDimensionFor[category]!;
+    final secondary = _secondaryDimensionFor[category]!;
+    confidence[primary] = _fullConfidence;
+    impression[primary] = tag;
+    if (confidence[secondary]! < _partialConfidence) confidence[secondary] = _partialConfidence;
+    impression[secondary] ??= tag;
+  }
+  return {for (final d in InfoDimension.values) d: DimensionInfo(confidenceLevel: confidence[d]!, impression: impression[d])};
+}
+
+String confidenceLabel(int level) => level >= _fullConfidence ? 'かなり把握' : level >= _partialConfidence ? 'やや把握' : '情報不足';

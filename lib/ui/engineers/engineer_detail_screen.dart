@@ -4,6 +4,7 @@ import '../../app/game_scope.dart';
 import '../../domain/domain.dart';
 import '../../game/game.dart';
 import '../theme.dart';
+import '../widgets/confirm_dialog.dart';
 import '../widgets/labels.dart';
 import '../widgets/fit_badge.dart';
 import '../widgets/selection_stepper.dart';
@@ -159,7 +160,7 @@ class EngineerDetailScreen extends StatelessWidget {
             Row(children:[Expanded(child:OutlinedButton(onPressed:()=>_editSkillSheet(context,engineer!,skillSheet),child:const Text('営業用記載を編集'))),const SizedBox(width:8),Expanded(child:FilledButton(onPressed:engineer.salesStatus==SalesStatus.selling?null:()=>_confirmSalesStart(context,engineer!,skillSheet),child:const Text('営業を開始する')))]),
           ]),
           if(interviewOffers.isNotEmpty)...[const SizedBox(height:12),_SectionCard(title:'面談依頼',children:[for(final offer in interviewOffers) _InterviewOfferCard(offer:offer,project:state.openProjects.firstWhere((e)=>e.project.id==offer.projectId).project)])],
-          if(assignment != null && assignment.remainingWeeks <= 4 && assignment.contractDecision==ContractDecision.undecided)...[const SizedBox(height:12),_SectionCard(title:'契約更新判断（終了4週前）',children:[Text('${assignment.project.title} / 残り${assignment.remainingWeeks}週'),Row(children:[Expanded(child:FilledButton(onPressed:(){context.game.decideContract(engineerId,extend:true);ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text('${assignment.project.title}の契約延長を決めました')));},child:const Text('延長する'))),const SizedBox(width:8),Expanded(child:OutlinedButton(onPressed:(){context.game.decideContract(engineerId,extend:false);ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text('${assignment.project.title}は満了で撤退します')));},child:const Text('撤退する')))])])],
+          if(assignment != null && assignment.remainingWeeks <= 4 && assignment.contractDecision==ContractDecision.undecided)...[const SizedBox(height:12),_SectionCard(title:'契約更新判断（終了4週前）',children:[Text('${assignment.project.title} / 残り${assignment.remainingWeeks}週'),Row(children:[Expanded(child:FilledButton(onPressed:(){context.game.decideContract(engineerId,extend:true);ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text('${assignment.project.title}の契約延長を決めました')));},child:const Text('延長する'))),const SizedBox(width:8),Expanded(child:OutlinedButton(onPressed:()=>_confirmWithdraw(context,engineerId,assignment),child:const Text('撤退する')))])])],
           _SectionCard(
             title: '基本情報',
             children: [
@@ -256,6 +257,23 @@ class EngineerDetailScreen extends StatelessWidget {
     final state=context.game.state; final clients=sampleClients.where((c)=>state.relationFor(c.id).unlocked).map((c)=>c.name).join('\n');
     final accepted=await showDialog<bool>(context:context,builder:(c)=>AlertDialog(title:Text('${engineer.profile.name}の営業を開始します'),content:Text('公開先:\n$clients\n\n参画可能: ${engineer.availableFromWeek<=state.week?'現在':'Week ${engineer.availableFromWeek}'}\nスキルシート: ${SalesEngine.riskLabel(SalesEngine.riskFor(engineer,sheet))}\n\n条件に合う案件があると、取引先から面談依頼が届きます。'),actions:[TextButton(onPressed:()=>Navigator.pop(c,false),child:const Text('戻る')),FilledButton(onPressed:()=>Navigator.pop(c,true),child:const Text('営業開始'))]));
     if(accepted==true&&context.mounted)context.game.startSales(engineer.id);
+  }
+
+  /// Contract withdrawal is a real dead end for this assignment (Playable
+  /// 0.4C.4 §16) — the employee leaves the project outright, unlike
+  /// "延長する" which is always revisitable next week.
+  Future<void> _confirmWithdraw(BuildContext context, String engineerId, ActiveAssignment assignment) async {
+    final confirmed = await confirmIrreversibleAction(
+      context,
+      title: '契約から撤退しますか？',
+      message: '「${assignment.project.title}」の契約終了時に撤退します。この判断は取り消せません。',
+      confirmLabel: '撤退する',
+    );
+    if (!confirmed || !context.mounted) return;
+    context.game.decideContract(engineerId, extend: false);
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('${assignment.project.title}は満了で撤退します')));
+    }
   }
 }
 
@@ -632,10 +650,19 @@ class _OfferRow extends StatelessWidget {
     );
   }
 
-  void _decline(BuildContext context) {
-    // Same reasoning as `_accept`: capture the messenger before the
-    // mutation removes this row from the tree.
+  Future<void> _decline(BuildContext context) async {
+    // A confirmation dialog before the irreversible decline (Playable
+    // 0.4C.4 §16) — capture the messenger *before* awaiting it, same
+    // stale-context reasoning as `_accept`, since the confirm dialog itself
+    // is an extra async gap this row's context has to survive.
     final messenger = ScaffoldMessenger.of(context);
+    final confirmed = await confirmIrreversibleAction(
+      context,
+      title: '参画オファーを辞退しますか？',
+      message: '「${application.project.title}」への参画オファーを辞退します。この判断は取り消せません。',
+      confirmLabel: '辞退する',
+    );
+    if (!confirmed || !context.mounted) return;
     context.game.declineOffer(offer.id);
     messenger.showSnackBar(
       SnackBar(content: Text('${application.project.title} の参画オファーを辞退しました')),

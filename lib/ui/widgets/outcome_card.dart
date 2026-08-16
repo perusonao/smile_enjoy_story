@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'celebration_fx.dart';
+
 /// Shared success/failure result presentation (Playable 0.4C.3 §8) for key
 /// events — recruitment hire/reject, offer accept/decline, selection
 /// pass/fail, contract signed, first assignment, founding complete.
@@ -31,7 +33,7 @@ class OutcomeCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final color = success ? const Color(0xFF2E7D32) : Colors.red.shade700;
-    return Column(
+    final content = Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -73,5 +75,9 @@ class OutcomeCard extends StatelessWidget {
         ],
       ],
     );
+    // Success gets a light entrance (fade + scale-up, §19) regardless of
+    // tier; failure states stay static — there's nothing to celebrate about
+    // the beat a rejection/failure lands on.
+    return success ? SuccessEntrance(child: content) : content;
   }
 }

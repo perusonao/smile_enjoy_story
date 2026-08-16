@@ -52,8 +52,13 @@ test.describe('Persistent management HUD (§2)', () => {
 
     // Switch tabs — the HUD lives in MainShell, above the per-tab
     // IndexedStack, so it must still be there after navigating away from
-    // Home (§2: "常時表示").
-    await page.getByRole('button', { name: '社員' }).click();
+    // Home (§2: "常時表示"). The bottom NavigationBar exposes its
+    // destinations with ARIA role "tab", not "button" (confirmed via
+    // ariaSnapshot) — using `role: 'button'` here would silently match some
+    // other "社員"-containing button instead (the HUD's own accessible name
+    // legitimately contains "社員" too, post accessibility fix, Codex
+    // review on PR #9).
+    await page.getByRole('tab', { name: '社員', exact: true }).click();
     await assertHudPresent();
   });
 });
@@ -97,7 +102,9 @@ test.describe('Founding First Assignment — new presentation surfaces (§5-6, �
     // bucket on to "会社経営スタート") before looking for the bottom-nav
     // Home tab.
     await page.getByRole('button', { name: '経営を始める', exact: true }).click({ timeout: 5_000 }).catch(() => {});
-    await page.getByRole('button', { name: 'ホーム', exact: true }).click({ timeout: 5_000 }).catch(() => {});
+    // The bottom NavigationBar exposes destinations with ARIA role "tab",
+    // not "button" (see the HUD test above).
+    await page.getByRole('tab', { name: 'ホーム', exact: true }).click({ timeout: 5_000 }).catch(() => {});
     await expect(async () => {
       const snap = await snapshotScreen(page);
       expect(hasText(snap, '会社経営スタート') || hasText(snap, '初案件参画')).toBe(true);

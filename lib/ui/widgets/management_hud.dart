@@ -25,12 +25,18 @@ class ManagementHud extends StatelessWidget {
 
     return Semantics(
       container: true,
+      button: true,
       label: '経営状況 WEEK ${state.displayWeek} 現預金 ${formatCompactYen(state.company.cash)} '
           '社員 ${state.engineers.length}人 月末予想 ${formatCompactYen(projected)} ${forecast.label}',
       // The label above already gives a screen reader the whole row in one
       // clean sentence — without this, InkWell's default merge-descendants
       // behavior would additionally announce every child Text a second time
-      // (e.g. "...WEEK 1..." then, separately, "WEEK 1 350万円 2人...").
+      // (e.g. "...WEEK 1..." then, separately, "WEEK 1 350万円 2人..."). The
+      // `button: true` + `onTap` here carry the actionable semantics that
+      // excluding the InkWell's own descendant semantics would otherwise
+      // drop — a screen-reader user can still activate this, not just see
+      // the label (Codex review, PR #9).
+      onTap: () => showExpenseBreakdownSheet(context, state),
       excludeSemantics: true,
       child: Material(
         color: Colors.white,

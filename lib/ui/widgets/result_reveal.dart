@@ -10,7 +10,13 @@ import 'package:flutter/material.dart';
 /// fires, then swaps for `result-revealed` — a locator waiting on either key
 /// settles naturally.
 class ResultReveal extends StatefulWidget {
-  const ResultReveal({super.key, required this.builder, this.duration = const Duration(milliseconds: 650), this.pendingLabel = '判定しています…'});
+  const ResultReveal({super.key, required this.builder, this.duration = defaultDuration, this.pendingLabel = '判定しています…'});
+
+  /// Exposed so callers that must sequence something *after* the reveal
+  /// (e.g. a one-time tutorial dialog that shouldn't cover up the "判定して
+  /// います…" beat and race ahead of it) can reference the same duration
+  /// instead of duplicating the magic number (Codex review, PR #9).
+  static const Duration defaultDuration = Duration(milliseconds: 650);
 
   final WidgetBuilder builder;
   final Duration duration;

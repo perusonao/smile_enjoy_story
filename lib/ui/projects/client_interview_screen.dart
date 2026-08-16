@@ -20,6 +20,13 @@ class ClientInterviewScreen extends StatelessWidget{
   @override Widget build(BuildContext context){final state=context.game.state;final p=state.proposals.where((p)=>p.id==applicationId).firstOrNull;if(p==null)return const Scaffold(body:Center(child:Text('案件が見つかりません')));final e=state.engineerById(p.engineerId);final sessions=state.clientInterviews.where((s)=>s.applicationId==applicationId && s.step==step).toList();if(sessions.isEmpty){WidgetsBinding.instance.addPostFrameCallback((_){context.game.startClientInterview(applicationId,step:step);});return const Scaffold(body:Center(child:CircularProgressIndicator()));}final s=sessions.last;final label=_isUpper?'上位会社面談':'客先面談';if(s.completed){
     if(!_isUpper && !state.foundingProgress.hasSeen(OneTimeEvent.clientInterviewCelebration)){
       WidgetsBinding.instance.addPostFrameCallback((_) async {
+        // Wait out the ResultReveal suspense beat first — otherwise this
+        // tutorial dialog pops up over the still-pending "判定しています…"
+        // spinner, and by the time the player closes it the result has
+        // already silently revealed underneath, so the suspense beat this
+        // release added is never actually seen (Codex review, PR #9).
+        await Future.delayed(ResultReveal.defaultDuration);
+        if(!context.mounted) return;
         final controller=context.game;
         final dialog=buildFoundingEventDialog(OneTimeEvent.clientInterviewCelebration,controller.state);
         controller.markTutorialSeen(OneTimeEvent.clientInterviewCelebration);

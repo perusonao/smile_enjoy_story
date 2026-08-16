@@ -5,6 +5,7 @@ import '../../domain/domain.dart';
 import '../../game/game.dart';
 import '../theme.dart';
 import '../widgets/labels.dart';
+import '../widgets/skill_chip.dart';
 import 'recruitment_interview_screen.dart';
 
 class ApplicantDetailScreen extends StatelessWidget {
@@ -48,6 +49,8 @@ class ApplicantDetailScreen extends StatelessWidget {
           _SectionCard(
             title: '経歴書',
             children: [
+              SkillChipRow(chips: _skillChips(applicant)),
+              const SizedBox(height: 10),
               _Row('タイプ', applicantTypeLabels[applicant.type] ?? applicant.type.name),
               _Row('年齢', '${applicant.age}歳'),
               _Row('国籍', applicant.nationality),
@@ -96,6 +99,34 @@ class ApplicantDetailScreen extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Skill/experience tags for the 経歴書 header (Playable 0.4C.3 §3) — the
+/// same values the row-list below already shows (main language experience,
+/// tech-skill levels ≥2, qualifications), just scannable at a glance.
+List<Widget> _skillChips(Applicant applicant) {
+  final chips = <Widget>[
+    SkillChip(
+      '${languageLabels[applicant.mainLanguage] ?? applicant.mainLanguage.name} '
+      '${formatExperience(applicant.skillFor(applicant.mainLanguage).displayedExperienceMonths)}',
+      icon: Icons.code,
+    ),
+  ];
+  void addSkill(String label, int level) {
+    if (level >= 2) chips.add(SkillChip('$label Lv.$level', color: Colors.teal));
+  }
+
+  addSkill('Frontend', applicant.techSkills.frontend);
+  addSkill('Backend', applicant.techSkills.backend);
+  addSkill('DB', applicant.techSkills.database);
+  addSkill('Network', applicant.techSkills.network);
+  addSkill('Infrastructure', applicant.techSkills.infrastructure);
+  if (applicant.techSkills.leader >= 2) chips.add(const SkillChip('Leader', icon: Icons.star_outline, color: Colors.deepPurple));
+  if (applicant.techSkills.manager >= 2) chips.add(const SkillChip('Manager', icon: Icons.star_outline, color: Colors.deepPurple));
+  for (final q in applicant.qualifications) {
+    chips.add(SkillChip(q, icon: Icons.workspace_premium_outlined, color: Colors.orange.shade800));
+  }
+  return chips;
 }
 
 class _LockedPersonalityCard extends StatelessWidget {

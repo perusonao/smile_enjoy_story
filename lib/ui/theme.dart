@@ -9,6 +9,19 @@ class SesTheme {
   static const Color accentCyan = Color(0xFF00BCD4);
   static const Color background = Color(0xFFF5F9FC);
 
+  /// Bundled locally (assets/fonts/NotoSansJP-*.subset.woff2) instead of
+  /// relying on Flutter Web's runtime CJK font-fallback fetch (Playable
+  /// 0.4C.3 Japanese-rendering fix). CanvasKit ships Roboto, which has no
+  /// Japanese glyphs; when the requested font can't draw a codepoint the
+  /// engine normally fetches a fallback subset from Google's font CDN on
+  /// first use — that fetch fails in offline/sandboxed/CI environments
+  /// (this app's own Playwright/CI setup included, see e2e/README.md's
+  /// prior CJK-web-font-fetch allowlist workaround) and produces missing-
+  /// glyph "tofu" boxes for every Japanese string. Declaring this as the
+  /// app-wide font family means every codepoint we ship is drawn from an
+  /// asset that's already on disk, so fallback is never triggered.
+  static const String fontFamily = 'NotoSansJP';
+
   static ThemeData build() {
     final colorScheme = ColorScheme.fromSeed(
       seedColor: primaryBlue,
@@ -18,6 +31,7 @@ class SesTheme {
     return ThemeData(
       useMaterial3: true,
       colorScheme: colorScheme,
+      fontFamily: fontFamily,
       scaffoldBackgroundColor: background,
       appBarTheme: AppBarTheme(
         backgroundColor: primaryBlue,

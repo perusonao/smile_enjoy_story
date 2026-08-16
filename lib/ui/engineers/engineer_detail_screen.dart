@@ -7,8 +7,27 @@ import '../theme.dart';
 import '../widgets/labels.dart';
 import '../widgets/fit_badge.dart';
 import '../widgets/selection_stepper.dart';
+import '../widgets/skill_chip.dart';
 import '../widgets/status_chip.dart';
 import '../projects/client_interview_screen.dart';
+
+/// Tech-skill tags for the 技術スキル header (Playable 0.4C.3 §3) — the same
+/// levels the row-list below already shows, just scannable at a glance.
+List<Widget> _techSkillChips(TechSkillLevels skills) {
+  final chips = <Widget>[];
+  void add(String label, int level, {IconData? icon, Color color = Colors.teal}) {
+    if (level >= 2) chips.add(SkillChip('$label Lv.$level', icon: icon, color: color));
+  }
+
+  add('Frontend', skills.frontend);
+  add('Backend', skills.backend);
+  add('DB', skills.database);
+  add('Network', skills.network);
+  add('Infrastructure', skills.infrastructure);
+  add('Leader', skills.leader, icon: Icons.star_outline, color: Colors.deepPurple);
+  add('Manager', skills.manager, icon: Icons.star_outline, color: Colors.deepPurple);
+  return chips;
+}
 
 /// 社員詳細 (§19): salary, status, skills, personality, current project,
 /// waiting weeks + cost, and (if assigned) the project rate / monthly
@@ -165,6 +184,8 @@ class EngineerDetailScreen extends StatelessWidget {
           _SectionCard(
             title: '技術スキル',
             children: [
+              SkillChipRow(chips: _techSkillChips(profile.techSkills)),
+              const SizedBox(height: 10),
               _Row('DB', 'Lv.${profile.techSkills.database}'),
               _Row('Network', 'Lv.${profile.techSkills.network}'),
               _Row('Infrastructure', 'Lv.${profile.techSkills.infrastructure}'),

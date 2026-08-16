@@ -102,13 +102,25 @@ void main() {
     WidgetTester tester,
   ) async {
     SharedPreferences.setMockInitialValues({});
+    // Tall enough that Home's whole task list is realized without needing
+    // to scroll — the persistent HUD + company-phase banner (Playable
+    // 0.4C.3 §2, §10) push later list items further down than the default
+    // test surface height.
+    tester.view.physicalSize = const Size(400, 2000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
     await tester.pumpWidget(SesApp(controller: GameController()));
     await tester.pumpAndSettle();
     await _skipToFreeManagement(tester);
 
     // A brand-new game has no recruitment listing posted yet, so that
-    // info-level task should always be present on Week 1.
-    expect(find.text('求人媒体が掲載されていません'), findsOneWidget);
+    // info-level task should always be present on Week 1 — both as a
+    // recommended-action TaskCard and as the plain-text footnote below the
+    // list; a short enough test viewport used to leave the second copy
+    // unbuilt (Flutter's sliver list only realizes children near the
+    // viewport), which is why this used to read findsOneWidget.
+    expect(find.text('求人媒体が掲載されていません'), findsWidgets);
     expect(find.text('資金余命'), findsOneWidget);
   });
 

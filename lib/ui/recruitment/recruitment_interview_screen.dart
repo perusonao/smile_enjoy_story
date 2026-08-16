@@ -4,6 +4,9 @@ import '../../app/nav_scope.dart';
 import '../../game/game.dart';
 import '../main_shell.dart';
 import '../widgets/founding_dialogs.dart';
+import '../widgets/outcome_card.dart';
+import '../widgets/result_reveal.dart';
+import 'recruitment_interview_widgets.dart';
 
 class RecruitmentInterviewScreen extends StatelessWidget {
   const RecruitmentInterviewScreen({super.key, required this.applicantId});
@@ -23,14 +26,29 @@ class RecruitmentInterviewScreen extends StatelessWidget {
 class _Questions extends StatelessWidget {
   const _Questions({required this.applicantId,required this.name,required this.s}); final String applicantId,name; final RecruitmentInterviewSession s;
   @override Widget build(BuildContext context)=>ListView(key:ValueKey(s.selectedQuestions.length),padding:const EdgeInsets.all(16),children:[
-    Text('質問 ${s.selectedQuestions.length+1} / 3',style:Theme.of(context).textTheme.titleLarge),const Text('何を知りたいか選んでください。すべては聞けません。'),
-    if(s.applicantAnswers.isNotEmpty)...[const SizedBox(height:12),_Talk(name:name,a:s.applicantAnswers.last,o:s.observations.last),if(s.applicantAnswers.length>1)ExpansionTile(title:Text('過去の回答 (${s.applicantAnswers.length-1})'),children:[for(var i=0;i<s.applicantAnswers.length-1;i++)_Talk(name:name,a:s.applicantAnswers[i],o:s.observations[i])])],
-    const SizedBox(height:12),for(final q in InterviewQuestionCategory.values)Padding(padding:const EdgeInsets.only(bottom:8),child:OutlinedButton(onPressed:s.selectedQuestions.contains(q)?null:()=>context.game.askRecruitmentQuestion(applicantId,q),style:OutlinedButton.styleFrom(alignment:Alignment.centerLeft,padding:const EdgeInsets.all(14)),child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[Text(interviewQuestionLabels[q]!,style:const TextStyle(fontWeight:FontWeight.bold)),Text(interviewQuestionTexts[q]!)])))
+    QuestionProgress(asked: s.selectedQuestions.length),
+    const SizedBox(height: 4),
+    const Text('何を知りたいか選んでください。すべては聞けません。', style: TextStyle(fontSize: 12.5, color: Colors.black54)),
+    if(s.applicantAnswers.isNotEmpty)...[
+      const SizedBox(height:12),
+      ReactionLine(companyImpression: s.companyImpression),
+      const SizedBox(height: 8),
+      TalkCard(name:name,a:s.applicantAnswers.last,o:s.observations.last),
+      if(s.applicantAnswers.length>1)ExpansionTile(title:Text('過去の回答 (${s.applicantAnswers.length-1})'),children:[for(var i=0;i<s.applicantAnswers.length-1;i++)TalkCard(name:name,a:s.applicantAnswers[i],o:s.observations[i])]),
+    ],
+    const SizedBox(height:14),
+    for(final q in InterviewQuestionCategory.values)
+      Padding(
+        padding: const EdgeInsets.only(bottom: 10),
+        child: QuestionCard(
+          category: q,
+          used: s.selectedQuestions.contains(q),
+          onTap: s.selectedQuestions.contains(q) ? null : () => context.game.askRecruitmentQuestion(applicantId, q),
+        ),
+      ),
   ]);
 }
-class _Talk extends StatelessWidget { const _Talk({required this.name,required this.a,required this.o}); final String name;final ApplicantAnswer a;final InterviewObservation o;
-  @override Widget build(BuildContext context)=>Card(child:Padding(padding:const EdgeInsets.all(14),child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[const Text('あなた',style:TextStyle(fontWeight:FontWeight.bold)),Text('「${a.question}」'),const SizedBox(height:10),Text(name,style:const TextStyle(fontWeight:FontWeight.bold)),Text('「${a.answer}」'),const Divider(),Text('観察・${o.confidence==ObservationConfidence.high?'かなり確信':o.confidence==ObservationConfidence.medium?'ややそう感じる':'まだ不確か'}',style:const TextStyle(fontWeight:FontWeight.bold,color:Colors.deepOrange)),Text(o.text)])));
-}
+
 class _Reverse extends StatelessWidget { const _Reverse({required this.applicantId,required this.name,required this.s});final String applicantId,name;final RecruitmentInterviewSession s;
   @override Widget build(BuildContext context){final choices=companyAnswerChoices[s.reverseQuestion]!;return ListView(key:const ValueKey('reverse'),padding:const EdgeInsets.all(16),children:[Text('応募者からの質問',style:Theme.of(context).textTheme.titleLarge),const SizedBox(height:12),Card(child:Padding(padding:const EdgeInsets.all(16),child:Text('$name\n「${reverseQuestionTexts[s.reverseQuestion]}」'))),const SizedBox(height:12),const Text('会社としてどう答えますか？'),for(var i=0;i<choices.length;i++)Padding(padding:const EdgeInsets.only(top:8),child:FilledButton.tonal(onPressed:()=>context.game.answerRecruitmentReverseQuestion(applicantId,i),style:FilledButton.styleFrom(alignment:Alignment.centerLeft,padding:const EdgeInsets.all(16)),child:Text(choices[i].text)))]);}
 }
@@ -51,16 +69,21 @@ class _Summary extends StatelessWidget {
     } else {
       controller.rejectApplicant(applicantId);
     }
+    // Hiring is the only genuinely uncertain branch here (the candidate
+    // decides whether to actually join) — that's the one worth a "確認して
+    // います" beat (§7). Rejecting is the player's own decision playing back
+    // instantly is fine.
+    final showSuspense = outcome == InterviewOutcome.hired;
     await showDialog<void>(
       context: context,
       barrierDismissible: false,
       builder: (dialogContext) => AlertDialog(
-        title: Text(outcome == InterviewOutcome.rejected ? '不採用' : accepted ? '内定承諾！' : '内定辞退'),
-        content: Text(outcome == InterviewOutcome.rejected
-            ? '$nameさんは今回採用しませんでした。'
-            : accepted
-                ? '$nameさんが入社を承諾しました。\n\n次: 入社後、案件を探しましょう。'
-                : '$nameさんは内定を辞退しました。\n会社への印象や条件が影響した可能性があります。'),
+        content: SizedBox(
+          width: 320,
+          child: showSuspense
+              ? ResultReveal(builder: (_) => _DecisionResult(name: name, outcome: outcome, accepted: accepted))
+              : _DecisionResult(name: name, outcome: outcome, accepted: accepted),
+        ),
         actions: [FilledButton(onPressed: () => Navigator.of(dialogContext).pop(), child: const Text('採用画面へ戻る'))],
       ),
     );
@@ -89,13 +112,56 @@ class _Summary extends StatelessWidget {
     final assessment = RecommendationEngine.postInterviewAssessment(s);
     return ListView(key:const ValueKey('summary'),padding:const EdgeInsets.all(16),children:[
       Text('面接まとめ',style:Theme.of(context).textTheme.headlineSmall),Text(name,style:Theme.of(context).textTheme.titleLarge),
-      for(final o in s.observations)ListTile(contentPadding:EdgeInsets.zero,leading:const Icon(Icons.visibility_outlined),title:Text(interviewQuestionLabels[o.category]!),subtitle:Text(o.text)),
+      const SizedBox(height: 6),
+      ReactionLine(companyImpression: s.companyImpression),
+      const SizedBox(height: 10),
+      for(final o in s.observations)
+        Padding(
+          padding: const EdgeInsets.only(bottom: 6),
+          child: ObservationSummaryTile(observation: o, answer: s.applicantAnswers.firstWhere((a) => a.category == o.category)),
+        ),
       const Divider(), Text('採用判断', style: Theme.of(context).textTheme.titleMedium),
       if (assessment.good.isNotEmpty) Text('良い材料\n・${assessment.good.join('\n・')}'),
       if (assessment.cautions.isNotEmpty) Text('注意\n・${assessment.cautions.join('\n・')}'),
       ListTile(contentPadding:EdgeInsets.zero,title:const Text('人物像の理解'),subtitle:Text(RecruitmentInterviewEngine.knowledgeLabel(s.candidateKnowledge))),
       ListTile(contentPadding:EdgeInsets.zero,title:const Text('本人の会社への反応'),subtitle:Text('${RecruitmentInterviewEngine.impressionLabel(s.companyImpression)}\n${s.applicantReaction}')),
-      Row(children:[Expanded(child:OutlinedButton(onPressed:()=>_decide(context,InterviewOutcome.rejected),child:const Text('不採用'))),const SizedBox(width:8),Expanded(child:FilledButton(onPressed:()=>_decide(context,InterviewOutcome.hired),child:const Text('採用する')))])
+      Row(children:[Expanded(child:OutlinedButton(key:const ValueKey('decision-reject'),onPressed:()=>_decide(context,InterviewOutcome.rejected),child:const Text('不採用'))),const SizedBox(width:8),Expanded(child:FilledButton(key:const ValueKey('decision-hire'),onPressed:()=>_decide(context,InterviewOutcome.hired),child:const Text('採用する')))])
     ]);
+  }
+}
+
+/// The 内定承諾/内定辞退/不採用 outcome, reframed via [OutcomeCard] so
+/// failure states always say what happens next (Playable 0.4C.3 §8-9).
+class _DecisionResult extends StatelessWidget {
+  const _DecisionResult({required this.name, required this.outcome, required this.accepted});
+  final String name;
+  final InterviewOutcome outcome;
+  final bool accepted;
+
+  @override
+  Widget build(BuildContext context) {
+    if (outcome == InterviewOutcome.rejected) {
+      return OutcomeCard(
+        success: false,
+        title: '不採用',
+        details: '$nameさんは今回採用しませんでした。',
+        nextStep: '他の応募者の面接を続けるか、次週また新しい応募を待つことができます。',
+      );
+    }
+    if (accepted) {
+      return const OutcomeCard(
+        success: true,
+        celebration: true,
+        title: '内定承諾！',
+        details: '入社を承諾しました。',
+        nextStep: '次: 入社後、案件を探しましょう。',
+      );
+    }
+    return OutcomeCard(
+      success: false,
+      title: '内定辞退',
+      details: '$nameさんは内定を辞退しました。\n会社への印象や条件が影響した可能性があります。',
+      nextStep: '求人媒体や条件を見直しつつ、次の応募者を待つことができます。',
+    );
   }
 }

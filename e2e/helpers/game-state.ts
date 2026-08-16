@@ -162,6 +162,10 @@ export const MULTI_CHOICE_SCREENS: ReadonlySet<ScreenLabel> = new Set([
   'candidate-select',
   'recruitment-interview',
   'client-interview',
+  // 会社を設立する (found immediately with the pre-filled random defaults)
+  // vs 名前を再生成 (re-roll both fields first) — Playable 0.4C.2 §5, both
+  // real and always legal on this screen, not a design flaw.
+  'company-setup',
 ]);
 
 // PrologueInterviewScreen's AppBar title is literally "${applicant.name}

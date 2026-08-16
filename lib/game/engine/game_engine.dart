@@ -1022,12 +1022,16 @@ class GameEngine {
       }).toList();
       accountsReceivable = [...updatedExistingAr, ...newAr];
 
-      // 3) 給与 (待機中も満額) / 4) 家賃 / 5) その他固定費 -----------------
-      final salaryPaid = engineers.fold<int>(0, (sum, e) => sum + e.salary);
+      // 3) 給与 (待機中も満額。総務も入社日から満額、Playable 0.4C.2 §2)
+      // / 4) 家賃 / 5) その他固定費 -----------------------------------------
+      final salaryPaid = engineers.fold<int>(0, (sum, e) => sum + e.salary) + (state.generalAffairsStaff?.salary ?? 0);
       final rentPaid = officeConfigs[state.officeType]!.monthlyRent;
       const fixedCostPaid = otherMonthlyFixedCost;
 
-      // 6) 今月の採用費 ---------------------------------------------------
+      // 6) 今月の採用費 (Playable 0.4C.2 §2: 求人媒体費はpostRecruitmentMedia
+      // が掲載時点で即座にcashへ反映済みなので、ここではcashDeltaに二重計上
+      // せず、会計上の月次実績(accountingProfit/recruitmentCostの内訳表示)
+      // にのみ計上する) -----------------------------------------------------
       final recruitmentCost = pendingMiscExpense;
 
       // 7) 会計上利益 / 8) 現金増減 ----------------------------------------
@@ -1041,8 +1045,7 @@ class GameEngine {
           cashCollected -
           salaryPaid -
           rentPaid -
-          fixedCostPaid -
-          recruitmentCost;
+          fixedCostPaid;
       final cashBefore = state.company.cash;
       final cashAfter = cashBefore + cashDelta;
       newCash = cashAfter;
@@ -1091,9 +1094,13 @@ class GameEngine {
       if (newCash < 0) {
         status = GameStatus.bankrupt;
         bankruptWeek = newWeek;
+        // Deliberately excludes recruitmentCost: postRecruitmentMedia
+        // already took that cash out of Company.cash the moment the listing
+        // was posted (well before this month-end check), so it's already
+        // baked into cashBefore rather than part of this month-end's own
+        // shortfall (Playable 0.4C.2 §2 fix — see cashDelta above).
         bankruptCause =
-            '$label の月次決算で支出(給与¥$salaryPaid + 家賃¥$rentPaid + 固定費¥$fixedCostPaid'
-            '${recruitmentCost > 0 ? ' + 求人費¥$recruitmentCost' : ''})が'
+            '$label の月次決算で支出(給与¥$salaryPaid + 家賃¥$rentPaid + 固定費¥$fixedCostPaid)が'
             '入金(¥$cashCollected)を上回り、資金がショートしました。';
         log('資金がマイナスになりました。倒産しました。', GameLogCategory.bankrupt);
       } else if (newWeek >= totalGameWeeks) {

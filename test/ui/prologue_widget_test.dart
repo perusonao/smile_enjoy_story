@@ -16,6 +16,7 @@ import 'package:smile_enjoy_story/domain/domain.dart';
 import 'package:smile_enjoy_story/game/game.dart';
 import 'package:smile_enjoy_story/main.dart';
 import 'package:smile_enjoy_story/ui/main_shell.dart';
+import 'package:smile_enjoy_story/ui/prologue/prologue_interview_screen.dart';
 
 /// Mirrors PrologueEngineTest's driver — advances a fresh Beginner Mode game
 /// to the requested [PrologueStage], picking Candidate A throughout.
@@ -143,6 +144,89 @@ void main() {
     expect(find.text('次の週へ'), findsOneWidget);
   });
 
+  group('Company Setup random defaults (Playable 0.4C.2 §5)', () {
+    testWidgets('Test E: president name and company name are non-empty on first display', (tester) async {
+      SharedPreferences.setMockInitialValues({});
+      await tester.pumpWidget(SesApp(controller: GameController()));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('【初心者モード】おすすめ'));
+      await tester.pumpAndSettle();
+
+      final president = tester.widget<TextField>(find.byKey(const ValueKey('company-setup-president-name')));
+      final company = tester.widget<TextField>(find.byKey(const ValueKey('company-setup-company-name')));
+      expect(president.controller!.text.trim(), isNotEmpty);
+      expect(company.controller!.text.trim(), isNotEmpty);
+
+      // The player can found the company immediately, with no typing.
+      await tester.tap(find.text('会社を設立する'));
+      await tester.pumpAndSettle();
+      expect(find.text('会社を設立する'), findsNothing);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('Test F: the player can overwrite the pre-filled random defaults before founding', (tester) async {
+      SharedPreferences.setMockInitialValues({});
+      await tester.pumpWidget(SesApp(controller: GameController()));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('【初心者モード】おすすめ'));
+      await tester.pumpAndSettle();
+
+      await tester.enterText(find.byKey(const ValueKey('company-setup-president-name')), 'カスタム社長');
+      await tester.enterText(find.byKey(const ValueKey('company-setup-company-name')), 'カスタム株式会社');
+      await tester.pump();
+      expect(find.text('カスタム社長'), findsOneWidget);
+      expect(find.text('カスタム株式会社'), findsOneWidget);
+
+      await tester.tap(find.text('会社を設立する'));
+      await tester.pumpAndSettle();
+      expect(find.text('会社を設立する'), findsNothing);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('re-generate replaces both fields with a different (still non-empty) pair', (tester) async {
+      SharedPreferences.setMockInitialValues({});
+      await tester.pumpWidget(SesApp(controller: GameController()));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('【初心者モード】おすすめ'));
+      await tester.pumpAndSettle();
+
+      String readValue(Key key) => tester.widget<TextField>(find.byKey(key)).controller!.text;
+      final presidentBefore = readValue(const ValueKey('company-setup-president-name'));
+      final companyBefore = readValue(const ValueKey('company-setup-company-name'));
+
+      await tester.tap(find.text('名前を再生成'));
+      await tester.pumpAndSettle();
+
+      final presidentAfter = readValue(const ValueKey('company-setup-president-name'));
+      final companyAfter = readValue(const ValueKey('company-setup-company-name'));
+      expect(presidentAfter, isNotEmpty);
+      expect(companyAfter, isNotEmpty);
+      expect(presidentAfter != presidentBefore || companyAfter != companyBefore, isTrue, reason: 're-generate should change at least one field');
+    });
+
+    testWidgets('same seed produces the same initial names (deterministic, non-flaky for E2E)', (tester) async {
+      String readValue(WidgetTester t, Key key) => t.widget<TextField>(find.byKey(key)).controller!.text;
+
+      final stateA = PrologueEngine.newGame(seed: 123);
+      SharedPreferences.setMockInitialValues({'ses_playable_save_v1': jsonEncode(stateA.toJson())});
+      await tester.pumpWidget(SesApp(controller: GameController()));
+      await tester.pumpAndSettle();
+      final presidentA = readValue(tester, const ValueKey('company-setup-president-name'));
+      final companyA = readValue(tester, const ValueKey('company-setup-company-name'));
+
+      await tester.pumpWidget(const SizedBox());
+      final stateB = PrologueEngine.newGame(seed: 123);
+      SharedPreferences.setMockInitialValues({'ses_playable_save_v1': jsonEncode(stateB.toJson())});
+      await tester.pumpWidget(SesApp(controller: GameController()));
+      await tester.pumpAndSettle();
+      final presidentB = readValue(tester, const ValueKey('company-setup-president-name'));
+      final companyB = readValue(tester, const ValueKey('company-setup-company-name'));
+
+      expect(presidentA, presidentB);
+      expect(companyA, companyB);
+    });
+  });
+
   for (final width in [360.0, 390.0]) {
     testWidgets('Prologue screens do not overflow at ${width.toInt()}px', (tester) async {
       for (final stage in [
@@ -236,6 +320,38 @@ void main() {
     await tester.pumpAndSettle();
     // Modal closed and navigated into the interview flow.
     expect(find.text('この人と面談する'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('P0-A regression: entering the interview pushes PrologueInterviewScreen exactly once, not once per rebuild', (tester) async {
+    // Reproduces the ghost/duplicate-rendering bug (Playable 0.4C.2 §1.2):
+    // PrologueScreen is wrapped in an AnimatedBuilder that rebuilds on every
+    // GameController change, including every question answered inside the
+    // interview screen itself. The old `_StageContent` implementation pushed
+    // a fresh PrologueInterviewScreen from a bare postFrameCallback on every
+    // one of those rebuilds, with no guard against a route already being on
+    // the stack — stacking duplicate routes (and playing a full page
+    // transition) on every single interview action. Each answered question
+    // below is exactly the kind of mid-interview GameState mutation that
+    // used to trigger an extra push.
+    final state = _stateAt(PrologueStage.week2CandidateSelect);
+    await _pumpSeeded(tester, state, 390);
+    // Extra-tall viewport (mirrors test/ui/interview_navigation_test.dart):
+    // each answered question adds a reaction line + talk card above the
+    // remaining question cards, and this test needs every card reachable by
+    // a direct tap rather than scrolling.
+    tester.view.physicalSize = const Size(390, 2600);
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.widgetWithText(FilledButton, '面接する').first);
+    await tester.pumpAndSettle();
+    expect(find.byType(PrologueInterviewScreen), findsOneWidget);
+
+    for (final category in ['technical', 'teamwork', 'workStyle']) {
+      await tester.tap(find.byKey(ValueKey('question-card-$category')));
+      await tester.pumpAndSettle();
+      expect(find.byType(PrologueInterviewScreen), findsOneWidget, reason: 'after answering $category');
+    }
     expect(tester.takeException(), isNull);
   });
 

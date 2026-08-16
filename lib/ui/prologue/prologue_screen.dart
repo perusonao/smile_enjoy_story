@@ -102,7 +102,7 @@ class _StageContent extends StatelessWidget {
     final controller = context.game;
     switch (stage) {
       case PrologueStage.presidentNaming:
-        return _CompanySetup(navigatorName: navigatorName);
+        return _CompanySetup(navigatorName: navigatorName, seed: state.seed);
       case PrologueStage.intro:
         return _Intro(navigatorName: navigatorName, presidentName: state.company.presidentName, companyName: state.company.name);
       case PrologueStage.week1Recruitment:
@@ -120,11 +120,8 @@ class _StageContent extends StatelessWidget {
       case PrologueStage.week2Interview:
       case PrologueStage.week2Decision:
         final id = state.prologueState.interviewingCandidateId;
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (!context.mounted || id == null) return;
-          Navigator.of(context).push(MaterialPageRoute(builder: (_) => PrologueInterviewScreen(applicantId: id)));
-        });
-        return const Padding(padding: EdgeInsets.only(top: 40), child: Center(child: CircularProgressIndicator()));
+        if (id == null) return const Padding(padding: EdgeInsets.only(top: 40), child: Center(child: CircularProgressIndicator()));
+        return _InterviewLauncher(applicantId: id);
       case PrologueStage.week3SkillSheet:
         return _SkillSheetConfirm(navigatorName: navigatorName, state: state);
       case PrologueStage.week3Sales:
@@ -162,21 +159,101 @@ class _StageContent extends StatelessWidget {
   }
 }
 
+/// Pushes [PrologueInterviewScreen] exactly once per interview (Playable
+/// 0.4C.2 §1.2 ghost-transition fix).
+///
+/// Root cause: [PrologueScreen] is wrapped in an `AnimatedBuilder` that
+/// rebuilds on *every* [GameController] change — including every question
+/// answered inside the just-pushed interview screen itself. The previous
+/// implementation scheduled `Navigator.push` from inside `_StageContent`'s
+/// `build()` via a bare `addPostFrameCallback`, with no check for whether an
+/// interview route was already on the stack — so each in-progress interview
+/// action (`askRecruitmentQuestion`, the reverse-question answer, ...)
+/// pushed *another* `PrologueInterviewScreen` on top of the still-live
+/// previous one. Every one of those extra pushes played a full page-
+/// transition animation, which is what showed up as "previous screen text
+/// still visible, overlapping the next screen" in mobile E2E recordings —
+/// a real widget-tree duplication, not a compositing/recording artifact.
+///
+/// A [StatefulWidget]'s [State] survives across `_StageContent` rebuilds at
+/// the same tree position (same type, no key, same slot), so `_pushed` only
+/// needs to go true once per interview — [didUpdateWidget] resets it if a
+/// different candidate's [applicantId] ever lands in this same slot.
+class _InterviewLauncher extends StatefulWidget {
+  const _InterviewLauncher({required this.applicantId});
+  final String applicantId;
+  @override
+  State<_InterviewLauncher> createState() => _InterviewLauncherState();
+}
+
+class _InterviewLauncherState extends State<_InterviewLauncher> {
+  bool _pushed = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _maybePush();
+  }
+
+  @override
+  void didUpdateWidget(covariant _InterviewLauncher oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.applicantId != widget.applicantId) _pushed = false;
+    _maybePush();
+  }
+
+  void _maybePush() {
+    if (_pushed) return;
+    _pushed = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      Navigator.of(context).push(MaterialPageRoute(builder: (_) => PrologueInterviewScreen(applicantId: widget.applicantId)));
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) => const Padding(padding: EdgeInsets.only(top: 40), child: Center(child: CircularProgressIndicator()));
+}
+
 class _CompanySetup extends StatefulWidget {
-  const _CompanySetup({required this.navigatorName});
+  const _CompanySetup({required this.navigatorName, required this.seed});
   final String navigatorName;
+  final int seed;
   @override
   State<_CompanySetup> createState() => _CompanySetupState();
 }
 
+/// Playable 0.4C.2 §5: both fields start pre-filled with a plausible random
+/// name (deterministic per [_CompanySetup.seed], so a fixed-seed session/
+/// widget test always sees the same initial value) — a first-time player can
+/// tap "会社を設立する" immediately with no typing, or edit either field
+/// first. "再生成" re-rolls both fields together with a fresh (still
+/// reproducible: seed + attempt count) pair.
 class _CompanySetupState extends State<_CompanySetup> {
   final _presidentController = TextEditingController();
   final _companyController = TextEditingController();
+  int _regenerateAttempt = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _presidentController.text = PrologueEngine.generateRandomPresidentName(widget.seed);
+    _companyController.text = PrologueEngine.generateRandomCompanyName(widget.seed);
+  }
+
   @override
   void dispose() {
     _presidentController.dispose();
     _companyController.dispose();
     super.dispose();
+  }
+
+  void _regenerate() {
+    _regenerateAttempt++;
+    setState(() {
+      _presidentController.text = PrologueEngine.generateRandomPresidentName(widget.seed, attempt: _regenerateAttempt);
+      _companyController.text = PrologueEngine.generateRandomCompanyName(widget.seed, attempt: _regenerateAttempt);
+    });
   }
 
   @override
@@ -186,21 +263,33 @@ class _CompanySetupState extends State<_CompanySetup> {
       children: [
         NavigatorCard(
           navigatorName: widget.navigatorName,
-          message: 'おはようございます。\n今日からいよいよ会社設立ですね。\n\nまず、社長のお名前と会社名を教えていただけますか？',
+          message: 'おはようございます。\n今日からいよいよ会社設立ですね。\n\n社長のお名前と会社名は仮の名前を入力しておきました。このまま設立しても、書き換えても大丈夫です。',
         ),
         const SizedBox(height: 14),
         TextField(
+          key: const ValueKey('company-setup-president-name'),
           controller: _presidentController,
           maxLength: PrologueEngine.presidentNameMaxLength,
           decoration: const InputDecoration(labelText: '社長のお名前', border: OutlineInputBorder()),
         ),
         const SizedBox(height: 8),
         TextField(
+          key: const ValueKey('company-setup-company-name'),
           controller: _companyController,
           maxLength: PrologueEngine.companyNameMaxLength,
           decoration: const InputDecoration(labelText: '会社名', border: OutlineInputBorder()),
           onSubmitted: (_) => _submit(context),
         ),
+        const SizedBox(height: 4),
+        Align(
+          alignment: Alignment.centerRight,
+          child: TextButton.icon(
+            onPressed: _regenerate,
+            icon: const Icon(Icons.refresh, size: 18),
+            label: const Text('名前を再生成'),
+          ),
+        ),
+        const SizedBox(height: 6),
         FilledButton(onPressed: () => _submit(context), child: const Text('会社を設立する')),
       ],
     );

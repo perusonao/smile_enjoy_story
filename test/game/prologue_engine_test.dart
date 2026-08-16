@@ -18,11 +18,17 @@ import 'package:smile_enjoy_story/game/game.dart';
 /// finance_engine_prologue_test.dart to snapshot the exact moment a
 /// candidate accepts their offer (still pre-April) versus the moment they
 /// actually join, without duplicating this whole driving sequence.
-GameState playThroughPrologue(int seed, {bool preferCandidateB = false, int maxAdvances = 40, void Function(GameState state)? onTick}) {
+GameState playThroughPrologue(
+  int seed, {
+  bool preferCandidateB = false,
+  int maxAdvances = 40,
+  void Function(GameState state)? onTick,
+  RecruitmentMediaType mediaType = RecruitmentMediaType.freeWork,
+}) {
   var state = PrologueEngine.newGame(seed: seed);
   state = PrologueEngine.confirmCompanySetup(state, presidentName: 'テスト社長', companyName: 'テスト会社');
   state = PrologueEngine.markIntroSeen(state);
-  state = PrologueEngine.postFreeRecruitment(state);
+  state = PrologueEngine.postRecruitment(state, mediaType);
   state = PrologueEngine.advanceWeek(state); // -> March Week 2, candidates appear
   onTick?.call(state);
 
@@ -34,7 +40,7 @@ GameState playThroughPrologue(int seed, {bool preferCandidateB = false, int maxA
       case PrologueStage.intro:
         throw StateError('unexpected stage $stage');
       case PrologueStage.week1Recruitment:
-        state = PrologueEngine.postFreeRecruitment(state);
+        state = PrologueEngine.postRecruitment(state, mediaType);
       case PrologueStage.week2AwaitingReply:
         state = PrologueEngine.advanceWeek(state);
         advances++;

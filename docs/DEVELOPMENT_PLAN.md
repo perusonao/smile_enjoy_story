@@ -1,6 +1,6 @@
 # S.E.S. Development Plan
 
-Last updated: 2026-08-16
+Last updated: 2026-08-17
 
 This document is the source of truth for near-term development priorities for S.E.S. (Smile. Enjoy. Story.).
 
@@ -26,120 +26,93 @@ Target first complete experience:
 
 **Company setup -> founding/prologue -> first assignment -> cash-flow management -> recruitment -> contract decisions -> year-end -> beginner-mode graduation**
 
-The first-year goal should evolve from merely "get the first assignment" to **"survive the first year of the company."**
+The first-year goal is **"survive the first year of the company"**, not merely "get the first assignment".
+
+Beginner Mode is not one year of forced tutorial interaction. Assistance must gradually transition through:
+
+**Primary CTA -> recommendations -> contextual help -> mostly independent play**
+
+Tutorial teaching should be event/milestone driven whenever possible rather than appearing simply because a calendar week was reached.
 
 ---
 
 # Phase 1 — Playable 0.4C.2 stabilization
 
-Priority: **P0 / current work**
+Status: **Completed**
 
-Do not add major game systems until this phase is stable.
+Completed scope includes:
 
-## 1.1 Company setup defaults
+- random editable president/company defaults
+- recruitment interview duplicate-route/ghost rendering fix
+- Failure Recovery stabilization
+- Flutter/Replay/Chromium/WebKit regression gates
 
-- Pre-fill the president name with a randomly generated Japanese name.
-- Pre-fill the company name with a randomly generated plausible company name.
-- The player can edit both values before starting.
-- Prefer allowing re-roll/regeneration without requiring manual deletion.
-- Random defaults must not make E2E tests flaky; tests should not depend on one exact generated name unless a seed is explicitly fixed.
-
-## 1.2 Fix ghost/duplicate rendering during transitions
-
-Observed around the recruitment interview transition: text from the previous screen (for example interview-title text) can remain visually over the next screen.
-
-Required investigation/fix:
-
-- Check stale routes, dialogs, overlays, animations, semantics layers, and widgets during navigation.
-- Ensure previous interview views are disposed/removed correctly.
-- Verify on mobile Chromium and WebKit/iPhone-equivalent viewport.
-- Add regression coverage where practical.
-
-## 1.3 Failure Recovery completion
-
-The game must never dead-end after a negative or declined outcome.
-
-Verify at minimum:
-
-- recruitment rejection
-- candidate declining an offer
-- client interview failure
-- interview/request decline
-- assignment offer decline/cancellation where applicable
-- transient no-action states during navigation
-
-Expected behavior: reconcile state, restore a valid Primary CTA or explicitly present "no action this week -> next week", and allow the founding flow to continue.
-
-`recruitment-reject` has already demonstrated successful recovery through first assignment; preserve that behavior.
-
-## 1.4 Regression gates
-
-Before considering 0.4C.2 stable:
-
-- Flutter analyze/test/build must pass.
-- Replay/unit tests must pass.
-- Playwright Chromium and WebKit must pass with retries disabled for the stability suite.
-- Failure Recovery scenarios must pass.
-- No new console errors.
-- No progression regression or stage rollback.
+Preserve these behaviors in later work.
 
 ---
 
 # Phase 2 — March-to-April accounting correctness
 
-Priority: **P0**
+Status: **Completed**
 
-The transition from March week 4 to April week 1 must behave like a real month-end and must not accidentally grant a free founding month unless explicitly designed and communicated.
+Completed scope includes:
 
-## 2.1 March week 4 closing
+- March week 4 -> April week 1 settlement
+- payroll boundary correctness
+- March rent / administrative salary / fixed-cost accounting
+- paid recruitment cost recognized once without double cash deduction
+- whole-month cash movement tracking via `monthStartCash` / `monthCashMovement`
+- legacy MonthlyClosing migration consistency
+- deterministic regression coverage
 
-At the end of March week 4, audit and correctly apply all expenses that should already exist, including:
+Core invariant to preserve:
 
-- payroll for employees who are actually on payroll for the period
-- administrative/back-office payroll where represented by the game model
-- office rent
-- fixed operating costs
-- any other already-active monthly expenses
+**`cashAfter - cashBefore == monthCashMovement`**
 
-The exact charge timing must be consistent with the game model and displayed forecasts.
+Immediate expenses must affect cash exactly once. Accepted employees must not enter payroll before their actual payroll/start boundary.
 
-## 2.2 Finance consistency
-
-Verify that these agree:
-
-- HUD monthly salary estimate
-- monthly payment estimate
-- month-end projected cash
-- actual month-end ledger/payment
-- cash after entering April week 1
-
-Accepted offers that have not yet become payroll obligations must not be charged early; once an employee actually enters payroll, forecasts and settlement must switch consistently.
-
-## 2.3 Regression tests
-
-Add/maintain deterministic tests around:
-
-- March week 4 -> April week 1
-- payroll boundary
-- rent/fixed-cost boundary
-- accepted-but-not-yet-started employees
-- first assignment occurring near the boundary
+Non-blocking follow-ups are tracked separately (for example Issue #14).
 
 ---
 
 # Phase 3 — First-year Beginner Mode
 
-Priority: **P1 / next major development phase**
+Priority: **P1 / current major development phase**
 
 Do **not** merge directly into unrestricted normal mode immediately after the first assignment.
 
-Beginner Mode should continue for approximately the first fiscal year and gradually reduce assistance.
+Beginner Mode should continue through the first fiscal year and gradually reduce assistance. The product goal is for the player to learn SES management by actually experiencing the financial and personnel consequences.
 
-## 3.1 Proposed progression
+## 3.0 Core design rules
 
-### March — Founding preparation
+1. **Event-driven teaching over calendar-only teaching.**
+   - Explain accounts receivable when the player first creates revenue/receivable.
+   - Explain payment sites when the player first has money scheduled for future collection.
+   - Explain waiting cost when the player actually has a waiting employee costing salary.
+   - Explain recruitment risk when hiring would materially increase fixed cost.
 
-Strong guided flow:
+2. **Do not expose hidden optimal answers.**
+   Guidance may explain tradeoffs, but should not turn strategy into a single obvious correct choice.
+
+3. **Failure is allowed.**
+   Beginner Mode should not guarantee survival. Bankruptcy/failure should provide useful management feedback and make the next attempt more understandable.
+
+4. **Guidance weakens over time.**
+   The player should move from one clear Primary CTA to multiple recommendations, then contextual hints, then largely independent play.
+
+5. **Use milestone/state reconciliation rather than fragile week-only flags.**
+   A player who reaches a milestone early/late must still receive the correct guidance and must not dead-end.
+
+6. **Do not implement the whole year in one risky change.**
+   Build and validate Beginner Mode in stages, beginning with April–June.
+
+---
+
+## 3.1 March — Founding preparation
+
+Guidance strength: **★★★★★**
+
+Existing strong guided flow:
 
 - employee confirmation
 - SkillSheet
@@ -150,63 +123,277 @@ Strong guided flow:
 
 Primary CTA should generally be one clear action.
 
-### April–June — Guided management
+After the first assignment, the tutorial must **continue** rather than immediately handing the player to unrestricted normal mode.
 
-Strong assistance remains.
+The visible objective transitions from:
 
-Teach through actual play:
+**"Get the first assignment"**
 
-- getting the remaining waiting employee assigned
-- payroll and rent
-- accounts receivable/payment sites
-- why sales are not immediately cash
+to:
+
+**"Keep the company alive and learn how cash actually moves."**
+
+---
+
+## 3.2 April–June — Guided Management / Survival
+
+Guidance strength: **★★★★☆**
+
+This is the **first implementation slice for Phase 3**. Implement and playtest this period before building July onward.
+
+### Player goal
+
+**Keep the company operating for the first three management months.**
+
+### Systems to teach through actual events
+
+- get remaining waiting employees assigned
+- payroll
+- office rent / fixed costs
+- accounts receivable
+- payment sites (30/60 days etc.)
+- why revenue/contract success is not immediate cash
+- waiting employee salary burden
 - basic recruitment
-- waiting-cost risk
+- recruitment increases future fixed-cost risk
+- first cash collection
+- basic cash runway awareness
 
-### July–September — Assisted decisions
+### Recommended-action presentation
 
-Move from one mandatory-looking CTA toward recommendations.
+The home screen should help the player understand both **what to do** and **why it matters**.
 
-Introduce/teach:
+Example concept:
 
-- parallel sales choices
+- 🔴 Waiting employee: start/continue sales activity
+- 🟡 Month-end payments: approximately ¥X
+- 🟢 First expected collection: Month/Week or date equivalent
+
+Avoid presenting every item as mandatory. Primary CTA may remain strong for critical onboarding actions, but financial information should increasingly support player judgment.
+
+### Event-driven tutorial examples
+
+#### First revenue / receivable
+
+Explain clearly that assignment/contract success does not immediately increase cash.
+
+Teach:
+
+- revenue was created
+- it becomes receivable
+- collection occurs according to the payment site
+
+#### First waiting-cost pressure
+
+When a waiting employee remains unassigned while salary is due, explain that waiting employees still consume cash and that sales priority matters.
+
+#### First cash collection
+
+Show a milestone explaining the difference between prior revenue recognition and actual cash receipt.
+
+#### Recruitment decision
+
+Before/when recruitment becomes relevant, show the tradeoff:
+
+- more employees can increase future revenue
+- salaries and related costs begin creating additional runway pressure
+
+Do not simply tell the player "hire now" unless the current guided step truly requires it.
+
+### April–June acceptance criteria
+
+Before implementing July–September, verify through automated and recorded play that a first-time player can reasonably understand:
+
+1. why cash did not increase immediately after first assignment,
+2. when money is expected to arrive,
+3. why waiting employees are dangerous to cash flow,
+4. what the next recommended management action is,
+5. how month-end salary/rent affects runway,
+6. that recruitment is a growth-versus-fixed-cost decision,
+7. that negative outcomes still recover without a dead end.
+
+Use Playwright seeded runs plus human/video UX review before proceeding.
+
+---
+
+## 3.3 July–September — Assisted Growth Decisions
+
+Guidance strength: **★★★☆☆**
+
+Only begin after April–June is validated.
+
+### Player goal
+
+Move from survival to controlled growth.
+
+### Teach/introduce
+
 - recruitment timing
+- multiple employees / parallel sales
+- comparing safe growth vs aggressive growth
 - contract renewal preparation
 - Morale / Company Trust
 - client relationships
 - cash runway
 
-### October–December — Independent management
+### Decision style
 
-Reduce tutorial intervention.
+Stop giving a single mandatory-looking answer for ordinary management choices.
 
-The player should increasingly choose among several valid strategies while the game explains important new situations when first encountered.
+Example tradeoff pattern:
 
-### January–March — Graduation period
+- **Hire another employee** — faster growth potential / higher fixed cost
+- **Prioritize assigning existing employees** — safer / slower growth
+- **Invest in work environment/welfare** — employee benefit / immediate cash reduction
 
-Guidance becomes minimal.
+The game may recommend actions based on state, but multiple strategies should remain valid.
 
-The player manages year-end largely independently. Surviving/completing the first fiscal year becomes the Beginner Mode completion milestone.
+---
 
-### Year 2 onward — Normal Mode
+## 3.4 October–December — Independent Management / People Decisions
 
-- Remove beginner restrictions.
-- Keep optional recommendations/help.
-- Increase freedom and strategic ambiguity.
+Guidance strength: **★★☆☆☆**
 
-## 3.2 Design rule
+### Player goal
 
-Beginner Mode must not mean one year of forced一本道 interaction. Assistance should transition through:
+Make meaningful management decisions with less tutorial intervention.
 
-**Primary CTA -> recommendations -> contextual help -> mostly independent play**
+### Focus
 
-Use milestones/state reconciliation rather than fragile week-only flags whenever possible.
+- contract continuation/renewal choices
+- employee satisfaction
+- Morale / Company Trust consequences
+- compensation pressure
+- welfare decisions
+- retention risk
+- balancing cash protection against employee investment
+
+This period should increasingly connect to Phase 6 HR systems as they become available. Do not prematurely build all Phase 6 features merely to fill this period; use existing systems first and add HR consequences deliberately.
+
+Example future event:
+
+An employee questions whether compensation matches their assignment/value, creating choices such as raise, bonus, or deferment with different cash and trust consequences.
+
+---
+
+## 3.5 January–March — Graduation Period
+
+Guidance strength: **★☆☆☆☆**
+
+### Player goal
+
+**Survive/complete the first fiscal year largely through independent management.**
+
+New tutorial explanations should be rare and mostly reserved for genuinely new situations.
+
+The home screen may show a simple year-end objective/progress indicator, for example:
+
+**"Survive your first year — 8 weeks remaining"**
+
+but should not prescribe every weekly action.
+
+---
+
+## 3.6 First-year completion report
+
+At the end of March week 4, provide a meaningful first-year management report before graduating Beginner Mode.
+
+Candidate metrics:
+
+- annual revenue
+- annual profit / operating result
+- ending cash
+- employee count
+- assigned employee count
+- waiting employee count
+- resignations (when implemented)
+- first assignment timing
+- first cash collection timing
+- first hire timing
+- contract renewal results (when applicable)
+
+Provide an understandable qualitative management evaluation such as a conservative/steady/growth-oriented result. Avoid pretending there is only one ideal play style.
+
+Then clearly present:
+
+**Beginner Mode complete -> Year 2 / Normal Mode unlocked**
+
+---
+
+## 3.7 Beginner Mode failure / bankruptcy feedback
+
+Failure is a learning outcome, not merely a reset screen.
+
+When the company fails during Beginner Mode, provide state-based feedback such as:
+
+- waiting salary burden became too high
+- hiring occurred before enough runway existed
+- collections arrived too late relative to expenses
+- too many employees remained unassigned
+
+Offer 1–3 concrete improvement hints based on the actual run.
+
+Do not fabricate a cause that is not supported by game state/accounting data.
+
+---
+
+## 3.8 Year 2 onward — Normal Mode
+
+After first-year graduation:
+
+- remove beginner restrictions
+- keep optional recommendations/help
+- increase freedom and strategic ambiguity
+- do not continue mandatory tutorial sequencing
+
+Normal Mode should feel like the same game with assistance removed, not an unrelated second ruleset.
+
+---
+
+## 3.9 Phase 3 implementation order
+
+Implement Phase 3 incrementally:
+
+### Phase 3A — April–June foundation **(NEXT IMPLEMENTATION)**
+
+- continue Beginner Mode after first assignment
+- add milestone/state model needed for first-year guidance
+- first revenue/receivable explanation
+- payment-site / expected-collection explanation
+- waiting-cost explanation
+- first cash-collection milestone
+- recommended-action presentation for survival/cash flow
+- recruitment growth-vs-cost guidance
+- Failure Recovery reconciliation
+- seeded Playwright coverage through at least June
+
+### Phase 3B — July–September
+
+- reduce guidance strength
+- recommendation model for growth choices
+- parallel-sales/recruitment/runway guidance
+- contract-renewal preparation
+
+### Phase 3C — October–December
+
+- contextual guidance only for most systems
+- people/retention/benefit decisions using available mechanics
+
+### Phase 3D — January–March + graduation
+
+- minimal guidance
+- first-year completion tracking
+- first-year report
+- Beginner Mode graduation -> Normal Mode
+- bankruptcy/failure feedback refinement
+
+Do not start Phase 3B until Phase 3A has passed automated regression tests and a recorded UX review.
 
 ---
 
 # Phase 4 — UI/UX cleanup
 
-Priority: **P1 after state/accounting stability**
+Priority: **P1 alongside/after stable Phase 3 slices where directly relevant**
 
 ## 4.1 Recruitment interview summary
 
@@ -232,6 +419,8 @@ Possible stance labels/icons:
 The player should understand the tone/intent, but there should not be an obviously correct answer.
 
 ## 4.3 Cash-flow warning on first assignment
+
+This now directly supports Phase 3A and may be implemented as part of that slice.
 
 "Contract/assignment established" must not visually imply immediate cash receipt.
 
@@ -329,14 +518,15 @@ These should be introduced based on playtest evidence, not simply because they a
 
 # Priority summary
 
-1. **P0 — Fix ghost/transition rendering and progression defects.**
-2. **P0 — Make March week 4 month-end accounting correct.**
-3. **P0 — Complete Failure Recovery regression coverage and stabilize 0.4C.2.**
-4. **P1 — Add random editable president/company defaults.** (Small enough to include during stabilization.)
-5. **P1 — Extend Beginner Mode through the first fiscal year.**
-6. **P1 — Clean up interview/decision/cash-flow UI.**
-7. **P2 — Improve waiting/result presentation.**
-8. **Next systems — resignation, salary/raises, EmployeeAbility, clients/commercial layers, Field Lead, sales expansion.**
+1. **CURRENT P1 — Phase 3A: April–June Beginner Mode foundation.**
+2. **P1 — Validate Phase 3A with seeded Playwright + recorded UX review.**
+3. **P1 — Phase 3B: July–September assisted growth decisions.**
+4. **P1 — Phase 3C: October–December independent/people decisions.**
+5. **P1 — Phase 3D: January–March graduation + first-year report.**
+6. **P1 — UI/UX cleanup where it directly supports Beginner Mode comprehension.**
+7. **P2 — Waiting/result presentation and milestone game-feel.**
+8. **P3 — Non-blocking technical follow-ups such as Issue #14.**
+9. **Next systems — resignation, salary/raises, EmployeeAbility, clients/commercial layers, Field Lead, sales expansion.**
 
 ---
 
@@ -349,7 +539,10 @@ The next major product milestone is reached when a first-time player can:
 3. understand the March-to-April cash movement,
 4. get the first employee(s) assigned,
 5. understand that revenue and cash collection are different,
-6. make guided but increasingly independent decisions through the first year,
-7. reach the first fiscal year-end without relying on hidden knowledge of the implementation.
+6. understand waiting cost and basic runway pressure,
+7. make guided but increasingly independent decisions through the first year,
+8. learn from bankruptcy/failure when it occurs,
+9. reach the first fiscal year-end without relying on hidden knowledge of the implementation,
+10. receive a first-year management report and graduate into Normal Mode.
 
 At that point S.E.S. should be treated as having its first coherent **"found and survive Year 1"** playable experience.

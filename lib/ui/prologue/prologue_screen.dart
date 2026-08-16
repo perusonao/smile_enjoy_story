@@ -228,7 +228,9 @@ class _CompanySetup extends StatefulWidget {
 /// widget test always sees the same initial value) — a first-time player can
 /// tap "会社を設立する" immediately with no typing, or edit either field
 /// first. "再生成" re-rolls both fields together with a fresh (still
-/// reproducible: seed + attempt count) pair.
+/// reproducible: seed + attempt count) pair — [PrologueEngine.
+/// rerollCompanySetup] guarantees the new pair differs from what's
+/// currently shown (Issue #12 P2).
 class _CompanySetupState extends State<_CompanySetup> {
   final _presidentController = TextEditingController();
   final _companyController = TextEditingController();
@@ -249,10 +251,16 @@ class _CompanySetupState extends State<_CompanySetup> {
   }
 
   void _regenerate() {
-    _regenerateAttempt++;
+    final (president, company, attempt) = PrologueEngine.rerollCompanySetup(
+      widget.seed,
+      afterAttempt: _regenerateAttempt,
+      currentPresident: _presidentController.text,
+      currentCompany: _companyController.text,
+    );
+    _regenerateAttempt = attempt;
     setState(() {
-      _presidentController.text = PrologueEngine.generateRandomPresidentName(widget.seed, attempt: _regenerateAttempt);
-      _companyController.text = PrologueEngine.generateRandomCompanyName(widget.seed, attempt: _regenerateAttempt);
+      _presidentController.text = president;
+      _companyController.text = company;
     });
   }
 

@@ -332,5 +332,32 @@ void main() {
         closing.projectRevenue - 400000 - rent - otherMonthlyFixedCost - mediaCost,
       );
     });
+
+    test('Issue #12 P2: monthCashMovement (the 現金増減 figure) reconciles with actual cash before/after for a month with paid recruitment media', () {
+      final engineer = buildEngineer(id: 'w1', salary: 400000, status: EngineerStatus.waiting);
+      var state = _emptyState().copyWith(engineers: [engineer]);
+      final cashAtMonthStart = state.company.cash;
+
+      // Posted mid-month: cash drops immediately, well before month-end.
+      state = GameEngine.postRecruitmentMedia(state, RecruitmentMediaType.engineerCareer);
+      final mediaCost = recruitmentMediaConfigs[RecruitmentMediaType.engineerCareer]!.cost;
+      expect(state.company.cash, cashAtMonthStart - mediaCost);
+
+      final next = _advance(state, 3); // week 4: month-end
+      final closing = next.latestClosing!;
+
+      // monthCashMovement must equal the actual whole-month cash change —
+      // recruitment spend counts exactly once, even though it left the bank
+      // before month-end settlement rather than during it.
+      expect(closing.monthCashMovement, next.company.cash - cashAtMonthStart);
+      expect(closing.monthCashMovement, closing.cashDelta - mediaCost);
+
+      // cashBefore/cashAfter must describe the same whole month as
+      // monthCashMovement, not silently start mid-month with the
+      // recruitment spend already hidden.
+      expect(closing.cashBefore, cashAtMonthStart);
+      expect(closing.cashAfter, next.company.cash);
+      expect(closing.cashAfter - closing.cashBefore, closing.monthCashMovement);
+    });
   });
 }

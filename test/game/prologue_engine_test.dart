@@ -194,6 +194,48 @@ void main() {
     });
   });
 
+  group('Issue #12 P2: rerollCompanySetup always produces a visibly different pair', () {
+    test('the returned pair always differs from the current one, deterministically, across many seeds/attempts', () {
+      for (var seed = 0; seed < 200; seed++) {
+        var president = PrologueEngine.generateRandomPresidentName(seed);
+        var company = PrologueEngine.generateRandomCompanyName(seed);
+        var attempt = 0;
+        for (var reroll = 0; reroll < 5; reroll++) {
+          final (nextPresident, nextCompany, nextAttempt) = PrologueEngine.rerollCompanySetup(
+            seed,
+            afterAttempt: attempt,
+            currentPresident: president,
+            currentCompany: company,
+          );
+          expect(
+            nextPresident != president || nextCompany != company,
+            isTrue,
+            reason: 'seed $seed, reroll #$reroll: re-generate must change at least one field',
+          );
+          president = nextPresident;
+          company = nextCompany;
+          attempt = nextAttempt;
+        }
+      }
+    });
+
+    test('is reproducible: same seed + same starting pair always rerolls to the same result', () {
+      final a = PrologueEngine.rerollCompanySetup(
+        42,
+        afterAttempt: 0,
+        currentPresident: PrologueEngine.generateRandomPresidentName(42),
+        currentCompany: PrologueEngine.generateRandomCompanyName(42),
+      );
+      final b = PrologueEngine.rerollCompanySetup(
+        42,
+        afterAttempt: 0,
+        currentPresident: PrologueEngine.generateRandomPresidentName(42),
+        currentCompany: PrologueEngine.generateRandomCompanyName(42),
+      );
+      expect(a, b);
+    });
+  });
+
   test('March calendar: prologueWeek advances 1→4 without touching company.currentWeek (§11, §83)', () {
     var state = PrologueEngine.newGame(seed: 1);
     expect(state.prologueState.prologueWeek, 1);

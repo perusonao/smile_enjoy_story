@@ -183,6 +183,38 @@ class PrologueEngine {
     return '株式会社$prefix$suffix';
   }
 
+  /// Highest number of forward attempts [rerollCompanySetup] will search
+  /// before giving up on finding a distinct pair — generous relative to the
+  /// name pools' combined size (400 president x 144 company combinations),
+  /// so this is never expected to actually bind in practice.
+  static const int _rerollSearchLimit = 50;
+
+  /// Re-rolls both Company Setup fields (Playable 0.4C.2 §5's "再生成"),
+  /// walking [attempt] forward from [afterAttempt] until the produced pair
+  /// differs from ([currentPresident], [currentCompany]) — deterministically
+  /// per [seed], so a "reroll" tap is guaranteed to visibly change
+  /// something instead of leaving the fields unchanged by rare pool
+  /// coincidence (Issue #12 P2: the widget test asserting this was flaky
+  /// because two independent draws can land on the same pair).
+  static (String president, String company, int attempt) rerollCompanySetup(
+    int seed, {
+    required int afterAttempt,
+    required String currentPresident,
+    required String currentCompany,
+  }) {
+    var attempt = afterAttempt;
+    String president;
+    String company;
+    do {
+      attempt++;
+      president = generateRandomPresidentName(seed, attempt: attempt);
+      company = generateRandomCompanyName(seed, attempt: attempt);
+    } while (president == currentPresident &&
+        company == currentCompany &&
+        attempt < afterAttempt + _rerollSearchLimit);
+    return (president, company, attempt);
+  }
+
   // ---------------------------------------------------------------------
   // March Week 1: player-chosen recruitment listing (§12-16, Playable
   // 0.5A.1 §3) — the player must explicitly pick a medium; nothing here
@@ -611,6 +643,16 @@ class PrologueEngine {
     if (proposal == null) return state;
     final engineer = state.engineerById(id);
     final marchFixedCost = FinanceEngine.monthlyRent(state) + otherMonthlyFixedCost + (state.generalAffairsStaff?.salary ?? 0);
+    // Any March recruitment-listing cost was already deducted from cash the
+    // instant it was posted (postRecruitmentMedia) — it's a March expense,
+    // fully settled in cash terms, not an unpaid April one. This lump sum
+    // must still be recognized exactly once in cumulative
+    // accounting/annual-profit history, though (Issue #12 P1) — March never
+    // runs through GameEngine.advanceWeek's own month-end close (see the
+    // class doc comment above), so nothing else ever folds it into
+    // [GameStats.cumulativeRecruitmentCost]. Recording it here, before the
+    // accrual counter is cleared, is March's only accounting close.
+    final marchRecruitmentCost = state.pendingMiscExpense;
     final assignment = ActiveAssignment(engineerId: id, project: proposal.project, remainingWeeks: proposal.project.durationWeeks, assignedWeek: 1);
     final engineers = [
       for (final e in state.engineers)
@@ -621,12 +663,15 @@ class PrologueEngine {
           engineers: engineers,
           activeAssignments: [...state.activeAssignments, assignment],
           company: state.company.copyWith(cash: state.company.cash - marchFixedCost),
-          // Any March recruitment-listing cost was already deducted from
-          // cash the instant it was posted (postRecruitmentMedia) — it's a
-          // March expense, fully settled, not an unpaid April one. Clearing
-          // the accrual counter here keeps it out of April's own month-end
-          // MonthlyClosing.recruitmentCost/accountingProfit line (Playable
-          // 0.4C.2 §2: March's books must not leak into April's).
+          stats: state.stats.copyWith(
+            cumulativeRecruitmentCost: state.stats.cumulativeRecruitmentCost + marchRecruitmentCost,
+          ),
+          // Cash was never touched above for this — only the cumulative
+          // accounting stat is. Clearing the accrual counter here keeps it
+          // out of April's own month-end MonthlyClosing.recruitmentCost/
+          // accountingProfit line (Playable 0.4C.2 §2: March's books must
+          // not leak into April's) now that it has been preserved in
+          // cumulative history above.
           pendingMiscExpense: 0,
         )
         .withLog('${engineer.profile.name}さんが入社しました！', category: GameLogCategory.engineerJoined)

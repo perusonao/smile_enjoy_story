@@ -54,7 +54,7 @@ class _FinanceSheet extends StatelessWidget {
               Text('${closing.label} の実績', style: Theme.of(context).textTheme.titleSmall),
               const SizedBox(height: 6),
               _Row(label: '会計上利益', value: closing.accountingProfit, positive: closing.accountingProfit >= 0),
-              _Row(label: '現金増減', value: closing.cashDelta, positive: closing.cashDelta >= 0),
+              _Row(label: '現金増減', value: closing.monthCashMovement, positive: closing.monthCashMovement >= 0),
             ],
           ],
         ),

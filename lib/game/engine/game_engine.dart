@@ -1041,14 +1041,27 @@ class GameEngine {
           rentPaid -
           fixedCostPaid -
           recruitmentCost;
+      // Settlement-only movement (excludes recruitmentCost — see
+      // MonthlyClosing.cashDelta's doc comment). `cashAtSettlement` is
+      // today's actual cash, which already has this month's recruitment
+      // spend baked in (postRecruitmentMedia deducted it immediately, well
+      // before this settlement step runs).
       final cashDelta =
           cashCollected -
           salaryPaid -
           rentPaid -
           fixedCostPaid;
-      final cashBefore = state.company.cash;
-      final cashAfter = cashBefore + cashDelta;
+      final cashAtSettlement = state.company.cash;
+      final cashAfter = cashAtSettlement + cashDelta;
       newCash = cashAfter;
+
+      // Whole-month view (Issue #12 P2): reconstruct true start-of-month
+      // cash by adding back the recruitment spend already deducted earlier
+      // this month, so [MonthlyClosing.cashBefore]/[cashAfter]/
+      // [monthCashMovement] all describe one consistent month instead of
+      // [cashBefore] silently starting mid-month with that spend hidden.
+      final monthStartCash = cashAtSettlement + recruitmentCost;
+      final monthCashMovement = cashAfter - monthStartCash;
 
       final label =
           '${GameCalendar.calendarYear(newWeek)}年${GameCalendar.monthName(newWeek)}';
@@ -1065,7 +1078,8 @@ class GameEngine {
         recruitmentCost: recruitmentCost,
         accountingProfit: accountingProfit,
         cashDelta: cashDelta,
-        cashBefore: cashBefore,
+        monthCashMovement: monthCashMovement,
+        cashBefore: monthStartCash,
         cashAfter: cashAfter,
       );
       final updatedClosings = [...state.monthlyClosings, closing];
@@ -1087,7 +1101,7 @@ class GameEngine {
         '$label 月次決算: 売上¥$projectRevenue / 入金¥$cashCollected / 給与¥$salaryPaid / '
         '家賃¥$rentPaid / 固定費¥$fixedCostPaid / 求人費¥$recruitmentCost / '
         '利益${accountingProfit >= 0 ? '+' : ''}¥$accountingProfit / '
-        '現金 ¥$cashBefore → ¥$cashAfter',
+        '現金 ¥$monthStartCash → ¥$cashAfter',
       );
 
       // 9) 倒産判定 (月末のみ) ---------------------------------------------
@@ -1097,8 +1111,8 @@ class GameEngine {
         // Deliberately excludes recruitmentCost: postRecruitmentMedia
         // already took that cash out of Company.cash the moment the listing
         // was posted (well before this month-end check), so it's already
-        // baked into cashBefore rather than part of this month-end's own
-        // shortfall (Playable 0.4C.2 §2 fix — see cashDelta above).
+        // baked into cashAtSettlement rather than part of this month-end's
+        // own shortfall (Playable 0.4C.2 §2 fix — see cashDelta above).
         bankruptCause =
             '$label の月次決算で支出(給与¥$salaryPaid + 家賃¥$rentPaid + 固定費¥$fixedCostPaid)が'
             '入金(¥$cashCollected)を上回り、資金がショートしました。';

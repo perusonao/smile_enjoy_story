@@ -142,4 +142,50 @@ void main() {
       expect(next.latestClosing!.recruitmentCost, 0);
     });
   });
+
+  group('Issue #12 P1: March recruitment expense is preserved in cumulative accounting', () {
+    test('a paid March recruitment medium is recognized exactly once in GameStats.cumulativeRecruitmentCost, at the March->April boundary', () {
+      final mediaCost = recruitmentMediaConfigs[RecruitmentMediaType.engineerCareer]!.cost;
+
+      GameState? rightBeforeJoining;
+      final joined = playThroughPrologue(
+        9,
+        mediaType: RecruitmentMediaType.engineerCareer,
+        onTick: (s) {
+          rightBeforeJoining ??= s.pendingMiscExpense > 0 ? s : null;
+        },
+      );
+      expect(rightBeforeJoining, isNotNull, reason: 'sanity: the paid March listing did accrue a recruitment-cost line');
+
+      // Before enterAprilWeek1 clears pendingMiscExpense, nothing has yet
+      // folded it into cumulative accounting.
+      expect(rightBeforeJoining!.stats.cumulativeRecruitmentCost, 0);
+
+      // enterAprilWeek1 fired (contract secured) — the March expense must
+      // now be preserved in cumulative recruitment accounting / annual
+      // profit, even though March never runs through GameEngine.advanceWeek's
+      // own month-end close.
+      expect(joined.stats.cumulativeRecruitmentCost, mediaCost);
+      expect(
+        joined.stats.cumulativeProfit,
+        -mediaCost,
+        reason: 'no revenue has been recognized yet, so cumulative profit is exactly the negative of the recruitment cost',
+      );
+
+      // Cash was deducted exactly once, at posting time — enterAprilWeek1
+      // must not deduct it again.
+      final cashRightBeforeJoining = rightBeforeJoining!.company.cash;
+      final marchFixedCost = FinanceEngine.monthlyRent(joined) + otherMonthlyFixedCost + joined.generalAffairsStaff!.salary;
+      expect(joined.company.cash, cashRightBeforeJoining - marchFixedCost);
+
+      // April's own month-end must not count the March expense a second
+      // time, in either cash or cumulative accounting.
+      var next = joined;
+      for (var i = 0; i < 3; i++) {
+        next = GameEngine.advanceWeek(next);
+      }
+      expect(next.latestClosing!.recruitmentCost, 0);
+      expect(next.stats.cumulativeRecruitmentCost, mediaCost);
+    });
+  });
 }

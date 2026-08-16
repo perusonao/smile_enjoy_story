@@ -14,7 +14,10 @@ void main(){
       final state=base.copyWith(company:base.company.copyWith(cash:100000000));
       SharedPreferences.setMockInitialValues({'ses_playable_save_v1':jsonEncode(state.toJson()),'ses_founding_tutorial_seen':true});
       await tester.pumpWidget(SesApp(controller:GameController()));await tester.pumpAndSettle();
-      expect(find.text('1億円'),findsOneWidget);
+      // Playable 0.4C.3 §2: the persistent cross-tab HUD (main_shell.dart)
+      // now shows cash too, alongside Home's own dashboard — so this is
+      // deliberately >=1, not exactly 1.
+      expect(find.text('1億円'),findsWidgets);
       expect(find.text('今やること'),findsOneWidget);
       expect(find.text('STEP 1 / 9'),findsOneWidget);
       expect(tester.takeException(),isNull);

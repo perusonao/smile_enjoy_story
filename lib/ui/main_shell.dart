@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 
+import '../app/game_scope.dart';
 import '../app/nav_scope.dart';
 import 'engineers/engineer_list_screen.dart';
 import 'home/home_screen.dart';
 import 'others/others_screen.dart';
 import 'projects/project_list_screen.dart';
 import 'recruitment/recruitment_screen.dart';
+import 'widgets/management_hud.dart';
 import 'widgets/phone_frame.dart';
 
 /// Bottom-nav tab indices, shared with anything that calls
@@ -44,13 +46,19 @@ class MainShell extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tabIndex = NavScope.of(context);
+    final state = context.game.state;
     return PhoneFrame(
       child: ValueListenableBuilder<int>(
         valueListenable: tabIndex,
         builder: (context, index, _) {
           return Scaffold(
             body: SafeArea(
-              child: IndexedStack(index: index, children: _screens),
+              child: Column(
+                children: [
+                  ManagementHud(state: state),
+                  Expanded(child: IndexedStack(index: index, children: _screens)),
+                ],
+              ),
             ),
             bottomNavigationBar: NavigationBar(
               selectedIndex: index,

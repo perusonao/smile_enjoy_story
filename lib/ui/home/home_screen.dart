@@ -11,6 +11,7 @@ import '../projects/client_interview_screen.dart';
 import '../projects/interview_results_screen.dart';
 import '../recruitment/applicant_detail_screen.dart';
 import '../theme.dart';
+import '../widgets/company_phase_indicator.dart';
 import '../widgets/expense_breakdown_sheet.dart';
 import '../widgets/founding_dialogs.dart';
 import '../widgets/monthly_closing_dialog.dart';
@@ -303,7 +304,9 @@ class _HomeScreenState extends State<HomeScreen> {
             _HeadcountLine(state: state),
           ] else
             _SimplifiedDashboard(state: state),
-          const SizedBox(height: 18),
+          const SizedBox(height: 8),
+          CompanyPhaseBanner(state: state),
+          const SizedBox(height: 14),
 
           if (tutorialActive) ...[
             // --- "今やること" leads (§9-11, §33-37) — a labeled Critical

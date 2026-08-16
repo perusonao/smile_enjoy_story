@@ -27,6 +27,14 @@ const List<String> _navigatorFlavors = [
   '几帳面で、書類仕事はいつも完璧です。',
 ];
 
+/// Company-name components for [PrologueEngine.generateRandomCompanyName]
+/// (Playable 0.4C.2 §5): combined as 株式会社 + prefix + suffix, in the same
+/// spirit as real SES/IT company names (e.g. 株式会社ネクストリンク). 12×12
+/// combinations keeps repeats rare across a single session without needing a
+/// large fixed list.
+const List<String> _companyNamePrefixes = ['ネクスト', 'ブルー', 'グロウ', 'シン', 'クロス', 'アルファ', 'テクノ', 'スマート', 'ライズ', 'コア', 'フロンティア', 'エイム'];
+const List<String> _companyNameSuffixes = ['リンク', 'コード', 'テック', 'システムズ', 'ソリューションズ', 'ワークス', 'ソフト', 'フィールド', 'ネット', 'ラボ', 'デザイン', 'イノベーション'];
+
 /// Orchestrates the Founding Prologue (Playable 0.5A): a scripted March →
 /// April sequence that drives the *existing* recruitment / interview /
 /// selection / sales engines instead of adding a parallel simulation (§2,
@@ -150,6 +158,30 @@ class PrologueEngine {
   }
 
   static GameState markIntroSeen(GameState state) => state.copyWith(prologueState: state.prologueState.copyWith(introSeen: true));
+
+  /// A plausible-looking random Japanese president name (Playable 0.4C.2
+  /// §5), for pre-filling Company Setup so a new player can found the
+  /// company without typing anything first. Reuses [surnamePool] /
+  /// [givenNamePool] — the exact same pool [_generateNavigator] draws
+  /// from — rather than a separate list. [attempt] disambiguates repeated
+  /// "re-roll" taps against the same [seed] so each one produces a
+  /// different (but still reproducible) name.
+  static String generateRandomPresidentName(int seed, {int attempt = 0}) {
+    final rng = seededRandom(seed, 0, 'random-president-name-$attempt');
+    final surname = surnamePool[rng.nextInt(surnamePool.length)];
+    final given = givenNamePool[rng.nextInt(givenNamePool.length)];
+    return '$surname $given';
+  }
+
+  /// A plausible-looking random SES/IT company name (Playable 0.4C.2 §5),
+  /// e.g. "株式会社ネクストリンク". Purely cosmetic flavor text, same as
+  /// [generateRandomPresidentName] above.
+  static String generateRandomCompanyName(int seed, {int attempt = 0}) {
+    final rng = seededRandom(seed, 0, 'random-company-name-$attempt');
+    final prefix = _companyNamePrefixes[rng.nextInt(_companyNamePrefixes.length)];
+    final suffix = _companyNameSuffixes[rng.nextInt(_companyNameSuffixes.length)];
+    return '株式会社$prefix$suffix';
+  }
 
   // ---------------------------------------------------------------------
   // March Week 1: player-chosen recruitment listing (§12-16, Playable
@@ -589,6 +621,13 @@ class PrologueEngine {
           engineers: engineers,
           activeAssignments: [...state.activeAssignments, assignment],
           company: state.company.copyWith(cash: state.company.cash - marchFixedCost),
+          // Any March recruitment-listing cost was already deducted from
+          // cash the instant it was posted (postRecruitmentMedia) — it's a
+          // March expense, fully settled, not an unpaid April one. Clearing
+          // the accrual counter here keeps it out of April's own month-end
+          // MonthlyClosing.recruitmentCost/accountingProfit line (Playable
+          // 0.4C.2 §2: March's books must not leak into April's).
+          pendingMiscExpense: 0,
         )
         .withLog('${engineer.profile.name}さんが入社しました！', category: GameLogCategory.engineerJoined)
         .withLog('${engineer.profile.name}さんが「${proposal.project.title}」に参画しました！(-¥$marchFixedCost 3月分固定費)', category: GameLogCategory.assignmentStarted);

@@ -116,14 +116,22 @@ class FinanceEngine {
         .fold<int>(0, (sum, ar) => sum + ar.amount);
   }
 
-  /// 今月支払予定: this month's salary + rent + fixed cost + recruitment
-  /// spend accrued so far, i.e. what month-end will pay out if the week
-  /// ended right now.
+  /// 今月支払予定: this month's remaining salary + rent + fixed cost, i.e.
+  /// what month-end will still pay out if the week ended right now.
+  ///
+  /// Deliberately excludes [GameState.pendingMiscExpense] (recruitment
+  /// spend accrued so far this month, Playable 0.4C.2 §2 fix):
+  /// [GameEngine.postRecruitmentMedia] already deducts that cost from
+  /// [Company.cash] the instant a listing is posted, so it's baked into
+  /// `state.company.cash` by the time this runs. Adding it again here would
+  /// double-count it against [projectedMonthEndCash] — this must stay in
+  /// sync with the real month-end close ([GameEngine.advanceWeek]'s
+  /// `cashDelta`), which has the identical exclusion for the identical
+  /// reason.
   static int expectedOutflowThisMonth(GameState state) =>
       monthlySalaryTotal(state) +
       monthlyRent(state) +
-      otherMonthlyFixedCost +
-      state.pendingMiscExpense;
+      otherMonthlyFixedCost;
 
   /// 月末予想現金: today's cash, plus what's expected in, minus what's
   /// expected out, by this month's close.

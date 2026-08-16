@@ -22,8 +22,15 @@ class MonthlyClosing {
   /// recruitmentCost. Deliberately independent of [cashDelta].
   final int accountingProfit;
 
-  /// Actual change in cash this month: cashCollected - salaryPaid - rentPaid
-  /// - otherFixedCost - recruitmentCost.
+  /// Actual change in cash *at this month-end close*: cashCollected -
+  /// salaryPaid - rentPaid - otherFixedCost. Deliberately excludes
+  /// [recruitmentCost] (Playable 0.4C.2 §2 fix) — recruitment-listing cash
+  /// already left the company the moment the listing was posted
+  /// ([GameEngine.postRecruitmentMedia] deducts it immediately, well before
+  /// month-end), so subtracting it again here would double-charge the same
+  /// yen. [recruitmentCost] is still reported (and still folded into
+  /// [accountingProfit]) purely as this month's accrual/P&L line, not as a
+  /// second cash outflow.
   final int cashDelta;
 
   final int cashBefore;

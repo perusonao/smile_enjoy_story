@@ -154,7 +154,8 @@ body {
   margin-top: 0.4rem;
   flex-wrap: wrap;
 }
-.card button {
+.card button,
+.card .actions a {
   flex: 1 1 auto;
   min-width: 6.5rem;
   background: var(--accent);
@@ -164,13 +165,19 @@ body {
   padding: 0.5rem 0.7rem;
   font-size: 0.85rem;
   cursor: pointer;
+  text-decoration: none;
+  text-align: center;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 .card button:disabled {
   background: var(--panel-border);
   color: var(--text-dim);
   cursor: not-allowed;
 }
-.card button.secondary {
+.card button.secondary,
+.card .actions a.secondary {
   background: transparent;
   border: 1px solid var(--panel-border);
   color: var(--text);

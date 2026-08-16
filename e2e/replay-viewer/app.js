@@ -6,6 +6,7 @@ import { escapeHtml } from './lib/escape-html.mjs';
 import { isSafeRelativePath } from './lib/safe-path.mjs';
 import { filterTests, distinctBrowsers } from './lib/filter-tests.mjs';
 import { formatDurationMs, formatElapsed, browserLabel, statusLabel } from './lib/format.mjs';
+import { renderActionsHtml } from './lib/render-card.mjs';
 
 const state = {
   manifest: null,
@@ -171,11 +172,7 @@ function renderCard(t) {
     <div class="scenario">${escapeHtml(t.scenario)}</div>
     <div class="meta">${metaLines.map(escapeHtml).join(' · ')}</div>
     ${t.warnings?.length ? `<div class="warnings">⚠ ${escapeHtml(t.warnings.join(' / '))}</div>` : ''}
-    <div class="actions">
-      <button type="button" class="replay-btn" ${t.video ? '' : 'disabled'}>${t.video ? '▶ Replay' : '動画なし'}</button>
-      <button type="button" class="trace-btn secondary" ${t.actionTrace ? '' : 'disabled'}>Action Trace</button>
-      <button type="button" class="result-btn secondary" ${t.result ? '' : 'disabled'}>Result</button>
-    </div>
+    <div class="actions">${renderActionsHtml(t)}</div>
   `;
 
   const replayBtn = card.querySelector('.replay-btn');

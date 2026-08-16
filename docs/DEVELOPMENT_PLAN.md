@@ -485,34 +485,165 @@ Core decision: spending cash on compensation/retention should compete with prote
 
 Candidate order:
 
-1. EmployeeAbility expansion
-   - interview aptitude
-   - incident/fire resistance
-   - client friendliness
-   - leadership tendency
-   - learning speed
-   - long-project suitability
+## 7.1 SkillSheet / Career History expansion
 
-2. Client relationships / commercial layers
-   - trust and transaction history
-   - upstream/end-client distinctions
-   - introductions/unlocks
+Add structured past-project history to each engineer so a SkillSheet represents actual career evidence rather than only aggregate skill values.
 
-3. Field Lead expansion
-   - assignment employees discovering additional openings/projects
+Each past assignment/career entry should be able to represent, where applicable:
 
-4. Sales expansion
-   - team/set proposals
-   - richer parallel-sales strategy
-   - future sales-employee role
+- project / business-domain summary (for example EC, banking, public-sector, infrastructure)
+- participation period / duration
+- programming languages
+- frameworks / libraries
+- database / infrastructure technologies
+- role (PG / SE / PL / PM etc.)
+- team/project scale
+- process / responsibilities (requirements, basic design, detailed design, implementation, test, operations, incident response etc.)
 
-5. Later candidates
-   - BP/partner companies
-   - new graduates/inexperienced hiring
-   - financing/loans
-   - larger-company management overhead
+### Experience aggregation
+
+Prefer deriving experience summaries from career history instead of storing only independent totals.
+
+Examples:
+
+- Java: 4 years 2 months
+- Spring: 2 years 8 months
+- basic design: 1 year 4 months
+- leader experience: 6 months
+
+Avoid double-counting overlapping periods when multiple technologies were used on the same assignment. Define aggregation semantics before connecting them to matching.
+
+### Actual history vs sales SkillSheet
+
+Preserve the existing concept that the sales-facing SkillSheet can differ from reality.
+
+The system should eventually distinguish:
+
+- **actual career history / actual experience**
+- **sales-facing SkillSheet representation**
+
+This enables realistic exaggeration such as actual Java experience of 2 years 8 months being represented as 3 years, while Company Trust / interview risk reacts to the gap.
+
+Do not allow the editable SkillSheet to overwrite or destroy the underlying factual career history.
+
+### Career growth during play
+
+Long-term target: assignments completed during gameplay should become part of the engineer's career history automatically.
+
+An engineer who spends one or two in-game years on projects should therefore have a visibly stronger SkillSheet than when they joined the company.
+
+Implementation should be staged:
+
+1. data model + backward-compatible save migration
+2. deterministic generation of initial career history for existing/new engineers
+3. employee/SkillSheet UI display
+4. derived experience summaries
+5. matching / document-screening effects
+6. automatic career-history growth from in-game assignments
+
+Do not change the core matching algorithm in the same PR as the initial data-model introduction unless separately reviewed and tested.
+
+## 7.2 Engineer Certifications
+
+Add certifications/qualifications to technical employees.
+
+Initial certification families may include examples such as:
+
+- 基本情報技術者
+- 応用情報技術者
+- AWS certifications (Cloud Practitioner / Solutions Architect etc.)
+- Azure certifications
+- Oracle Java certifications
+- Oracle Database certifications
+- CCNA
+- LPIC / LinuC
+
+Use a structured certification model rather than free-text-only strings so certifications can later participate in matching and employee development.
+
+Candidate fields include:
+
+- certification ID/type
+- display name
+- acquired status/date or career timing where useful
+- category (development / cloud / network / database / general IT)
+- level/rank where applicable
+
+### Gameplay role of certifications
+
+Certifications should primarily support **sales/document screening and credibility**, not act as a simple universal `ability +5` modifier.
+
+Example principle for an AWS project:
+
+- AWS practical experience: △
+- AWS SAA certification: ◎ supporting evidence
+- infrastructure experience: ○
+
+A certification may partially compensate for limited experience, but should not completely replace required practical experience unless the project explicitly accepts that.
+
+Later project requirements may include:
+
+- required certification
+- preferred certification
+- certification as a tie-breaker / screening bonus
+
+## 7.3 Qualification acquisition / employee development (later extension)
+
+After certification data and matching behavior are stable, consider a qualification-support management system:
+
+**company pays exam/training cost -> employee studies -> pass/fail -> certification acquired -> sales credibility / Morale / employee growth changes**
+
+Potential decisions:
+
+- company pays all exam costs
+- partial subsidy
+- study/training time support
+- no support
+
+This should connect employee development, welfare spending, retention/Morale, and future project opportunities. Do not implement it before the underlying certification and career-history models are stable.
+
+## 7.4 EmployeeAbility expansion
+
+- interview aptitude
+- incident/fire resistance
+- client friendliness
+- leadership tendency
+- learning speed
+- long-project suitability
+
+Career history and certifications should remain distinct from hidden/innate EmployeeAbility. A qualification is evidence/achievement; it is not the same thing as personality or innate aptitude.
+
+## 7.5 Client relationships / commercial layers
+
+- trust and transaction history
+- upstream/end-client distinctions
+- introductions/unlocks
+
+## 7.6 Field Lead expansion
+
+- assignment employees discovering additional openings/projects
+
+## 7.7 Sales expansion
+
+- team/set proposals
+- richer parallel-sales strategy
+- future sales-employee role
+
+## 7.8 Later candidates
+
+- BP/partner companies
+- new graduates/inexperienced hiring
+- financing/loans
+- larger-company management overhead
 
 These should be introduced based on playtest evidence, not simply because they are available ideas.
+
+### Phase 7 design principle
+
+The long-term SES matching model should be able to distinguish at least:
+
+**career evidence + experience duration + role/process experience + certifications + sales SkillSheet representation + EmployeeAbility + human traits**
+
+This allows two engineers with the same nominal language skill to have meaningfully different sales value and project fit.
 
 ---
 
@@ -526,7 +657,8 @@ These should be introduced based on playtest evidence, not simply because they a
 6. **P1 — UI/UX cleanup where it directly supports Beginner Mode comprehension.**
 7. **P2 — Waiting/result presentation and milestone game-feel.**
 8. **P3 — Non-blocking technical follow-ups such as Issue #14.**
-9. **Next systems — resignation, salary/raises, EmployeeAbility, clients/commercial layers, Field Lead, sales expansion.**
+9. **NEXT SYSTEM FOUNDATION — SkillSheet career history and engineer certifications.**
+10. **Later systems — qualification acquisition, resignation, salary/raises, EmployeeAbility, clients/commercial layers, Field Lead, sales expansion.**
 
 ---
 

@@ -1,9 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
 import { escapeHtml } from './escape-html.mjs';
 import { isSafeRelativePath } from './safe-path.mjs';
 import { filterTests, distinctBrowsers } from './filter-tests.mjs';
 import { formatDurationMs, browserLabel, statusLabel, formatElapsed } from './format.mjs';
+import { computeVideoDownload, buildVideoDownloadFilename, sanitizeFilenameSegment } from './download.mjs';
 
 // --- escapeHtml / unsafe text handling ------------------------------------
 
@@ -112,4 +114,90 @@ test('statusLabel maps known statuses, passes through unknown ones', () => {
   assert.equal(statusLabel('passed'), '✅ PASS');
   assert.equal(statusLabel('failed'), '❌ FAIL');
   assert.equal(statusLabel('weird'), 'weird');
+});
+
+// --- MP4 download control ---------------------------------------------------
+
+test('computeVideoDownload: a valid manifest-relative mp4 path produces an available download link', () => {
+  const dl = computeVideoDownload({
+    video: 'mobile-chromium/founding-first-assignment-100001.mp4',
+    browser: 'mobile-chromium',
+    scenario: 'founding-first-assignment',
+    seed: 100001,
+  });
+  assert.equal(dl.available, true);
+  assert.equal(dl.href, 'mobile-chromium/founding-first-assignment-100001.mp4');
+  assert.equal(dl.filename, 'ses-mobile-chromium-founding-first-assignment-100001.mp4');
+});
+
+test('buildVideoDownloadFilename: mobile-chromium entry gets the correct download filename', () => {
+  const name = buildVideoDownloadFilename({ browser: 'mobile-chromium', scenario: 'founding-first-assignment', seed: 100001 });
+  assert.equal(name, 'ses-mobile-chromium-founding-first-assignment-100001.mp4');
+});
+
+test('buildVideoDownloadFilename: mobile-webkit entry gets the correct download filename', () => {
+  const name = buildVideoDownloadFilename({ browser: 'mobile-webkit', scenario: 'founding-first-assignment', seed: 100002 });
+  assert.equal(name, 'ses-mobile-webkit-founding-first-assignment-100002.mp4');
+});
+
+test('computeVideoDownload: missing video (null/undefined/empty) is unavailable — Download disabled/hidden', () => {
+  assert.equal(computeVideoDownload({ video: null }).available, false);
+  assert.equal(computeVideoDownload({ video: undefined }).available, false);
+  assert.equal(computeVideoDownload({ video: '' }).available, false);
+  assert.equal(computeVideoDownload({}).available, false);
+  const dl = computeVideoDownload({ video: null });
+  assert.equal(dl.href, null);
+  assert.equal(dl.filename, null);
+});
+
+test('computeVideoDownload: "../evil.mp4" traversal is rejected', () => {
+  assert.equal(computeVideoDownload({ video: '../evil.mp4' }).available, false);
+  assert.equal(computeVideoDownload({ video: 'mobile-chromium/../../evil.mp4' }).available, false);
+});
+
+test('computeVideoDownload: "/absolute/path.mp4" is rejected', () => {
+  assert.equal(computeVideoDownload({ video: '/absolute/path.mp4' }).available, false);
+});
+
+test('computeVideoDownload: external URL "https://example.com/video.mp4" is rejected', () => {
+  assert.equal(computeVideoDownload({ video: 'https://example.com/video.mp4' }).available, false);
+});
+
+test('computeVideoDownload: "javascript:alert(1)" is rejected', () => {
+  assert.equal(computeVideoDownload({ video: 'javascript:alert(1)' }).available, false);
+});
+
+test('computeVideoDownload: "data:" URL is rejected', () => {
+  assert.equal(computeVideoDownload({ video: 'data:text/html,<script>alert(1)</script>' }).available, false);
+});
+
+test('buildVideoDownloadFilename sanitizes special characters in scenario/browser into a safe filename', () => {
+  const name = buildVideoDownloadFilename({
+    browser: 'mobile/chrom<ium>',
+    scenario: '../weird "scenario"!! 名前',
+    seed: '10<>01',
+  });
+  assert.match(name, /^ses-[A-Za-z0-9._-]+\.mp4$/);
+  assert.equal(name.includes('..'), false);
+  assert.equal(name.includes('/'), false);
+  assert.equal(name.includes('<'), false);
+  assert.equal(name.includes('"'), false);
+});
+
+test('sanitizeFilenameSegment falls back when the cleaned value is empty', () => {
+  assert.equal(sanitizeFilenameSegment('###', 'fallback'), 'fallback');
+  assert.equal(sanitizeFilenameSegment('', 'fallback'), 'fallback');
+  assert.equal(sanitizeFilenameSegment(null, 'fallback'), 'fallback');
+});
+
+test('app.js still wires up Replay / Action Trace / Result controls alongside the new Download control (no regressions)', async () => {
+  const src = await readFile(new URL('../app.js', import.meta.url), 'utf-8');
+  assert.match(src, /replay-btn/);
+  assert.match(src, /openReplayModal/);
+  assert.match(src, /trace-btn/);
+  assert.match(src, /openTraceModal/);
+  assert.match(src, /result-btn/);
+  assert.match(src, /openResultModal/);
+  assert.match(src, /download-btn/);
+  assert.match(src, /computeVideoDownload/);
 });

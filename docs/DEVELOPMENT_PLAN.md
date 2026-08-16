@@ -1,6 +1,6 @@
 # S.E.S. Development Plan
 
-Last updated: 2026-08-17
+Last updated: 2026-08-16
 
 This document is the source of truth for near-term development priorities for S.E.S. (Smile. Enjoy. Story.).
 
@@ -78,6 +78,10 @@ Non-blocking follow-ups are tracked separately (for example Issue #14).
 # Phase 3 — First-year Beginner Mode
 
 Priority: **P1 / current major development phase**
+
+Phase 3A (April-June foundation) status: **Implemented, tested (unit +
+widget + seeded Playwright), pending human/video UX review before Phase 3B
+starts.** See §3.9 below for what shipped and what's still open.
 
 Do **not** merge directly into unrestricted normal mode immediately after the first assignment.
 
@@ -354,18 +358,41 @@ Normal Mode should feel like the same game with assistance removed, not an unrel
 
 Implement Phase 3 incrementally:
 
-### Phase 3A — April–June foundation **(NEXT IMPLEMENTATION)**
+### Phase 3A — April–June foundation **(IMPLEMENTED)**
 
-- continue Beginner Mode after first assignment
-- add milestone/state model needed for first-year guidance
-- first revenue/receivable explanation
-- payment-site / expected-collection explanation
-- waiting-cost explanation
-- first cash-collection milestone
-- recommended-action presentation for survival/cash flow
-- recruitment growth-vs-cost guidance
-- Failure Recovery reconciliation
-- seeded Playwright coverage through at least June
+- continue Beginner Mode after first assignment — `BeginnerModeEngine`
+  (`lib/game/engine/beginner_mode_engine.dart`) + `BeginnerModeState`
+  (`lib/game/models/beginner_mode_state.dart`), separate from the March
+  `FoundingProgress`/`OneTimeEvent` tutorial machinery
+- Home shows a "初心者経営期間 (4〜6月)" card
+  (`lib/ui/widgets/beginner_mode_card.dart`) while
+  `BeginnerModeEngine.isPhase3AActive` is true (post first-assignment,
+  week <= 12)
+- first revenue/receivable explanation — reuses the existing
+  first-assignment celebration / `firstArTutorial` dialogs rather than a
+  duplicate popup (tracked as `BeginnerMilestone.revenueVsCashExplained`)
+- payment-site / expected-collection explanation — the Beginner Mode card's
+  "次回入金予定" fact (`BeginnerModeEngine.nextExpectedCollection`)
+- waiting-cost explanation — one-time dialog
+  (`BeginnerMilestone.waitingCostExplained`) the first time a genuinely idle
+  employee is actually drawing salary post-founding
+- first cash-collection milestone — one-time "🎉 初入金！" dialog
+  (`BeginnerMilestone.firstCollectionCelebrated`) the first time an AR
+  record actually moves from pending to paid
+- recommended-action presentation for survival/cash flow — reuses the
+  existing `RecommendationEngine`/`TaskEngine` (no new UI-side game logic)
+- recruitment growth-vs-cost guidance — one-time dialog
+  (`BeginnerMilestone.recruitmentTradeoffExplained`) the first time a new
+  listing is posted after founding
+- Failure Recovery reconciliation — all milestones are derived facts
+  (`BeginnerModeEngine.reconcile`/`pendingMilestones`), never tied to a
+  specific successful action sequence
+- seeded Playwright coverage through June —
+  `e2e/tests/beginner-mode-april-june.spec.ts` +
+  `e2e/helpers/beginner-mode-player.ts`
+
+Still open before Phase 3B: a human/video UX review pass (§3.2's
+"Acceptance criteria" list) on the recorded Playwright runs.
 
 ### Phase 3B — July–September
 
@@ -518,8 +545,8 @@ These should be introduced based on playtest evidence, not simply because they a
 
 # Priority summary
 
-1. **CURRENT P1 — Phase 3A: April–June Beginner Mode foundation.**
-2. **P1 — Validate Phase 3A with seeded Playwright + recorded UX review.**
+1. **DONE — Phase 3A: April–June Beginner Mode foundation (implemented and unit/widget/seeded-Playwright tested).**
+2. **CURRENT P1 — Human/video UX review of the Phase 3A recordings before starting Phase 3B.**
 3. **P1 — Phase 3B: July–September assisted growth decisions.**
 4. **P1 — Phase 3C: October–December independent/people decisions.**
 5. **P1 — Phase 3D: January–March graduation + first-year report.**

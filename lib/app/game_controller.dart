@@ -48,7 +48,7 @@ class GameController extends ChangeNotifier {
       // GameState already shows happened. PrologueEngine.reconcileState
       // (Playable 0.5A.1 §7) additionally repairs a broken/older-schema
       // PrologueState so a corrupted save can never strand the player.
-      _state = ProgressionEngine.reconcile(PrologueEngine.reconcileState(loaded));
+      _state = BeginnerModeEngine.reconcile(ProgressionEngine.reconcile(PrologueEngine.reconcileState(loaded)));
     } else {
       _showStartChoice = true;
     }
@@ -74,7 +74,7 @@ class GameController extends ChangeNotifier {
   /// zero engineers instead of two already-employed founders (§4).
   void chooseBeginnerStart() {
     _showStartChoice = false;
-    _state = ProgressionEngine.reconcile(PrologueEngine.newGame(seed: debugSeed));
+    _state = BeginnerModeEngine.reconcile(ProgressionEngine.reconcile(PrologueEngine.newGame(seed: debugSeed)));
     notifyListeners();
     unawaited(_saveService.save(_state));
   }
@@ -86,7 +86,7 @@ class GameController extends ChangeNotifier {
     // PrologueEngine.reconcileState runs first (Playable 0.5A.1 §7): a
     // repaired PrologueState is what ProgressionEngine.reconcile should
     // then read milestones from, not the other way around.
-    _state = ProgressionEngine.reconcile(PrologueEngine.reconcileState(mutate(_state)));
+    _state = BeginnerModeEngine.reconcile(ProgressionEngine.reconcile(PrologueEngine.reconcileState(mutate(_state))));
     notifyListeners();
     unawaited(_saveService.save(_state));
   }
@@ -149,6 +149,11 @@ class GameController extends ChangeNotifier {
   void markTutorialSeen(OneTimeEvent event) =>
       _apply((s) => GameEngine.markTutorialSeen(s, event));
 
+  // --- Beginner Mode Phase 3A (April-June) ------------------------------
+
+  void markBeginnerMilestoneShown(BeginnerMilestone milestone) =>
+      _apply((s) => BeginnerModeEngine.markShown(s, milestone));
+
   void skipFoundingTutorial() =>
       _apply(GameEngine.skipFoundingTutorial);
 
@@ -179,7 +184,7 @@ class GameController extends ChangeNotifier {
   /// same ordering as [restart].
   Future<void> restartBeginnerMode({int? seed}) async {
     await _saveService.clear();
-    _state = ProgressionEngine.reconcile(PrologueEngine.restart(seed: seed ?? debugSeed));
+    _state = BeginnerModeEngine.reconcile(ProgressionEngine.reconcile(PrologueEngine.restart(seed: seed ?? debugSeed)));
     notifyListeners();
     unawaited(_saveService.save(_state));
   }

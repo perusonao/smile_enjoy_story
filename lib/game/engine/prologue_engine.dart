@@ -2,6 +2,7 @@ import 'dart:math';
 
 import '../../domain/domain.dart';
 import '../models/models.dart';
+import 'beginner_mode_engine.dart';
 import 'finance_engine.dart';
 import 'game_engine.dart';
 import 'matching_engine.dart';
@@ -708,6 +709,13 @@ class PrologueEngine {
     // [ProgressionEngine.currentStage] one step behind reality.
     var next = ProgressionEngine.reconcile(state.copyWith(prologueState: state.prologueState.copyWith(active: false, completed: true)));
     next = GameEngine.completeFoundingTutorial(next);
+    // Phase 3A (S.E.S. Development Plan §3.2): the Founding Prologue ending
+    // is not the end of guidance — it's the "創業編クリア → 初心者経営編開始"
+    // handoff. Marked here (not just left to reconcile's backfill) so it's
+    // recorded at the exact moment the transition actually happens, the
+    // same way `firstAssignmentCelebration` is marked seen right on this
+    // same completion screen.
+    next = BeginnerModeEngine.markShown(next, BeginnerMilestone.managementPhaseStarted);
     return next;
   }
 

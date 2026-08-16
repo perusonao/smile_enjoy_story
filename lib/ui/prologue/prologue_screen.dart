@@ -861,13 +861,19 @@ class _Complete extends StatelessWidget {
         const SizedBox(height: 16),
         Center(
           child: Text(
-            '━━━━━━━━━━━━\n「${state.company.name}」創業準備 完了 → 会社経営スタート\n━━━━━━━━━━━━',
+            '━━━━━━━━━━━━\n「${state.company.name}」創業編クリア → 初心者経営編スタート\n━━━━━━━━━━━━',
             textAlign: TextAlign.center,
             style: const TextStyle(fontWeight: FontWeight.bold),
           ),
         ),
         const SizedBox(height: 8),
         const Text('ここからは、社長の判断で会社を経営していきましょう。', textAlign: TextAlign.center),
+        const SizedBox(height: 4),
+        const Text(
+          'まずは6月末まで、会社を安定させることを目標にしましょう。',
+          textAlign: TextAlign.center,
+          style: TextStyle(color: Colors.black54, fontSize: 12.5),
+        ),
         const SizedBox(height: 16),
         FilledButton(
           onPressed: () {

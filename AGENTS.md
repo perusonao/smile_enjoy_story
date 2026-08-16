@@ -20,4 +20,8 @@ Treat it as the current development-priority source of truth.
 
 ## Current focus
 
-Current focus is Playable 0.4C.2 stabilization and March-to-April accounting correctness, followed by extending Beginner Mode through the first fiscal year.
+Playable 0.4C.2 stabilization and March-to-April accounting correctness are
+complete. Phase 3A (April-June Beginner Mode foundation) has shipped —
+implemented, unit/widget-tested, and validated with seeded Playwright runs.
+Current focus is a human/video UX review of that Phase 3A slice, then Phase
+3B (July-September assisted growth decisions).

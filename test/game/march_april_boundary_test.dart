@@ -142,4 +142,78 @@ void main() {
       expect(next.latestClosing!.recruitmentCost, 0);
     });
   });
+
+  group('Issue #12 P1: March recruitment expense is preserved in cumulative accounting', () {
+    test('a paid March recruitment medium is recognized exactly once in GameStats.cumulativeRecruitmentCost, at the March->April boundary', () {
+      final mediaCost = recruitmentMediaConfigs[RecruitmentMediaType.engineerCareer]!.cost;
+
+      GameState? rightBeforeJoining;
+      final joined = playThroughPrologue(
+        9,
+        mediaType: RecruitmentMediaType.engineerCareer,
+        onTick: (s) {
+          rightBeforeJoining ??= s.pendingMiscExpense > 0 ? s : null;
+        },
+      );
+      expect(rightBeforeJoining, isNotNull, reason: 'sanity: the paid March listing did accrue a recruitment-cost line');
+
+      // Before enterAprilWeek1 clears pendingMiscExpense, nothing has yet
+      // folded it into cumulative accounting.
+      expect(rightBeforeJoining!.stats.cumulativeRecruitmentCost, 0);
+
+      // enterAprilWeek1 fired (contract secured) — the March expense must
+      // now be preserved in cumulative recruitment accounting / annual
+      // profit, even though March never runs through GameEngine.advanceWeek's
+      // own month-end close.
+      expect(joined.stats.cumulativeRecruitmentCost, mediaCost);
+
+      // March's rent/navigator-salary/other-fixed-cost lump sum
+      // (marchFixedCost) must be preserved the same way, not just the
+      // recruitment line — otherwise annual profit still doesn't reconcile
+      // with March's real founding costs (user follow-up on Issue #12).
+      final rent = FinanceEngine.monthlyRent(joined);
+      final navigatorSalary = joined.generalAffairsStaff!.salary;
+      final marchFixedCost = rent + otherMonthlyFixedCost + navigatorSalary;
+      expect(joined.stats.cumulativeRent, rent);
+      expect(joined.stats.cumulativeSalary, navigatorSalary);
+      expect(joined.stats.cumulativeFixedCost, otherMonthlyFixedCost);
+      expect(
+        joined.stats.cumulativeProfit,
+        -(mediaCost + marchFixedCost),
+        reason: 'no revenue has been recognized yet, so cumulative profit is exactly the negative of every March cost recognized so far (recruitment + rent + navigator salary + other fixed cost)',
+      );
+
+      // Cash was deducted exactly once, at posting time — enterAprilWeek1
+      // must not deduct it again.
+      final cashRightBeforeJoining = rightBeforeJoining!.company.cash;
+      expect(joined.company.cash, cashRightBeforeJoining - marchFixedCost);
+
+      // April's first real month-end close must measure its own cash
+      // movement from the cash balance right after March's lump-sum close,
+      // not from the game's starting cash (which would misattribute all of
+      // March's spend to April) — Issue #12 P2 follow-up.
+      expect(joined.monthStartCash, joined.company.cash);
+
+      // April's own month-end must not count the March expense a second
+      // time, in either cash or cumulative accounting.
+      var next = joined;
+      for (var i = 0; i < 3; i++) {
+        next = GameEngine.advanceWeek(next);
+      }
+      expect(next.latestClosing!.recruitmentCost, 0);
+      expect(next.stats.cumulativeRecruitmentCost, mediaCost);
+      expect(next.stats.cumulativeRent, rent * 2, reason: 'March + April');
+      // April's own close pays the navigator AND the now-joined hire — only
+      // March's contribution is navigator-only.
+      final hireSalary = next.engineers.first.salary;
+      expect(next.stats.cumulativeSalary, navigatorSalary * 2 + hireSalary, reason: 'March (navigator only) + April (navigator + the joined hire)');
+      expect(next.stats.cumulativeFixedCost, otherMonthlyFixedCost * 2, reason: 'March + April');
+
+      // The whole-month cash movement invariant must hold for April's own
+      // close too, measured from the March-close cash baseline.
+      final closing = next.latestClosing!;
+      expect(closing.cashAfter - closing.cashBefore, closing.monthCashMovement);
+      expect(closing.cashBefore, joined.company.cash);
+    });
+  });
 }

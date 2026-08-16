@@ -332,5 +332,77 @@ void main() {
         closing.projectRevenue - 400000 - rent - otherMonthlyFixedCost - mediaCost,
       );
     });
+
+    test('Issue #12 P2: monthCashMovement (the 現金増減 figure) reconciles with actual cash before/after for a month with paid recruitment media', () {
+      final engineer = buildEngineer(id: 'w1', salary: 400000, status: EngineerStatus.waiting);
+      var state = _emptyState().copyWith(engineers: [engineer]);
+      final cashAtMonthStart = state.company.cash;
+
+      // Posted mid-month: cash drops immediately, well before month-end.
+      state = GameEngine.postRecruitmentMedia(state, RecruitmentMediaType.engineerCareer);
+      final mediaCost = recruitmentMediaConfigs[RecruitmentMediaType.engineerCareer]!.cost;
+      expect(state.company.cash, cashAtMonthStart - mediaCost);
+
+      final next = _advance(state, 3); // week 4: month-end
+      final closing = next.latestClosing!;
+
+      // monthCashMovement must equal the actual whole-month cash change —
+      // recruitment spend counts exactly once, even though it left the bank
+      // before month-end settlement rather than during it.
+      expect(closing.monthCashMovement, next.company.cash - cashAtMonthStart);
+      expect(closing.monthCashMovement, closing.cashDelta - mediaCost);
+
+      // cashBefore/cashAfter must describe the same whole month as
+      // monthCashMovement, not silently start mid-month with the
+      // recruitment spend already hidden.
+      expect(closing.cashBefore, cashAtMonthStart);
+      expect(closing.cashAfter, next.company.cash);
+      expect(closing.cashAfter - closing.cashBefore, closing.monthCashMovement);
+    });
+
+    test('Issue #12 P2 (Codex review on PR #13): monthCashMovement still reconciles when a PC upgrade AND recruitment media both spend cash immediately in the same month', () {
+      final engineer = buildEngineer(id: 'w1', salary: 400000, status: EngineerStatus.waiting);
+      var state = _emptyState().copyWith(engineers: [engineer]);
+      final cashAtMonthStart = state.company.cash;
+
+      // Two different kinds of immediate mid-month cash outflow, not just
+      // recruitment — a reconstruction that only adds back recruitmentCost
+      // would understate the month's real movement by the PC's cost.
+      state = GameEngine.postRecruitmentMedia(state, RecruitmentMediaType.engineerCareer);
+      final mediaCost = recruitmentMediaConfigs[RecruitmentMediaType.engineerCareer]!.cost;
+      state = GameEngine.upgradePc(state, engineer.id, PcTier.highPerformanceLaptop);
+      final pcCost = pcTierConfigs[PcTier.highPerformanceLaptop]!.cost;
+      expect(state.company.cash, cashAtMonthStart - mediaCost - pcCost);
+
+      final next = _advance(state, 3); // week 4: month-end
+      final closing = next.latestClosing!;
+
+      // The whole-month movement must reflect BOTH immediate outflows, not
+      // just the one (recruitmentCost) MonthlyClosing happens to break out
+      // in its own report.
+      expect(closing.monthCashMovement, next.company.cash - cashAtMonthStart);
+      expect(closing.monthCashMovement, closing.cashDelta - mediaCost - pcCost);
+      expect(closing.cashBefore, cashAtMonthStart);
+      expect(closing.cashAfter, next.company.cash);
+      expect(closing.cashAfter - closing.cashBefore, closing.monthCashMovement);
+    });
+
+    test('Issue #12 P2: GameState.monthStartCash resets to the ending cash after each month-end close, unaffected by mid-month immediate spend', () {
+      var state = _emptyState();
+      final startingCashValue = state.monthStartCash;
+      expect(startingCashValue, state.company.cash);
+
+      final afterMonth1 = _advance(state, 4); // week 4: first close
+      expect(afterMonth1.monthStartCash, afterMonth1.company.cash);
+      expect(afterMonth1.monthStartCash, isNot(startingCashValue), reason: 'sanity: rent/fixed cost actually moved cash during month 1');
+
+      // Mid-month 2 spend must not move monthStartCash until the next close.
+      final midMonth2 = GameEngine.postRecruitmentMedia(afterMonth1, RecruitmentMediaType.engineerCareer);
+      expect(midMonth2.monthStartCash, afterMonth1.monthStartCash);
+      expect(midMonth2.company.cash, isNot(midMonth2.monthStartCash));
+
+      final afterMonth2 = _advance(midMonth2, 3); // week 8: second close
+      expect(afterMonth2.monthStartCash, afterMonth2.company.cash);
+    });
   });
 }

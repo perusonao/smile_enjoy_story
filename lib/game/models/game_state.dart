@@ -114,6 +114,25 @@ class GameState {
   /// close; folded into that month's closing report and then reset.
   final int pendingMiscExpense;
 
+  /// [Company.cash] exactly as it stood at the start of the current
+  /// (not-yet-closed) month — i.e. right after the previous month-end close
+  /// (or, before the first close, the game's starting cash / the cash right
+  /// after [PrologueEngine.enterAprilWeek1]'s March lump sum). Updated only
+  /// at each month-end close and at the March→April boundary; every
+  /// mid-month action that spends cash immediately (recruitment media, PC
+  /// upgrades, health checks, company trips, bonuses, ...) deducts from
+  /// [Company.cash] only and never touches this field.
+  ///
+  /// This makes `MonthlyClosing.cashAfter - MonthlyClosing.cashBefore ==
+  /// MonthlyClosing.monthCashMovement` hold unconditionally for whatever mix
+  /// of immediate cash spend happened that month — [monthStartCash] doesn't
+  /// need to know *which* actions spent cash, only what cash looked like
+  /// before any of them ran (Issue #12 P2, Codex review on PR #13: a
+  /// reconstruction that only added back recruitment cost understated the
+  /// month's movement whenever a PC/health-check/trip/bonus payment also
+  /// happened that month).
+  final int monthStartCash;
+
   final int? bankruptWeek;
   final String? bankruptCause;
 
@@ -156,6 +175,7 @@ class GameState {
     this.waitingStreak = const {},
     this.monthAccrualSnapshot = const {},
     this.pendingMiscExpense = 0,
+    this.monthStartCash = startingCash,
     this.bankruptWeek,
     this.bankruptCause,
     this.idCounter = 0,
@@ -292,6 +312,7 @@ class GameState {
     Map<String, int>? waitingStreak,
     Map<String, ActiveAssignment>? monthAccrualSnapshot,
     int? pendingMiscExpense,
+    int? monthStartCash,
     int? bankruptWeek,
     String? bankruptCause,
     int? idCounter,
@@ -332,6 +353,7 @@ class GameState {
       waitingStreak: waitingStreak ?? this.waitingStreak,
       monthAccrualSnapshot: monthAccrualSnapshot ?? this.monthAccrualSnapshot,
       pendingMiscExpense: pendingMiscExpense ?? this.pendingMiscExpense,
+      monthStartCash: monthStartCash ?? this.monthStartCash,
       bankruptWeek: bankruptWeek ?? this.bankruptWeek,
       bankruptCause: bankruptCause ?? this.bankruptCause,
       idCounter: idCounter ?? this.idCounter,
@@ -387,15 +409,18 @@ class GameState {
       (key, value) => MapEntry(key, value.toJson()),
     ),
     'pendingMiscExpense': pendingMiscExpense,
+    'monthStartCash': monthStartCash,
     'bankruptWeek': bankruptWeek,
     'bankruptCause': bankruptCause,
     'idCounter': idCounter,
   };
 
-  factory GameState.fromJson(Map<String, dynamic> json) => GameState(
+  factory GameState.fromJson(Map<String, dynamic> json) {
+    final company = Company.fromJson(json['company'] as Map<String, dynamic>);
+    return GameState(
     schemaVersion: json['schemaVersion'] as int? ?? 1,
     seed: json['seed'] as int,
-    company: Company.fromJson(json['company'] as Map<String, dynamic>),
+    company: company,
     officeType: json['officeType'] == null
         ? OfficeType.smallOffice
         : OfficeType.fromJson(json['officeType'] as String),
@@ -475,8 +500,16 @@ class GameState {
         ) ??
         const {},
     pendingMiscExpense: json['pendingMiscExpense'] as int? ?? 0,
+    // Older saves predate this field (Issue #12 P2, Codex review on PR #13)
+    // and carry no record of what cash looked like at the start of their
+    // current in-progress month — falling back to today's cash is the best
+    // available approximation (any mid-month spend already reflected in it
+    // before this load is simply invisible to us, same limitation as any
+    // other un-tracked historical value).
+    monthStartCash: json['monthStartCash'] as int? ?? company.cash,
     bankruptWeek: json['bankruptWeek'] as int?,
     bankruptCause: json['bankruptCause'] as String?,
     idCounter: json['idCounter'] as int? ?? 0,
-  );
+    );
+  }
 }

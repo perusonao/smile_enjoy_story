@@ -10,7 +10,7 @@ import '../theme.dart';
 Future<void> showMonthlyClosingDialog(BuildContext context, MonthlyClosing closing) {
   final profitColor =
       closing.accountingProfit >= 0 ? Colors.green.shade700 : Colors.red.shade700;
-  final cashColor = closing.cashDelta >= 0 ? Colors.green.shade700 : Colors.red.shade700;
+  final cashColor = closing.monthCashMovement >= 0 ? Colors.green.shade700 : Colors.red.shade700;
 
   return showDialog<void>(
     context: context,
@@ -40,7 +40,7 @@ Future<void> showMonthlyClosingDialog(BuildContext context, MonthlyClosing closi
             const SizedBox(height: 4),
             _SummaryRow(
               label: '現金増減',
-              value: closing.cashDelta,
+              value: closing.monthCashMovement,
               color: cashColor,
             ),
             const SizedBox(height: 10),
@@ -62,7 +62,7 @@ Future<void> showMonthlyClosingDialog(BuildContext context, MonthlyClosing closi
                 ],
               ),
             ),
-            if (closing.accountingProfit >= 0 && closing.cashDelta < 0) ...[
+            if (closing.accountingProfit >= 0 && closing.monthCashMovement < 0) ...[
               const SizedBox(height: 10),
               const Text(
                 '利益は黒字ですが、売掛金の入金が翌月以降のため現金は減っています。',

@@ -485,7 +485,49 @@ Core decision: spending cash on compensation/retention should compete with prote
 
 Candidate order:
 
-## 7.1 SkillSheet / Career History expansion
+## 7.1 Employee basic profile
+
+Add/preserve structured profile information for technical employees and recruitment candidates so people are represented as individuals in addition to their skills and career evidence.
+
+The basic profile should include at least:
+
+- **age**
+- **gender**
+- **education / highest educational background**
+
+Education should be represented as structured data rather than only arbitrary display text where practical. Candidate categories may include, for example:
+
+- high school
+- vocational / technical school
+- junior college
+- university
+- graduate school
+
+Where useful, school/department or major may be represented separately, but avoid requiring unnecessary detail for every generated employee.
+
+### Gameplay principle
+
+Age, gender, and education are primarily **profile/background information**. Do not automatically turn protected or demographic characteristics into universal ability modifiers.
+
+- Gender must not provide a direct positive/negative ability, salary, interview, or project-selection modifier.
+- Age should primarily support career plausibility and presentation. Any gameplay relationship should come from actual experience/history rather than a raw age bonus/penalty.
+- Education may participate only where a project/recruitment condition explicitly and legitimately references educational background; it must not silently substitute for technical experience.
+
+Career history, certifications, skills, and demonstrated experience should remain the main evidence for engineer capability and project fit.
+
+### Generation / save compatibility
+
+When this model is implemented:
+
+1. add backward-compatible save migration/defaults,
+2. generate age/gender/education deterministically from the game seed for generated candidates/employees,
+3. preserve these values through candidate -> hired employee transitions,
+4. display them consistently in recruitment/employee profile UI where useful,
+5. ensure save -> load -> save preserves them exactly.
+
+Do not regenerate identity/profile fields after hiring or loading an existing save.
+
+## 7.2 SkillSheet / Career History expansion
 
 Add structured past-project history to each engineer so a SkillSheet represents actual career evidence rather than only aggregate skill values.
 
@@ -543,7 +585,7 @@ Implementation should be staged:
 
 Do not change the core matching algorithm in the same PR as the initial data-model introduction unless separately reviewed and tested.
 
-## 7.2 Engineer Certifications
+## 7.3 Engineer Certifications
 
 Add certifications/qualifications to technical employees.
 
@@ -586,7 +628,7 @@ Later project requirements may include:
 - preferred certification
 - certification as a tie-breaker / screening bonus
 
-## 7.3 Qualification acquisition / employee development (later extension)
+## 7.4 Qualification acquisition / employee development (later extension)
 
 After certification data and matching behavior are stable, consider a qualification-support management system:
 
@@ -601,7 +643,7 @@ Potential decisions:
 
 This should connect employee development, welfare spending, retention/Morale, and future project opportunities. Do not implement it before the underlying certification and career-history models are stable.
 
-## 7.4 EmployeeAbility expansion
+## 7.5 EmployeeAbility expansion
 
 - interview aptitude
 - incident/fire resistance
@@ -612,23 +654,23 @@ This should connect employee development, welfare spending, retention/Morale, an
 
 Career history and certifications should remain distinct from hidden/innate EmployeeAbility. A qualification is evidence/achievement; it is not the same thing as personality or innate aptitude.
 
-## 7.5 Client relationships / commercial layers
+## 7.6 Client relationships / commercial layers
 
 - trust and transaction history
 - upstream/end-client distinctions
 - introductions/unlocks
 
-## 7.6 Field Lead expansion
+## 7.7 Field Lead expansion
 
 - assignment employees discovering additional openings/projects
 
-## 7.7 Sales expansion
+## 7.8 Sales expansion
 
 - team/set proposals
 - richer parallel-sales strategy
 - future sales-employee role
 
-## 7.8 Later candidates
+## 7.9 Later candidates
 
 - BP/partner companies
 - new graduates/inexperienced hiring
@@ -641,9 +683,9 @@ These should be introduced based on playtest evidence, not simply because they a
 
 The long-term SES matching model should be able to distinguish at least:
 
-**career evidence + experience duration + role/process experience + certifications + sales SkillSheet representation + EmployeeAbility + human traits**
+**basic profile + career evidence + experience duration + role/process experience + certifications + sales SkillSheet representation + EmployeeAbility + human traits**
 
-This allows two engineers with the same nominal language skill to have meaningfully different sales value and project fit.
+This allows two engineers with the same nominal language skill to have meaningfully different sales value and project fit without treating demographic characteristics as hidden universal ability modifiers.
 
 ---
 
@@ -657,7 +699,7 @@ This allows two engineers with the same nominal language skill to have meaningfu
 6. **P1 — UI/UX cleanup where it directly supports Beginner Mode comprehension.**
 7. **P2 — Waiting/result presentation and milestone game-feel.**
 8. **P3 — Non-blocking technical follow-ups such as Issue #14.**
-9. **NEXT SYSTEM FOUNDATION — SkillSheet career history and engineer certifications.**
+9. **NEXT SYSTEM FOUNDATION — employee basic profile + SkillSheet career history + engineer certifications.**
 10. **Later systems — qualification acquisition, resignation, salary/raises, EmployeeAbility, clients/commercial layers, Field Lead, sales expansion.**
 
 ---

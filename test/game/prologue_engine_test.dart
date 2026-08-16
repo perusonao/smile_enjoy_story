@@ -13,13 +13,18 @@ import 'package:smile_enjoy_story/game/game.dart';
 /// Drives one Prologue playthrough from a fresh Beginner Mode game all the
 /// way to either April Week 1's assignment or a bounded number of retries,
 /// picking [preferCandidateB] or the first candidate deterministically.
-/// Returns the final [GameState].
-GameState playThroughPrologue(int seed, {bool preferCandidateB = false, int maxAdvances = 40}) {
+/// Returns the final [GameState]. [onTick], when given, is called with the
+/// state after every single engine call in the loop below — used by
+/// finance_engine_prologue_test.dart to snapshot the exact moment a
+/// candidate accepts their offer (still pre-April) versus the moment they
+/// actually join, without duplicating this whole driving sequence.
+GameState playThroughPrologue(int seed, {bool preferCandidateB = false, int maxAdvances = 40, void Function(GameState state)? onTick}) {
   var state = PrologueEngine.newGame(seed: seed);
   state = PrologueEngine.confirmCompanySetup(state, presidentName: 'テスト社長', companyName: 'テスト会社');
   state = PrologueEngine.markIntroSeen(state);
   state = PrologueEngine.postFreeRecruitment(state);
   state = PrologueEngine.advanceWeek(state); // -> March Week 2, candidates appear
+  onTick?.call(state);
 
   var advances = 0;
   while (state.activeAssignments.isEmpty && advances < maxAdvances) {
@@ -83,6 +88,7 @@ GameState playThroughPrologue(int seed, {bool preferCandidateB = false, int maxA
       case PrologueStage.freeManagement:
         return state;
     }
+    onTick?.call(state);
   }
   return state;
 }

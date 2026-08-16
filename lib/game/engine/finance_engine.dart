@@ -46,13 +46,46 @@ class FinanceEngine {
   }
 
   /// Full monthly salary for every current engineer, regardless of
-  /// status — waiting engineers draw 100% salary too (§7). Includes the
-  /// 総務 employee's salary when Beginner Mode has seeded one (Playable
-  /// 0.5A §8) — general affairs draws salary from day one, same as any
-  /// other employee.
+  /// status — waiting engineers draw 100% salary too (§7) — *except* the
+  /// one engineer the Founding Prologue can materialize before they've
+  /// actually joined (see [_isOnPayroll]). Includes the 総務 employee's
+  /// salary when Beginner Mode has seeded one (Playable 0.5A §8) — general
+  /// affairs draws salary from day one, same as any other employee.
   static int monthlySalaryTotal(GameState state) =>
-      state.engineers.fold<int>(0, (sum, e) => sum + e.salary) +
+      state.engineers.where((e) => _isOnPayroll(state, e)).fold<int>(0, (sum, e) => sum + e.salary) +
       (state.generalAffairsStaff?.salary ?? 0);
+
+  /// True once [engineer] is actually drawing salary.
+  ///
+  /// [PrologueEngine.decideCandidate] materializes a real [Engineer] the
+  /// moment a March candidate accepts their offer (Playable 0.5A §27) —
+  /// well before they actually join in April. Nothing is deducted for them
+  /// until [PrologueEngine.enterAprilWeek1]'s one lump March close, which
+  /// deliberately excludes this hire's own salary from that lump sum (see
+  /// its doc comment) — the real payroll math already got this right.
+  ///
+  /// The *live* HUD/expense-breakdown forecast below (`monthlySalaryTotal`
+  /// et al.) didn't know that, and quietly overstated March's projected
+  /// burn by this one salary for the entire pre-join window (Codex review,
+  /// PR #10 P2). `state.activeAssignments` gains its first entry in the
+  /// exact same transaction that flips this engineer's status to
+  /// `assigned` (`enterAprilWeek1`), so "still empty" is a precise,
+  /// engine-owned signal for "hasn't joined yet" — not a UI-side guess,
+  /// and not keyed off `employmentWeek`/`status` alone (both stay pinned
+  /// to values indistinguishable from a normal joined-and-idle engineer
+  /// throughout March; see [PrologueEngine.newGame]'s §83 note on
+  /// `company.currentWeek`).
+  ///
+  /// Outside the Prologue (`prologueState.active == false` — true for Free
+  /// Mode, and for the Prologue's own post-April screens once
+  /// `enterAprilWeek1` has run) this is always `true`: every engineer
+  /// counts, exactly as before. Free Mode's own accepted-but-not-yet-
+  /// joined candidates are `PendingHire`s, never a full [Engineer], so
+  /// they were never counted here in the first place.
+  static bool _isOnPayroll(GameState state, Engineer engineer) {
+    if (!state.prologueState.active) return true;
+    return state.activeAssignments.isNotEmpty;
+  }
 
   static int monthlyRent(GameState state) =>
       officeConfigs[state.officeType]!.monthlyRent;

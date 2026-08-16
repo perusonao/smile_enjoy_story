@@ -103,6 +103,54 @@ test('isSafeRelativePath treats malformed percent-encoding as unsafe, never thro
   assert.equal(isSafeRelativePath('mobile-chromium/%zz/evil.mp4'), false);
 });
 
+// --- javascript: scheme bypass via embedded ASCII whitespace/control chars
+// (Codex PR #8 review, chatgpt-codex-connector, e2e/replay-viewer/lib/
+// render-card.mjs:19): a raw TAB/LF/CR embedded inside "javascript:" defeats
+// a scheme regex that requires an unbroken run of scheme characters up to
+// the colon, but the WHATWG URL Standard deletes every ASCII TAB/LF/CR from
+// the input (URL Standard "URL parsing" step 2) BEFORE it ever looks for a
+// scheme — so a real browser still resolves "java\nscript:alert(1)" as a
+// live "javascript:" URL. Verified against `new URL()` before writing the
+// fix (see the "URL resolution" tests below), not assumed. -----------------
+
+test('isSafeRelativePath rejects a javascript: scheme hidden behind an embedded TAB/LF/CR, in any case combination', () => {
+  const rejected = [
+    'java\nscript:alert(document.domain)',
+    'java\rscript:alert(document.domain)',
+    'java\tscript:alert(document.domain)',
+    'jAvA\nScRiPt:alert(document.domain)',
+    'JaVa\tScRiPt:alert(1)',
+    'JAVA\rSCRIPT:alert(1)',
+    'java\n\r\tscript:alert(1)',
+  ];
+  for (const v of rejected) assert.equal(isSafeRelativePath(v), false, v);
+});
+
+test('isSafeRelativePath rejects a javascript: scheme hidden behind leading/trailing ASCII whitespace/control characters', () => {
+  const rejected = ['  javascript:alert(1)', 'javascript:alert(1)\n', '\tjavascript:alert(1)', '\r\njavascript:alert(1)', ' \t javascript:alert(1) \n '];
+  for (const v of rejected) assert.equal(isSafeRelativePath(v), false, v);
+});
+
+test('isSafeRelativePath rejects percent-encoded TAB/LF/CR embedded in a scheme-like prefix, as defense in depth', () => {
+  // A real URL parser does NOT decode "%0a"/"%0d"/"%09" for scheme
+  // detection (verified below), so these don't actually reach a live
+  // javascript: URL through native resolution the way the raw forms
+  // above do — isSafeRelativePath's own decode-and-recheck pass still
+  // rejects them, deliberately more conservative than strictly required.
+  const rejected = ['java%0Ascript:alert(1)', 'java%0ascript:alert(1)', 'java%0Dscript:alert(1)', 'java%0dscript:alert(1)', 'java%09script:alert(1)'];
+  for (const v of rejected) assert.equal(isSafeRelativePath(v), false, v);
+});
+
+test('isSafeRelativePath still accepts normal manifest-relative paths after the whitespace-normalization fix (no regression)', () => {
+  const accepted = [
+    'mobile-chromium/founding-first-assignment-100001.mp4',
+    'mobile-webkit/founding-first-assignment-100002.mp4',
+    'mobile-chromium/founding-first-assignment-100001.result.json',
+    'mobile-webkit/founding-first-assignment-100002.trace.json',
+  ];
+  for (const v of accepted) assert.equal(isSafeRelativePath(v), true, v);
+});
+
 // --- URL-resolution verification (Section 10: don't just trust string
 // matching — confirm against real URL-resolution semantics). Node's URL
 // class implements the same WHATWG URL Standard algorithm a browser uses
@@ -168,6 +216,40 @@ test('URL resolution: encoded-backslash traversal is rejected as defense-in-dept
     assert.equal(isSafeRelativePath(v), false, v);
     const resolved = new URL(v, base);
     assert.equal(resolved.pathname.startsWith(basePrefix), true, `${v} -> ${resolved.href} (expected it to stay a literal in-base segment)`);
+  }
+});
+
+test('URL resolution: raw TAB/LF/CR embedded in "javascript:" IS stripped by a real URL parser, which resolves it to a live javascript: URL — confirming the bypass this fix closes, not just asserting it', () => {
+  const cases = ['java\nscript:alert(1)', 'java\rscript:alert(1)', 'java\tscript:alert(1)', 'jAvA\nScRiPt:alert(1)', '  javascript:alert(1)', 'javascript:alert(1)\n'];
+  for (const v of cases) {
+    assert.equal(isSafeRelativePath(v), false, v);
+    // No base needed: once native URL parsing strips the whitespace, this
+    // is a fully self-contained absolute "javascript:" URL.
+    const resolved = new URL(v);
+    assert.equal(resolved.protocol, 'javascript:', `${v} -> ${resolved.href} (expected native resolution to reveal the hidden javascript: scheme)`);
+  }
+});
+
+test('URL resolution: percent-encoded TAB/LF/CR are NOT stripped by a real URL parser (verified) — isSafeRelativePath still rejects them, more conservatively than native resolution alone requires', () => {
+  const base = 'https://example.com/e2e-replays/';
+  const basePrefix = new URL(base).pathname;
+  for (const v of ['java%0Ascript:alert(1)', 'java%0Dscript:alert(1)', 'java%09script:alert(1)']) {
+    assert.equal(isSafeRelativePath(v), false, v);
+    const resolved = new URL(v, base);
+    assert.equal(resolved.protocol, 'https:', `${v} unexpectedly resolved to a non-https scheme: ${resolved.href}`);
+    assert.equal(resolved.pathname.startsWith(basePrefix), true, `${v} -> ${resolved.href} (expected it to stay a literal in-base segment)`);
+  }
+});
+
+test('URL resolution: no validator/browser gap remains for every accepted path — normal manifest-relative paths resolve exactly where expected', () => {
+  const base = 'https://example.com/e2e-replays/';
+  const basePrefix = new URL(base).pathname;
+  const accepted = ['mobile-chromium/founding-first-assignment-100001.mp4', 'mobile-webkit/founding-first-assignment-100002.mp4'];
+  for (const v of accepted) {
+    assert.equal(isSafeRelativePath(v), true, v);
+    const resolved = new URL(v, base);
+    assert.equal(resolved.protocol, 'https:', v);
+    assert.equal(resolved.pathname, basePrefix + v, `${v} -> ${resolved.href}`);
   }
 });
 
@@ -328,6 +410,27 @@ test('computeVideoDownload: percent-encoded and backslash traversal in `video` i
     assert.equal(dl.available, false, video);
     assert.equal(dl.href, null, video);
   }
+});
+
+// PR #8 Codex review: a manifest.json `video` hiding a javascript: scheme
+// behind an embedded TAB/LF/CR must never reach the Download <a href> —
+// this is the exact code path (render-card.mjs:19) the review flagged.
+test('computeVideoDownload: `video` hiding javascript:/data:/file: behind embedded whitespace is rejected', () => {
+  const rejected = ['java\nscript:alert(document.domain)', 'java\rscript:alert(document.domain)', 'java\tscript:alert(document.domain)', 'jAvA\nScRiPt:alert(1)', '  javascript:alert(1)', 'data\n:text/html,x', 'file\t:///etc/passwd'];
+  for (const video of rejected) {
+    const dl = computeVideoDownload({ video, browser: 'mobile-chromium', scenario: 'x', seed: 1 });
+    assert.equal(dl.available, false, video);
+    assert.equal(dl.href, null, video);
+  }
+});
+
+test('renderActionsHtml: a `video` hiding javascript: behind an embedded newline never reaches the rendered href — Download renders disabled instead', () => {
+  const malicious = 'java\nscript:alert(document.domain)';
+  const html = renderActionsHtml({ video: malicious, actionTrace: null, result: null });
+  assert.match(html, /<button type="button" class="download-btn secondary" disabled>/);
+  assert.equal(/<a class="download-btn/.test(html), false);
+  assert.equal(html.includes('javascript:'), false, 'rendered markup must never contain the resolved javascript: scheme');
+  assert.equal(html.includes('script:alert'), false, 'rendered markup must never contain the raw malicious video value either');
 });
 
 test('buildVideoDownloadFilename sanitizes special characters in scenario/browser into a safe filename', () => {

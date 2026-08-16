@@ -177,43 +177,61 @@ class _Summary extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final assessment = RecommendationEngine.postInterviewAssessment(s);
-    return ListView(
-      key: const ValueKey('summary'),
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 28),
+    // Decision row pinned outside the scrollable list (Playable 0.4C.4
+    // §25-26 fix, mirroring recruitment_interview_screen.dart's identical
+    // fix) — §7/§11/§13 added real vertical content above it, and a plain
+    // trailing row inside the ListView meant the CTA wasn't even mounted
+    // on some renderers (confirmed failing on WebKit in CI: an empty
+    // accessibility button list on this exact screen).
+    return Column(
       children: [
-        Text('面接まとめ', style: Theme.of(context).textTheme.headlineSmall),
-        const SizedBox(height: 10),
-        ApplicantPersonaHeader(applicant: applicant, companyImpression: s.companyImpression),
-        const SizedBox(height: 8),
-        ReactionLine(companyImpression: s.companyImpression),
-        const SizedBox(height: 14),
-        // 結論 (Playable 0.4C.4 §13): visual gauge + per-question chips
-        // first, free-text detail below — same ordering as the regular
-        // recruitment tab's interview summary.
-        InterviewInfoGauge(session: s),
-        const SizedBox(height: 10),
-        InterviewConclusionSummary(session: s),
-        const SizedBox(height: 16),
-        const Divider(),
-        Text('詳細', style: Theme.of(context).textTheme.titleSmall?.copyWith(color: Colors.black54)),
-        const SizedBox(height: 4),
-        for (final o in s.observations)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 6),
-            child: ObservationSummaryTile(observation: o, answer: s.applicantAnswers.firstWhere((a) => a.category == o.category)),
+        Expanded(
+          child: ListView(
+            key: const ValueKey('summary'),
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+            children: [
+              Text('面接まとめ', style: Theme.of(context).textTheme.headlineSmall),
+              const SizedBox(height: 10),
+              ApplicantPersonaHeader(applicant: applicant, companyImpression: s.companyImpression),
+              const SizedBox(height: 8),
+              ReactionLine(companyImpression: s.companyImpression),
+              const SizedBox(height: 14),
+              // 結論 (Playable 0.4C.4 §13): visual gauge + per-question
+              // chips first, free-text detail below — same ordering as the
+              // regular recruitment tab's interview summary.
+              InterviewInfoGauge(session: s),
+              const SizedBox(height: 10),
+              InterviewConclusionSummary(session: s),
+              const SizedBox(height: 16),
+              const Divider(),
+              Text('詳細', style: Theme.of(context).textTheme.titleSmall?.copyWith(color: Colors.black54)),
+              const SizedBox(height: 4),
+              for (final o in s.observations)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 6),
+                  child: ObservationSummaryTile(observation: o, answer: s.applicantAnswers.firstWhere((a) => a.category == o.category)),
+                ),
+              const Divider(),
+              Text('採用判断', style: Theme.of(context).textTheme.titleMedium),
+              if (assessment.good.isNotEmpty) Text('良い材料\n・${assessment.good.join('\n・')}'),
+              if (assessment.cautions.isNotEmpty) Text('注意\n・${assessment.cautions.join('\n・')}'),
+              if (s.applicantReaction != null) Padding(padding: const EdgeInsets.only(top: 6), child: Text('本人の反応: ${s.applicantReaction}', style: const TextStyle(fontSize: 12.5, color: Colors.black54))),
+            ],
           ),
-        const Divider(),
-        Text('採用判断', style: Theme.of(context).textTheme.titleMedium),
-        if (assessment.good.isNotEmpty) Text('良い材料\n・${assessment.good.join('\n・')}'),
-        if (assessment.cautions.isNotEmpty) Text('注意\n・${assessment.cautions.join('\n・')}'),
-        if (s.applicantReaction != null) Padding(padding: const EdgeInsets.only(top: 6), child: Text('本人の反応: ${s.applicantReaction}', style: const TextStyle(fontSize: 12.5, color: Colors.black54))),
-        const SizedBox(height: 4),
-        Row(
-          children: [
-            Expanded(child: OutlinedButton(style: OutlinedButton.styleFrom(minimumSize: const Size(0, 48)), onPressed: () => _decide(context, InterviewOutcome.rejected), child: const Text('不採用'))),
-            const SizedBox(width: 10),
-            Expanded(child: FilledButton(style: FilledButton.styleFrom(minimumSize: const Size(0, 48)), onPressed: () => _decide(context, InterviewOutcome.hired), child: const Text('採用する'))),
-          ],
+        ),
+        SafeArea(
+          top: false,
+          child: Container(
+            padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
+            decoration: BoxDecoration(color: Colors.white, border: Border(top: BorderSide(color: Theme.of(context).colorScheme.outlineVariant))),
+            child: Row(
+              children: [
+                Expanded(child: OutlinedButton(style: OutlinedButton.styleFrom(minimumSize: const Size(0, 48)), onPressed: () => _decide(context, InterviewOutcome.rejected), child: const Text('不採用'))),
+                const SizedBox(width: 10),
+                Expanded(child: FilledButton(style: FilledButton.styleFrom(minimumSize: const Size(0, 48)), onPressed: () => _decide(context, InterviewOutcome.hired), child: const Text('採用する'))),
+              ],
+            ),
+          ),
         ),
       ],
     );

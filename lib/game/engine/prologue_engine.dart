@@ -642,37 +642,52 @@ class PrologueEngine {
     final proposal = state.proposals.where((p) => p.engineerId == id && p.status == ApplicationStatus.accepted && p.assignWeek == 1).firstOrNull;
     if (proposal == null) return state;
     final engineer = state.engineerById(id);
-    final marchFixedCost = FinanceEngine.monthlyRent(state) + otherMonthlyFixedCost + (state.generalAffairsStaff?.salary ?? 0);
+    final marchRent = FinanceEngine.monthlyRent(state);
+    const marchOtherFixedCost = otherMonthlyFixedCost;
+    final marchNavigatorSalary = state.generalAffairsStaff?.salary ?? 0;
+    final marchFixedCost = marchRent + marchOtherFixedCost + marchNavigatorSalary;
     // Any March recruitment-listing cost was already deducted from cash the
     // instant it was posted (postRecruitmentMedia) — it's a March expense,
-    // fully settled in cash terms, not an unpaid April one. This lump sum
-    // must still be recognized exactly once in cumulative
-    // accounting/annual-profit history, though (Issue #12 P1) — March never
-    // runs through GameEngine.advanceWeek's own month-end close (see the
-    // class doc comment above), so nothing else ever folds it into
-    // [GameStats.cumulativeRecruitmentCost]. Recording it here, before the
-    // accrual counter is cleared, is March's only accounting close.
+    // fully settled in cash terms, not an unpaid April one. This lump sum,
+    // together with rent/navigator-salary/fixed-cost below, must still be
+    // recognized exactly once in cumulative accounting/annual-profit
+    // history, though (Issue #12 P1) — March never runs through
+    // GameEngine.advanceWeek's own month-end close (see the class doc
+    // comment above), so nothing else ever folds any of March's costs into
+    // GameStats. Recording it here, before the accrual counter is cleared,
+    // is March's only accounting close.
     final marchRecruitmentCost = state.pendingMiscExpense;
     final assignment = ActiveAssignment(engineerId: id, project: proposal.project, remainingWeeks: proposal.project.durationWeeks, assignedWeek: 1);
     final engineers = [
       for (final e in state.engineers)
         if (e.id == id) e.copyWith(status: EngineerStatus.assigned, salesStatus: SalesStatus.assigned, availableFromWeek: 1 + proposal.project.durationWeeks) else e,
     ];
+    final cashAfterMarchClose = state.company.cash - marchFixedCost;
     var next = state
         .copyWith(
           engineers: engineers,
           activeAssignments: [...state.activeAssignments, assignment],
-          company: state.company.copyWith(cash: state.company.cash - marchFixedCost),
+          company: state.company.copyWith(cash: cashAfterMarchClose),
           stats: state.stats.copyWith(
             cumulativeRecruitmentCost: state.stats.cumulativeRecruitmentCost + marchRecruitmentCost,
+            cumulativeRent: state.stats.cumulativeRent + marchRent,
+            cumulativeSalary: state.stats.cumulativeSalary + marchNavigatorSalary,
+            cumulativeFixedCost: state.stats.cumulativeFixedCost + marchOtherFixedCost,
           ),
-          // Cash was never touched above for this — only the cumulative
-          // accounting stat is. Clearing the accrual counter here keeps it
-          // out of April's own month-end MonthlyClosing.recruitmentCost/
-          // accountingProfit line (Playable 0.4C.2 §2: March's books must
-          // not leak into April's) now that it has been preserved in
-          // cumulative history above.
+          // Cash was never touched above for these stats — only the
+          // cumulative accounting figures are. Clearing the accrual
+          // counter here keeps it out of April's own month-end
+          // MonthlyClosing.recruitmentCost/accountingProfit line (Playable
+          // 0.4C.2 §2: March's books must not leak into April's) now that
+          // it has been preserved in cumulative history above.
           pendingMiscExpense: 0,
+          // April's first real month-end close (GameEngine.advanceWeek)
+          // must measure its own movement from *this* moment — the cash
+          // balance right after March's lump-sum close — not from
+          // [startingCash] (the stale default), which would otherwise
+          // misattribute the whole of March's spend to April (Issue #12
+          // P2, Codex review on PR #13).
+          monthStartCash: cashAfterMarchClose,
         )
         .withLog('${engineer.profile.name}さんが入社しました！', category: GameLogCategory.engineerJoined)
         .withLog('${engineer.profile.name}さんが「${proposal.project.title}」に参画しました！(-¥$marchFixedCost 3月分固定費)', category: GameLogCategory.assignmentStarted);

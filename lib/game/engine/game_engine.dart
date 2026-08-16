@@ -981,6 +981,7 @@ class GameEngine {
     var accountsReceivable = state.accountsReceivable;
     var monthlyClosings = state.monthlyClosings;
     var pendingMiscExpense = state.pendingMiscExpense;
+    var monthStartCash = state.monthStartCash;
     var status = GameStatus.playing;
     int? bankruptWeek;
     String? bankruptCause;
@@ -1055,13 +1056,19 @@ class GameEngine {
       final cashAfter = cashAtSettlement + cashDelta;
       newCash = cashAfter;
 
-      // Whole-month view (Issue #12 P2): reconstruct true start-of-month
-      // cash by adding back the recruitment spend already deducted earlier
-      // this month, so [MonthlyClosing.cashBefore]/[cashAfter]/
-      // [monthCashMovement] all describe one consistent month instead of
-      // [cashBefore] silently starting mid-month with that spend hidden.
-      final monthStartCash = cashAtSettlement + recruitmentCost;
-      final monthCashMovement = cashAfter - monthStartCash;
+      // Whole-month view (Issue #12 P2, Codex review on PR #13): use the
+      // cash value tracked at the start of this month
+      // (GameState.monthStartCash) rather than reconstructing it from
+      // recruitmentCost alone — that reconstruction understated the
+      // month's real movement whenever a PC upgrade/health check/company
+      // trip/bonus (or any other immediate cash spend) also happened this
+      // month. monthStartCash doesn't need to know which actions spent
+      // cash, so cashAfter - monthStartingCash equals the true movement
+      // for whatever mix actually happened.
+      final monthStartingCash = monthStartCash;
+      final monthCashMovement = cashAfter - monthStartingCash;
+      // Next month starts from today's ending cash.
+      monthStartCash = cashAfter;
 
       final label =
           '${GameCalendar.calendarYear(newWeek)}年${GameCalendar.monthName(newWeek)}';
@@ -1079,7 +1086,7 @@ class GameEngine {
         accountingProfit: accountingProfit,
         cashDelta: cashDelta,
         monthCashMovement: monthCashMovement,
-        cashBefore: monthStartCash,
+        cashBefore: monthStartingCash,
         cashAfter: cashAfter,
       );
       final updatedClosings = [...state.monthlyClosings, closing];
@@ -1101,7 +1108,7 @@ class GameEngine {
         '$label 月次決算: 売上¥$projectRevenue / 入金¥$cashCollected / 給与¥$salaryPaid / '
         '家賃¥$rentPaid / 固定費¥$fixedCostPaid / 求人費¥$recruitmentCost / '
         '利益${accountingProfit >= 0 ? '+' : ''}¥$accountingProfit / '
-        '現金 ¥$monthStartCash → ¥$cashAfter',
+        '現金 ¥$monthStartingCash → ¥$cashAfter',
       );
 
       // 9) 倒産判定 (月末のみ) ---------------------------------------------
@@ -1164,6 +1171,7 @@ class GameEngine {
       waitingStreak: newWaitingStreak,
       monthAccrualSnapshot: nextMonthAccrualSnapshot,
       pendingMiscExpense: pendingMiscExpense,
+      monthStartCash: monthStartCash,
       bankruptWeek: bankruptWeek,
       bankruptCause: bankruptCause,
       idCounter: idCounter,

@@ -40,17 +40,22 @@ class MonthlyClosing {
   /// had already left the bank that same month).
   final int cashDelta;
 
-  /// The actual whole-month change in cash: [cashAfter] - [cashBefore],
-  /// which equals `cashDelta - recruitmentCost` (recruitment spend already
-  /// left the bank earlier in the month, so it still counts once against
-  /// the month's total even though [cashDelta] excludes it). This is the
-  /// value a 現金増減 label should show (Issue #12 P2).
+  /// The actual whole-month change in cash: always exactly [cashAfter] -
+  /// [cashBefore], by construction — [GameEngine.advanceWeek] computes this
+  /// from [GameState.monthStartCash] (the cash value tracked at the start
+  /// of the month), not by reconstructing it from any specific expense
+  /// category. This is the value a 現金増減 label should show (Issue #12
+  /// P2; Codex review on PR #13 — an earlier version reconstructed this by
+  /// adding back only recruitment spend, which understated the month's
+  /// movement whenever a PC upgrade/health check/company trip/bonus also
+  /// happened that month).
   final int monthCashMovement;
 
   /// Cash at the start of this month, *before* any of this month's
-  /// recruitment-media spend or month-end settlement — i.e. [cashAfter] -
-  /// [monthCashMovement]. Not simply "cash right before this settlement
-  /// step ran", which would already have this month's recruitment spend
+  /// immediate cash spend (recruitment media, PC upgrades, health checks,
+  /// company trips, bonuses, ...) or month-end settlement — i.e.
+  /// [cashAfter] - [monthCashMovement]. Not simply "cash right before this
+  /// settlement step ran", which would already have this month's spend
   /// baked in and silently start the story mid-month (Issue #12 P2).
   final int cashBefore;
 
@@ -97,6 +102,25 @@ class MonthlyClosing {
   factory MonthlyClosing.fromJson(Map<String, dynamic> json) {
     final cashDelta = json['cashDelta'] as int;
     final recruitmentCost = json['recruitmentCost'] as int;
+    final cashAfter = json['cashAfter'] as int;
+    final storedMonthCashMovement = json['monthCashMovement'] as int?;
+    // Older saves predate monthCashMovement (Issue #12 P2) — approximate it
+    // from the only mid-month immediate spend that was ever recorded per
+    // closing (recruitmentCost). This can only be an approximation for a
+    // genuinely legacy closing: PC-upgrade/health-check/company-trip/bonus
+    // spend from that same month, if any, was never captured per-closing,
+    // so it can't be recovered now.
+    final monthCashMovement =
+        storedMonthCashMovement ?? (cashDelta - recruitmentCost);
+    // Codex review on PR #13: whatever monthCashMovement ends up being
+    // (stored or approximated), cashBefore must be derived from it so the
+    // cashAfter - cashBefore == monthCashMovement invariant holds for
+    // migrated legacy closings too — trusting the legacy stored cashBefore
+    // (the pre-settlement balance, which already had that month's
+    // recruitment spend baked in) would silently break that invariant.
+    final cashBefore = storedMonthCashMovement != null
+        ? json['cashBefore'] as int
+        : cashAfter - monthCashMovement;
     return MonthlyClosing(
       month: json['month'] as int,
       week: json['week'] as int,
@@ -110,12 +134,9 @@ class MonthlyClosing {
       recruitmentCost: recruitmentCost,
       accountingProfit: json['accountingProfit'] as int,
       cashDelta: cashDelta,
-      // Older saves predate this field (Issue #12 P2) — derive it from the
-      // same relationship [GameEngine.advanceWeek] uses when computing it.
-      monthCashMovement:
-          json['monthCashMovement'] as int? ?? (cashDelta - recruitmentCost),
-      cashBefore: json['cashBefore'] as int,
-      cashAfter: json['cashAfter'] as int,
+      monthCashMovement: monthCashMovement,
+      cashBefore: cashBefore,
+      cashAfter: cashAfter,
     );
   }
 }

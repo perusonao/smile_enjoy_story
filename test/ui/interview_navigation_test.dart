@@ -19,6 +19,14 @@ GameState _readyState() {
 }
 
 Future<void> _openSummary(WidgetTester tester) async {
+  // Tall viewport (Playable 0.4C.4 §7, §11, §13 added a persona header +
+  // info gauge + conclusion chips above the CTA row) — sidesteps
+  // ListView/Sliver lazy-building flakiness in favor of just fitting
+  // everything on screen at once, same pattern as
+  // assignment_acceptance_test.dart.
+  tester.view.physicalSize = const Size(800, 2600);
+  tester.view.devicePixelRatio = 1;
+  addTearDown(tester.view.resetPhysicalSize);
   final state=_readyState(); SharedPreferences.setMockInitialValues({'ses_playable_save_v1':jsonEncode(state.toJson()),'ses_founding_tutorial_seen':true});
   final controller=GameController(); final tab=ValueNotifier<int>(SesTab.home);
   await tester.pumpWidget(
@@ -67,6 +75,9 @@ void main(){
   });
   testWidgets('reject result CTA returns to recruitment without dead-end',(tester)async{
     await _openSummary(tester); await tester.tap(find.text('不採用')); await tester.pumpAndSettle();
+    // Playable 0.4C.4 §16: 不採用 is irreversible, so it now confirms first.
+    expect(find.text('不採用にしますか？'),findsOneWidget);
+    await tester.tap(find.text('不採用にする')); await tester.pumpAndSettle();
     expect(find.text('不採用'),findsOneWidget); await tester.tap(find.text('採用画面へ戻る')); await tester.pumpAndSettle();
     expect(find.text('初めての採用面接が終わりました'),findsOneWidget);
     await tester.tap(find.text('OK')); await tester.pumpAndSettle();

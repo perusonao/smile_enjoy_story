@@ -35,7 +35,18 @@ export interface ScreenSnapshot {
 // from both `texts` and `buttons`. Found via the Codex follow-up's
 // candidate-identity check turning up `null` for a screen whose heading
 // visibly had the name.
-const ARIA_LINE = /^-\s*([a-zA-Z]+)(?::\s*(.*?)|\s+"((?:[^"\\]|\\.)*)")?\s*((?:\[[a-zA-Z]+(?:=[^\]]*)?\]\s*)*)$/;
+//
+// The trailing `:?` (Playable 0.4C.4 investigation) handles a named/quoted
+// node that itself has children in the tree — e.g. a `group "..."` whose
+// accessible name is a whole merged card of text with a `button` nested
+// under it (exactly what Flutter Web produces for
+// FirstContractCelebration's headline + breakdown + CTA, all merged into
+// one semantics node). ariaSnapshot() prints that as `- group "...":`
+// followed by indented children lines; without this, the trailing `:`
+// left the line unmatched, so the whole line — including the "初案件参画"
+// text used to detect Prologue completion — was silently dropped, the same
+// failure mode the comment above already describes for `[level=N]`.
+const ARIA_LINE = /^-\s*([a-zA-Z]+)(?::\s*(.*?)|\s+"((?:[^"\\]|\\.)*)")?\s*((?:\[[a-zA-Z]+(?:=[^\]]*)?\]\s*)*):?$/;
 
 // Two always-there pieces of chrome, excluded at the source so no decision
 // rule can ever pick them by accident and so they don't inflate the
@@ -49,9 +60,12 @@ const ARIA_LINE = /^-\s*([a-zA-Z]+)(?::\s*(.*?)|\s+"((?:[^"\\]|\\.)*)")?\s*((?:\
 //    flag every screen in the game as "too many choices".
 const CHROME_BUTTON_NAME = /^((back\s*)+|最初からやり直す)$/i;
 
-/** Reads the full accessibility tree in one round-trip, via ariaSnapshot(). */
-export async function snapshotScreen(page: Page): Promise<ScreenSnapshot> {
-  const raw = await page.locator('body').ariaSnapshot();
+/** Pure line-parser for Playwright's `ariaSnapshot()` YAML-ish text output —
+ * split out from {@link snapshotScreen} so this parsing logic (the actual
+ * source of two real bugs found so far: the `[level=N]` annotation gap and
+ * the trailing-`:`-on-a-parent-with-children gap) is unit-testable without
+ * a real Page/browser (see `tests/game-state.ariaParsing.spec.ts`). */
+export function parseAriaSnapshot(raw: string): ScreenSnapshot {
   const texts: string[] = [];
   const buttons: ButtonInfo[] = [];
   for (const line of raw.split('\n')) {
@@ -69,6 +83,12 @@ export async function snapshotScreen(page: Page): Promise<ScreenSnapshot> {
     }
   }
   return { texts, buttons };
+}
+
+/** Reads the full accessibility tree in one round-trip, via ariaSnapshot(). */
+export async function snapshotScreen(page: Page): Promise<ScreenSnapshot> {
+  const raw = await page.locator('body').ariaSnapshot();
+  return parseAriaSnapshot(raw);
 }
 
 export function hasText(snap: ScreenSnapshot, needle: string): boolean {

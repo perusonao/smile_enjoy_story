@@ -1,33 +1,92 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../game/game.dart';
 import '../theme.dart';
 import 'expense_breakdown_sheet.dart';
 
-/// Persistent, always-visible strip across every tab (Playable 0.4C.3 §2):
-/// Week / cash / headcount / month-end cash forecast, so "how is my company
-/// doing right now" never requires leaving whatever screen the player is on.
+/// Persistent, always-visible strip across every tab (Playable 0.4C.3 §2)
+/// — and, since Playable 0.4C.4 §2, across the Founding Prologue too, from
+/// its very first screen: Week / cash / headcount / month-end cash
+/// forecast, so "how is my company doing right now" never requires leaving
+/// whatever screen the player is on, or finishing the tutorial first.
 ///
 /// Deliberately a single slim row — this is a glance-only summary, not a
 /// second accounting screen. Full detail (AR, this month's inflow/outflow,
 /// runway) stays in [showExpenseBreakdownSheet], which tapping this strip
 /// opens.
-class ManagementHud extends StatelessWidget {
-  const ManagementHud({super.key, required this.state});
+///
+/// Headcount and the month-end forecast briefly show a "before → after"
+/// hint when they change between builds (§3) — e.g. "👥 0 → 1" right after a
+/// hire, "月末予想 255万 → 220万" once the new salary lands in the
+/// projection — so a player *sees* a decision move the numbers, not just
+/// the end state. Deliberately just changed text, no motion: §3 explicitly
+/// warns against over-animating this.
+class ManagementHud extends StatefulWidget {
+  const ManagementHud({super.key, required this.state, this.weekLabel});
 
   final GameState state;
 
+  /// Overrides the leading "WEEK N" cell — the Founding Prologue passes its
+  /// own "3月N週" label here, since `state.displayWeek` stays pinned to the
+  /// fiscal year's Week 1 for all of March (§83).
+  final String? weekLabel;
+
+  @override
+  State<ManagementHud> createState() => _ManagementHudState();
+}
+
+class _ManagementHudState extends State<ManagementHud> {
+  int? _previousHeadcount;
+  int? _previousProjected;
+  Timer? _headcountTimer;
+  Timer? _projectedTimer;
+
+  @override
+  void didUpdateWidget(covariant ManagementHud oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final oldHeadcount = oldWidget.state.engineers.length;
+    final newHeadcount = widget.state.engineers.length;
+    if (oldHeadcount != newHeadcount) {
+      _headcountTimer?.cancel();
+      setState(() => _previousHeadcount = oldHeadcount);
+      _headcountTimer = Timer(const Duration(milliseconds: 2400), () {
+        if (mounted) setState(() => _previousHeadcount = null);
+      });
+    }
+    final oldProjected = FinanceEngine.projectedMonthEndCash(oldWidget.state);
+    final newProjected = FinanceEngine.projectedMonthEndCash(widget.state);
+    if (oldProjected != newProjected) {
+      _projectedTimer?.cancel();
+      setState(() => _previousProjected = oldProjected);
+      _projectedTimer = Timer(const Duration(milliseconds: 2400), () {
+        if (mounted) setState(() => _previousProjected = null);
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _headcountTimer?.cancel();
+    _projectedTimer?.cancel();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
+    final state = widget.state;
     final projected = FinanceEngine.projectedMonthEndCash(state);
     final level = FinanceEngine.classifyRunway(FinanceEngine.cashRunwayMonths(state));
     final forecast = _ForecastStyle.forLevel(level);
+    final headcount = state.engineers.length;
+    final weekText = widget.weekLabel ?? 'WEEK ${state.displayWeek}';
 
     return Semantics(
       container: true,
       button: true,
-      label: '経営状況 WEEK ${state.displayWeek} 現預金 ${formatCompactYen(state.company.cash)} '
-          '社員 ${state.engineers.length}人 月末予想 ${formatCompactYen(projected)} ${forecast.label}',
+      label: '経営状況 $weekText 現預金 ${formatCompactYen(state.company.cash)} '
+          '社員 $headcount人 月末予想 ${formatCompactYen(projected)} ${forecast.label}',
       // The label above already gives a screen reader the whole row in one
       // clean sentence — without this, InkWell's default merge-descendants
       // behavior would additionally announce every child Text a second time
@@ -51,7 +110,7 @@ class ManagementHud extends StatelessWidget {
               children: [
                 _HudItem(
                   child: Text(
-                    'WEEK ${state.displayWeek}',
+                    weekText,
                     style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12.5),
                   ),
                 ),
@@ -77,7 +136,7 @@ class ManagementHud extends StatelessWidget {
                       const Icon(Icons.groups_outlined, size: 14, color: Colors.black54),
                       const SizedBox(width: 3),
                       Text(
-                        '${state.engineers.length}人',
+                        _previousHeadcount == null ? '$headcount人' : '$_previousHeadcount→$headcount人',
                         style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12.5),
                       ),
                     ],
@@ -94,7 +153,9 @@ class ManagementHud extends StatelessWidget {
                         const SizedBox(width: 3),
                         Flexible(
                           child: Text(
-                            '月末予想 ${formatCompactYen(projected)}',
+                            _previousProjected == null
+                                ? '月末予想 ${formatCompactYen(projected)}'
+                                : '月末予想 ${formatCompactYen(_previousProjected!)}→${formatCompactYen(projected)}',
                             overflow: TextOverflow.ellipsis,
                             style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12.5, color: forecast.color),
                           ),

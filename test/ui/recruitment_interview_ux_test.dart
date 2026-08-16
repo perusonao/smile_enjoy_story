@@ -19,6 +19,12 @@ void main(){
     for(final label in ['技術経験','役割・経歴','転職理由']){await tester.tap(find.text(label));await tester.pumpAndSettle();}
     expect(find.text('応募者からの質問'),findsOneWidget); expect(tester.takeException(),isNull);
     await tester.tap(find.byType(FilledButton).first); await tester.pumpAndSettle();
-    expect(find.text('面接まとめ'),findsOneWidget); expect(find.text('採用する'),findsOneWidget); expect(find.text('不採用'),findsOneWidget); expect(tester.takeException(),isNull);
+    expect(find.text('面接まとめ'),findsOneWidget);
+    // Playable 0.4C.4 §7, §11, §13 added a persona header + info gauge +
+    // conclusion chips above the CTA row, so on a real 390px-tall viewport
+    // the decision buttons now sit below the fold — scroll to them exactly
+    // as a real player would.
+    await tester.scrollUntilVisible(find.text('採用する'), 200);
+    expect(find.text('採用する'),findsOneWidget); expect(find.text('不採用'),findsOneWidget); expect(tester.takeException(),isNull);
   });
 }

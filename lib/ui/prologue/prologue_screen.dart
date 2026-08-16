@@ -5,7 +5,9 @@ import '../../domain/domain.dart';
 import '../../game/game.dart';
 import '../projects/client_interview_screen.dart';
 import '../theme.dart';
+import '../widgets/first_contract_celebration.dart';
 import '../widgets/labels.dart';
+import '../widgets/management_hud.dart';
 import '../widgets/navigator_card.dart';
 import 'prologue_interview_screen.dart';
 
@@ -42,9 +44,22 @@ class PrologueScreen extends StatelessWidget {
             ],
           ),
           body: SafeArea(
-            child: ListView(
-              padding: const EdgeInsets.fromLTRB(14, 12, 14, 24),
-              children: [_StageContent(stage: stage, state: state, navigatorName: navigatorName)],
+            child: Column(
+              children: [
+                // Visible from the very first Prologue screen (Playable
+                // 0.4C.4 §2) — "how is my company doing" must never require
+                // finishing the tutorial first. Same shared widget MainShell
+                // uses post-Prologue, just with a 3月N週 label instead of the
+                // fiscal-year WEEK counter (§83: `company.currentWeek` stays
+                // 1 through all of March).
+                ManagementHud(state: state, weekLabel: '3月${state.prologueState.prologueWeek.clamp(1, 4)}週'),
+                Expanded(
+                  child: ListView(
+                    padding: const EdgeInsets.fromLTRB(14, 12, 14, 24),
+                    children: [_StageContent(stage: stage, state: state, navigatorName: navigatorName)],
+                  ),
+                ),
+              ],
             ),
           ),
         );
@@ -98,6 +113,7 @@ class _StageContent extends StatelessWidget {
           message: '募集を開始しました。応募が届くまで次の週へ進めましょう。',
           ctaLabel: '次の週へ',
           onCta: () => controller.advancePrologueWeek(),
+          mood: navigatorMoodFor(state),
         );
       case PrologueStage.week2CandidateSelect:
         return _CandidateSelect(navigatorName: navigatorName, state: state);
@@ -118,6 +134,7 @@ class _StageContent extends StatelessWidget {
           secondaryMessage: '公開先: 現在取引できる会社(${state.unlockedClientCount}社)',
           ctaLabel: '営業を開始する',
           onCta: () => controller.startProloguePreJoiningSales(),
+          mood: navigatorMoodFor(state),
         );
       case PrologueStage.week4AwaitingRequest:
         return NavigatorCard(
@@ -127,6 +144,7 @@ class _StageContent extends StatelessWidget {
               : '面談依頼を待ちましょう。次の週へ進めると、案件を探し直します。',
           ctaLabel: '次の週へ',
           onCta: () => controller.advancePrologueWeek(),
+          mood: navigatorMoodFor(state),
         );
       case PrologueStage.week4InterviewRequest:
         return _InterviewRequest(navigatorName: navigatorName, state: state);
@@ -203,12 +221,15 @@ class _Intro extends StatefulWidget {
 
 class _IntroState extends State<_Intro> {
   int _index = 0;
+
+  // Two screens, one theme each (Playable 0.4C.4 §4-5) — down from five.
+  // The old §4 screen just *described* fixed costs in the abstract; now
+  // that the Management HUD is visible above this card from the Prologue's
+  // very first screen (§2), the second message can point at real numbers
+  // the player is already looking at instead of re-explaining them in text.
   List<String> get _messages => [
-    '${widget.presidentName}社長、あらためまして。\n「${widget.companyName}」、これから一緒に経営していきましょう。',
-    'この会社でやることはシンプルです。\n・技術者を採用する\n・案件へ参画させる\n・取引先から売上を得る',
-    '取引実績を積んで信頼を得て、新しい取引先を増やし、会社を成長させましょう。\nただし、現金が尽きると経営は続けられません。',
-    '続いて事務所についてです。\n現在の事務所は小規模オフィス、家賃は月${formatCompactYen(officeConfigs[OfficeType.smallOffice]!.monthlyRent)}です。',
-    '社員がいなくても、家賃や光熱費・通信費などの固定費は毎月かかります。\n私、総務の給与も毎月発生しています。\n\n社員がいなくても、毎月現金が減っていくことを覚えておいてください。',
+    '${widget.presidentName}社長、あらためまして。\n「${widget.companyName}」を一緒に経営していきましょう。\nやることはシンプルです：技術者を採用し、案件へ参画させ、取引先から売上を得ます。',
+    '事務所は小規模オフィス(家賃 月${formatCompactYen(officeConfigs[OfficeType.smallOffice]!.monthlyRent)})。\n社員がいなくても、家賃や総務の給与などの固定費は毎月かかります。\n上のHUDで、現預金と月末予想の動きを確認しながら進めましょう。',
   ];
 
   @override
@@ -495,7 +516,11 @@ class _SkillSheetConfirm extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        NavigatorCard(navigatorName: navigatorName, message: '${engineer.profile.name}さんが内定を承諾しました！\n入社は4月1週の予定です。'),
+        NavigatorCard(
+          navigatorName: navigatorName,
+          message: '${engineer.profile.name}さんが内定を承諾しました！\n入社は4月1週の予定です。',
+          mood: navigatorMoodFor(state, base: NavigatorMood.firstHire),
+        ),
         const SizedBox(height: 12),
         Card(
           child: Padding(
@@ -687,7 +712,11 @@ class _Contract extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        NavigatorCard(navigatorName: navigatorName, message: '${state.company.presidentName}社長、これで4月の入社と同時に案件へ参画できます！'),
+        NavigatorCard(
+          navigatorName: navigatorName,
+          message: '${state.company.presidentName}社長、これで4月の入社と同時に案件へ参画できます！',
+          mood: navigatorMoodFor(state, base: NavigatorMood.firstContract),
+        ),
         const SizedBox(height: 12),
         Card(
           child: Padding(
@@ -714,6 +743,13 @@ class _Contract extends StatelessWidget {
   }
 }
 
+/// The Prologue's final beat (Playable 0.4C.4 §20): everything from company
+/// setup through the client interview led here, so this uses the same
+/// flagship [FirstContractCelebration] the "skip the tutorial" path shows
+/// via [OneTimeEvent.firstAssignmentCelebration] — never a plainer,
+/// prologue-only duplicate. `showPhaseTransition: false` because the
+/// "会社経営スタート" line below already covers that beat with its own
+/// paragraph.
 class _Complete extends StatelessWidget {
   const _Complete({required this.state});
   final GameState state;
@@ -721,36 +757,33 @@ class _Complete extends StatelessWidget {
   Widget build(BuildContext context) {
     final engineer = state.engineers.first;
     final assignment = state.activeAssignments.first;
-    final client = FinanceEngine.clientById(assignment.project.clientId);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Card(
-          color: Colors.green.shade50,
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('${engineer.profile.name}さんが入社しました！', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                const SizedBox(height: 6),
-                const Text('初案件参画！', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.green)),
-                Text('${assignment.project.title} / ${client.name}'),
-                Text('月単価: ${formatCompactYen(assignment.project.monthlyRate)} / 支払サイト: ${client.paymentTermDays}日'),
-                const SizedBox(height: 10),
-                Text('これで会社に売上が立ちます。\nただし、この取引先は${client.paymentTermDays}日サイトのため、入金されるのは後になります。', style: const TextStyle(fontSize: 12.5, color: Colors.black54)),
-              ],
-            ),
+        FirstContractCelebration(assignment: assignment, employee: engineer, showPhaseTransition: false),
+        const SizedBox(height: 16),
+        Center(
+          child: Text(
+            '━━━━━━━━━━━━\n「${state.company.name}」創業準備 完了 → 会社経営スタート\n━━━━━━━━━━━━',
+            textAlign: TextAlign.center,
+            style: const TextStyle(fontWeight: FontWeight.bold),
           ),
         ),
-        const SizedBox(height: 16),
-        Center(child: Text('━━━━━━━━━━━━\n「${state.company.name}」創業準備 完了\n━━━━━━━━━━━━', textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.bold))),
         const SizedBox(height: 8),
-        const Text('最初の社員を採用し、最初の案件を獲得しました。\nここからは、社長の判断で会社を経営していきましょう。', textAlign: TextAlign.center),
-        const SizedBox(height: 8),
-        const Text('まずは売上・給与・家賃などの基本的な経営に慣れましょう。採用や福利厚生は、経営に慣れてから少しずつ使えるようになります。', textAlign: TextAlign.center, style: TextStyle(fontSize: 12, color: Colors.black54)),
+        const Text('ここからは、社長の判断で会社を経営していきましょう。', textAlign: TextAlign.center),
         const SizedBox(height: 16),
-        FilledButton(onPressed: () => context.game.completePrologue(), child: const Text('経営を始める')),
+        FilledButton(
+          onPressed: () {
+            // The "skip the tutorial" path's own first-assignment dialog
+            // ([OneTimeEvent.firstAssignmentCelebration]) would otherwise
+            // fire again the next time this player advances a week from
+            // Home — this exact beat, shown a second time, right after
+            // they already saw it above.
+            context.game.markTutorialSeen(OneTimeEvent.firstAssignmentCelebration);
+            context.game.completePrologue();
+          },
+          child: const Text('経営を始める'),
+        ),
       ],
     );
   }

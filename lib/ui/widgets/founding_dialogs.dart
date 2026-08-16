@@ -1,8 +1,7 @@
 import 'package:flutter/material.dart';
 
-import '../../domain/domain.dart';
 import '../../game/game.dart';
-import '../theme.dart';
+import 'first_contract_celebration.dart';
 import 'labels.dart';
 
 /// Content for a one-time founding-tutorial dialog (celebration or
@@ -51,14 +50,19 @@ FoundingEventDialog? buildFoundingEventDialog(OneTimeEvent event, GameState stat
     case OneTimeEvent.firstAssignmentCelebration:
       final assignment = state.activeAssignments.firstOrNull;
       final employee = assignment == null ? null : state.engineers.where((e) => e.id == assignment.engineerId).firstOrNull;
+      if (assignment == null || employee == null) return null;
+      // Title/body left empty on purpose: for a player who reaches their
+      // first assignment without playing the Founding Prologue (自由に開始),
+      // this dialog *is* the flagship celebration the Prologue's own
+      // completion screen otherwise gives (§20) — [FirstContractCelebration]
+      // already carries its own headline, so a duplicate title here would
+      // just repeat "🎉 初案件参画" twice in the same dialog.
       return FoundingEventDialog(
-        title: '🎉 初案件参画！',
-        body: 'あなたの会社で初めての売上が生まれます。\n\n'
-            '${employee?.profile.name ?? '社員'}さんが\n'
-            '${assignment?.project.title ?? '案件'}へ参画しました。',
+        title: '',
+        body: '',
         primaryLabel: '会社状況を見る',
         celebration: true,
-        extra: assignment == null || employee == null ? null : _FirstAssignmentBreakdown(assignment: assignment, employee: employee, week: state.week),
+        extra: FirstContractCelebration(assignment: assignment, employee: employee),
       );
     case OneTimeEvent.recruitmentUnlockCelebration:
       return const FoundingEventDialog(
@@ -127,21 +131,28 @@ FoundingEventDialog? buildFoundingEventDialog(OneTimeEvent event, GameState stat
 
 /// Shows [dialog] and returns `true` if the player tapped the primary
 /// action (used by callers that then navigate somewhere on confirm).
+///
+/// Title/body are optional (Playable 0.4C.4 §20): a dialog whose [extra]
+/// already carries its own headline (e.g. [FirstContractCelebration]) can
+/// leave both empty rather than repeat itself above a second, identical
+/// title.
 Future<bool> showFoundingEventDialog(BuildContext context, FoundingEventDialog dialog) async {
   final result = await showDialog<bool>(
     context: context,
     builder: (dialogContext) => AlertDialog(
-      title: Text(
-        dialog.title,
-        style: dialog.celebration ? const TextStyle(fontSize: 20, fontWeight: FontWeight.bold) : null,
-      ),
+      title: dialog.title.isEmpty
+          ? null
+          : Text(
+              dialog.title,
+              style: dialog.celebration ? const TextStyle(fontSize: 20, fontWeight: FontWeight.bold) : null,
+            ),
       content: SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(dialog.body),
-            if (dialog.extra != null) ...[const SizedBox(height: 14), dialog.extra!],
+            if (dialog.body.isNotEmpty) Text(dialog.body),
+            if (dialog.extra != null) ...[if (dialog.body.isNotEmpty) const SizedBox(height: 14), dialog.extra!],
           ],
         ),
       ),
@@ -154,70 +165,6 @@ Future<bool> showFoundingEventDialog(BuildContext context, FoundingEventDialog d
     ),
   );
   return result ?? false;
-}
-
-/// Unit price / gross margin / payment terms / first-payment estimate for
-/// the first assignment (Playable 0.4C.3 §9) — makes "契約成立 ≠ 即現金
-/// 増加" concrete with an actual date instead of just the general reminder
-/// text every assignment celebration already carried.
-class _FirstAssignmentBreakdown extends StatelessWidget {
-  const _FirstAssignmentBreakdown({required this.assignment, required this.employee, required this.week});
-
-  final ActiveAssignment assignment;
-  final Engineer employee;
-  final int week;
-
-  @override
-  Widget build(BuildContext context) {
-    final project = assignment.project;
-    final profit = MatchingEngine.monthlyProfit(employee, project);
-    final paymentTermDays = paymentTermDaysById(project.clientId);
-    final generatedMonth = GameCalendar.absoluteMonth(assignment.contractStartWeek);
-    final dueMonth = FinanceEngine.dueMonthFor(generatedMonth: generatedMonth, paymentTermDays: paymentTermDays);
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Colors.amber.shade50,
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: Colors.amber.shade300),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _row('月額単価', formatYen(project.monthlyRate)),
-          _row('月間想定粗利', formatYen(profit)),
-          _row('支払サイト', '$paymentTermDays日'),
-          _row('初回入金予定', GameCalendar.monthEndLabel(dueMonth)),
-          const Divider(height: 18),
-          const Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Icon(Icons.info_outline, size: 15, color: Colors.black54),
-              SizedBox(width: 6),
-              Expanded(
-                child: Text(
-                  '契約成立=即現金増加ではありません。売上は毎月発生しますが、\n'
-                  '現金は上の入金予定まで入ってきません。',
-                  style: TextStyle(fontSize: 12, height: 1.4, color: Colors.black54),
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _row(String label, String value) => Padding(
-    padding: const EdgeInsets.symmetric(vertical: 2),
-    child: Row(
-      children: [
-        SizedBox(width: 100, child: Text(label, style: const TextStyle(fontSize: 12.5, color: Colors.black54))),
-        Expanded(child: Text(value, style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.bold))),
-      ],
-    ),
-  );
 }
 
 extension _FirstOrNull<T> on Iterable<T> {

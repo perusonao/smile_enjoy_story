@@ -87,11 +87,19 @@ void main() {
     expect(find.textContaining('Week 6 から参画開始'), findsOneWidget);
   });
 
-  testWidgets('declining a final Offer gives immediate feedback via a SnackBar', (tester) async {
+  testWidgets('declining a final Offer asks for confirmation, then gives immediate feedback via a SnackBar', (tester) async {
+    // Playable 0.4C.4 §16: declining a participation offer is irreversible,
+    // so it now goes through a one-tap confirmation first.
     final state = _stateWithPendingOffer();
     await _pump(tester, state);
 
     await tester.tap(find.text('辞退'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('参画オファーを辞退しますか？'), findsOneWidget);
+    expect(find.byType(SnackBar), findsNothing);
+
+    await tester.tap(find.text('辞退する'));
     await tester.pump();
 
     expect(find.byType(SnackBar), findsOneWidget);

@@ -125,6 +125,11 @@ const REVEAL_CLIENT_RESULT = '結果を確認する';
 const REJECT_CANDIDATE = '不採用';
 const HIRE_CANDIDATE = '採用する';
 const DIALOG_BACK = '戻る';
+// Playable 0.4C.4 §16: rejecting a candidate now opens a one-tap confirm
+// dialog first ("不採用にしますか？" / confirmIrreversibleAction) before the
+// actual decision fires. The driver only ever taps REJECT_CANDIDATE when it
+// already wants that outcome, so it always confirms through.
+const CONFIRM_REJECT_CANDIDATE = '不採用にする';
 const BEGIN_MANAGEMENT = '経営を始める';
 
 const SCREEN_ORDER_INDEX: Partial<Record<ScreenLabel, number>> = {
@@ -676,6 +681,15 @@ function decideAction(snap: ScreenSnapshot, opts: { forceRejectFirstCandidate: b
   //    dialog: "内定承諾！" / "内定辞退" / "不採用").
   const dialogBack = enabledButton(snap, DIALOG_BACK);
   if (dialogBack) return { name: DIALOG_BACK, kind: 'click', advancesWeek: false };
+
+  // 1b. The 不採用 confirm dialog (Playable 0.4C.4 §16) is itself a
+  // blocking AlertDialog stacked on top of the interview-summary screen —
+  // handled before rule 7 below re-finds it, since that rule would
+  // otherwise try to re-click the (now-covered) summary screen's own
+  // REJECT_CANDIDATE button instead of confirming the dialog that's
+  // actually on top.
+  const confirmReject = enabledButton(snap, CONFIRM_REJECT_CANDIDATE);
+  if (confirmReject) return { name: CONFIRM_REJECT_CANDIDATE, kind: 'click', advancesWeek: false };
 
   // 2. New-game entry point.
   const start = enabledButton(snap, START_GAME);

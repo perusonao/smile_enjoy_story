@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import '../../app/game_scope.dart';
 import '../../app/nav_scope.dart';
+import '../../domain/domain.dart';
 import '../../game/game.dart';
 import '../main_shell.dart';
+import '../widgets/confirm_dialog.dart';
 import '../widgets/founding_dialogs.dart';
 import '../widgets/outcome_card.dart';
 import '../widgets/result_reveal.dart';
@@ -19,13 +21,15 @@ class RecruitmentInterviewScreen extends StatelessWidget {
     final sessions=state.recruitmentInterviews.where((s)=>s.applicantId==applicantId).toList();
     if(sessions.isEmpty){ WidgetsBinding.instance.addPostFrameCallback((_){c.interviewApplicant(applicantId);}); return const Scaffold(body: Center(child:CircularProgressIndicator())); }
     final s=sessions.last;
-    return Scaffold(appBar:AppBar(title:Text('${applicant.name}との面接')),body:SafeArea(child: s.questionsComplete ? (s.companyAnswer==null ? _Reverse(applicantId:applicantId,name:applicant.name,s:s) : _Summary(applicantId:applicantId,name:applicant.name,s:s)) : _Questions(applicantId:applicantId,name:applicant.name,s:s)));
+    return Scaffold(appBar:AppBar(title:Text('${applicant.name}との面接')),body:SafeArea(child: s.questionsComplete ? (s.companyAnswer==null ? _Reverse(applicantId:applicantId,applicant:applicant,s:s) : _Summary(applicantId:applicantId,applicant:applicant,s:s)) : _Questions(applicantId:applicantId,applicant:applicant,s:s)));
   }
 }
 
 class _Questions extends StatelessWidget {
-  const _Questions({required this.applicantId,required this.name,required this.s}); final String applicantId,name; final RecruitmentInterviewSession s;
-  @override Widget build(BuildContext context)=>ListView(key:ValueKey(s.selectedQuestions.length),padding:const EdgeInsets.all(16),children:[
+  const _Questions({required this.applicantId,required this.applicant,required this.s}); final String applicantId; final Applicant applicant; final RecruitmentInterviewSession s;
+  @override Widget build(BuildContext context)=>ListView(key:ValueKey(s.selectedQuestions.length),padding:const EdgeInsets.fromLTRB(16,16,16,28),children:[
+    ApplicantPersonaHeader(applicant: applicant, companyImpression: s.companyImpression),
+    const SizedBox(height: 14),
     QuestionProgress(asked: s.selectedQuestions.length),
     const SizedBox(height: 4),
     const Text('何を知りたいか選んでください。すべては聞けません。', style: TextStyle(fontSize: 12.5, color: Colors.black54)),
@@ -33,8 +37,8 @@ class _Questions extends StatelessWidget {
       const SizedBox(height:12),
       ReactionLine(companyImpression: s.companyImpression),
       const SizedBox(height: 8),
-      TalkCard(name:name,a:s.applicantAnswers.last,o:s.observations.last),
-      if(s.applicantAnswers.length>1)ExpansionTile(title:Text('過去の回答 (${s.applicantAnswers.length-1})'),children:[for(var i=0;i<s.applicantAnswers.length-1;i++)TalkCard(name:name,a:s.applicantAnswers[i],o:s.observations[i])]),
+      TalkCard(name:applicant.name,a:s.applicantAnswers.last,o:s.observations.last),
+      if(s.applicantAnswers.length>1)ExpansionTile(title:Text('過去の回答 (${s.applicantAnswers.length-1})'),children:[for(var i=0;i<s.applicantAnswers.length-1;i++)TalkCard(name:applicant.name,a:s.applicantAnswers[i],o:s.observations[i])]),
     ],
     const SizedBox(height:14),
     for(final q in InterviewQuestionCategory.values)
@@ -49,14 +53,26 @@ class _Questions extends StatelessWidget {
   ]);
 }
 
-class _Reverse extends StatelessWidget { const _Reverse({required this.applicantId,required this.name,required this.s});final String applicantId,name;final RecruitmentInterviewSession s;
-  @override Widget build(BuildContext context){final choices=companyAnswerChoices[s.reverseQuestion]!;return ListView(key:const ValueKey('reverse'),padding:const EdgeInsets.all(16),children:[Text('応募者からの質問',style:Theme.of(context).textTheme.titleLarge),const SizedBox(height:12),Card(child:Padding(padding:const EdgeInsets.all(16),child:Text('$name\n「${reverseQuestionTexts[s.reverseQuestion]}」'))),const SizedBox(height:12),const Text('会社としてどう答えますか？'),for(var i=0;i<choices.length;i++)Padding(padding:const EdgeInsets.only(top:8),child:FilledButton.tonal(onPressed:()=>context.game.answerRecruitmentReverseQuestion(applicantId,i),style:FilledButton.styleFrom(alignment:Alignment.centerLeft,padding:const EdgeInsets.all(16)),child:Text(choices[i].text)))]);}
+class _Reverse extends StatelessWidget { const _Reverse({required this.applicantId,required this.applicant,required this.s});final String applicantId;final Applicant applicant;final RecruitmentInterviewSession s;
+  @override Widget build(BuildContext context){final choices=companyAnswerChoices[s.reverseQuestion]!;return ListView(key:const ValueKey('reverse'),padding:const EdgeInsets.fromLTRB(16,16,16,28),children:[
+    ApplicantPersonaHeader(applicant: applicant, companyImpression: s.companyImpression),
+    const SizedBox(height: 14),
+    Text('応募者からの質問',style:Theme.of(context).textTheme.titleLarge),const SizedBox(height:12),Card(child:Padding(padding:const EdgeInsets.all(16),child:Text('「${reverseQuestionTexts[s.reverseQuestion]}」'))),const SizedBox(height:12),const Text('会社としてどう答えますか？'),for(var i=0;i<choices.length;i++)Padding(padding:const EdgeInsets.only(top:8),child:FilledButton.tonal(onPressed:()=>context.game.answerRecruitmentReverseQuestion(applicantId,i),style:FilledButton.styleFrom(alignment:Alignment.centerLeft,padding:const EdgeInsets.all(16)),child:Text(choices[i].text)))]);}
 }
 class _Summary extends StatelessWidget {
-  const _Summary({required this.applicantId,required this.name,required this.s});
-  final String applicantId,name; final RecruitmentInterviewSession s;
+  const _Summary({required this.applicantId,required this.applicant,required this.s});
+  final String applicantId; final Applicant applicant; final RecruitmentInterviewSession s;
 
   Future<void> _decide(BuildContext context, InterviewOutcome outcome) async {
+    if (outcome == InterviewOutcome.rejected) {
+      final confirmed = await confirmIrreversibleAction(
+        context,
+        title: '不採用にしますか？',
+        message: '${applicant.name}さんを不採用にします。この判断は取り消せません。',
+        confirmLabel: '不採用にする',
+      );
+      if (!confirmed || !context.mounted) return;
+    }
     final controller = context.game;
     final navigator = Navigator.of(context);
     final tabIndex = NavScope.of(context);
@@ -81,8 +97,8 @@ class _Summary extends StatelessWidget {
         content: SizedBox(
           width: 320,
           child: showSuspense
-              ? ResultReveal(builder: (_) => _DecisionResult(name: name, outcome: outcome, accepted: accepted))
-              : _DecisionResult(name: name, outcome: outcome, accepted: accepted),
+              ? ResultReveal(builder: (_) => _DecisionResult(name: applicant.name, outcome: outcome, accepted: accepted))
+              : _DecisionResult(name: applicant.name, outcome: outcome, accepted: accepted),
         ),
         actions: [FilledButton(onPressed: () => Navigator.of(dialogContext).pop(), child: const Text('採用画面へ戻る'))],
       ),
@@ -110,23 +126,59 @@ class _Summary extends StatelessWidget {
 
   @override Widget build(BuildContext context) {
     final assessment = RecommendationEngine.postInterviewAssessment(s);
-    return ListView(key:const ValueKey('summary'),padding:const EdgeInsets.all(16),children:[
-      Text('面接まとめ',style:Theme.of(context).textTheme.headlineSmall),Text(name,style:Theme.of(context).textTheme.titleLarge),
-      const SizedBox(height: 6),
-      ReactionLine(companyImpression: s.companyImpression),
-      const SizedBox(height: 10),
-      for(final o in s.observations)
-        Padding(
-          padding: const EdgeInsets.only(bottom: 6),
-          child: ObservationSummaryTile(observation: o, answer: s.applicantAnswers.firstWhere((a) => a.category == o.category)),
+    // The decision row lives *outside* the scrollable list, pinned to the
+    // bottom (Playable 0.4C.4 §25-26 fix): §7/§11/§13 added real vertical
+    // content above it (persona header, info gauge, conclusion chips), and
+    // a plain trailing-row-inside-ListView placement meant the CTA simply
+    // wasn't mounted at all on some renderers at typical scroll positions
+    // (confirmed failing on WebKit in CI — an empty accessibility button
+    // list on this exact screen). Pinning it guarantees "今やること" is
+    // never buried, regardless of how long the summary above it grows.
+    return Column(
+      children: [
+        Expanded(
+          child: ListView(key:const ValueKey('summary'),padding:const EdgeInsets.fromLTRB(16,16,16,16),children:[
+            Text('面接まとめ',style:Theme.of(context).textTheme.headlineSmall),
+            const SizedBox(height: 10),
+            ApplicantPersonaHeader(applicant: applicant, companyImpression: s.companyImpression),
+            const SizedBox(height: 8),
+            ReactionLine(companyImpression: s.companyImpression),
+            const SizedBox(height: 14),
+            // 結論 (Playable 0.4C.4 §13): visual gauge + per-question chips
+            // first — the free-text detail below is optional reading, not
+            // the entry point.
+            InterviewInfoGauge(session: s),
+            const SizedBox(height: 10),
+            InterviewConclusionSummary(session: s),
+            const SizedBox(height: 16),
+            const Divider(),
+            Text('詳細', style: Theme.of(context).textTheme.titleSmall?.copyWith(color: Colors.black54)),
+            const SizedBox(height: 4),
+            for(final o in s.observations)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 6),
+                child: ObservationSummaryTile(observation: o, answer: s.applicantAnswers.firstWhere((a) => a.category == o.category)),
+              ),
+            const Divider(), Text('採用判断', style: Theme.of(context).textTheme.titleMedium),
+            if (assessment.good.isNotEmpty) Text('良い材料\n・${assessment.good.join('\n・')}'),
+            if (assessment.cautions.isNotEmpty) Text('注意\n・${assessment.cautions.join('\n・')}'),
+            if (s.applicantReaction != null) Padding(padding: const EdgeInsets.only(top: 6), child: Text('本人の反応: ${s.applicantReaction}', style: const TextStyle(fontSize: 12.5, color: Colors.black54))),
+          ]),
         ),
-      const Divider(), Text('採用判断', style: Theme.of(context).textTheme.titleMedium),
-      if (assessment.good.isNotEmpty) Text('良い材料\n・${assessment.good.join('\n・')}'),
-      if (assessment.cautions.isNotEmpty) Text('注意\n・${assessment.cautions.join('\n・')}'),
-      ListTile(contentPadding:EdgeInsets.zero,title:const Text('人物像の理解'),subtitle:Text(RecruitmentInterviewEngine.knowledgeLabel(s.candidateKnowledge))),
-      ListTile(contentPadding:EdgeInsets.zero,title:const Text('本人の会社への反応'),subtitle:Text('${RecruitmentInterviewEngine.impressionLabel(s.companyImpression)}\n${s.applicantReaction}')),
-      Row(children:[Expanded(child:OutlinedButton(key:const ValueKey('decision-reject'),onPressed:()=>_decide(context,InterviewOutcome.rejected),child:const Text('不採用'))),const SizedBox(width:8),Expanded(child:FilledButton(key:const ValueKey('decision-hire'),onPressed:()=>_decide(context,InterviewOutcome.hired),child:const Text('採用する')))])
-    ]);
+        SafeArea(
+          top: false,
+          child: Container(
+            padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
+            decoration: BoxDecoration(color: Colors.white, border: Border(top: BorderSide(color: Theme.of(context).colorScheme.outlineVariant))),
+            child: Row(children:[
+              Expanded(child:OutlinedButton(key:const ValueKey('decision-reject'),style: OutlinedButton.styleFrom(minimumSize: const Size(0, 48)),onPressed:()=>_decide(context,InterviewOutcome.rejected),child:const Text('不採用'))),
+              const SizedBox(width:10),
+              Expanded(child:FilledButton(key:const ValueKey('decision-hire'),style: FilledButton.styleFrom(minimumSize: const Size(0, 48)),onPressed:()=>_decide(context,InterviewOutcome.hired),child:const Text('採用する'))),
+            ]),
+          ),
+        ),
+      ],
+    );
   }
 }
 

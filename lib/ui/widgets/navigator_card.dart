@@ -1,6 +1,35 @@
 import 'package:flutter/material.dart';
 
+import '../../game/game.dart';
 import '../theme.dart';
+
+/// The 総務ナビゲーター's expression (Playable 0.4C.4 §12) — a small nudge
+/// away from "無機質なチュートリアルメッセージ" toward "創業期を一緒に進める
+/// スタッフとの会話". Deliberately just an icon + tint swap, not new
+/// dialogue volume: the card's own [NavigatorCard.message] stays exactly as
+/// short as before.
+enum NavigatorMood { normal, moneyDanger, firstHire, firstContract }
+
+class _MoodStyle {
+  const _MoodStyle({required this.icon, required this.color});
+  final IconData icon;
+  final Color color;
+}
+
+const _moodStyles = <NavigatorMood, _MoodStyle>{
+  NavigatorMood.normal: _MoodStyle(icon: Icons.support_agent, color: SesTheme.primaryBlue),
+  NavigatorMood.moneyDanger: _MoodStyle(icon: Icons.sentiment_dissatisfied, color: Color(0xFFC62828)),
+  NavigatorMood.firstHire: _MoodStyle(icon: Icons.sentiment_satisfied, color: Color(0xFF2E7D32)),
+  NavigatorMood.firstContract: _MoodStyle(icon: Icons.celebration, color: Color(0xFFF9A825)),
+};
+
+/// `state`'s cash runway overrides any [base] mood (Playable 0.4C.4 §12) —
+/// money trouble is the one thing the 総務 should never look upbeat about,
+/// even mid-celebration-flavored stage.
+NavigatorMood navigatorMoodFor(GameState state, {NavigatorMood base = NavigatorMood.normal}) {
+  final level = FinanceEngine.classifyRunway(FinanceEngine.cashRunwayMonths(state));
+  return level == RunwayLevel.danger ? NavigatorMood.moneyDanger : base;
+}
 
 /// The 総務ナビゲーター card (Playable 0.5A §67): a face icon + name, one
 /// short message, and a single primary action — Home During the Prologue
@@ -15,6 +44,7 @@ class NavigatorCard extends StatelessWidget {
     this.onCta,
     this.secondaryCtaLabel,
     this.onSecondaryCta,
+    this.mood = NavigatorMood.normal,
   });
 
   final String navigatorName;
@@ -24,9 +54,11 @@ class NavigatorCard extends StatelessWidget {
   final VoidCallback? onCta;
   final String? secondaryCtaLabel;
   final VoidCallback? onSecondaryCta;
+  final NavigatorMood mood;
 
   @override
   Widget build(BuildContext context) {
+    final style = _moodStyles[mood]!;
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -39,7 +71,7 @@ class NavigatorCard extends StatelessWidget {
         children: [
           Row(
             children: [
-              const CircleAvatar(radius: 16, backgroundColor: SesTheme.primaryBlue, child: Icon(Icons.support_agent, color: Colors.white, size: 18)),
+              CircleAvatar(radius: 16, backgroundColor: style.color, child: Icon(style.icon, color: Colors.white, size: 18)),
               const SizedBox(width: 8),
               Expanded(
                 child: Text('総務 $navigatorName', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13.5)),

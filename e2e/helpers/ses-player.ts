@@ -353,17 +353,6 @@ export async function playFoundingToFirstAssignment(page: Page, options: PlayOpt
       break;
     }
 
-    if (decision.turn) clientInterviewHistory.push(decision.turn);
-    if (decision.countsAsClientInterview) clientInterviewCount++;
-    if (decision.countsAsSelectionFailure) selectionFailureCount++;
-    if (decision.kind === 'reject-candidate') {
-      rejectedOnce = true;
-      if (decision.candidateName) rejectedCandidateName = decision.candidateName;
-    }
-    if (decision.kind === 'hire-candidate' && decision.candidateName) {
-      acceptedCandidateName = decision.candidateName;
-    }
-
     if (decision.name === previousClickedName) {
       // Same button label as the immediately-preceding action (e.g. "面談へ
       // 進む" both accepting an Interview Request and then, on the very next
@@ -377,7 +366,25 @@ export async function playFoundingToFirstAssignment(page: Page, options: PlayOpt
     }
     previousClickedName = decision.name;
 
-    await page.getByRole('button', { name: decision.name, exact: true }).first().click();
+    // Click, self-correcting against the "戻る race" (screen state changing
+    // between when `decision` was read and when the click actually lands —
+    // see clickDecisionResilient's own doc comment). `decision` itself can
+    // come back *different* from what was read above: never trust the
+    // pre-click `decision` for bookkeeping below, only the one this
+    // actually resolves to.
+    decision = await clickDecisionResilient(page, decision, decideOpts);
+
+    if (decision.turn) clientInterviewHistory.push(decision.turn);
+    if (decision.countsAsClientInterview) clientInterviewCount++;
+    if (decision.countsAsSelectionFailure) selectionFailureCount++;
+    if (decision.kind === 'reject-candidate') {
+      rejectedOnce = true;
+      if (decision.candidateName) rejectedCandidateName = decision.candidateName;
+    }
+    if (decision.kind === 'hire-candidate' && decision.candidateName) {
+      acceptedCandidateName = decision.candidateName;
+    }
+
     actionCount++;
     lastActivityAt = Date.now();
     if (decision.advancesWeek) weekAdvances++;
@@ -658,6 +665,68 @@ export async function waitForActionableOrStableDeadEnd(
     }
   }
   return { status: 'stable-dead-end', snapshot: initialSnapshot, screen: classifyScreen(initialSnapshot), decision: null };
+}
+
+// Total budget a single tick's click gets to actually land, matching
+// playwright.config.ts's own `actionTimeout` (15s) — a stale decision that
+// keeps getting discarded and re-decided must still fail within the same
+// order-of-magnitude window a single un-self-correcting click already had,
+// not accumulate unboundedly across retries.
+const CLICK_RESILIENT_TOTAL_BUDGET_MS = 15_000;
+// Per-attempt slice of that budget — short enough that a genuinely-vanished
+// button gives up and re-reads the screen quickly, long enough to not
+// mistake normal Flutter Web frame latency for the button being gone.
+const CLICK_RESILIENT_ATTEMPT_MS = 3_000;
+
+/** Clicks [decision], but never trusts that [decision] is still the right
+ * thing to click just because it was correct when `decideAction` produced
+ * it (§ "ses-player の「戻る」race" investigation, PR #15 CI runs
+ * 32000987476/32019575020/32023887460 on mobile-webkit: a button present in
+ * the snapshot `decideAction` read is reproducibly gone by the time
+ * `.click()` actually runs, and stays gone for the *entire* 15s
+ * `actionTimeout` — not a few-hundred-ms race a bare retry would paper
+ * over).
+ *
+ * The previous design was "screen recognition -> decision -> click", full
+ * stop: a single locator click, trusting Playwright's own actionability
+ * retry to bridge whatever changed in between. That retry only re-queries
+ * the *same* `{ name: decision.name }` locator, though — it can never
+ * recover from the decision itself having gone stale (the dialog it named
+ * closed, a chained tutorial dialog replaced it, the app auto-navigated
+ * elsewhere). This function makes that failure mode recoverable: on a
+ * click timeout, it re-reads the *current* screen, re-runs `decideAction`
+ * against it, and — if that now names something else — clicks the new
+ * target instead of the stale one, repeating until something lands or the
+ * total budget is spent. A screen that still legally wants the exact same
+ * button just gets a fresh attempt at the same click, which is exactly as
+ * safe as the old unconditional click was.
+ *
+ * Returns the [Decision] that actually got clicked — never assume it's
+ * `===` the one passed in; callers must use the returned value for any
+ * bookkeeping (candidate names, client-interview turn history, counters). */
+async function clickDecisionResilient(page: Page, decision: Decision, decideOpts: { forceRejectFirstCandidate: boolean }): Promise<Decision> {
+  const deadline = Date.now() + CLICK_RESILIENT_TOTAL_BUDGET_MS;
+  while (true) {
+    const remaining = deadline - Date.now();
+    const attemptTimeout = Math.max(500, Math.min(CLICK_RESILIENT_ATTEMPT_MS, remaining));
+    try {
+      await page.getByRole('button', { name: decision.name, exact: true }).first().click({ timeout: attemptTimeout });
+      return decision;
+    } catch (err) {
+      if (Date.now() >= deadline) throw err;
+      // Discard the stale decision — re-evaluate the *current* screen
+      // instead of retrying the same (possibly gone-for-good) target.
+      const snap = await readStableSemantics(page);
+      const fresh = decideAction(snap, decideOpts);
+      if (!fresh) {
+        // Nothing legal on the current screen either: not a transient
+        // staleness, a genuine dead-end. Let the original error surface —
+        // the caller's own stall/dead-end handling picks this up next tick.
+        throw err;
+      }
+      decision = fresh;
+    }
+  }
 }
 
 interface Decision {

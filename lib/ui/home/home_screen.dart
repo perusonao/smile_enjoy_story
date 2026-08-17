@@ -11,6 +11,8 @@ import '../projects/client_interview_screen.dart';
 import '../projects/interview_results_screen.dart';
 import '../recruitment/applicant_detail_screen.dart';
 import '../theme.dart';
+import '../widgets/beginner_mode_card.dart';
+import '../widgets/beginner_mode_dialogs.dart';
 import '../widgets/company_phase_indicator.dart';
 import '../widgets/expense_breakdown_sheet.dart';
 import '../widgets/founding_dialogs.dart';
@@ -65,13 +67,24 @@ class _HomeScreenState extends State<HomeScreen> {
       await _showPendingFoundingEvents(context, controller, ProgressionEngine.weeklyEvents);
     }
 
+    if (context.mounted) {
+      await _showPendingBeginnerEvents(context, controller, BeginnerModeEngine.weeklyMilestones);
+    }
+
     // Bankruptcy/finished already gets its own full-screen treatment via
     // _GameRoot, so only show the week summary when still playing (§16,
     // §22) — showing a dialog right as the screen is about to be swapped
     // out would fight that transition.
     state = controller.state;
     if (state.status == GameStatus.playing && context.mounted) {
-      await showWeekSummaryDialog(context, state, guidedAction: ProgressionEngine.guidedAction(state));
+      final guidedAction = ProgressionEngine.guidedAction(state);
+      // P2-2: a genuinely uneventful week no longer interrupts "次の週へ"
+      // with a dialog that only ever said "特に大きな変化はありませんでし
+      // た" — that informational-only content still lives in Home's "最近
+      // の出来事" log, just without forcing a tap to dismiss it every week.
+      if (weekSummaryHasContent(state, guidedAction: guidedAction)) {
+        await showWeekSummaryDialog(context, state, guidedAction: guidedAction);
+      }
     }
   }
 
@@ -137,6 +150,23 @@ class _HomeScreenState extends State<HomeScreen> {
       if (dialog == null) continue;
       final tapped = await showFoundingEventDialog(context, dialog);
       if (tapped && context.mounted) _navigateForEvent(context, event, controller.state);
+    }
+  }
+
+  /// Shows every not-yet-seen Phase 3A [BeginnerMilestone] among [candidates]
+  /// whose condition currently holds (§7-9 of the Phase 3A brief), one at a
+  /// time — mirrors [_showPendingFoundingEvents] above.
+  Future<void> _showPendingBeginnerEvents(
+    BuildContext context,
+    GameController controller,
+    List<BeginnerMilestone> candidates,
+  ) async {
+    for (final milestone in BeginnerModeEngine.pendingMilestones(controller.state, candidates)) {
+      if (!context.mounted) break;
+      final dialog = buildBeginnerModeDialog(milestone, controller.state);
+      controller.markBeginnerMilestoneShown(milestone);
+      if (dialog == null) continue;
+      await showFoundingEventDialog(context, dialog);
     }
   }
 
@@ -306,6 +336,10 @@ class _HomeScreenState extends State<HomeScreen> {
             _SimplifiedDashboard(state: state),
           const SizedBox(height: 8),
           CompanyPhaseBanner(state: state),
+          if (BeginnerModeEngine.isPhase3AActive(state)) ...[
+            const SizedBox(height: 8),
+            BeginnerModeCard(state: state),
+          ],
           const SizedBox(height: 14),
 
           if (tutorialActive) ...[
@@ -440,15 +474,17 @@ class _SimplifiedDashboard extends StatelessWidget {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceAround,
         children: [
-          _Metric('現預金', formatCompactYen(state.company.cash)),
+          Expanded(child: _Metric('現預金', formatCompactYen(state.company.cash))),
           Container(width: 1, height: 24, color: Colors.black12),
-          _Metric('今月支払予定', formatCompactYen(outflow)),
+          Expanded(child: _Metric('今月支払予定', formatCompactYen(outflow))),
           Container(width: 1, height: 24, color: Colors.black12),
-          _Metric(
-            '待機人数',
-            '${state.waitingEngineerCount}名',
-            color: state.waitingEngineerCount > 0 ? Colors.red : null,
-            caption: sellingCount > 0 ? 'うち営業中 $sellingCount' : null,
+          Expanded(
+            child: _Metric(
+              '待機人数',
+              '${state.waitingEngineerCount}名',
+              color: state.waitingEngineerCount > 0 ? Colors.red : null,
+              caption: sellingCount > 0 ? 'うち営業中 $sellingCount' : null,
+            ),
           ),
         ],
       ),
@@ -536,13 +572,13 @@ class _FinanceLine extends StatelessWidget {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceAround,
         children: [
-          _Metric('売掛金', formatCompactYen(ar)),
+          Expanded(child: _Metric('売掛金', formatCompactYen(ar))),
           _divider(),
-          _Metric('今月入金予定', formatCompactYen(inflow)),
+          Expanded(child: _Metric('今月入金予定', formatCompactYen(inflow))),
           _divider(),
-          _Metric('今月支払予定', formatCompactYen(outflow)),
+          Expanded(child: _Metric('今月支払予定', formatCompactYen(outflow))),
           _divider(),
-          _Metric('月末予想現金', formatCompactYen(projected), color: projectedColor),
+          Expanded(child: _Metric('月末予想現金', formatCompactYen(projected), color: projectedColor)),
         ],
       ),
     );
@@ -571,20 +607,22 @@ class _HeadcountLine extends StatelessWidget {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceAround,
         children: [
-          _Metric('社員', '${state.engineers.length}'),
+          Expanded(child: _Metric('社員', '${state.engineers.length}')),
           _divider(),
-          _Metric('稼働', '${state.assignedEngineerCount}'),
+          Expanded(child: _Metric('稼働', '${state.assignedEngineerCount}')),
           _divider(),
-          _Metric(
-            '待機',
-            '${state.waitingEngineerCount}',
-            color: state.waitingEngineerCount > 0 ? Colors.red : null,
-            caption: sellingCount > 0 ? 'うち営業中 $sellingCount' : null,
+          Expanded(
+            child: _Metric(
+              '待機',
+              '${state.waitingEngineerCount}',
+              color: state.waitingEngineerCount > 0 ? Colors.red : null,
+              caption: sellingCount > 0 ? 'うち営業中 $sellingCount' : null,
+            ),
           ),
           _divider(),
-          _Metric('応募', '${state.applicants.where((e) => e.appearedWeek == state.week).length}'),
+          Expanded(child: _Metric('応募', '${state.applicants.where((e) => e.appearedWeek == state.week).length}')),
           _divider(),
-          _Metric('市場案件', '${state.openProjects.where((e) => state.relationFor(e.project.clientId).unlocked).length}'),
+          Expanded(child: _Metric('市場案件', '${state.openProjects.where((e) => state.relationFor(e.project.clientId).unlocked).length}')),
         ],
       ),
     );
@@ -607,7 +645,10 @@ class _Metric extends StatelessWidget {
   Widget build(BuildContext context) {
     return Column(
       children: [
-        Text(value, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13.5, color: color)),
+        FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Text(value, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13.5, color: color)),
+        ),
         Text(label, style: const TextStyle(fontSize: 10, color: Colors.black54)),
         if (caption != null)
           Text(caption!, style: const TextStyle(fontSize: 9.5, color: Colors.teal, fontWeight: FontWeight.bold)),

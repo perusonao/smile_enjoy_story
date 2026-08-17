@@ -54,10 +54,10 @@ Future<void> showMonthlyClosingDialog(BuildContext context, MonthlyClosing closi
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Text(formatYen(closing.cashBefore), style: const TextStyle(fontSize: 13)),
-                  const Icon(Icons.arrow_forward, size: 14, color: Colors.black45),
+                  Icon(Icons.arrow_forward, size: 14, color: cashColor),
                   Text(
                     formatYen(closing.cashAfter),
-                    style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: cashColor),
                   ),
                 ],
               ),
@@ -88,6 +88,18 @@ class _Row extends StatelessWidget {
   final String label;
   final int value;
 
+  /// Money-flow color (Phase 3A UX review, P2-1): income rows (positive —
+  /// 案件売上/売掛金発生/今月入金) read green, expense rows (negative — the
+  /// caller already negates 給与/家賃/固定費/求人費) read red, an exact zero
+  /// stays neutral black. Color is deliberately a *reinforcement*, never the
+  /// only signal — the +/- sign prefix and the row's own label (収入 vs 支出
+  /// wording) already carry the same meaning on their own.
+  static Color? _valueColor(int value) {
+    if (value > 0) return Colors.green.shade700;
+    if (value < 0) return Colors.red.shade600;
+    return null;
+  }
+
   @override
   Widget build(BuildContext context) {
     return Padding(
@@ -97,7 +109,7 @@ class _Row extends StatelessWidget {
           Expanded(child: Text(label, style: const TextStyle(fontSize: 13))),
           Text(
             '${value >= 0 ? '+' : ''}${formatYen(value)}',
-            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: _valueColor(value)),
           ),
         ],
       ),

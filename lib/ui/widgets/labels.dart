@@ -101,6 +101,23 @@ String clientNameById(String clientId) {
   return clientId;
 }
 
+/// Same lookup as [clientNameById], but returns `null` instead of echoing
+/// the raw id when [clientId] doesn't resolve to a real client — so prose
+/// that embeds the name (e.g. "○○から面談依頼が届きました") can render a
+/// sensible fallback sentence instead of silently interpolating an empty
+/// string or an internal id (Playable Phase 3A UX review, P1-2: a project
+/// that had already left `GameState.openProjects` by the time a dialog
+/// rendered previously produced "から面談依頼が届きました" with the company
+/// name missing entirely). Callers should always pass a durable field like
+/// `InterviewOffer.clientId`/`AccountsReceivable.clientId` — never a value
+/// re-derived from a project lookup that might have already gone stale.
+String? clientDisplayNameOrNull(String clientId) {
+  for (final c in sampleClients) {
+    if (c.id == clientId) return c.name;
+  }
+  return null;
+}
+
 /// 支払サイト (Playable 0.3A §14): a client's payment term in days, falling
 /// back to 30 if somehow unknown.
 int paymentTermDaysById(String clientId) {

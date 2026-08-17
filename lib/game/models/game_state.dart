@@ -1,6 +1,7 @@
 import '../../domain/domain.dart';
 import 'accounts_receivable.dart';
 import 'applicant_entry.dart';
+import 'beginner_mode_state.dart';
 import 'founding_progress.dart';
 import 'game_log_entry.dart';
 import 'game_mode.dart';
@@ -86,6 +87,11 @@ class GameState {
   /// [GameMode.beginner] (Playable 0.5A §69-71).
   final PrologueState prologueState;
 
+  /// Phase 3A (April-June) Beginner Mode progression — only meaningful while
+  /// [gameMode] is [GameMode.beginner], picking up right where
+  /// [prologueState] leaves off (S.E.S. Development Plan §3.2).
+  final BeginnerModeState beginnerModeState;
+
   /// The company's one 総務 employee, seeded at Beginner Mode start
   /// (Playable 0.5A §6-8). `null` for Free Mode games and pre-0.5A saves.
   final GeneralAffairsStaff? generalAffairsStaff;
@@ -167,6 +173,7 @@ class GameState {
     this.foundingProgress = FoundingProgress.initial,
     this.gameMode = GameMode.free,
     this.prologueState = PrologueState.notActive,
+    this.beginnerModeState = BeginnerModeState.initial,
     this.generalAffairsStaff,
     this.equipment = const [],
     this.lastHealthCheckWeek,
@@ -304,6 +311,7 @@ class GameState {
     FoundingProgress? foundingProgress,
     GameMode? gameMode,
     PrologueState? prologueState,
+    BeginnerModeState? beginnerModeState,
     GeneralAffairsStaff? generalAffairsStaff,
     List<EmployeeEquipment>? equipment,
     int? lastHealthCheckWeek,
@@ -345,6 +353,7 @@ class GameState {
       foundingProgress: foundingProgress ?? this.foundingProgress,
       gameMode: gameMode ?? this.gameMode,
       prologueState: prologueState ?? this.prologueState,
+      beginnerModeState: beginnerModeState ?? this.beginnerModeState,
       generalAffairsStaff: generalAffairsStaff ?? this.generalAffairsStaff,
       equipment: equipment ?? this.equipment,
       lastHealthCheckWeek: lastHealthCheckWeek ?? this.lastHealthCheckWeek,
@@ -399,6 +408,7 @@ class GameState {
     'foundingProgress': foundingProgress.toJson(),
     'gameMode': gameMode.jsonValue,
     'prologueState': prologueState.toJson(),
+    'beginnerModeState': beginnerModeState.toJson(),
     'generalAffairsStaff': generalAffairsStaff?.toJson(),
     'equipment': equipment.map((e) => e.toJson()).toList(),
     'lastHealthCheckWeek': lastHealthCheckWeek,
@@ -474,6 +484,12 @@ class GameState {
     gameMode: GameMode.fromJson(json['gameMode'] as String?),
     prologueState: PrologueState.fromJson(
       json['prologueState'] as Map<String, dynamic>?,
+    ),
+    // Missing key (§13, Test J) means this save predates Phase 3A — start
+    // from a safe, empty default rather than guessing progress the save
+    // never recorded.
+    beginnerModeState: BeginnerModeState.fromJson(
+      json['beginnerModeState'] as Map<String, dynamic>?,
     ),
     generalAffairsStaff: json['generalAffairsStaff'] == null
         ? null

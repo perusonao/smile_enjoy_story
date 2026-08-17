@@ -14,6 +14,20 @@ class GameStats {
   /// [cumulativeRent] so the result/closing screens can show both (§8).
   final int cumulativeFixedCost;
   final int cumulativeRecruitmentCost;
+
+  /// Cumulative count of [GameEngine.postRecruitmentMedia] calls across the
+  /// whole playthrough (the March founding listing included) — deliberately
+  /// *not* `state.listings.length`, which only ever holds *currently active*
+  /// listings (`GameEngine.advanceWeek` replaces it with the active-only
+  /// filtered set every week, §3 求人掲載終了の検出). A milestone gated on
+  /// "posted a second listing" that read `state.listings.length` directly
+  /// would silently un-satisfy itself the moment the March listing's 4-week
+  /// duration expired, well before Beginner Mode's own recruitment unlock —
+  /// found via a real-UI Playwright run (Phase 3A UX review follow-up),
+  /// which no unit test caught because unit tests construct `listings`
+  /// directly instead of going through the engine's weekly pruning.
+  final int recruitmentListingsPosted;
+
   final int hires;
   final int proposalCount;
   final int projectInterviewCount;
@@ -54,6 +68,7 @@ class GameStats {
     required this.cumulativeRent,
     required this.cumulativeFixedCost,
     required this.cumulativeRecruitmentCost,
+    this.recruitmentListingsPosted = 0,
     required this.hires,
     required this.proposalCount,
     required this.projectInterviewCount,
@@ -84,6 +99,7 @@ class GameStats {
       cumulativeRent = 0,
       cumulativeFixedCost = 0,
       cumulativeRecruitmentCost = 0,
+      recruitmentListingsPosted = 0,
       hires = 0,
       proposalCount = 0,
       projectInterviewCount = 0,
@@ -142,6 +158,7 @@ class GameStats {
     int? cumulativeRent,
     int? cumulativeFixedCost,
     int? cumulativeRecruitmentCost,
+    int? recruitmentListingsPosted,
     int? hires,
     int? proposalCount,
     int? projectInterviewCount,
@@ -173,6 +190,8 @@ class GameStats {
       cumulativeFixedCost: cumulativeFixedCost ?? this.cumulativeFixedCost,
       cumulativeRecruitmentCost:
           cumulativeRecruitmentCost ?? this.cumulativeRecruitmentCost,
+      recruitmentListingsPosted:
+          recruitmentListingsPosted ?? this.recruitmentListingsPosted,
       hires: hires ?? this.hires,
       proposalCount: proposalCount ?? this.proposalCount,
       projectInterviewCount:
@@ -212,6 +231,7 @@ class GameStats {
     'cumulativeRent': cumulativeRent,
     'cumulativeFixedCost': cumulativeFixedCost,
     'cumulativeRecruitmentCost': cumulativeRecruitmentCost,
+    'recruitmentListingsPosted': recruitmentListingsPosted,
     'hires': hires,
     'proposalCount': proposalCount,
     'projectInterviewCount': projectInterviewCount,
@@ -242,6 +262,7 @@ class GameStats {
     cumulativeRent: json['cumulativeRent'] as int? ?? 0,
     cumulativeFixedCost: json['cumulativeFixedCost'] as int,
     cumulativeRecruitmentCost: json['cumulativeRecruitmentCost'] as int,
+    recruitmentListingsPosted: json['recruitmentListingsPosted'] as int? ?? 0,
     hires: json['hires'] as int,
     proposalCount: json['proposalCount'] as int,
     projectInterviewCount: json['projectInterviewCount'] as int,

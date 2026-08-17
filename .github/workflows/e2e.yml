@@ -15,11 +15,37 @@ name: Playwright E2E (S.E.S.)
 # no event hand-off, nothing to fail to fire.
 #
 # jobs:
-#   e2e            — pull_request / push / workflow_dispatch. Flutter
-#                    analyze/test/build, Playwright (mobile-chromium +
-#                    mobile-webkit), and (push only) the E2E Replay
-#                    Viewer's package build (ffmpeg MP4 transcode +
-#                    manifest). Same content as the old e2e.yml.
+#   validate       — pull_request / push / workflow_dispatch. Flutter
+#                    analyze/test/build + Replay Viewer unit tests. The
+#                    one shared gate `e2e-chromium`/`e2e-webkit` both wait
+#                    on, so neither browser project pays for a second
+#                    Flutter build.
+#   e2e-chromium   — needs: validate. Playwright's mobile-chromium project
+#                    only, on its own GitHub-hosted runner.
+#   e2e-webkit     — needs: validate. Playwright's mobile-webkit project
+#                    only, on its own GitHub-hosted runner. Split from
+#                    e2e-chromium (PR #15 CI investigation: both projects
+#                    used to run as 2 workers *on the same 2-core runner*,
+#                    §git history of this file for the CDP-throttle
+#                    measurements that first identified this contention) so
+#                    the two browser engines no longer compete for the same
+#                    CPU — each now gets its own runner's full 2 cores.
+#                    `workers` inside playwright.config.ts is deliberately
+#                    left untouched by this split (still `2` under CI): with
+#                    only one project selected per job (`--project=...`),
+#                    that setting now only parallelizes *that job's own*
+#                    spec files, not two different browser engines against
+#                    each other — a real, structural difference from the
+#                    single-job design, not a value that needed editing.
+#   replay-package — push only. Downloads *both* browsers' raw Playwright
+#                    results (uploaded by e2e-chromium/e2e-webkit) and
+#                    merges them into one `test-results/` tree + one merged
+#                    `playwright-report.json` before running the existing
+#                    `npm run build:replay` unchanged — same replay-package
+#                    output shape as when a single job produced both
+#                    browsers' results directly. Needed because splitting
+#                    Playwright's own JSON reporter output across two job
+#                    runs would otherwise scatter it into two reports.
 #   check-latest   — push / workflow_dispatch only. Stale-run guard (see
 #                    e2e/scripts/check-latest-main.mjs): is this run's
 #                    commit still origin/main's actual tip?
@@ -32,19 +58,20 @@ name: Playwright E2E (S.E.S.)
 #                    take minutes; re-check right at the point of no
 #                    return), then deploy.
 #
-# A failed `e2e` job does NOT by itself block check-latest/build/deploy —
-# matching the previous design's intent ("a red E2E run does not block
-# the game deployment"). What DOES block deploy: `check-latest`/`build`
-# actually failing (build re-runs flutter analyze/test against the same
-# commit as its own independent gate — deliberately not deduplicated
-# against `e2e`'s copy, so a broken build is never shipped regardless of
-# what happened in the Playwright/replay portion of `e2e`), the stale-SHA
-# guard failing either check, or `e2e` itself being cancelled/skipped
-# (e.g. superseded by a newer push — a cancelled run has no reliable
-# replay package and a newer run's chain deploys right behind it anyway).
+# A failed e2e-chromium/e2e-webkit job does NOT by itself block
+# check-latest/build/deploy — matching the previous design's intent ("a red
+# E2E run does not block the game deployment"). What DOES block deploy:
+# `check-latest`/`build` actually failing (build re-runs flutter
+# analyze/test against the same commit as its own independent gate —
+# deliberately not deduplicated against `validate`'s copy, so a broken
+# build is never shipped regardless of what happened in the
+# Playwright/replay portion), the stale-SHA guard failing either check, or
+# either E2E job being cancelled/skipped (e.g. superseded by a newer push —
+# a cancelled run has no reliable replay package and a newer run's chain
+# deploys right behind it anyway).
 #
-# PRs only ever run the `e2e` job (see each downstream job's `if:`) — no
-# Pages deploy happens for pull_request events.
+# PRs only ever run validate/e2e-chromium/e2e-webkit (see each downstream
+# job's `if:`) — no Pages deploy happens for pull_request events.
 
 on:
   pull_request:
@@ -62,11 +89,11 @@ permissions:
   contents: read
 
 jobs:
-  e2e:
+  validate:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 15
     concurrency:
-      group: e2e-${{ github.ref }}
+      group: e2e-validate-${{ github.ref }}
       cancel-in-progress: true
     defaults:
       run:
@@ -95,6 +122,17 @@ jobs:
         working-directory: .
         run: flutter build web --release --no-web-resources-cdn
 
+      # e2e-chromium/e2e-webkit run on their own separate runners (§ jobs
+      # comment above), so the just-built web app has to travel to them as
+      # an artifact rather than being found on disk the way a single
+      # combined job could rely on.
+      - name: Upload build/web (for e2e-chromium/e2e-webkit)
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-web
+          path: build/web/**
+          retention-days: 1
+
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
@@ -111,10 +149,36 @@ jobs:
       - name: Replay unit tests
         run: npm run test:replay-unit
 
-      - name: Install Playwright browsers
-        run: npx playwright install --with-deps chromium webkit
+  e2e-chromium:
+    needs: validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    concurrency:
+      group: e2e-chromium-${{ github.ref }}
+      cancel-in-progress: true
+    defaults:
+      run:
+        working-directory: e2e
+    steps:
+      - uses: actions/checkout@v4
 
-      - name: Run Playwright E2E (mobile-chromium + mobile-webkit)
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install E2E dependencies
+        run: npm ci
+
+      - name: Download build/web
+        uses: actions/download-artifact@v4
+        with:
+          name: build-web
+          path: build/web
+
+      - name: Install Playwright browsers (chromium only — this job never touches webkit)
+        run: npx playwright install --with-deps chromium
+
+      - name: Run Playwright E2E (mobile-chromium)
         env:
           SES_E2E_SEEDS: ${{ github.event.inputs.seeds }}
           CI: "true"
@@ -122,36 +186,136 @@ jobs:
           # default is retain-on-failure, so a passing run otherwise leaves
           # no recording to review.
           SES_E2E_VIDEO: "on"
-        run: npx playwright test
+        run: npx playwright test --project=mobile-chromium
 
-      - name: Upload ses-playwright-results
+      - name: Upload ses-playwright-results (mobile-chromium)
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: ses-playwright-results
+          name: ses-playwright-results-mobile-chromium
           path: |
             e2e/test-results/**
             e2e/playwright-report/**
           retention-days: 10
           if-no-files-found: warn
 
-      # --- E2E Replay Viewer package (dev/QA tool) ---------------------
-      #
-      # main-only, and deliberately `if: always()`: a FAILED E2E run is
-      # exactly when the replay video is most worth having, so this must
-      # still run whether "Run Playwright E2E" above passed or failed.
-      # It must NOT and does not change that step's own pass/fail result —
-      # a test failure still fails this job, on purpose (§ approved design:
-      # "テスト失敗をgreenに変えてはいけません"). If this packaging step
-      # itself breaks, it fails loudly here too (not a silent success) —
-      # the deploy jobs below are responsible for still shipping the game
-      # in that case, not this job pretending nothing went wrong.
+  e2e-webkit:
+    needs: validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    concurrency:
+      group: e2e-webkit-${{ github.ref }}
+      cancel-in-progress: true
+    defaults:
+      run:
+        working-directory: e2e
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install E2E dependencies
+        run: npm ci
+
+      - name: Download build/web
+        uses: actions/download-artifact@v4
+        with:
+          name: build-web
+          path: build/web
+
+      - name: Install Playwright browsers (webkit only — this job never touches chromium)
+        run: npx playwright install --with-deps webkit
+
+      - name: Run Playwright E2E (mobile-webkit)
+        env:
+          SES_E2E_SEEDS: ${{ github.event.inputs.seeds }}
+          CI: "true"
+          SES_E2E_VIDEO: "on"
+        run: npx playwright test --project=mobile-webkit
+
+      - name: Upload ses-playwright-results (mobile-webkit)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ses-playwright-results-mobile-webkit
+          path: |
+            e2e/test-results/**
+            e2e/playwright-report/**
+          retention-days: 10
+          if-no-files-found: warn
+
+  # --- E2E Replay Viewer package (dev/QA tool) ------------------------
+  #
+  # main-only, and deliberately `if: always()`: a FAILED E2E run is exactly
+  # when the replay video is most worth having, so this must still run
+  # whether e2e-chromium/e2e-webkit passed or failed. It must NOT and does
+  # not change either job's own pass/fail result (§ approved design:
+  # "テスト失敗をgreenに変えてはいけません") — this job only ever packages
+  # already-decided results, never re-runs or re-scores anything.
+  replay-package:
+    needs: [e2e-chromium, e2e-webkit]
+    if: always() && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    concurrency:
+      group: e2e-replay-package-${{ github.ref }}
+      cancel-in-progress: true
+    defaults:
+      run:
+        working-directory: e2e
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install E2E dependencies
+        run: npm ci
+
+      # Each browser job uploaded its own isolated test-results/ tree
+      # (including its own playwright-report.json). Merge both back into
+      # the single `test-results/` shape `npm run build:replay` already
+      # expects — unchanged since before this split, so no change to
+      # scripts/build-replay-manifest.mjs itself is needed. Playwright's
+      # own per-test output folder names already embed the project name
+      # (e.g. "...-mobile-chromium", "...-mobile-webkit" — confirmed from
+      # this repo's own prior CI logs), so copying both trees into one
+      # directory cannot collide.
+      - name: Download both browsers' raw results
+        uses: actions/download-artifact@v4
+        with:
+          pattern: ses-playwright-results-*
+          path: e2e/raw-results
+
+      - name: Merge both browsers' test-results into one tree + one report
+        run: |
+          set -euo pipefail
+          mkdir -p test-results
+          for dir in raw-results/*/test-results; do
+            [ -d "$dir" ] && cp -r "$dir"/. test-results/
+          done
+          node -e '
+            const fs = require("fs");
+            const glob = require("fs").readdirSync("raw-results")
+              .map((d) => `raw-results/${d}/test-results/playwright-report.json`)
+              .filter((p) => fs.existsSync(p));
+            if (glob.length === 0) throw new Error("no playwright-report.json found under raw-results/*/test-results/");
+            const reports = glob.map((p) => JSON.parse(fs.readFileSync(p, "utf-8")));
+            const merged = {
+              ...reports[0],
+              suites: reports.flatMap((r) => r.suites ?? []),
+              errors: reports.flatMap((r) => r.errors ?? []),
+            };
+            fs.writeFileSync("test-results/playwright-report.json", JSON.stringify(merged));
+            console.log(`merged ${glob.length} report(s) -> test-results/playwright-report.json`);
+          '
+
       # ubuntu-latest (24.04) does not ship ffmpeg/ffprobe — confirmed by
       # run 31894678795 failing with "spawnSync ffmpeg ENOENT" and by the
       # runner image's own installed-software list (actions/runner-images).
       # CI-runner-only: not a Flutter, npm, or production runtime dependency.
       - name: Install ffmpeg (CI runner only — for replay MP4 transcoding)
-        if: always() && github.event_name == 'push'
         run: |
           sudo apt-get update
           sudo apt-get install -y ffmpeg
@@ -159,7 +323,6 @@ jobs:
           ffprobe -version
 
       - name: Build E2E replay package
-        if: always() && github.event_name == 'push'
         env:
           SES_REPLAY_RUN_ID: ${{ github.run_id }}
           SES_REPLAY_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
@@ -169,7 +332,7 @@ jobs:
         run: npm run build:replay
 
       - name: Upload e2e-replay-package
-        if: always() && github.event_name == 'push'
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: e2e-replay-package
@@ -178,12 +341,14 @@ jobs:
           if-no-files-found: warn
 
   check-latest:
-    needs: e2e
+    needs: [e2e-chromium, e2e-webkit]
     if: |
       always() &&
       (github.event_name == 'push' || github.event_name == 'workflow_dispatch') &&
-      needs.e2e.result != 'cancelled' &&
-      needs.e2e.result != 'skipped'
+      needs.e2e-chromium.result != 'cancelled' &&
+      needs.e2e-chromium.result != 'skipped' &&
+      needs.e2e-webkit.result != 'cancelled' &&
+      needs.e2e-webkit.result != 'skipped'
     runs-on: ubuntu-latest
     concurrency:
       group: pages
@@ -204,7 +369,7 @@ jobs:
         run: echo "::warning::Stale run for commit ${{ steps.check.outputs.target_sha }} — main's current tip has moved on. Skipping the Pages deploy for this run to avoid rolling production back."
 
   build:
-    needs: [e2e, check-latest]
+    needs: [e2e-chromium, e2e-webkit, check-latest, replay-package]
     if: |
       always() &&
       needs.check-latest.result == 'success' &&
@@ -214,8 +379,9 @@ jobs:
       group: pages
       cancel-in-progress: false
     # Least privilege (Codex review, PR #7): only build/deploy need Pages
-    # credentials — kept off the workflow-level default so `e2e` (which
-    # runs npm ci / Playwright / test code on every PR) never holds them.
+    # credentials — kept off the workflow-level default so the E2E jobs
+    # (which run npm ci / Playwright / test code on every PR) never hold
+    # them.
     permissions:
       contents: read
       pages: write
@@ -248,10 +414,11 @@ jobs:
       #
       # Never touches lib/, web/, or any production build step above; this
       # only adds a static subdirectory to the already-built output.
-      # Same workflow run as `e2e`, so no run-id/cross-run token needed —
-      # this simply downloads the artifact `e2e`'s own upload step produced
-      # a few jobs earlier in this run (absent when `e2e` didn't reach
-      # that push-only step, e.g. a workflow_dispatch run).
+      # Same workflow run as `replay-package`, so no run-id/cross-run token
+      # needed — this simply downloads the artifact that job's own upload
+      # step produced a few jobs earlier in this run (absent when
+      # `replay-package` didn't run at all, e.g. a workflow_dispatch run,
+      # or itself failed to produce one).
       - name: Download e2e-replay-package
         id: download_replay
         continue-on-error: true # missing/failed artifact must not block the game deploy

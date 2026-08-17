@@ -457,6 +457,13 @@ class GameEngine {
           company: company,
           listings: [...afterMint.listings, listing],
           pendingMiscExpense: afterMint.pendingMiscExpense + config.cost,
+          // Cumulative, unlike `listings` itself (§ recruitmentListingsPosted's
+          // own doc comment) — Beginner Mode's recruitmentTradeoffExplained
+          // milestone needs a signal that survives the March founding
+          // listing's later expiry.
+          stats: afterMint.stats.copyWith(
+            recruitmentListingsPosted: afterMint.stats.recruitmentListingsPosted + 1,
+          ),
         )
         .withLog('${config.label} に掲載しました。(-¥${config.cost})');
   }
@@ -874,10 +881,30 @@ class GameEngine {
     // Open-project marketplace bookkeeping ---------------------------------
     final activeProjectIds = {for (final a in allActiveThisWeek) a.project.id};
     final inFlightProjectIds = {for (final p in activeProposals) p.project.id};
+    // A project with a still-pending (not-yet-expired) InterviewOffer must
+    // survive too, same as one with an in-flight proposal — an
+    // InterviewOffer is generated *before* the player has accepted it into
+    // a ProjectProposal (that's the whole point of the offer step), so
+    // `inFlightProjectIds` alone missed this case entirely. Without this,
+    // a project whose own `applicationDeadlineWeek` passed while its offer
+    // was still sitting unanswered (a real, reachable timing gap — offer
+    // `expiresWeek` and project `applicationDeadlineWeek` are independent
+    // fields) got pruned from `openProjects` out from under a UI that still
+    // referenced it: the interview-offer celebration dialog silently lost
+    // the client name (empty string prefix, "から面談依頼が届きました"), and
+    // `EngineerDetailScreen`'s pending-offer card (`state.openProjects
+    // .firstWhere(...)`) would have thrown outright. `InterviewOffer`
+    // already carries its own `clientId` independent of this lookup (UI now
+    // reads that directly too — belt and suspenders), but the project
+    // itself disappearing was the actual root cause worth fixing here.
+    final pendingOfferProjectIds = {
+      for (final o in state.interviewOffers)
+        if (o.status == InterviewOfferStatus.pending && o.expiresWeek >= newWeek) o.projectId,
+    };
     final survivingOpenProjects = state.openProjects.where((entry) {
       final id = entry.project.id;
       if (activeProjectIds.contains(id)) return false;
-      if (inFlightProjectIds.contains(id)) return true;
+      if (inFlightProjectIds.contains(id) || pendingOfferProjectIds.contains(id)) return true;
       return entry.project.applicationDeadlineWeek >= newWeek;
     }).toList();
     final openProjects = [...survivingOpenProjects, ...newProjectEntries];

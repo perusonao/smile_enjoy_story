@@ -10,12 +10,29 @@ class TaskCard extends StatelessWidget {
   final HomeTask task;
   final VoidCallback? onTap;
 
+  /// Cash-runway/short-fall warnings (Phase 3A UX review, P2-3) — visually
+  /// distinct from an equal-priority but otherwise-routine task (e.g. "面接
+  /// 待ちの応募者がいます") so a resource-critical warning doesn't blend into
+  /// the same orange/red as everything else at that priority.
+  bool get _isCashWarning => task.id.startsWith('cash-');
+
   @override
   Widget build(BuildContext context) {
-    final (color, icon) = switch (task.priority) {
+    final (color, defaultIcon) = switch (task.priority) {
       TaskPriority.critical => (Colors.red, Icons.error_outline),
       TaskPriority.warning => (Colors.orange, Icons.warning_amber_rounded),
       TaskPriority.info => (Colors.blue, Icons.info_outline),
+    };
+    final icon = _isCashWarning ? Icons.savings_outlined : defaultIcon;
+    // Severity is never color-only (§ the review's own instruction): a
+    // Critical card also gets a visibly heavier background/border than a
+    // same-hue Warning/Info one, on top of the existing color+icon+label
+    // difference — so severity still reads even for someone who can't rely
+    // on color (contrast, color-blindness).
+    final (bgAlpha, borderAlpha, borderWidth) = switch (task.priority) {
+      TaskPriority.critical => (0.12, 0.55, _isCashWarning ? 2.0 : 1.4),
+      TaskPriority.warning => (0.08, 0.4, _isCashWarning ? 1.6 : 1.0),
+      TaskPriority.info => (0.05, 0.3, 1.0),
     };
 
     return InkWell(
@@ -25,9 +42,9 @@ class TaskCard extends StatelessWidget {
         margin: const EdgeInsets.only(bottom: 6),
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
         decoration: BoxDecoration(
-          color: color.withValues(alpha: 0.07),
+          color: color.withValues(alpha: bgAlpha),
           borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: color.withValues(alpha: 0.35)),
+          border: Border.all(color: color.withValues(alpha: borderAlpha), width: borderWidth),
         ),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,

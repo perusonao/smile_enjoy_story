@@ -107,6 +107,15 @@ const KNOWN_NETWORK_FAILURE_CODES = [
   'net::ERR_INTERNET_DISCONNECTED',
   'net::ERR_NETWORK_CHANGED',
   'net::ERR_FAILED',
+  // Phase 3A (S.E.S. Development Plan §3.2) local validation environment:
+  // outbound HTTPS goes through an allowlisting proxy that answers a
+  // blocked CONNECT with a 403 (confirmed directly against the Playwright
+  // WebKit CDN host during this same session) — Chromium's network stack
+  // reports that as this code, same root cause (fonts.gstatic.com
+  // unreachable for the small set of CJK glyphs the bundled Noto Sans JP
+  // subset doesn't cover) as the other entries above, just a different
+  // failure surface than the sandbox this list was originally tuned in.
+  'net::ERR_TUNNEL_CONNECTION_FAILED',
 ];
 
 export function isKnownNetworkFailureCode(errorText: string): boolean {

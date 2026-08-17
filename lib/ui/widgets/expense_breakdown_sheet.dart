@@ -81,6 +81,18 @@ class RunwayIndicator extends StatelessWidget {
     return '約${months.toStringAsFixed(1)}か月で資金枯渇';
   }
 
+  /// A coarse, qualitative-only read of [RunwayLevel] — deliberately no
+  /// "N.N か月" figure (Phase 3A §10: a first-time player should see
+  /// "資金に注意" level guidance, not an invented-precision forecast like
+  /// "あと3.7か月で資金枯渇"). [labelFor] above still carries that more
+  /// precise estimate for the existing detailed finance sheet; this is only
+  /// for Beginner Mode's compact Phase 3A summary card.
+  static String qualitativeLabelFor(RunwayLevel level) => switch (level) {
+    RunwayLevel.safe => '資金に余裕があります',
+    RunwayLevel.caution => '資金に注意が必要です',
+    RunwayLevel.danger => '資金繰りが危険な状態です',
+  };
+
   @override
   Widget build(BuildContext context) {
     final level = FinanceEngine.classifyRunway(months);

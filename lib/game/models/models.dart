@@ -3,6 +3,7 @@ library;
 
 export 'accounts_receivable.dart';
 export 'applicant_entry.dart';
+export 'beginner_mode_state.dart';
 export 'calendar.dart';
 export 'client_interview.dart';
 export 'company_type.dart';

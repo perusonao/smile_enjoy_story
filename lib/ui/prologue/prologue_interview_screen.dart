@@ -29,7 +29,18 @@ class PrologueInterviewScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = context.game, state = c.state;
     final found = state.applicants.where((e) => e.applicant.id == applicantId).toList();
-    if (found.isEmpty) return const Scaffold(body: Center(child: Text('応募者が見つかりません')));
+    // Transient, not a genuine error (Phase 3A UX review, P1-3): this route
+    // is only ever pushed while `applicantId` is a real, present applicant.
+    // The only way `found` goes empty here is the hire/reject decision
+    // itself clearing `state.applicants` — which can stay true for a real,
+    // player-observable stretch (the hire/reject *result* dialog sits on
+    // top of this same route until the player dismisses it and taps back),
+    // not just one throwaway frame. A blank Scaffold — not an alarming
+    // "見つかりません" error, and deliberately not a spinner either (nothing
+    // is actually loading; we're just waiting on the dialog on top) — is
+    // what's actually correct here; the dialog is the only thing the player
+    // should be looking at regardless.
+    if (found.isEmpty) return const Scaffold(body: SizedBox.shrink());
     final applicant = found.first.applicant;
     final sessions = state.recruitmentInterviews.where((s) => s.applicantId == applicantId).toList();
     if (sessions.isEmpty) {

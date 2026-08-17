@@ -121,7 +121,7 @@ async function advanceWeekAndFind(
   const snap = await snapshotScreen(page);
   const nextBtn = snap.buttons.find((b) => b.enabled && b.name.startsWith('次の週へ'));
   if (!nextBtn) return null;
-  await page.getByRole('button', { name: nextBtn.name, exact: true }).click();
+  await clickResilient(page, byButton(page, nextBtn.name), nextBtn.name);
   await page.waitForTimeout(700);
   return settleAndScan(page, textOffenders, stopWhen);
 }
@@ -229,38 +229,62 @@ async function waitForTabBar(page: import('@playwright/test').Page, textOffender
 const CLICK_RESILIENT_TOTAL_MS = 15_000;
 const CLICK_RESILIENT_ATTEMPT_MS = 3_000;
 
-/** Clicks the button named [name], but — unlike a bare `.click()` — never
- * trusts that a target present when the caller decided to click it is still
- * there by the time the click actually lands (CI run 32027667292, HEAD
- * 13800f5: `clickAndWaitForChange`'s bare click timed out the full 15s
- * waiting for "面接する" on mobile-chromium's retry — the exact same "戻る
+/** Clicks whatever [locate] resolves to, but — unlike a bare `.click()` —
+ * never trusts that a target present when the caller decided to click it is
+ * still there by the time the click actually lands (CI run 32027667292,
+ * HEAD 13800f5: `clickAndWaitForChange`'s bare click timed out the full 15s
+ * waiting for "面接する" on mobile-chromium's retry; CI run 32040338628,
+ * HEAD f07fa30: the candidate-list click resolved, then "element was
+ * detached from the DOM, retrying", then timed out — the exact same "戻る
  * race" shape already root-caused and fixed in `ses-player.ts`'s
- * `clickDecisionResilient`, just on a different button in this file's own
- * click sites). On a timeout, dismisses any currently-stacked known dialog
- * (the same [CLOSE] list `settleAndScan`/`waitForTabBar` already use) and
- * retries, instead of just re-querying the same possibly-gone-for-good
- * locator — total budget unchanged (15s), never a longer timeout. */
-async function clickResilient(page: import('@playwright/test').Page, name: string): Promise<void> {
+ * `clickDecisionResilient`, recurring at different, previously-unhardened
+ * click sites in this file's own hire-attempt loop).
+ *
+ * Every user-driven click in this file now goes through this single
+ * mechanism (§ PR #15 CI investigation's click-site audit) instead of each
+ * failure spawning its own one-off retry patch. [locate] is a *factory*,
+ * not a held `Locator` — every attempt calls it again, which is what makes
+ * a retry re-resolve against the DOM/semantics tree as it actually is right
+ * now rather than replaying the same (possibly gone-for-good) reference;
+ * this covers both a fixed exact-name button (`byButton('採用する')`) and a
+ * dynamic-label target like the candidate list (`getByRole('button', {
+ * name: /未面接/ }).first()`, where "first()" itself needs to be
+ * re-evaluated against the current list on every retry, not just re-clicked
+ * by the same stale selector).
+ *
+ * On a timeout, dismisses any currently-stacked known dialog (the same
+ * [CLOSE] list `settleAndScan`/`waitForTabBar` already use) and retries —
+ * total budget unchanged (15s split into 3s attempts), never a longer
+ * timeout. */
+async function clickResilient(page: import('@playwright/test').Page, locate: () => import('@playwright/test').Locator, label: string): Promise<void> {
   const deadline = Date.now() + CLICK_RESILIENT_TOTAL_MS;
   while (true) {
     const remaining = deadline - Date.now();
     const attemptTimeout = Math.max(500, Math.min(CLICK_RESILIENT_ATTEMPT_MS, remaining));
     try {
-      await page.getByRole('button', { name, exact: true }).first().click({ timeout: attemptTimeout });
+      await locate().click({ timeout: attemptTimeout });
       return;
     } catch (err) {
       if (Date.now() >= deadline) throw err;
       const snap = await snapshotScreen(page);
-      const close = snap.buttons.find((b) => b.enabled && CLOSE.includes(b.name) && b.name !== name);
+      const close = snap.buttons.find((b) => b.enabled && CLOSE.includes(b.name) && b.name !== label);
       if (close) {
         await page.getByRole('button', { name: close.name, exact: true }).click().catch(() => {});
         await page.waitForTimeout(300);
       }
-      // Otherwise just loop straight back to a fresh click attempt — the
-      // target may simply need another beat to (re)appear.
+      // Otherwise just loop straight back to a fresh `locate()` call — the
+      // target may simply need another beat to (re)appear, or to be
+      // re-resolved against a list that has since changed.
     }
   }
 }
+
+/** Locator factories for `clickResilient`'s two common shapes — a fixed
+ * exact-name button, and a bottom-nav tab — so every call site shares the
+ * same "re-query fresh each attempt" behavior without repeating the
+ * `getByRole` boilerplate. */
+const byButton = (page: import('@playwright/test').Page, name: string) => () => page.getByRole('button', { name, exact: true }).first();
+const byTab = (page: import('@playwright/test').Page, name: string) => () => page.getByRole('tab', { name, exact: true });
 
 /** Polls (bounded) until at least one real, enabled action button is on
  * screen — used after a navigation that can transiently render a loading
@@ -360,7 +384,7 @@ async function clickAndWaitForChange(
   buttonName: string,
   beforeSnap: ScreenSnapshot,
 ): Promise<ScreenSnapshot> {
-  await clickResilient(page, buttonName);
+  await clickResilient(page, byButton(page, buttonName), buttonName);
   const beforeKey = JSON.stringify(beforeSnap.texts);
   for (let i = 0; i < 40; i++) {
     await page.waitForTimeout(300);
@@ -389,7 +413,7 @@ for (const seed of parsedSeeds.seeds) {
       idleTimeoutMs: IDLE_TIMEOUT_MS,
       stallRepeatThreshold: STALL_REPEAT_THRESHOLD,
     });
-    await page.getByRole('button', { name: '経営を始める', exact: true }).click({ timeout: 5000 }).catch(() => {});
+    await clickResilient(page, byButton(page, '経営を始める'), '経営を始める').catch(() => {});
     await page.waitForTimeout(1000);
     await settleAndScan(page, textOffenders);
 
@@ -404,16 +428,16 @@ for (const seed of parsedSeeds.seeds) {
     // --- recruitmentTradeoffExplained -------------------------------
     // Post a second listing (Free Work, ¥0 — always affordable) — a real
     // post-founding *growth* decision, not the March founding hire itself.
-    await page.getByRole('tab', { name: '採用', exact: true }).click();
+    await clickResilient(page, byTab(page, '採用'), '採用タブ');
     await page.waitForTimeout(500);
-    await page.getByRole('button', { name: '掲載する', exact: true }).first().click();
+    await clickResilient(page, byButton(page, '掲載する'), '掲載する');
     await page.waitForTimeout(600);
     const after = await snapshotScreen(page);
     // Confirms the click actually posted (not a silent no-op) before
     // trusting the milestone assertion below to mean anything.
     expect(after.buttons.some((b) => b.name.startsWith('掲載中')), 'second listing did not actually post').toBe(true);
 
-    await page.getByRole('tab', { name: 'ホーム', exact: true }).click();
+    await clickResilient(page, byTab(page, 'ホーム'), 'ホームタブ');
     await page.waitForTimeout(500);
     const tradeoffDialog = await advanceWeekAndFind(page, textOffenders, (snap) => hasText(snap, '採用のトレードオフ'));
     expect(tradeoffDialog, `採用のトレードオフ dialog never appeared after posting a second listing (seed=${seed})`).not.toBeNull();
@@ -445,7 +469,7 @@ for (const seed of parsedSeeds.seeds) {
     // about the *flow itself* staying operable, regardless of any
     // individual roll's outcome.
     expect(await waitForTabBar(page, textOffenders, '採用'), '採用 tab never became visible before the first hire attempt').toBe(true);
-    await page.getByRole('tab', { name: '採用', exact: true }).click();
+    await clickResilient(page, byTab(page, '採用'), '採用タブ');
     await page.waitForTimeout(500);
 
     // A handful of candidates in a row is enough to prove the interview ->
@@ -461,7 +485,14 @@ for (const seed of parsedSeeds.seeds) {
     for (let attempt = 0; attempt < HIRE_ATTEMPTS; attempt++) {
       const candidate = page.getByRole('button', { name: /未面接/ }).first();
       if ((await candidate.count()) === 0) break;
-      await candidate.click({ timeout: 8000 });
+      // CI run 32040338628, HEAD f07fa30: this exact locator resolved, then
+      // "element was detached from the DOM, retrying", then timed out — the
+      // candidate list re-rendering out from under a plain `.click()`.
+      // `clickResilient` re-runs this same `getByRole(/未面接/).first()`
+      // query fresh on every retry, so a retry re-picks whichever candidate
+      // is *currently* first rather than chasing a specific node that may
+      // no longer exist.
+      await clickResilient(page, () => page.getByRole('button', { name: /未面接/ }).first(), '未面接候補者');
       // `ApplicantDetailScreen` (lib/ui/recruitment/applicant_detail_screen.dart
       // `_LockedPersonalityCard`) renders its interview-entry CTA as "面接する"
       // when no session exists yet, but as "面接を再開する" once one has
@@ -498,7 +529,7 @@ for (const seed of parsedSeeds.seeds) {
         expect(await waitForTabBar(page, textOffenders, '採用'), `採用 tab never became visible after skipping attempt ${attempt} (seed=${seed})`).toBe(true);
         continue;
       }
-      await clickResilient(page, interviewBtn.name);
+      await clickResilient(page, byButton(page, interviewBtn.name), interviewBtn.name);
       await waitForInterviewScreenTransition(page);
 
       // Bounded at 12 (3 questions + 1 reverse-question + occasional
@@ -511,7 +542,7 @@ for (const seed of parsedSeeds.seeds) {
         const snap = await snapshotScreen(page);
         textOffenders.push(...findDoubledParticles(snap));
         if (hasText(snap, '面接まとめ')) {
-          await clickResilient(page, '採用する');
+          await clickResilient(page, byButton(page, '採用する'), '採用する');
           break;
         }
         const anyBtn = snap.buttons.find((b) => b.enabled && b.name !== 'back');
@@ -545,27 +576,23 @@ for (const seed of parsedSeeds.seeds) {
     await captureMilestone(page, testInfo, '03-applicants-interviewed');
 
     // A few weeks of clean, dead-end-free advancement after the hire
-    // attempts — proving "次の週へ" keeps working and nothing left over
-    // from the interview loop wedges the game — not a wait for
-    // `waitingCostExplained` specifically. Whether any of the
-    // `HIRE_ATTEMPTS` offers above was actually accepted is a real per-seed
-    // `RecruitmentEngine.rollAcceptance` roll this file no longer tries to
-    // force or guarantee (§ top-of-file responsibility-split comment): if
-    // one *was* accepted and joins within this window, the dialog is
-    // captured below as a bonus artifact, but its absence is never a
-    // failure — `test/game/beginner_mode_test.dart`'s Test E2 and
-    // `test/ui/beginner_mode_widget_test.dart` already prove deterministically,
-    // in seconds, that the milestone and its dialog both fire correctly
-    // once the right GameState facts hold.
-    await page.getByRole('tab', { name: 'ホーム', exact: true }).click();
+    // attempts — proving "次の週へ" keeps working, whatever dialog it
+    // legitimately produces gets handled, and nothing left over from the
+    // interview loop wedges the game. Deliberately does *not* hunt for
+    // `waitingCostExplained`'s dialog text (`stopWhen: () => false`, same
+    // shape as the recruitment-unlock loop above): whether any of the
+    // `HIRE_ATTEMPTS` offers was actually accepted is a real per-seed
+    // `RecruitmentEngine.rollAcceptance` roll this file has no business
+    // depending on (§ top-of-file responsibility-split comment) —
+    // `test/game/beginner_mode_test.dart`'s Test E2 and
+    // `test/ui/beginner_mode_widget_test.dart` already prove
+    // deterministically, in seconds, that the milestone and its dialog both
+    // fire correctly once the right GameState facts hold, so this long-
+    // running E2E has no remaining reason to search for that specific text.
+    await clickResilient(page, byTab(page, 'ホーム'), 'ホームタブ');
     await page.waitForTimeout(500);
-    let waitingCostDialog: ScreenSnapshot | null = null;
-    for (let i = 0; i < 3 && !waitingCostDialog; i++) {
-      waitingCostDialog = await advanceWeekAndFind(page, textOffenders, (snap) => hasText(snap, '待機社員にも給与が発生しています'));
-    }
-    if (waitingCostDialog) {
-      expect(hasText(waitingCostDialog, '待機社員')).toBe(true);
-      await captureMilestone(page, testInfo, '04-waiting-cost-dialog');
+    for (let i = 0; i < 3; i++) {
+      await advanceWeekAndFind(page, textOffenders, () => false);
     }
     await settleAndScan(page, textOffenders);
 

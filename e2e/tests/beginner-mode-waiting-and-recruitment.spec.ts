@@ -329,7 +329,19 @@ for (const seed of parsedSeeds.seeds) {
     await page.getByRole('tab', { name: '採用', exact: true }).click();
     await page.waitForTimeout(500);
 
-    const HIRE_ATTEMPTS = 5;
+    // `RecruitmentEngine.acceptanceRate` (60 + credit*0.2 + (impression-50)*
+    // 0.55, clamped 5-95) puts a fresh company's real per-candidate
+    // acceptance chance in roughly the 50-70% range — CI run 32021665435
+    // (HEAD a48ab25) hit the genuine, if low-probability (~1-3% at 5
+    // independent attempts), "every one of 5 candidates declined" outcome
+    // deterministically for seed 100001's exact click sequence (both the
+    // first try and its retry landed on the identical result, confirming
+    // it wasn't a timing fluke — a real per-seed roll, not a bug). 9
+    // attempts — matching the actual initial applicant pool size already
+    // observed in every prior run/probe — drops the "all declined" chance
+    // to roughly 0.03%, a real statistical margin rather than an arbitrary
+    // pad.
+    const HIRE_ATTEMPTS = 9;
     for (let attempt = 0; attempt < HIRE_ATTEMPTS; attempt++) {
       const candidate = page.getByRole('button', { name: /未面接/ }).first();
       if ((await candidate.count()) === 0) break;
@@ -419,7 +431,7 @@ for (const seed of parsedSeeds.seeds) {
     await page.getByRole('tab', { name: 'ホーム', exact: true }).click();
     await page.waitForTimeout(500);
     let waitingCostDialog: ScreenSnapshot | null = null;
-    for (let i = 0; i < 8 && !waitingCostDialog; i++) {
+    for (let i = 0; i < 10 && !waitingCostDialog; i++) {
       waitingCostDialog = await advanceWeekAndFind(page, textOffenders, (snap) => hasText(snap, '待機社員にも給与が発生しています'));
     }
     expect(

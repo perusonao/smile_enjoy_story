@@ -24,13 +24,14 @@ FoundingEventDialog? buildBeginnerModeDialog(BeginnerMilestone milestone, GameSt
 
     case BeginnerMilestone.fitReasonViewed:
     case BeginnerMilestone.projectComparisonUsed:
-      // Phase 3B-1 data-model placeholders (see each enum value's own doc
-      // comment in beginner_mode_state.dart) — neither has a dialog yet,
-      // and neither is in [BeginnerModeEngine.weeklyMilestones], so this
-      // path is never actually invoked for them today. Handled here only to
-      // keep this switch exhaustive; the real Fit-reason/comparison screens
-      // (a later PR) will call [BeginnerModeEngine.markShown] directly from
-      // their own UI instead of through this dialog-queue path.
+      // Neither is in [BeginnerModeEngine.weeklyMilestones], so this path is
+      // never actually invoked for them. [fitReasonViewed] has no
+      // celebratory dialog by design — `FitReasonSheet`
+      // (fit_reason_sheet.dart) calls [BeginnerModeEngine.markShown]
+      // directly from its own open callback instead of queuing through this
+      // dialog path, the moment the player opens it. [projectComparisonUsed]
+      // has no screen yet (a later Phase 3B-1 PR will do the same for it).
+      // Handled here only to keep this switch exhaustive.
       return null;
 
     case BeginnerMilestone.waitingCostExplained:

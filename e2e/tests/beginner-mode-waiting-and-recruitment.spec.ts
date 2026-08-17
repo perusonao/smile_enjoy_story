@@ -193,6 +193,46 @@ async function waitForTabBar(page: import('@playwright/test').Page, textOffender
   return (await tab.count()) > 0;
 }
 
+// Total/per-attempt budget for `clickResilient`, matching
+// playwright.config.ts's own `actionTimeout` (15s) — the same "budget
+// unchanged, behavior changed" shape as `ses-player.ts`'s
+// `clickDecisionResilient`.
+const CLICK_RESILIENT_TOTAL_MS = 15_000;
+const CLICK_RESILIENT_ATTEMPT_MS = 3_000;
+
+/** Clicks the button named [name], but — unlike a bare `.click()` — never
+ * trusts that a target present when the caller decided to click it is still
+ * there by the time the click actually lands (CI run 32027667292, HEAD
+ * 13800f5: `clickAndWaitForChange`'s bare click timed out the full 15s
+ * waiting for "面接する" on mobile-chromium's retry — the exact same "戻る
+ * race" shape already root-caused and fixed in `ses-player.ts`'s
+ * `clickDecisionResilient`, just on a different button in this file's own
+ * click sites). On a timeout, dismisses any currently-stacked known dialog
+ * (the same [CLOSE] list `settleAndScan`/`waitForTabBar` already use) and
+ * retries, instead of just re-querying the same possibly-gone-for-good
+ * locator — total budget unchanged (15s), never a longer timeout. */
+async function clickResilient(page: import('@playwright/test').Page, name: string): Promise<void> {
+  const deadline = Date.now() + CLICK_RESILIENT_TOTAL_MS;
+  while (true) {
+    const remaining = deadline - Date.now();
+    const attemptTimeout = Math.max(500, Math.min(CLICK_RESILIENT_ATTEMPT_MS, remaining));
+    try {
+      await page.getByRole('button', { name, exact: true }).first().click({ timeout: attemptTimeout });
+      return;
+    } catch (err) {
+      if (Date.now() >= deadline) throw err;
+      const snap = await snapshotScreen(page);
+      const close = snap.buttons.find((b) => b.enabled && CLOSE.includes(b.name) && b.name !== name);
+      if (close) {
+        await page.getByRole('button', { name: close.name, exact: true }).click().catch(() => {});
+        await page.waitForTimeout(300);
+      }
+      // Otherwise just loop straight back to a fresh click attempt — the
+      // target may simply need another beat to (re)appear.
+    }
+  }
+}
+
 /** Polls (bounded) until at least one real, enabled action button is on
  * screen — used after a navigation that can transiently render a loading
  * state first (`RecruitmentInterviewScreen` shows a bare
@@ -242,7 +282,7 @@ async function clickAndWaitForChange(
   buttonName: string,
   beforeSnap: ScreenSnapshot,
 ): Promise<ScreenSnapshot> {
-  await page.getByRole('button', { name: buttonName, exact: true }).click();
+  await clickResilient(page, buttonName);
   const beforeKey = JSON.stringify(beforeSnap.texts);
   for (let i = 0; i < 40; i++) {
     await page.waitForTimeout(300);
@@ -331,16 +371,20 @@ for (const seed of parsedSeeds.seeds) {
 
     // `RecruitmentEngine.acceptanceRate` (60 + credit*0.2 + (impression-50)*
     // 0.55, clamped 5-95) puts a fresh company's real per-candidate
-    // acceptance chance in roughly the 50-70% range — CI run 32021665435
-    // (HEAD a48ab25) hit the genuine, if low-probability (~1-3% at 5
-    // independent attempts), "every one of 5 candidates declined" outcome
-    // deterministically for seed 100001's exact click sequence (both the
-    // first try and its retry landed on the identical result, confirming
-    // it wasn't a timing fluke — a real per-seed roll, not a bug). 9
-    // attempts — matching the actual initial applicant pool size already
-    // observed in every prior run/probe — drops the "all declined" chance
-    // to roughly 0.03%, a real statistical margin rather than an arbitrary
-    // pad.
+    // acceptance chance in roughly the 50-70% range. An earlier version of
+    // this comment theorized the repeated "0 accepted" CI failures were a
+    // genuine, if unlucky, statistical outcome (all N candidates declining)
+    // and raised HIRE_ATTEMPTS from 5 to 9 to shrink that odds. That theory
+    // does not hold up: a direct replay of this exact seed's click
+    // sequence — both a pure-engine (Dart) reproduction and a real local
+    // browser run — shows 8 of 9 offers ACCEPTED and the milestone firing
+    // cleanly at week 7 (PR #15 CI run 32023887460 investigation). The
+    // repeated CI failures were click-target staleness under CI's real
+    // `workers: 2` contention (`clickAndWaitForChange`/'面接する' timing
+    // out mid-interview, matching the "戻る race" already root-caused in
+    // `ses-player.ts` — see `clickResilient`, above), not a statistics
+    // problem — HIRE_ATTEMPTS stays at 9 for real margin against genuine
+    // decline streaks, not as a workaround for that bug class.
     const HIRE_ATTEMPTS = 9;
     for (let attempt = 0; attempt < HIRE_ATTEMPTS; attempt++) {
       const candidate = page.getByRole('button', { name: /未面接/ }).first();
@@ -372,7 +416,7 @@ for (const seed of parsedSeeds.seeds) {
         expect(await waitForTabBar(page, textOffenders, '採用'), `採用 tab never became visible after skipping attempt ${attempt} (seed=${seed})`).toBe(true);
         continue;
       }
-      await page.getByRole('button', { name: '面接する', exact: true }).click();
+      await clickResilient(page, '面接する');
       await waitForAnyEnabledButton(page);
 
       // Bounded at 12 (3 questions + 1 reverse-question + occasional
@@ -385,7 +429,7 @@ for (const seed of parsedSeeds.seeds) {
         const snap = await snapshotScreen(page);
         textOffenders.push(...findDoubledParticles(snap));
         if (hasText(snap, '面接まとめ')) {
-          await page.getByRole('button', { name: '採用する', exact: true }).click();
+          await clickResilient(page, '採用する');
           break;
         }
         const anyBtn = snap.buttons.find((b) => b.enabled && b.name !== 'back');

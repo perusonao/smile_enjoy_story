@@ -288,8 +288,10 @@ async function waitForAnyEnabledButton(page: import('@playwright/test').Page): P
 /** True once the screen has actually arrived at `RecruitmentInterviewScreen`
  * — never satisfied by merely "some enabled button exists" (§ root cause
  * below). Two independent, structural signals, both required:
- *   - the *origin* screen's own CTA ("面接する", ApplicantDetailScreen) is
- *     no longer present/enabled — proves we left that screen;
+ *   - the *origin* screen's own CTA (ApplicantDetailScreen's "面接する" or,
+ *     for a resumed session, "面接を再開する" — see the hire-attempt loop's
+ *     own doc comment) is no longer present/enabled — proves we left that
+ *     screen;
  *   - the destination screen's own identity is present:
  *     `RecruitmentInterviewScreen`'s AppBar title is literally
  *     "${applicant.name}との面接" (`extractInterviewCandidateName`, already
@@ -299,7 +301,7 @@ async function waitForAnyEnabledButton(page: import('@playwright/test').Page): P
  * destination is the interview screen and not some other transitional/
  * empty frame; the title alone could theoretically survive a stale read. */
 function isInterviewScreenReady(snap: ScreenSnapshot): boolean {
-  const stillOnApplicantDetail = snap.buttons.some((b) => b.enabled && b.name === '面接する');
+  const stillOnApplicantDetail = snap.buttons.some((b) => b.enabled && (b.name === '面接する' || b.name === '面接を再開する'));
   if (stillOnApplicantDetail) return false;
   return extractInterviewCandidateName(snap) !== null;
 }
@@ -460,33 +462,43 @@ for (const seed of parsedSeeds.seeds) {
       const candidate = page.getByRole('button', { name: /未面接/ }).first();
       if ((await candidate.count()) === 0) break;
       await candidate.click({ timeout: 8000 });
-      const interviewBtn = enabledButton(await waitForAnyEnabledButton(page), '面接する');
+      // `ApplicantDetailScreen` (lib/ui/recruitment/applicant_detail_screen.dart
+      // `_LockedPersonalityCard`) renders its interview-entry CTA as "面接する"
+      // when no session exists yet, but as "面接を再開する" once one has
+      // already been *started but not completed* — a real, legitimate,
+      // clickable action, not "nothing to click". The previous version of
+      // this check only ever matched "面接する" exactly, so a resumed
+      // interview was silently misclassified as the dead-end case below and
+      // abandoned instead of continued — a real E2E-harness gap, verified
+      // directly against the widget's own source, not inferred from the CI
+      // failure alone.
+      const snapAfterOpen = await waitForAnyEnabledButton(page);
+      const interviewBtn = enabledButton(snapAfterOpen, '面接する') ?? enabledButton(snapAfterOpen, '面接を再開する');
       if (!interviewBtn) {
-        // Already interviewed with nothing left to click (e.g. re-opened
-        // mid-interview) — no hire/reject decision happens on this path,
-        // so unlike the two other call sites below, the app never
-        // auto-switches back to the Recruitment tab here: `waitForTabBar`
-        // would just spin its whole budget with nothing to dismiss on a
-        // bare pushed `ApplicantDetailScreen` route (root-caused from CI
-        // run 32013541813's chromium retry, which timed out exactly this
-        // way). Pop the route directly via its own back button instead —
-        // Flutter Web's auto-inserted AppBar back arrow's accessible name
-        // is confirmed to vary by browser: literally "Back Back" (doubled)
-        // on Chromium via a raw ariaSnapshot() dump — the same doubling
-        // `helpers/game-state.ts`'s own `CHROME_BUTTON_NAME` regex,
-        // `(back\s*)+`, already exists to recognize — but CI's WebKit run
-        // still failed here even after matching that exact string,
-        // implying WebKit's own accessible name differs again (plausibly
-        // plain "Back", un-doubled — Flutter Web's semantics-to-native-a11y
-        // bridging is engine-specific). A prefix/case-insensitive
-        // `/^Back\b/i` covers "Back", "Back Back", or any further
-        // variation uniformly, instead of hardcoding one exact string this
-        // file has already been wrong about once.
-        await page.getByRole('button', { name: /^Back\b/i }).first().click().catch(() => {});
+        // Genuinely nothing to interview here — the only other state
+        // `ApplicantDetailScreen` can render is "already interviewed"
+        // (session completed, decision already recorded elsewhere), which
+        // shows a static "面接済み" card with **no button at all** — or the
+        // applicant no longer exists in `state.applicants` at all (already
+        // hired/rejected), in which case the screen pops *itself* via its
+        // own `postFrameCallback` without any input from us.
+        //
+        // The previous version of this branch additionally fired a manual,
+        // single-shot `/^Back\b/i` click here before calling
+        // `waitForTabBar` — but `waitForTabBar` (below) already retries
+        // that exact same click internally, every idle iteration, for its
+        // entire ~30s budget (see its own doc comment). That manual click
+        // added no capability the retry loop didn't already have, and
+        // being a single unguarded attempt outside any retry, risked
+        // racing whatever the screen was already doing on its own (e.g.
+        // its own auto-pop) instead of helping it along — removed rather
+        // than patched further, since the fix here is recognizing
+        // `waitForTabBar` already owns this recovery, not adding a second,
+        // less careful copy of it.
         expect(await waitForTabBar(page, textOffenders, '採用'), `採用 tab never became visible after skipping attempt ${attempt} (seed=${seed})`).toBe(true);
         continue;
       }
-      await clickResilient(page, '面接する');
+      await clickResilient(page, interviewBtn.name);
       await waitForInterviewScreenTransition(page);
 
       // Bounded at 12 (3 questions + 1 reverse-question + occasional

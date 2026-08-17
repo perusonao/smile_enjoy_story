@@ -300,9 +300,16 @@ for (const seed of parsedSeeds.seeds) {
       await candidate.click({ timeout: 8000 });
       const interviewBtn = enabledButton(await waitForAnyEnabledButton(page), '面接する');
       if (!interviewBtn) {
+        // Already interviewed with nothing left to click (e.g. re-opened
+        // mid-interview) — no hire/reject decision happens on this path,
+        // so unlike the two other call sites below, the app never
+        // auto-switches back to the Recruitment tab here: `waitForTabBar`
+        // would just spin its whole budget with nothing to dismiss on a
+        // bare pushed `ApplicantDetailScreen` route (root-caused from CI
+        // run 32013541813's chromium retry, which timed out exactly this
+        // way). Pop the route directly via its own back button instead.
+        await page.getByRole('button', { name: 'Back', exact: true }).click().catch(() => {});
         expect(await waitForTabBar(page, textOffenders, '採用'), `採用 tab never became visible after skipping attempt ${attempt} (seed=${seed})`).toBe(true);
-        await page.getByRole('tab', { name: '採用', exact: true }).click();
-        await page.waitForTimeout(300);
         continue;
       }
       await page.getByRole('button', { name: '面接する', exact: true }).click();
@@ -331,12 +338,23 @@ for (const seed of parsedSeeds.seeds) {
       // `navigator.popUntil` has actually run and the tab bar is back.
       // Never a blind, unguarded `.click()` (see `waitForTabBar`'s doc
       // comment for why that was the real bug this replaced).
+      //
+      // Deliberately *no* explicit tab click after this: `_decide()`
+      // itself already sets `tabIndex.value = SesTab.recruitment`
+      // unconditionally (both hire and reject) as the very last step of
+      // completing the decision, so by the time `waitForTabBar` finds the
+      // "採用" tab present, we are already on it. Clicking it again here
+      // used to race Flutter Web's own semantics-tree churn right after
+      // that switch — root-caused from CI run 32013541813's mobile-webkit
+      // failure: `waitForTabBar` correctly found the tab
+      // (`aria-selected="true"`, i.e. already active), but the very next
+      // `.click()` failed for the full 15s with "element was detached
+      // from the DOM, retrying" — a redundant click on an already-current,
+      // still-settling tab, not a missing navigation.
       expect(
         await waitForTabBar(page, textOffenders, '採用'),
         `採用 tab never became visible after hire attempt ${attempt} (seed=${seed}) — see waitForTabBar`,
       ).toBe(true);
-      await page.getByRole('tab', { name: '採用', exact: true }).click();
-      await page.waitForTimeout(300);
     }
     await captureMilestone(page, testInfo, '03-applicants-interviewed');
 

@@ -160,12 +160,33 @@ async function waitForTabBar(page: import('@playwright/test').Page, textOffender
     // (`recruitmentInterviewCelebration` — a one-time dialog only that
     // first decision ever shows — meaning attempt 0 alone carries the
     // extra dialog *and* the extra snapshot cost stacked together).
+    let dismissed = false;
     for (const label of CLOSE) {
       const btn = page.getByRole('button', { name: label, exact: true });
       if (await btn.count()) {
         await btn.click().catch(() => {});
+        dismissed = true;
         break;
       }
+    }
+    // Also tries the AppBar back arrow directly (prefix/case-insensitive —
+    // Flutter Web's own accessible name for it is confirmed to vary: plain
+    // "Back" on some renders, doubled "Back Back" on others, see
+    // `/^Back\b/i` used the same way below at each hire-attempt call
+    // site) — safe and idempotent to attempt even when not needed; a
+    // route with nothing to pop simply ignores it.
+    if (!dismissed) {
+      await page.getByRole('button', { name: /^Back\b/i }).first().click({ timeout: 500 }).catch(() => {});
+    }
+    // Every 5th otherwise-idle iteration, also nudge the target tab
+    // directly with a *fresh* locator (never the same held reference
+    // across an `await`, which is what caused CI's earlier "element was
+    // detached from the DOM, retrying" — see this function's own doc
+    // comment history) — safe/idempotent even if the tab isn't needed yet
+    // or is already selected, and recovers from any dialog/route shape
+    // this file's fixed dismiss list hasn't seen before.
+    if (!dismissed && i % 5 === 4) {
+      await page.getByRole('tab', { name: tabName, exact: true }).click({ timeout: 500 }).catch(() => {});
     }
     await page.waitForTimeout(500);
   }
@@ -324,13 +345,18 @@ for (const seed of parsedSeeds.seeds) {
         // run 32013541813's chromium retry, which timed out exactly this
         // way). Pop the route directly via its own back button instead —
         // Flutter Web's auto-inserted AppBar back arrow's accessible name
-        // is literally "Back Back" (doubled; confirmed via a raw
-        // ariaSnapshot() dump — same doubling `helpers/game-state.ts`'s own
-        // `CHROME_BUTTON_NAME` regex, `(back\s*)+`, already exists to
-        // recognize), not "Back" alone — an `exact: true` match on plain
-        // "Back" silently matched nothing, the `.catch(() => {})` below it
-        // swallowed that, and the route was never actually popped.
-        await page.getByRole('button', { name: /Back Back/i }).click().catch(() => {});
+        // is confirmed to vary by browser: literally "Back Back" (doubled)
+        // on Chromium via a raw ariaSnapshot() dump — the same doubling
+        // `helpers/game-state.ts`'s own `CHROME_BUTTON_NAME` regex,
+        // `(back\s*)+`, already exists to recognize — but CI's WebKit run
+        // still failed here even after matching that exact string,
+        // implying WebKit's own accessible name differs again (plausibly
+        // plain "Back", un-doubled — Flutter Web's semantics-to-native-a11y
+        // bridging is engine-specific). A prefix/case-insensitive
+        // `/^Back\b/i` covers "Back", "Back Back", or any further
+        // variation uniformly, instead of hardcoding one exact string this
+        // file has already been wrong about once.
+        await page.getByRole('button', { name: /^Back\b/i }).first().click().catch(() => {});
         expect(await waitForTabBar(page, textOffenders, '採用'), `採用 tab never became visible after skipping attempt ${attempt} (seed=${seed})`).toBe(true);
         continue;
       }

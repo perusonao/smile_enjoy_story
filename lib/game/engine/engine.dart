@@ -8,6 +8,7 @@ export 'game_engine.dart';
 export 'matching_engine.dart';
 export 'morale_engine.dart';
 export 'progression_engine.dart';
+export 'project_comparison_engine.dart';
 export 'prologue_engine.dart';
 export 'project_interview_engine.dart';
 export 'recruitment_engine.dart';

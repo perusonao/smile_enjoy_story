@@ -28,7 +28,29 @@ class BeginnerModeEngine {
   /// = April, so week 12 = the end of June). Weeks beyond this simply fall
   /// through to whatever free-management UI already renders — July onward
   /// (Phase 3B/3C/3D) is out of scope for this slice.
+  ///
+  /// Deliberately left unchanged in name and value by the Phase 3B-1 slice
+  /// that introduces [phase3b1LastWeek]/[phase3b2LastWeek]/
+  /// [phase3b3LastWeek] below — [isPhase3AActive] and every test/UI call
+  /// site that already depends on this exact constant keep working
+  /// unmodified (S.E.S. Development Plan §3.9 Phase 3B-1 design brief).
   static const int lastWeek = 12;
+
+  /// Last fiscal week of Phase 3B-1 (July-September, S.E.S. Development Plan
+  /// §3.3) — weeks [lastWeek]+1 (13) through this one.
+  static const int phase3b1LastWeek = 24;
+
+  /// Last fiscal week of Phase 3B-2 (October-December, §3.4) — weeks
+  /// [phase3b1LastWeek]+1 (25) through this one.
+  static const int phase3b2LastWeek = 36;
+
+  /// Last fiscal week of Phase 3B-3 (January-March, §3.5) — weeks
+  /// [phase3b2LastWeek]+1 (37) through this one. Equal to [totalGameWeeks]
+  /// (48): the end of Phase 3B-3 is the end of Beginner Mode's first fiscal
+  /// year, i.e. graduation to Normal Mode at week 49 (§3.6, §3.8). Derived
+  /// from [totalGameWeeks] rather than a second hardcoded `48`, so the two
+  /// can never silently drift apart.
+  static const int phase3b3LastWeek = totalGameWeeks;
 
   /// True for a playthrough that ran through the Founding Prologue — the
   /// only journey Phase 3A's continued guidance applies to. A "自由に開始"
@@ -40,10 +62,40 @@ class BeginnerModeEngine {
   /// "初心者経営期間" card, the softened non-mandatory recommendation
   /// framing that free management already uses) — i.e. founding is done
   /// (first assignment reached) but the end of June hasn't passed yet.
+  ///
+  /// Unchanged by the Phase 3B-1 slice — see [lastWeek]'s doc comment.
   static bool isPhase3AActive(GameState state) =>
       isBeginnerJourney(state) &&
       state.foundingProgress.has(FoundingMilestone.firstAssignment) &&
       state.week <= lastWeek;
+
+  /// True for the whole of Beginner Mode's first fiscal year (Phase 3A
+  /// through Phase 3B-3, weeks 1-[phase3b3LastWeek]) instead of just Phase
+  /// 3A's April-June window — i.e. founding is done and the player hasn't
+  /// yet reached graduation week 49 (§3.6, §3.8). [isPhase3AActive] keeps
+  /// its own narrower meaning and is not redefined in terms of this method,
+  /// so existing call sites that specifically mean "Phase 3A only" are
+  /// unaffected.
+  static bool isBeginnerModeActive(GameState state) =>
+      isBeginnerJourney(state) &&
+      state.foundingProgress.has(FoundingMilestone.firstAssignment) &&
+      state.week <= phase3b3LastWeek;
+
+  /// Which Beginner Mode sub-phase [state] currently falls in, or `null`
+  /// once [isBeginnerModeActive] is false (not a Beginner Mode journey,
+  /// founding not complete yet, or graduation week 49+ already reached) —
+  /// a pure, derived read of [GameState.week], never persisted (§3.0 rule 5:
+  /// milestone/state reconciliation over fragile week-only flags — this is
+  /// the one place week itself is the authority, since sub-phase boundaries
+  /// are calendar-defined by design, not event-driven).
+  static BeginnerSubPhase? currentSubPhase(GameState state) {
+    if (!isBeginnerModeActive(state)) return null;
+    final week = state.week;
+    if (week <= lastWeek) return BeginnerSubPhase.phase3a;
+    if (week <= phase3b1LastWeek) return BeginnerSubPhase.phase3b1;
+    if (week <= phase3b2LastWeek) return BeginnerSubPhase.phase3b2;
+    return BeginnerSubPhase.phase3b3;
+  }
 
   // -------------------------------------------------------------------
   // Milestone facts (§3.0 rule 1: event-driven, not week-driven — every
@@ -94,6 +146,19 @@ class BeginnerModeEngine {
         // doc comment uses elsewhere): the player should see the whole of
         // June, including its month-end close, before the recap.
         return state.foundingProgress.has(FoundingMilestone.firstAssignment) && state.week > lastWeek;
+      case BeginnerMilestone.fitReasonViewed:
+      case BeginnerMilestone.projectComparisonUsed:
+        // Phase 3B-1 data-model placeholders only (see each enum value's own
+        // doc comment in beginner_mode_state.dart) — this PR adds no Fit-
+        // reason or project-comparison UI, so there is no GameState fact yet
+        // that proves the player looked at either screen. Unlike every case
+        // above, these aren't "did an accounting/roster event happen" facts;
+        // they're "did the player view this screen" facts, which only the
+        // (future) screen itself can know. Deliberately always `false` here
+        // so `reconcile`/`pendingMilestones` stay complete no-ops for both
+        // until a later PR's UI starts calling `BeginnerModeEngine.markShown`
+        // directly — never speculatively derived from unrelated state.
+        return false;
     }
   }
 

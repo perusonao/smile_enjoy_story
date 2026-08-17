@@ -1,5 +1,6 @@
 import '../../domain/domain.dart';
 import '../models/models.dart';
+import 'finance_engine.dart';
 
 /// Phase 3A (S.E.S. Development Plan §3.2): continues Beginner Mode's
 /// guidance from the first assignment through the end of June (fiscal weeks
@@ -72,7 +73,27 @@ class BeginnerModeEngine {
         // Mode* recruitment decision. A second listing means the player
         // chose, post-founding, to grow the team, which is the moment the
         // growth-vs-fixed-cost tradeoff actually applies.
-        return state.foundingProgress.has(FoundingMilestone.firstAssignment) && state.listings.length > 1;
+        //
+        // Deliberately reads `state.stats.recruitmentListingsPosted`, not
+        // `state.listings.length`: the latter only ever holds *currently
+        // active* listings (GameEngine.advanceWeek replaces it with the
+        // active-only filtered set every week), so it would go back to 1 —
+        // silently un-satisfying this condition — the moment the March
+        // listing's 4-week duration expired, which typically happens before
+        // Beginner Mode's own recruitment unlock (2 weeks after the first
+        // assignment) even opens. Found via a real-UI Playwright run (Phase
+        // 3A UX review follow-up): no unit test caught this because unit
+        // tests construct `listings` directly instead of going through the
+        // engine's weekly pruning.
+        return state.foundingProgress.has(FoundingMilestone.firstAssignment) &&
+            state.stats.recruitmentListingsPosted > 1;
+      case BeginnerMilestone.phase3aRecapCelebrated:
+        // Fires once Phase 3A's own window (isPhase3AActive) has actually
+        // ended — not "reached week 12" but "week 12 is over" (mirrors the
+        // same one-week-late reasoning `BeginnerModeEngine.lastWeek`'s own
+        // doc comment uses elsewhere): the player should see the whole of
+        // June, including its month-end close, before the recap.
+        return state.foundingProgress.has(FoundingMilestone.firstAssignment) && state.week > lastWeek;
     }
   }
 
@@ -135,6 +156,7 @@ class BeginnerModeEngine {
     BeginnerMilestone.waitingCostExplained,
     BeginnerMilestone.firstCollectionCelebrated,
     BeginnerMilestone.recruitmentTradeoffExplained,
+    BeginnerMilestone.phase3aRecapCelebrated,
   ];
 
   /// Marks [milestone] as shown — the only mutation this engine exposes;
@@ -163,4 +185,29 @@ class BeginnerModeEngine {
   static int waitingSalaryTotal(GameState state) => state.engineers
       .where((e) => e.status == EngineerStatus.waiting)
       .fold<int>(0, (sum, e) => sum + e.salary);
+
+  /// A one-line "今月の経営ポイント" for the Home card (Phase 3A UX review
+  /// follow-up): what the player should actually be paying attention to
+  /// *right now*, derived from the same milestone/state facts everything
+  /// else here already reads — not a second, independent judgment. Replaces
+  /// (not adds to) the card's previous static blurb, so this doesn't grow
+  /// Home's information density; it just makes the existing line dynamic
+  /// enough that the card reads as "this week's lesson", not a generic,
+  /// always-identical info box that blends into the rest of the screen.
+  static String currentThemeLabel(GameState state) {
+    if (!state.beginnerModeState.has(BeginnerMilestone.revenueVsCashExplained)) {
+      return '売上と現金の違いに注目しましょう';
+    }
+    if (!state.beginnerModeState.has(BeginnerMilestone.firstCollectionCelebrated)) {
+      return '入金予定を確認しましょう';
+    }
+    if (state.waitingEngineerCount > 0) {
+      return '待機社員のコストに注意しましょう';
+    }
+    final runway = FinanceEngine.classifyRunway(FinanceEngine.cashRunwayMonths(state));
+    if (runway != RunwayLevel.safe) {
+      return '資金繰りを意識しましょう';
+    }
+    return '案件参画と採用のバランスを見ていきましょう';
+  }
 }

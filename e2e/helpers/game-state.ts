@@ -95,6 +95,41 @@ export function hasText(snap: ScreenSnapshot, needle: string): boolean {
   return snap.texts.some((t) => t.includes(needle)) || snap.buttons.some((b) => b.name.includes(needle));
 }
 
+// Phase 3A UX review (P1-3): a dynamically-built Japanese sentence can
+// accidentally double a particle when two independently-templated segments
+// meet (e.g. a label that already ends in "が" concatenated with prose that
+// also starts with "が"). "までで" (でで) is legitimate Japanese ("これまでで"
+// = "the most ... so far") and must never be flagged. "やや" (slightly/
+// somewhat — e.g. RecruitmentInterviewScreen's info-gauge copy "やや把握")
+// is a single ordinary word, found via this file's own waiting-cost/
+// recruitment-tradeoff E2E driving real recruitment-interview summary
+// screens for the first time — no unit/widget test had ever rendered that
+// copy through this scanner before.
+const DOUBLED_PARTICLE = /(が|を|は|の|に|で|も|と|へ|や)\1/g;
+const LEGITIMATE_DOUBLED_PARTICLE_CONTEXTS = [/までで/, /やや/];
+
+/** Scans every text/button label in [snap] for an immediately-repeated
+ * single-character Japanese particle (e.g. "がが", " をを") — almost always
+ * a sign that two separately-built string segments were concatenated
+ * without checking whether either already supplied the particle. Returns
+ * each offending string once, in encounter order; empty when nothing looks
+ * wrong. Never a golden/screenshot comparison — pure text-content
+ * regression coverage that survives incidental layout/copy changes. */
+export function findDoubledParticles(snap: ScreenSnapshot): string[] {
+  const offenders: string[] = [];
+  for (const t of [...snap.texts, ...snap.buttons.map((b) => b.name)]) {
+    DOUBLED_PARTICLE.lastIndex = 0;
+    let m: RegExpExecArray | null;
+    while ((m = DOUBLED_PARTICLE.exec(t))) {
+      const context = t.slice(Math.max(0, m.index - 2), m.index + 3);
+      if (LEGITIMATE_DOUBLED_PARTICLE_CONTEXTS.some((p) => p.test(context))) continue;
+      offenders.push(t);
+      break;
+    }
+  }
+  return offenders;
+}
+
 /** A snapshot with no texts and no buttons at all — the shape Flutter Web's
  * semantics tree transiently produces mid-route-transition (observed on
  * WebKit; see `readStableSemantics` in helpers/ses-player.ts), never a

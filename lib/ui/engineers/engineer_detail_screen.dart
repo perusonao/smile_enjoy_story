@@ -159,7 +159,18 @@ class EngineerDetailScreen extends StatelessWidget {
             const Text('会社信頼が低い社員は、現場の増員情報を持ち帰りにくくなります。',style:TextStyle(fontSize:12,color:Colors.black54)),
             Row(children:[Expanded(child:OutlinedButton(onPressed:()=>_editSkillSheet(context,engineer!,skillSheet),child:const Text('営業用記載を編集'))),const SizedBox(width:8),Expanded(child:FilledButton(onPressed:engineer.salesStatus==SalesStatus.selling?null:()=>_confirmSalesStart(context,engineer!,skillSheet),child:const Text('営業を開始する')))]),
           ]),
-          if(interviewOffers.isNotEmpty)...[const SizedBox(height:12),_SectionCard(title:'面談依頼',children:[for(final offer in interviewOffers) _InterviewOfferCard(offer:offer,project:state.openProjects.firstWhere((e)=>e.project.id==offer.projectId).project)])],
+          if(interviewOffers.isNotEmpty)...[const SizedBox(height:12),_SectionCard(title:'面談依頼',children:[
+            // Null-safe lookup, not `firstWhere` (Playable Phase 3A UX
+            // review, P1-2 hardening): a project can legitimately leave
+            // `openProjects` while an offer referencing it is still
+            // pending in rare timing windows (fixed at the source in
+            // GameEngine.advanceWeek's survivingOpenProjects filter), and a
+            // corrupted/legacy save could still hit this — skip that one
+            // card instead of crashing the whole screen.
+            for(final offer in interviewOffers)
+              if(state.openProjects.where((e)=>e.project.id==offer.projectId).firstOrNull case final entry?)
+                _InterviewOfferCard(offer:offer,project:entry.project),
+          ])],
           if(assignment != null && assignment.remainingWeeks <= 4 && assignment.contractDecision==ContractDecision.undecided)...[const SizedBox(height:12),_SectionCard(title:'契約更新判断（終了4週前）',children:[Text('${assignment.project.title} / 残り${assignment.remainingWeeks}週'),Row(children:[Expanded(child:FilledButton(onPressed:(){context.game.decideContract(engineerId,extend:true);ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text('${assignment.project.title}の契約延長を決めました')));},child:const Text('延長する'))),const SizedBox(width:8),Expanded(child:OutlinedButton(onPressed:()=>_confirmWithdraw(context,engineerId,assignment),child:const Text('撤退する')))])])],
           _SectionCard(
             title: '基本情報',
@@ -879,4 +890,8 @@ class _Row extends StatelessWidget {
       ),
     );
   }
+}
+
+extension _FirstOrNull<T> on Iterable<T> {
+  T? get firstOrNull => isEmpty ? null : first;
 }

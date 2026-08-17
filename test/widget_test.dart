@@ -205,13 +205,23 @@ void main() {
     expect(find.textContaining('選考'), findsWidgets);
   });
 
-  testWidgets('次の週へ advances the week and shows a week-summary dialog', (
+  testWidgets('次の週へ advances the week and shows a week-summary dialog when something happened', (
     WidgetTester tester,
   ) async {
     SharedPreferences.setMockInitialValues({});
     await tester.pumpWidget(SesApp(controller: GameController()));
     await tester.pumpAndSettle();
     await _skipToFreeManagement(tester);
+
+    // Give the week something worth summarizing — otherwise (Phase 3A UX
+    // review, P2-2) an uneventful week no longer interrupts "次の週へ" with
+    // a dialog that only ever said "特に大きな変化はありませんでした"; see
+    // the next test for that (now dialog-free) case.
+    final context = tester.element(find.byType(MaterialApp));
+    final controller = GameScope.of(context);
+    for (final engineer in controller.state.engineers) {
+      controller.startSales(engineer.id);
+    }
 
     await tester.tap(find.textContaining('次の週へ'));
     await tester.pumpAndSettle();
@@ -221,5 +231,24 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.textContaining('Week 2'), findsWidgets);
+  });
+
+  testWidgets('次の週へ does not interrupt an uneventful week with an empty week-summary dialog (P2-2)', (
+    WidgetTester tester,
+  ) async {
+    SharedPreferences.setMockInitialValues({});
+    await tester.pumpWidget(SesApp(controller: GameController()));
+    await tester.pumpAndSettle();
+    await _skipToFreeManagement(tester);
+
+    // Nothing done this week (both founders still notSelling) — no
+    // WeeklySummaryEngine result, no guided action: the dialog must not
+    // appear at all, and Home lands straight on Week 2.
+    await tester.tap(find.textContaining('次の週へ'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('特に大きな変化はありませんでした。'), findsNothing);
+    expect(find.textContaining('Week 2'), findsWidgets);
+    expect(tester.takeException(), isNull);
   });
 }

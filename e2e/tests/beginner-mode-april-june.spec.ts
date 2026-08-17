@@ -9,6 +9,7 @@ import { emptyPlayResult, playFoundingToFirstAssignment, type PlayResult } from 
 import { playBeginnerModeThroughJune, type BeginnerModePlayResult } from '../helpers/beginner-mode-player';
 import { buildResultJson, captureMilestone, watchForErrors, writeArtifacts } from '../helpers/artifacts';
 import { parseSeeds } from '../helpers/seeds';
+import { findDoubledParticles } from '../helpers/game-state';
 import fs from 'fs';
 import path from 'path';
 
@@ -43,6 +44,10 @@ for (const seed of parsedSeeds.seeds) {
     let foundingResult: PlayResult | null = null;
     let beginnerResult: BeginnerModePlayResult | null = null;
     let playError: unknown = null;
+    // P1-3 regression coverage: Phase 3A's own dialogs/cards (revenue vs
+    // cash, waiting cost, first collection, recruitment tradeoff) scanned
+    // for the same doubled-particle class of bug this UX review reported.
+    const textOffenders: string[] = [];
 
     const seenMilestones = new Set<string>();
     const capture = async (name: string) => {
@@ -73,6 +78,7 @@ for (const seed of parsedSeeds.seeds) {
           maxActions: BEGINNER_MAX_ACTIONS,
           idleTimeoutMs: IDLE_TIMEOUT_MS,
           onScreen: async (snap, week) => {
+            textOffenders.push(...findDoubledParticles(snap));
             if (week !== null && week !== lastWeekSeen) {
               lastWeekSeen = week;
               if (week === 1) await capture('02-april-week1');
@@ -130,5 +136,7 @@ for (const seed of parsedSeeds.seeds) {
     // taught somewhere along the way (the first-assignment celebration or
     // the first-AR tutorial, whichever fires first for this seed's timing).
     expect(beginnerResult!.milestones.revenueVsCashExplained, `売上≠現金 was never shown (seed=${seed})`).toBe(true);
+
+    expect(textOffenders, `doubled-particle text observed (seed=${seed}): ${JSON.stringify(textOffenders)}`).toEqual([]);
   });
 }

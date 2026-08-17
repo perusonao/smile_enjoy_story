@@ -29,6 +29,13 @@ enum BeginnerMilestone {
 
   /// The recruitment growth-vs-fixed-cost tradeoff has been explained.
   recruitmentTradeoffExplained,
+
+  /// The "初心者経営・前半クリア！" recap has been shown, once, right as
+  /// Phase 3A's April-June window ends (week > [BeginnerModeEngine.lastWeek])
+  /// — a brief, real-data recap of what the player just experienced (売上
+  /// と入金, 月末支払い, 資金繰り), not a Phase 3B preview (Phase 3B is not
+  /// implemented yet).
+  phase3aRecapCelebrated,
 }
 
 /// Phase 3A progression — deliberately holds only *facts*, mirroring

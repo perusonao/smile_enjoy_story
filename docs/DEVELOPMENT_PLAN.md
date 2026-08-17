@@ -80,8 +80,9 @@ Non-blocking follow-ups are tracked separately (for example Issue #14).
 Priority: **P1 / current major development phase**
 
 Phase 3A (April-June foundation) status: **Implemented, tested (unit +
-widget + seeded Playwright), pending human/video UX review before Phase 3B
-starts.** See §3.9 below for what shipped and what's still open.
+widget + seeded Playwright), human/video UX review completed and fixes
+landed.** See §3.9 below for what shipped and what's still open before
+Phase 3B starts.
 
 Do **not** merge directly into unrestricted normal mode immediately after the first assignment.
 
@@ -390,9 +391,34 @@ Implement Phase 3 incrementally:
 - seeded Playwright coverage through June —
   `e2e/tests/beginner-mode-april-june.spec.ts` +
   `e2e/helpers/beginner-mode-player.ts`
+- end-of-June recap — one-time "🎉 初心者経営・前半クリア！" dialog
+  (`BeginnerMilestone.phase3aRecapCelebrated`) once Phase 3A's own window
+  has passed (`state.week > BeginnerModeEngine.lastWeek`), summarizing real
+  playthrough figures (cumulative revenue/collection, closings experienced,
+  current runway) — a look-back only, no Phase 3B preview
+- Beginner Mode card shows a dynamic "今月の経営ポイント"
+  (`BeginnerModeEngine.currentThemeLabel`) instead of a static blurb, so the
+  card reads as this week's lesson rather than a fixed info box
+- dedicated real-UI Playwright coverage for the two milestones the general
+  playthrough never exercises on its own —
+  `e2e/tests/beginner-mode-waiting-and-recruitment.spec.ts` drives an actual
+  second recruitment-media post and an actual interview→hire→wait sequence
 
-Still open before Phase 3B: a human/video UX review pass (§3.2's
-"Acceptance criteria" list) on the recorded Playwright runs.
+Human/video UX review pass (§3.2's "Acceptance criteria" list) completed on
+the recorded Playwright runs; fixes landed in the same PR (yen-sign font
+coverage, interview-offer client name sourcing, transient "not found" text,
+monthly-closing value coloring, week-advance modal-fatigue reduction, cash
+warning severity, the end-of-June recap and Beginner Mode card items above).
+That review's own real-UI E2E pass also found and fixed a genuine engine bug:
+`recruitmentTradeoffExplained` read `state.listings.length`, which
+`GameEngine.advanceWeek` replaces with the *currently active* listings only
+every week (§3 求人掲載終了の検出) — so the March founding listing's later
+expiry silently un-satisfied the milestone before Beginner Mode's own
+recruitment unlock ever opened. Fixed by adding a genuinely cumulative
+`GameStats.recruitmentListingsPosted` counter instead. No unit test had
+caught this because unit tests construct `listings` directly rather than
+going through the engine's weekly pruning — exactly the gap dedicated
+real-UI E2E coverage exists to close.
 
 ### Phase 3B — July–September
 
@@ -719,8 +745,8 @@ This allows two engineers with the same nominal language skill to have meaningfu
 # Priority summary
 
 1. **DONE — Phase 3A: April–June Beginner Mode foundation (implemented and unit/widget/seeded-Playwright tested).**
-2. **CURRENT P1 — Human/video UX review of the Phase 3A recordings before starting Phase 3B.**
-3. **P1 — Phase 3B: July–September assisted growth decisions.**
+2. **DONE — Human/video UX review of the Phase 3A recordings, fixes landed in the same PR.**
+3. **CURRENT P1 — Phase 3B: July–September assisted growth decisions.**
 4. **P1 — Phase 3C: October–December independent/people decisions.**
 5. **P1 — Phase 3D: January–March graduation + first-year report.**
 6. **P1 — UI/UX cleanup where it directly supports Beginner Mode comprehension.**

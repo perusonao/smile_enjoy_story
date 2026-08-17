@@ -52,10 +52,34 @@ class BeginnerModeCard extends StatelessWidget {
               ),
             ],
           ),
-          const SizedBox(height: 4),
+          const SizedBox(height: 6),
+          // A dynamic "今月の経営ポイント" headline (Phase 3A UX review
+          // follow-up), not a static, always-identical blurb — so this card
+          // reads as "this week's lesson" instead of blending into the rest
+          // of Home as just another fixed info box. Replaces the old static
+          // sentence rather than adding to it, so total text length here
+          // stays about the same.
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+                decoration: BoxDecoration(color: Colors.teal, borderRadius: BorderRadius.circular(4)),
+                child: const Text('POINT', style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: Colors.white, letterSpacing: 0.3)),
+              ),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  BeginnerModeEngine.currentThemeLabel(state),
+                  style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.bold, color: Colors.teal.shade900, height: 1.25),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 3),
           const Text(
-            '会社を安定させながら、SESのお金の流れを学びましょう。おすすめ行動は強制ではありません。',
-            style: TextStyle(fontSize: 11.5, color: Colors.black87, height: 1.3),
+            'おすすめ行動は強制ではありません。',
+            style: TextStyle(fontSize: 10.5, color: Colors.black54),
           ),
           const SizedBox(height: 8),
           Wrap(

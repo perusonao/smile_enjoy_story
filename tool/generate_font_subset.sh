@@ -59,6 +59,17 @@ for path in glob.glob('lib/**/*.dart', recursive=True):
 # Ideographs block (covers free-text player input, e.g. a typed company
 # name, not just strings baked into our own source).
 ranges = [
+    (0x00A0, 0x00FF),  # Latin-1 Supplement (¥ U+00A5, £, ¢, °, ×, ÷, ...) —
+                        # added after a real bug: the source-scan above only
+                        # keeps a character if ord(ch) > 0x2000, which
+                        # silently excludes the literal ¥ (U+00A5, 165) used
+                        # by lib/ui/theme.dart's formatYen() and several
+                        # GameLogEntry message strings. Without a glyph for
+                        # it, the subsetted font had a hole at exactly the
+                        # currency symbol shown on every money figure in the
+                        # game, and CanvasKit's fallback substitution made it
+                        # render as a mismatched/odd glyph next to the rest
+                        # of a NotoSansJP-rendered amount.
     (0x3040, 0x30FF),  # Hiragana + Katakana
     (0x3000, 0x303F),  # CJK punctuation
     (0xFF00, 0xFFEF),  # Halfwidth/fullwidth forms

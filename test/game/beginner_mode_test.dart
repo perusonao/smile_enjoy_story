@@ -272,4 +272,57 @@ void main() {
       expect(BeginnerModeEngine.reconcile(state).beginnerModeState.completedMilestones, isEmpty);
     });
   });
+
+  group('Phase 3A end-of-June recap (P1 UX review follow-up)', () {
+    test('fires once, only after week 12 is actually over, with real cumulative figures — never before', () {
+      var state = _reachBeginnerManagement(5);
+      for (var i = 0; i < 20 && state.week <= BeginnerModeEngine.lastWeek && state.status == GameStatus.playing; i++) {
+        expect(
+          BeginnerModeEngine.pendingMilestones(state, BeginnerModeEngine.weeklyMilestones),
+          isNot(contains(BeginnerMilestone.phase3aRecapCelebrated)),
+          reason: 'must not be pending while week ${state.week} <= ${BeginnerModeEngine.lastWeek}',
+        );
+        state = _advanceWeek(state);
+      }
+      if (state.status != GameStatus.playing) {
+        return; // bankruptcy is a legitimate outcome; nothing further to assert here.
+      }
+      expect(state.week, greaterThan(BeginnerModeEngine.lastWeek));
+      expect(BeginnerModeEngine.pendingMilestones(state, BeginnerModeEngine.weeklyMilestones), contains(BeginnerMilestone.phase3aRecapCelebrated));
+      expect(state.beginnerModeState.has(BeginnerMilestone.phase3aRecapCelebrated), isFalse, reason: 'pending, not yet shown');
+
+      state = _apply(state, (s) => BeginnerModeEngine.markShown(s, BeginnerMilestone.phase3aRecapCelebrated));
+      expect(state.beginnerModeState.has(BeginnerMilestone.phase3aRecapCelebrated), isTrue);
+      expect(state.stats.cumulativeRevenue, greaterThan(0), reason: 'the recap must have real revenue data to show');
+
+      // One-time: stays shown, doesn't re-fire on further weeks.
+      final firedWeek = state.beginnerModeState.milestoneWeeks[BeginnerMilestone.phase3aRecapCelebrated];
+      state = _advanceWeek(state);
+      expect(state.beginnerModeState.milestoneWeeks[BeginnerMilestone.phase3aRecapCelebrated], firedWeek);
+      expect(BeginnerModeEngine.pendingMilestones(state, BeginnerModeEngine.weeklyMilestones), isNot(contains(BeginnerMilestone.phase3aRecapCelebrated)));
+    });
+
+    test('never fires for a Free Mode game', () {
+      final state = GameEngine.newGame(seed: 1);
+      expect(BeginnerModeEngine.pendingMilestones(state, BeginnerModeEngine.weeklyMilestones), isNot(contains(BeginnerMilestone.phase3aRecapCelebrated)));
+    });
+  });
+
+  group('Beginner Mode card "今月の経営ポイント" theme (UX review follow-up)', () {
+    test('changes as the player progresses through what they have and have not experienced yet', () {
+      var state = _reachBeginnerManagement(11);
+      expect(BeginnerModeEngine.currentThemeLabel(state), contains('売上と現金'));
+
+      state = _apply(state, (s) => GameEngine.markTutorialSeen(s, OneTimeEvent.firstAssignmentCelebration));
+      expect(state.beginnerModeState.has(BeginnerMilestone.revenueVsCashExplained), isTrue);
+      expect(BeginnerModeEngine.currentThemeLabel(state), contains('入金予定'));
+
+      // Once the first collection has been experienced too, a genuinely
+      // idle second employee shifts the theme to waiting cost.
+      state = _apply(state, (s) => BeginnerModeEngine.markShown(s, BeginnerMilestone.firstCollectionCelebrated));
+      final waiter = buildEngineer(id: 'waiter-theme', salary: 300000, status: EngineerStatus.waiting);
+      final withWaiter = state.copyWith(engineers: [...state.engineers, waiter], company: state.company.copyWith(engineerIds: [...state.company.engineerIds, waiter.id]));
+      expect(BeginnerModeEngine.currentThemeLabel(withWaiter), contains('待機社員'));
+    });
+  });
 }

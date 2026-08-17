@@ -35,7 +35,15 @@ class ClientInterviewScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final state = context.game.state;
     final p = state.proposals.where((p) => p.id == applicationId).firstOrNull;
-    if (p == null) return const Scaffold(body: Center(child: Text('案件が見つかりません')));
+    // Transient, not a genuine error (Phase 3A UX review, P1-3) — same
+    // reasoning as PrologueInterviewScreen/RecruitmentInterviewScreen: this
+    // route is only pushed while the proposal is active, and it stops
+    // matching the moment the interview's own result finalizes the
+    // proposal, which can persist for a real, player-observable stretch
+    // (a result dialog on top until dismissed). A blank Scaffold, not the
+    // old "見つかりません" error and not a spinner (nothing is actually
+    // loading).
+    if (p == null) return const Scaffold(body: SizedBox.shrink());
     final e = state.engineerById(p.engineerId);
     final sessions = state.clientInterviews.where((s) => s.applicationId == applicationId && s.step == step).toList();
     if (sessions.isEmpty) {

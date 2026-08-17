@@ -39,11 +39,20 @@ FoundingEventDialog? buildFoundingEventDialog(OneTimeEvent event, GameState stat
       if (offer == null) return null;
       final employee = state.engineers.where((e) => e.id == offer.employeeId).firstOrNull;
       final project = state.openProjects.where((e) => e.project.id == offer.projectId).firstOrNull?.project;
+      // Always source the sender from InterviewOffer.clientId — the
+      // authoritative, always-populated field — never from a re-derived
+      // `project?.clientId`, which silently goes empty the moment the
+      // project itself has left `openProjects` (P1-2 fix). A `null` here
+      // means [offer.clientId] itself doesn't resolve to a known client
+      // (only possible on a corrupted/unrecognized save); render a
+      // sensible fallback sentence rather than an empty-string prefix.
+      final clientName = clientDisplayNameOrNull(offer.clientId);
+      final senderLabel = clientName != null ? '$clientNameから' : '案件担当者から';
       return FoundingEventDialog(
         title: '🎉 面談依頼が届きました！',
-        body: '${clientNameById(project?.clientId ?? '')}から\n'
+        body: '$senderLabel\n'
             '${employee?.profile.name ?? '社員'}さんへ面談依頼があります。\n\n'
-            '案件:\n${project?.title ?? ''}',
+            '案件:\n${project?.title ?? '（詳細は面談依頼画面でご確認ください）'}',
         primaryLabel: '面談依頼を見る',
         celebration: true,
       );

@@ -2,6 +2,18 @@ import 'package:flutter/material.dart';
 import '../../game/game.dart';
 import '../theme.dart';
 
+/// True when [showWeekSummaryDialog] would actually have something to show
+/// (Phase 3A UX review, P2-2): a genuinely uneventful week — no
+/// [WeeklySummaryEngine] result worth calling out, and no guided-tutorial
+/// next-step reminder — previously still interrupted "次の週へ" with a
+/// modal that only ever said "特に大きな変化はありませんでした". That's
+/// exactly the "informational, nothing to decide" case this review asked to
+/// stop treating as blocking: the full log is always still on Home's "最近
+/// の出来事" for anyone who wants to check it, so nothing is lost by not
+/// popping a dialog for it.
+bool weekSummaryHasContent(GameState state, {GuidedAction? guidedAction}) =>
+    guidedAction != null || WeeklySummaryEngine.importantFor(state).isNotEmpty;
+
 /// [guidedAction] simplifies the summary during the founding tutorial
 /// (Playable 0.4C.2 §44): only the single most important event, plus a
 /// reminder of what to do next instead of a full recap.

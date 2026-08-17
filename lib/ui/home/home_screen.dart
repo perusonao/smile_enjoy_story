@@ -77,7 +77,14 @@ class _HomeScreenState extends State<HomeScreen> {
     // out would fight that transition.
     state = controller.state;
     if (state.status == GameStatus.playing && context.mounted) {
-      await showWeekSummaryDialog(context, state, guidedAction: ProgressionEngine.guidedAction(state));
+      final guidedAction = ProgressionEngine.guidedAction(state);
+      // P2-2: a genuinely uneventful week no longer interrupts "次の週へ"
+      // with a dialog that only ever said "特に大きな変化はありませんでし
+      // た" — that informational-only content still lives in Home's "最近
+      // の出来事" log, just without forcing a tap to dismiss it every week.
+      if (weekSummaryHasContent(state, guidedAction: guidedAction)) {
+        await showWeekSummaryDialog(context, state, guidedAction: guidedAction);
+      }
     }
   }
 

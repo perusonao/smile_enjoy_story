@@ -96,6 +96,11 @@ class TaskEngine {
               id: 'cash-runway-caution',
               priority: TaskPriority.warning,
               title: '資金余命が6か月を切っています',
+              // Phase 3A UX review (P2-3): every severity tier of a cash
+              // warning now carries its own short recommended response, not
+              // just the danger tier — a title alone doesn't tell the
+              // player what to actually do about it.
+              subtitle: '案件参画・採用のバランスを見直すタイミングです',
               targetType: TaskTargetType.cashBreakdown,
             ),
           );

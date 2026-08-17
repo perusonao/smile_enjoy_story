@@ -226,10 +226,32 @@ void main() {
     await tester.tap(find.textContaining('次の週へ'));
     await tester.pumpAndSettle();
 
-    expect(find.text('Week 2'), findsOneWidget);
-    await tester.tap(find.text('閉じる'));
-    await tester.pumpAndSettle();
+    // `GameController`'s Free-Mode path (`chooseFreeStart` -> the
+    // `GameState _state = GameEngine.newGame()` *field initializer*, run
+    // before `debugSeed` is ever consulted — only the guided/Prologue path
+    // reads `debugSeed`) always starts from a real, unseeded random market
+    // — confirmed via a seed sweep of `GameEngine.newGame` + `startSales`:
+    // most seeds produce a single "面談依頼！" week-summary dialog exactly
+    // as this test originally assumed, but a real minority (~1 in 6) either
+    // land on `_onNextWeek`'s own pending-client-interview guard (a same-
+    // week selection chain reaching `clientInterview` before the week even
+    // advances) or produce no "important" summary item at all — a real,
+    // reproducible flake this exact assertion hit once in CI (not
+    // reproduced locally purely by chance across a handful of runs). Given
+    // there's no supported way to force a fixed seed through the Free-Mode
+    // path, drain whichever of those legitimate outcomes actually occurred
+    // — never "戻る" itself, which cancels the advance rather than
+    // resolving it — instead of assuming one specific fixed dialog chain.
+    for (var i = 0; i < 6 && controller.state.week < 2; i++) {
+      final proceed = ['社員に任せて進む', 'それでも進む', '閉じる', 'OK']
+          .map(find.text)
+          .firstWhere((f) => f.evaluate().isNotEmpty, orElse: () => find.text('__none__'));
+      if (proceed.evaluate().isEmpty) break;
+      await tester.tap(proceed.first);
+      await tester.pumpAndSettle();
+    }
 
+    expect(controller.state.week, 2, reason: '次の週へ must actually advance the week once every legitimate pending dialog is resolved');
     expect(find.textContaining('Week 2'), findsWidgets);
   });
 

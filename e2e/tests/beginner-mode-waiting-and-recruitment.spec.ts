@@ -40,7 +40,13 @@ const STALL_REPEAT_THRESHOLD = 5;
 // helpers), duplicated locally rather than exported/shared because this
 // file's own poll loop (settleAndScan, below) needs to *inspect* each
 // dialog's text before dismissing it, which the shared drivers don't do.
-const CLOSE = ['閉じる', 'OK', '会社状況を見る', '面談依頼を見る', '採用を見る', '社員環境を見る', 'それでも進む', '社員に任せて進む'];
+//
+// '採用画面へ戻る' (RecruitmentInterviewScreen._decide's own hire/reject
+// result dialog) is included here — see `waitForTabBar`'s own doc comment
+// for why a one-off, non-looping dismiss of that specific button (this
+// file's original approach) was the actual root cause of a real CI
+// failure, not a flaky timeout.
+const CLOSE = ['閉じる', 'OK', '会社状況を見る', '面談依頼を見る', '採用を見る', '社員環境を見る', 'それでも進む', '社員に任せて進む', '採用画面へ戻る'];
 
 /** Dismisses every dialog currently stacked on screen, recording each one's
  * full text (for the doubled-particle scan) along the way, and stops the
@@ -89,6 +95,50 @@ async function advanceWeekAndFind(
   await page.getByRole('button', { name: nextBtn.name, exact: true }).click();
   await page.waitForTimeout(700);
   return settleAndScan(page, textOffenders, stopWhen);
+}
+
+/** Repeatedly dismisses any known dialog until the bottom tab bar's
+ * [tabName] tab is actually present, or a bounded number of iterations is
+ * exhausted — root-caused from a real PR #15 CI failure (GitHub Actions run
+ * 32000987476, both mobile-chromium and mobile-webkit, reproducing
+ * identically on retry): `getByRole('tab', { name: '採用' }).click()` right
+ * after a hire/reject decision timed out at 15s with a Call Log reading
+ * only "waiting for getByRole(...)" — the locator never matched *anything*,
+ * not "matched but was covered/unclickable".
+ *
+ * Root cause: `RecruitmentInterviewScreen._decide` only runs its trailing
+ * `navigator.popUntil((route) => route.isFirst)` (the thing that actually
+ * brings the bottom tab bar back — `ApplicantDetailScreen`/
+ * `RecruitmentInterviewScreen` are both full `Navigator.push` routes with
+ * no tab bar of their own) *after* its own `showDialog` future resolves,
+ * which only happens once the player taps the dialog's own "採用画面へ戻る"
+ * button — and that dialog can chain into a *second* one-time tutorial
+ * dialog (`recruitmentInterviewCelebration`/`welfareUnlockCelebration`)
+ * before the pop actually happens. This file's original approach undid
+ * that first, then either (a) skipped the tap for a dialog it happened not
+ * to see within a single, fixed-delay check, or (b) never accounted for
+ * the second, chained dialog — leaving the run stuck on a still-pushed
+ * route with genuinely no tab bar, indefinitely. CI's slower/2-worker
+ * (`workers: 2` in CI, §e2e/playwright.config.ts) contended timing made
+ * that gap land inside the observation window far more reliably than this
+ * sandbox's single-worker local runs ever did — not a flaky retry-away
+ * timing fluke, a real gap in this file's own screen-state handling. Fixed
+ * by looping the *general* dismiss-known-dialogs logic
+ * (`settleAndScan`/`CLOSE`, which now also lists '採用画面へ戻る') until
+ * the target tab is actually confirmed present via a non-blocking
+ * `.count()` check, only then handing off to a real `.click()` — never a
+ * blind single click that can wait the full per-action timeout against a
+ * locator that will never resolve. */
+async function waitForTabBar(page: import('@playwright/test').Page, textOffenders: string[], tabName: string): Promise<boolean> {
+  for (let i = 0; i < 20; i++) {
+    if (await page.getByRole('tab', { name: tabName, exact: true }).count()) return true;
+    const snap = await snapshotScreen(page);
+    textOffenders.push(...findDoubledParticles(snap));
+    const close = snap.buttons.find((b) => b.enabled && CLOSE.includes(b.name));
+    if (close) await page.getByRole('button', { name: close.name, exact: true }).click().catch(() => {});
+    await page.waitForTimeout(300);
+  }
+  return (await page.getByRole('tab', { name: tabName, exact: true }).count()) > 0;
 }
 
 if (parsedSeeds.error) {
@@ -153,19 +203,18 @@ for (const seed of parsedSeeds.seeds) {
     // `role=button` node the accessibility tree still exposes — so
     // `getByRole` here, not `snapshotScreen`, is deliberate).
     //
-    // The hire-result dialog (`RecruitmentInterviewScreen._decide`'s
-    // `showDialog` + `ResultReveal`) is deliberately *not* asserted on here:
-    // a real, human-paced tap sees it (that path is covered by
-    // `test/ui/interview_navigation_test.dart`'s widget tests), but a
-    // synthetic Playwright click resolves to the post-decision screen state
-    // faster than even a single 100ms poll can observe it — confirmed by
-    // direct investigation (screenshots taken every 100ms from click never
-    // once caught the dialog on screen). Whether *this* particular
-    // applicant's offer was accepted (`RecruitmentEngine.rollAcceptance` is
-    // a real per-seed roll) is instead read back afterwards from the actual
-    // GameState signal Beginner Mode's own milestone depends on — a
-    // `waitingCount > 0` employee — across a small pool of candidates,
-    // rather than from this unreliable-to-observe transient dialog.
+    // The hire-result dialog itself is deliberately never asserted on by
+    // *content* here (that path is covered live by
+    // `test/ui/interview_navigation_test.dart`'s widget tests) — only
+    // dismissed, via `waitForTabBar`'s general dialog-draining loop, which
+    // is also what actually fixes returning to the tab bar afterwards (see
+    // its own doc comment for the real CI failure this replaced). Whether
+    // *this* particular applicant's offer was accepted
+    // (`RecruitmentEngine.rollAcceptance` is a real per-seed roll) is read
+    // back afterwards from the actual GameState signal Beginner Mode's own
+    // milestone depends on — a `waitingCount > 0` employee — across a small
+    // pool of candidates, rather than from the transient dialog itself.
+    expect(await waitForTabBar(page, textOffenders, '採用'), '採用 tab never became visible before the first hire attempt').toBe(true);
     await page.getByRole('tab', { name: '採用', exact: true }).click();
     await page.waitForTimeout(500);
 
@@ -177,7 +226,9 @@ for (const seed of parsedSeeds.seeds) {
       await page.waitForTimeout(500);
       const interviewBtn = enabledButton(await snapshotScreen(page), '面接する');
       if (!interviewBtn) {
+        expect(await waitForTabBar(page, textOffenders, '採用'), `採用 tab never became visible after skipping attempt ${attempt} (seed=${seed})`).toBe(true);
         await page.getByRole('tab', { name: '採用', exact: true }).click();
+        await page.waitForTimeout(300);
         continue;
       }
       await page.getByRole('button', { name: '面接する', exact: true }).click();
@@ -188,16 +239,6 @@ for (const seed of parsedSeeds.seeds) {
         textOffenders.push(...findDoubledParticles(snap));
         if (hasText(snap, '面接まとめ')) {
           await page.getByRole('button', { name: '採用する', exact: true }).click();
-          await page.waitForTimeout(500);
-          // Best-effort: dismiss the result dialog if this poll happens to
-          // still catch it (real/slower browsers) — a no-op the rest of the
-          // time, per the comment above.
-          const resultSnap = await snapshotScreen(page);
-          const back = enabledButton(resultSnap, '採用画面へ戻る');
-          if (back) {
-            await page.getByRole('button', { name: '採用画面へ戻る', exact: true }).click();
-            await page.waitForTimeout(500);
-          }
           break;
         }
         const anyBtn = snap.buttons.find((b) => b.enabled && b.name !== 'back');
@@ -205,6 +246,16 @@ for (const seed of parsedSeeds.seeds) {
         await page.getByRole('button', { name: anyBtn.name, exact: true }).click();
         await page.waitForTimeout(500);
       }
+
+      // Drains the hire/reject result dialog — and any one-time tutorial
+      // dialog chained after it — until the app's own
+      // `navigator.popUntil` has actually run and the tab bar is back.
+      // Never a blind, unguarded `.click()` (see `waitForTabBar`'s doc
+      // comment for why that was the real bug this replaced).
+      expect(
+        await waitForTabBar(page, textOffenders, '採用'),
+        `採用 tab never became visible after hire attempt ${attempt} (seed=${seed}) — see waitForTabBar`,
+      ).toBe(true);
       await page.getByRole('tab', { name: '採用', exact: true }).click();
       await page.waitForTimeout(300);
     }

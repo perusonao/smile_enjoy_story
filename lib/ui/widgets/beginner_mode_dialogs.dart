@@ -22,6 +22,17 @@ FoundingEventDialog? buildBeginnerModeDialog(BeginnerMilestone milestone, GameSt
       // [BeginnerModeEngine.weeklyMilestones]'s doc comment.
       return null;
 
+    case BeginnerMilestone.fitReasonViewed:
+    case BeginnerMilestone.projectComparisonUsed:
+      // Phase 3B-1 data-model placeholders (see each enum value's own doc
+      // comment in beginner_mode_state.dart) — neither has a dialog yet,
+      // and neither is in [BeginnerModeEngine.weeklyMilestones], so this
+      // path is never actually invoked for them today. Handled here only to
+      // keep this switch exhaustive; the real Fit-reason/comparison screens
+      // (a later PR) will call [BeginnerModeEngine.markShown] directly from
+      // their own UI instead of through this dialog-queue path.
+      return null;
+
     case BeginnerMilestone.waitingCostExplained:
       final waitingCount = state.waitingEngineerCount;
       final waitingSalary = BeginnerModeEngine.waitingSalaryTotal(state);

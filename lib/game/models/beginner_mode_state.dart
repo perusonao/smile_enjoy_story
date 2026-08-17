@@ -36,6 +36,43 @@ enum BeginnerMilestone {
   /// と入金, 月末支払い, 資金繰り), not a Phase 3B preview (Phase 3B is not
   /// implemented yet).
   phase3aRecapCelebrated,
+
+  /// Phase 3B-1 (S.E.S. Development Plan §3.3, weeks 13-24 / July-September):
+  /// the player has looked at a project's Fit-reason breakdown (the existing
+  /// `MatchingEngine.computeFit` per-dimension ◎○△× detail, surfaced through
+  /// a future UI screen) at least once. Reserved as a data-model placeholder
+  /// only — no engine condition derives it yet (see
+  /// [BeginnerModeEngine._isTrue]'s doc comment on this case) because no
+  /// screen exists in this PR to call [BeginnerModeState.withMilestone] /
+  /// `BeginnerModeEngine.markShown` for it. Not wired into
+  /// [BeginnerModeEngine.weeklyMilestones] or any backfill list yet — that is
+  /// PR3+ work once the actual Fit-reason UI lands.
+  fitReasonViewed,
+
+  /// Phase 3B-1: the player has used the (future) multi-project comparison
+  /// screen at least once. Same placeholder status as [fitReasonViewed] —
+  /// added now so the enum/JSON shape is stable and additive before the UI
+  /// that will actually set it exists.
+  projectComparisonUsed,
+}
+
+/// Beginner Mode's first-fiscal-year sub-phases (S.E.S. Development Plan
+/// §3.9): each maps to a fixed, calendar-defined fiscal-week range via
+/// `BeginnerModeEngine.currentSubPhase` — never persisted, always derived
+/// from `GameState.week` (mirrors how [BeginnerModeState] itself holds only
+/// milestone facts, not phase/stage flags).
+enum BeginnerSubPhase {
+  /// April-June, weeks 1-`BeginnerModeEngine.lastWeek` (12).
+  phase3a,
+
+  /// July-September, weeks 13-`BeginnerModeEngine.phase3b1LastWeek` (24).
+  phase3b1,
+
+  /// October-December, weeks 25-`BeginnerModeEngine.phase3b2LastWeek` (36).
+  phase3b2,
+
+  /// January-March, weeks 37-`BeginnerModeEngine.phase3b3LastWeek` (48).
+  phase3b3,
 }
 
 /// Phase 3A progression — deliberately holds only *facts*, mirroring

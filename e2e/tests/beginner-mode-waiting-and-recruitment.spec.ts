@@ -157,6 +157,65 @@ async function waitForTabBar(page: import('@playwright/test').Page, textOffender
   return (await page.getByRole('tab', { name: tabName, exact: true }).count()) > 0;
 }
 
+/** Polls (bounded) until at least one real, enabled action button is on
+ * screen — used after a navigation that can transiently render a loading
+ * state first (`RecruitmentInterviewScreen` shows a bare
+ * `CircularProgressIndicator` while `c.interviewApplicant(applicantId)`'s
+ * `postFrameCallback` is still pending, `ApplicantDetailScreen` while its
+ * route is still transitioning in). A fixed sleep before checking risked
+ * reading that loading frame under CI's demonstrated contention (see
+ * `clickAndWaitForChange`'s doc comment) and finding zero enabled buttons
+ * — which the interview-Q&A loop treats as "nothing left to do here" and
+ * exits immediately, well before ever reaching "面接まとめ". */
+async function waitForAnyEnabledButton(page: import('@playwright/test').Page): Promise<ScreenSnapshot> {
+  let snap = await snapshotScreen(page);
+  // Same ~30s order of magnitude as `waitForTabBar` (see its own doc
+  // comment for the CPU-throttling reproduction this is sized against) —
+  // a route transition or `postFrameCallback` resolving is exactly the
+  // same class of CPU-bound work, just a different screen.
+  for (let i = 0; i < 40 && !snap.buttons.some((b) => b.enabled && b.name !== 'back'); i++) {
+    await page.waitForTimeout(300);
+    snap = await snapshotScreen(page);
+  }
+  return snap;
+}
+
+/** Clicks [buttonName] and actively polls (bounded) until the screen's own
+ * text content actually differs from [beforeSnap] — never a single fixed
+ * `waitForTimeout`. Root-caused directly: raising `waitForTabBar`'s own
+ * budget (above) did *not* fix CI run 32007245654's identical, 100%-
+ * reproducing (both browsers, both the first try and the retry) failure at
+ * the very same "hire attempt 0" point — which only made sense if the
+ * interview Q&A step loop that runs *before* any hire/reject decision was
+ * itself never actually reaching "面接まとめ" at all under CI's real
+ * contention, not `waitForTabBar` failing to wait long enough for a
+ * decision that had already been made.
+ *
+ * Reproduced directly (not guessed), the same CPU-throttling methodology
+ * as `waitForTabBar` and `e2e/README.md`'s own Company Setup fix: at just
+ * 15x throttle, the gap between one interview-question click and the next
+ * question actually rendering measured 2354-5035ms *per step* — the
+ * original loop's fixed `waitForTimeout(500)` between clicks was almost an
+ * order of magnitude too short, so under real contention it could click a
+ * still-stale screen (or simply exhaust its 8-iteration budget) well
+ * before ever reaching "面接まとめ" — meaning `waitForTabBar` afterwards
+ * was correctly reporting "no tab bar", because the hire/reject decision
+ * that would have produced one had never actually been made. */
+async function clickAndWaitForChange(
+  page: import('@playwright/test').Page,
+  buttonName: string,
+  beforeSnap: ScreenSnapshot,
+): Promise<ScreenSnapshot> {
+  await page.getByRole('button', { name: buttonName, exact: true }).click();
+  const beforeKey = JSON.stringify(beforeSnap.texts);
+  for (let i = 0; i < 40; i++) {
+    await page.waitForTimeout(300);
+    const snap = await snapshotScreen(page);
+    if (JSON.stringify(snap.texts) !== beforeKey) return snap;
+  }
+  return snapshotScreen(page);
+}
+
 if (parsedSeeds.error) {
   test('SES_E2E_WAITING_RECRUITMENT_SEEDS is invalid', () => {
     throw new Error(parsedSeeds.error!);
@@ -239,8 +298,7 @@ for (const seed of parsedSeeds.seeds) {
       const candidate = page.getByRole('button', { name: /未面接/ }).first();
       if ((await candidate.count()) === 0) break;
       await candidate.click({ timeout: 8000 });
-      await page.waitForTimeout(500);
-      const interviewBtn = enabledButton(await snapshotScreen(page), '面接する');
+      const interviewBtn = enabledButton(await waitForAnyEnabledButton(page), '面接する');
       if (!interviewBtn) {
         expect(await waitForTabBar(page, textOffenders, '採用'), `採用 tab never became visible after skipping attempt ${attempt} (seed=${seed})`).toBe(true);
         await page.getByRole('tab', { name: '採用', exact: true }).click();
@@ -248,9 +306,15 @@ for (const seed of parsedSeeds.seeds) {
         continue;
       }
       await page.getByRole('button', { name: '面接する', exact: true }).click();
-      await page.waitForTimeout(800);
+      await waitForAnyEnabledButton(page);
 
-      for (let step = 0; step < 8; step++) {
+      // Bounded at 12 (3 questions + 1 reverse-question + occasional
+      // incidental taps like the "過去の回答" history expansion tile, with
+      // real margin) — each click uses `clickAndWaitForChange`'s own
+      // confirm-and-retry poll instead of a fixed sleep, so this loop's
+      // total real time scales with how long the app actually takes under
+      // whatever contention is present, the same way `waitForTabBar` does.
+      for (let step = 0; step < 12; step++) {
         const snap = await snapshotScreen(page);
         textOffenders.push(...findDoubledParticles(snap));
         if (hasText(snap, '面接まとめ')) {
@@ -259,8 +323,7 @@ for (const seed of parsedSeeds.seeds) {
         }
         const anyBtn = snap.buttons.find((b) => b.enabled && b.name !== 'back');
         if (!anyBtn) break;
-        await page.getByRole('button', { name: anyBtn.name, exact: true }).click();
-        await page.waitForTimeout(500);
+        await clickAndWaitForChange(page, anyBtn.name, snap);
       }
 
       // Drains the hire/reject result dialog — and any one-time tutorial

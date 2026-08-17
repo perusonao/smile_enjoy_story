@@ -50,6 +50,27 @@ class BeginnerModeEngine {
   /// year, i.e. graduation to Normal Mode at week 49 (§3.6, §3.8). Derived
   /// from [totalGameWeeks] rather than a second hardcoded `48`, so the two
   /// can never silently drift apart.
+  ///
+  /// Today, `GameEngine.advanceWeek` itself never actually produces a
+  /// `GameState` with `week > totalGameWeeks` while `status ==
+  /// GameStatus.playing`: once `newWeek >= totalGameWeeks` at week 48's
+  /// month-end close it sets `GameStatus.finished`
+  /// (`game_engine.dart`'s month-end block), and `advanceWeek`'s own guard
+  /// (`if (state.status != GameStatus.playing) return state;`) makes every
+  /// further call a no-op from then on — there is currently no engine
+  /// mechanism that continues a playthrough into a second fiscal year
+  /// (S.E.S. Development Plan §3.6/§3.8's "Year 2 / Normal Mode" is a
+  /// product goal for Phase 3D, not something `GameEngine` implements yet).
+  /// `currentSubPhase`/[isBeginnerModeActive] are still defined all the way
+  /// through week 48 and `null`/`false` beyond it *on purpose*: they are
+  /// pure functions of `GameState.week` alone (mirrors [isPhase3AActive]),
+  /// so they already do the right thing the moment a later phase adds a
+  /// real week-49-and-beyond continuation, without needing to change this
+  /// file again. Until then, week 49+ is only reachable by directly
+  /// constructing a `GameState` (as the corresponding test does), never
+  /// through real play — see the "week 49" test's own doc comment in
+  /// `test/game/beginner_mode_subphase_test.dart` for the invariant test
+  /// that pins down today's actual week-48 terminal behavior.
   static const int phase3b3LastWeek = totalGameWeeks;
 
   /// True for a playthrough that ran through the Founding Prologue — the

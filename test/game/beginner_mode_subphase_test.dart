@@ -86,9 +86,47 @@ void main() {
     });
 
     test('week 49 = Beginner Mode ends (graduation week, Year 2 / Normal Mode territory)', () {
+      // NOTE (Codex review on PR #17): `GameEngine.advanceWeek` cannot
+      // actually produce week 49 today — see the invariant test right below
+      // this one. This test exercises `currentSubPhase`/
+      // `isBeginnerModeActive` as the pure functions of `week` they're
+      // documented to be (mirrors `isPhase3AActive`, which is defined the
+      // same way and is never gated on `GameStatus`), constructing week 49
+      // directly rather than through real play, so the derivation is
+      // already correct the moment a later phase (Phase 3D) adds a real
+      // Year 2 continuation — without this file needing to change again.
       final state = _atWeek(base, 49);
       expect(BeginnerModeEngine.isBeginnerModeActive(state), isFalse);
       expect(BeginnerModeEngine.currentSubPhase(state), isNull);
+    });
+
+    test('the real engine invariant this suite relies on: week 48 is the actual terminal week today', () {
+      // Codex review on PR #17 (lib/game/engine/beginner_mode_engine.dart:82):
+      // confirms week 49 is not reachable via real play under the current
+      // GameEngine — driven through the real `GameEngine.advanceWeek` (not
+      // the synthetic `_atWeek` helper) to prove it, rather than merely
+      // asserting it in prose.
+      final week47 = _atWeek(base, totalGameWeeks - 1).copyWith(status: GameStatus.playing);
+      final atMonthEnd = GameEngine.advanceWeek(week47);
+
+      expect(atMonthEnd.week, totalGameWeeks);
+      expect(atMonthEnd.status, GameStatus.finished, reason: 'GameEngine.advanceWeek itself ends the whole 48-week fiscal year here, not just Beginner Mode');
+
+      // A further advanceWeek call is a documented no-op (the engine's own
+      // `if (state.status != GameStatus.playing) return state;` guard) — week
+      // 49 genuinely cannot be reached this way.
+      final afterFinished = GameEngine.advanceWeek(atMonthEnd);
+      expect(afterFinished.week, totalGameWeeks);
+      expect(identical(afterFinished, atMonthEnd), isTrue, reason: 'advanceWeek must be a true no-op once the game has finished');
+
+      // At this actually-reachable final state, Beginner Mode's own
+      // sub-phase framing still reads as Phase 3B-3 (intentional — see
+      // phase3b3LastWeek's doc comment: these are pure functions of `week`
+      // alone, independent of `GameStatus`, so the framing can still be
+      // used on a year-end result screen even though the game itself has
+      // already finished).
+      expect(BeginnerModeEngine.isBeginnerModeActive(atMonthEnd), isTrue);
+      expect(BeginnerModeEngine.currentSubPhase(atMonthEnd), BeginnerSubPhase.phase3b3);
     });
   });
 

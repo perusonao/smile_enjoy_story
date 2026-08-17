@@ -146,15 +146,30 @@ async function advanceWeekAndFind(
  * same submit") — see the same-shaped precedent in `helpers/ses-player.ts`
  * (`fillCompanySetupField`'s confirm-and-retry loop). */
 async function waitForTabBar(page: import('@playwright/test').Page, textOffenders: string[], tabName: string): Promise<boolean> {
+  const tab = page.getByRole('tab', { name: tabName, exact: true });
   for (let i = 0; i < 60; i++) {
-    if (await page.getByRole('tab', { name: tabName, exact: true }).count()) return true;
-    const snap = await snapshotScreen(page);
-    textOffenders.push(...findDoubledParticles(snap));
-    const close = snap.buttons.find((b) => b.enabled && CLOSE.includes(b.name));
-    if (close) await page.getByRole('button', { name: close.name, exact: true }).click().catch(() => {});
+    if (await tab.count()) return true;
+    // Cheap, targeted `.count()` checks per known dialog label — not a
+    // full `snapshotScreen()` (`ariaSnapshot()`) dump of the whole page
+    // every iteration. That was itself real, avoidable CPU work fighting
+    // for the same contended CPU this loop exists to wait out — plausibly
+    // *self-defeating* under CI's real load, and the likeliest explanation
+    // left for why even a ~30s budget (already well past the reproduced
+    // 40x-throttle/20s worst case, §doc comment history) still failed
+    // 100% reproducibly, but only ever at the *first* hire decision
+    // (`recruitmentInterviewCelebration` — a one-time dialog only that
+    // first decision ever shows — meaning attempt 0 alone carries the
+    // extra dialog *and* the extra snapshot cost stacked together).
+    for (const label of CLOSE) {
+      const btn = page.getByRole('button', { name: label, exact: true });
+      if (await btn.count()) {
+        await btn.click().catch(() => {});
+        break;
+      }
+    }
     await page.waitForTimeout(500);
   }
-  return (await page.getByRole('tab', { name: tabName, exact: true }).count()) > 0;
+  return (await tab.count()) > 0;
 }
 
 /** Polls (bounded) until at least one real, enabled action button is on
@@ -307,8 +322,15 @@ for (const seed of parsedSeeds.seeds) {
         // would just spin its whole budget with nothing to dismiss on a
         // bare pushed `ApplicantDetailScreen` route (root-caused from CI
         // run 32013541813's chromium retry, which timed out exactly this
-        // way). Pop the route directly via its own back button instead.
-        await page.getByRole('button', { name: 'Back', exact: true }).click().catch(() => {});
+        // way). Pop the route directly via its own back button instead —
+        // Flutter Web's auto-inserted AppBar back arrow's accessible name
+        // is literally "Back Back" (doubled; confirmed via a raw
+        // ariaSnapshot() dump — same doubling `helpers/game-state.ts`'s own
+        // `CHROME_BUTTON_NAME` regex, `(back\s*)+`, already exists to
+        // recognize), not "Back" alone — an `exact: true` match on plain
+        // "Back" silently matched nothing, the `.catch(() => {})` below it
+        // swallowed that, and the route was never actually popped.
+        await page.getByRole('button', { name: /Back Back/i }).click().catch(() => {});
         expect(await waitForTabBar(page, textOffenders, '採用'), `採用 tab never became visible after skipping attempt ${attempt} (seed=${seed})`).toBe(true);
         continue;
       }

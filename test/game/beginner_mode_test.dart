@@ -172,6 +172,66 @@ void main() {
         expect(state.beginnerModeState.has(BeginnerMilestone.waitingCostExplained), isFalse);
       }
     });
+
+    // CI investigation follow-up (PR #15, CI run 32023887460): the real-UI
+    // Playwright E2E (beginner-mode-waiting-and-recruitment.spec.ts) proves
+    // the milestone fires through the *full* stack (real hire clicks, real
+    // RNG accept/decline rolls, real UI navigation) but is inherently
+    // probabilistic and slow — a single flaky interview/navigation step
+    // anywhere in a 9-candidate loop can obscure whether a failure is a
+    // genuine milestone regression or just an unlucky roll/CI timing hiccup
+    // (exactly what happened investigating that CI run: engine-level replay
+    // showed the milestone firing correctly, so the CI failure was never a
+    // milestone bug at all). Test E above already covers the milestone
+    // *condition* deterministically, but by injecting an already-`waiting`
+    // Engineer directly — it never exercises the actual
+    // `PendingHire` -> `advanceWeek` join transition
+    // (`GameEngine.advanceWeek`'s "3. 入社予定者処理" step) that both the
+    // real player and the E2E actually depend on. This test closes that gap
+    // without any RNG/interview dependency: a `PendingHire` is constructed
+    // directly (as if `GameEngine.hireApplicant`'s accept roll had already
+    // succeeded), so this is the fast, deterministic "logic verification"
+    // half the investigation asked to separate from "full-playthrough
+    // verification" (the Playwright E2E, which stays as the real-UI sanity
+    // check).
+    test('Test E2: PendingHire -> join -> waiting -> waiting-cost milestone, with no interview/RNG involved', () {
+      var state = _reachBeginnerManagement(11);
+      expect(state.pendingHires, isEmpty);
+      expect(state.waitingEngineerCount, 0);
+
+      // Mirrors exactly what `GameEngine.hireApplicant` produces the moment
+      // `RecruitmentEngine.rollAcceptance` succeeds — never touching that
+      // roll, or the interview flow that feeds its `companyImpression`, at
+      // all.
+      final applicant = buildApplicant(id: 'pending-applicant-1', name: 'テスト 応募者');
+      final pendingHire = PendingHire(
+        id: 'pending-hire-1',
+        applicant: applicant,
+        salary: 350000,
+        decisionWeek: state.week,
+        joinWeek: state.week + 1,
+      );
+      state = state.copyWith(pendingHires: [...state.pendingHires, pendingHire]);
+
+      // Week N -> N+1: `GameEngine.advanceWeek`'s own "入社予定者処理" step
+      // mints a real `Engineer` (status `waiting`) for anyone whose
+      // `joinWeek` matches — and, in that very same call, the "待機延べ週数
+      // の更新" step immediately counts them as waiting for 1 week (both
+      // steps read the *same* end-of-advanceWeek `engineers` list — see
+      // `beginner_mode_engine.dart`'s `waitingCostExplained` doc comment).
+      state = _advanceWeek(state);
+      expect(state.pendingHires, isEmpty, reason: 'the pending hire should have joined this week');
+      expect(state.waitingEngineerCount, 1);
+      final joined = state.engineers.singleWhere((e) => e.sourceApplicantId == applicant.id);
+      expect(joined.status, EngineerStatus.waiting);
+      expect(state.waitingStreak[joined.id], greaterThanOrEqualTo(1));
+
+      expect(state.beginnerModeState.has(BeginnerMilestone.waitingCostExplained), isFalse);
+      expect(BeginnerModeEngine.pendingMilestones(state, BeginnerModeEngine.weeklyMilestones), contains(BeginnerMilestone.waitingCostExplained));
+
+      state = _apply(state, (s) => BeginnerModeEngine.markShown(s, BeginnerMilestone.waitingCostExplained));
+      expect(state.beginnerModeState.has(BeginnerMilestone.waitingCostExplained), isTrue);
+    });
   });
 
   group('Phase 3A — Test G: recommended actions vary with GameState', () {

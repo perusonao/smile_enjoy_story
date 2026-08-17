@@ -114,29 +114,45 @@ async function advanceWeekAndFind(
  * which only happens once the player taps the dialog's own "採用画面へ戻る"
  * button — and that dialog can chain into a *second* one-time tutorial
  * dialog (`recruitmentInterviewCelebration`/`welfareUnlockCelebration`)
- * before the pop actually happens. This file's original approach undid
- * that first, then either (a) skipped the tap for a dialog it happened not
- * to see within a single, fixed-delay check, or (b) never accounted for
- * the second, chained dialog — leaving the run stuck on a still-pushed
- * route with genuinely no tab bar, indefinitely. CI's slower/2-worker
- * (`workers: 2` in CI, §e2e/playwright.config.ts) contended timing made
- * that gap land inside the observation window far more reliably than this
- * sandbox's single-worker local runs ever did — not a flaky retry-away
- * timing fluke, a real gap in this file's own screen-state handling. Fixed
- * by looping the *general* dismiss-known-dialogs logic
- * (`settleAndScan`/`CLOSE`, which now also lists '採用画面へ戻る') until
- * the target tab is actually confirmed present via a non-blocking
- * `.count()` check, only then handing off to a real `.click()` — never a
- * blind single click that can wait the full per-action timeout against a
- * locator that will never resolve. */
+ * before the pop actually happens.
+ *
+ * A first fix here (20 iterations × 300ms ≈ 6s of dismiss-and-poll) still
+ * failed on CI (GitHub Actions run 32004253788, both browsers on the first
+ * attempt, `Error: 採用 tab never became visible after hire attempt 0`) —
+ * *not* a missing dialog label (every dialog this chain can show
+ * — 'OK'/'社員環境を見る'/'採用画面へ戻る' — was already in CLOSE) but
+ * genuinely not enough real time. Reproduced directly, not guessed, the
+ * same way `e2e/README.md`'s Company Setup fix was: a CDP
+ * `Emulation.setCPUThrottlingRate` sweep on this exact hire-decision step
+ * measured how long the tab bar *actually* takes to reappear once the
+ * hire/reject decision is made —
+ *   6x  throttle → 2.4s
+ *   15x throttle → 5.3s   (already past this function's old ~6s budget)
+ *   25x throttle → 12.2s
+ *   40x throttle → 20.1s
+ * — an almost exactly linear ~0.5s per throttle-x, confirming this is
+ * genuinely CPU-bound work (ResultReveal's own 650ms reveal delay +
+ * Flutter Web's widget rebuild + semantics-tree recomputation, chained
+ * across up to two dialogs), not a stuck/dead state — it always resolves,
+ * just proportionally slower under contention. CI's real `workers: 2`
+ * (mobile-chromium *and* mobile-webkit running their own full Flutter Web
+ * engine simultaneously on a shared 2-core runner, §e2e/playwright.config.ts)
+ * plausibly lands somewhere past 15x-equivalent contention, which is
+ * exactly where the old 6s budget stopped being enough.
+ *
+ * Sized to comfortably clear the reproduced 40x/20.1s worst case with real
+ * margin, while staying a bounded loop with a real per-iteration recovery
+ * action (never README's own explicitly-rejected "unbounded loop of the
+ * same submit") — see the same-shaped precedent in `helpers/ses-player.ts`
+ * (`fillCompanySetupField`'s confirm-and-retry loop). */
 async function waitForTabBar(page: import('@playwright/test').Page, textOffenders: string[], tabName: string): Promise<boolean> {
-  for (let i = 0; i < 20; i++) {
+  for (let i = 0; i < 60; i++) {
     if (await page.getByRole('tab', { name: tabName, exact: true }).count()) return true;
     const snap = await snapshotScreen(page);
     textOffenders.push(...findDoubledParticles(snap));
     const close = snap.buttons.find((b) => b.enabled && CLOSE.includes(b.name));
     if (close) await page.getByRole('button', { name: close.name, exact: true }).click().catch(() => {});
-    await page.waitForTimeout(300);
+    await page.waitForTimeout(500);
   }
   return (await page.getByRole('tab', { name: tabName, exact: true }).count()) > 0;
 }

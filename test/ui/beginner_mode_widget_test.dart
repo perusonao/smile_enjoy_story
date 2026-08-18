@@ -35,12 +35,11 @@ void main() {
         state = ProgressionEngine.reconcile(PrologueEngine.completePrologue(state));
 
         // Give it something concrete going on: a pending AR (next expected
-        // collection) and a genuinely waiting second employee — Home
-        // layout整理 (§3-4) moved those individual facts to "会社の状況"
-        // and "重要なお知らせ" (so they're asserted from BeginnerModeCard's
-        // own engine-level tests, not duplicated here); this widget test's
-        // job is that the card still renders its teaching label, not those
-        // facts a second time.
+        // collection) and a genuinely waiting second employee. Home
+        // layout整理 (§3-4) moved 待機社員の給与負担/資金状況 to "会社の状況"
+        // and "重要なお知らせ" (no longer duplicated here) — but 次回入金予定
+        // stays on this card (Codex review on PR #22: no other screen shows
+        // which specific AR entry is due when, only the aggregate 売掛金).
         final waiter = buildEngineer(id: 'waiter-widget', salary: 320000, status: EngineerStatus.waiting);
         state = state.copyWith(
           engineers: [...state.engineers, waiter],
@@ -64,9 +63,10 @@ void main() {
 
         expect(find.textContaining('初心者経営期間'), findsOneWidget);
         expect(find.text(BeginnerModeEngine.currentThemeLabel(state)), findsOneWidget);
-        // The facts this card used to repeat now live exactly once each,
-        // in "会社の状況"/"重要なお知らせ" (§4, §11) — not here too.
-        expect(find.textContaining('次回入金予定'), findsNothing);
+        // 次回入金予定 is the one fact kept on this card (see the class doc
+        // comment) — 待機社員の給与負担/資金状況 stay gone, now covered
+        // exactly once each elsewhere on Home (§4, §11).
+        expect(find.textContaining('次回入金予定'), findsOneWidget);
         expect(find.textContaining('待機社員の給与負担'), findsNothing);
         expect(tester.takeException(), isNull);
       });

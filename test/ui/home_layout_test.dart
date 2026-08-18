@@ -118,7 +118,7 @@ void main() {
   });
 
   group('E: no duplicate facts between BeginnerModeCard / 重要なお知らせ / 会社の状況', () {
-    testWidgets('waiting-cost and next-collection facts appear nowhere on Home once removed from BeginnerModeCard', (tester) async {
+    testWidgets('waiting-cost fact stays gone from BeginnerModeCard; 次回入金予定 stays (no other screen shows it)', (tester) async {
       var state = playThroughPrologue(11);
       state = ProgressionEngine.reconcile(PrologueEngine.completePrologue(state));
       final waiter = buildEngineer(id: 'dup-check-waiter', salary: 320000, status: EngineerStatus.waiting);
@@ -142,11 +142,14 @@ void main() {
 
       await _pumpHome(tester, state, 390);
 
-      // These used to appear both in BeginnerModeCard's own Facts row and
-      // (for the waiting case) in TaskEngine's own notices — now each fact
-      // lives in exactly one place: 資金余命 in 会社の状況, and waiting
-      // notices in 重要なお知らせ/すべて見る via TaskCard.
-      expect(find.textContaining('次回入金予定'), findsNothing);
+      // 待機社員の給与負担 used to appear both in BeginnerModeCard's own
+      // Facts row and (for the waiting case) in TaskEngine's own notices —
+      // now it lives in exactly one place: 重要なお知らせ/すべて見る via
+      // TaskCard. 次回入金予定 stays on BeginnerModeCard (Codex review on
+      // PR #22, confirmed real: no other screen shows which specific AR
+      // entry is due when) — findsOneWidget confirms it's still there, and
+      // exactly once, not duplicated a second time elsewhere.
+      expect(find.textContaining('次回入金予定'), findsOneWidget);
       expect(find.textContaining('待機社員の給与負担'), findsNothing);
       // 資金余命 itself still appears, but exactly once (会社の状況 only).
       expect(find.text('資金余命'), findsOneWidget);

@@ -1,11 +1,23 @@
 import 'package:flutter/material.dart';
 
 import '../../game/game.dart';
+import '../asset_paths.dart';
 import 'first_contract_celebration.dart';
 import 'labels.dart';
 
 /// Content for a one-time founding-tutorial dialog (celebration or
 /// contextual explanation, §13-14, §19-20, §25, §37, §39, §47).
+///
+/// Also the common presentation for image-backed event modals (画像付き
+/// イベントモーダル Phase 1): setting [imageAssetPath] (always an
+/// [AssetPaths] constant — never a hardcoded `'assets/images/...'` string)
+/// puts a full-width photo above [category]/[title] in
+/// [showFoundingEventDialog]. Both [imageAssetPath] and [category] are
+/// optional and default to `null`, so every existing plain-text dialog
+/// (the tutorials that don't set them) renders exactly as before — Phase 1
+/// only adds an image to the handful of events picked out in
+/// `buildFoundingEventDialog`/`buildBeginnerModeDialog`, not to every
+/// [OneTimeEvent]/[BeginnerMilestone] wholesale.
 class FoundingEventDialog {
   final String title;
   final String body;
@@ -18,12 +30,26 @@ class FoundingEventDialog {
   /// cramming numbers into the plain-text body.
   final Widget? extra;
 
+  /// An [AssetPaths] event image shown full-width above the title, or
+  /// `null` for a plain text-only dialog (the pre-Phase-1 default look).
+  final String? imageAssetPath;
+
+  /// Short category label (e.g. "取引先からの連絡", "採用・応募") shown above
+  /// [title] when [imageAssetPath] is set. Purely a presentation label —
+  /// never read by game logic, so it carries no information [title]/[body]
+  /// don't already state in full sentences (§9 accessibility: images and
+  /// their labels are decoration, not the only place progression-relevant
+  /// information appears).
+  final String? category;
+
   const FoundingEventDialog({
     required this.title,
     required this.body,
     this.primaryLabel = 'OK',
     this.celebration = false,
     this.extra,
+    this.imageAssetPath,
+    this.category,
   });
 }
 
@@ -55,6 +81,8 @@ FoundingEventDialog? buildFoundingEventDialog(OneTimeEvent event, GameState stat
             '案件:\n${project?.title ?? '（詳細は面談依頼画面でご確認ください）'}',
         primaryLabel: '面談依頼を見る',
         celebration: true,
+        imageAssetPath: AssetPaths.eventClientContact,
+        category: '取引先からの連絡',
       );
     case OneTimeEvent.firstAssignmentCelebration:
       final assignment = state.activeAssignments.firstOrNull;
@@ -79,6 +107,8 @@ FoundingEventDialog? buildFoundingEventDialog(OneTimeEvent event, GameState stat
         body: '会社を拡大するため、新しいエンジニアを採用できるようになりました。',
         primaryLabel: '採用を見る',
         celebration: true,
+        imageAssetPath: AssetPaths.eventRecruitmentApplication,
+        category: '採用・応募',
       );
     case OneTimeEvent.clientInterviewCelebration:
       return const FoundingEventDialog(
@@ -86,12 +116,16 @@ FoundingEventDialog? buildFoundingEventDialog(OneTimeEvent event, GameState stat
         body: '営業では不合格になることもあります。\n'
             'SkillSheetを見直すか、次の面談依頼を待ちましょう。',
         primaryLabel: 'OK',
+        imageAssetPath: AssetPaths.eventClientInterview,
+        category: '案件面談',
       );
     case OneTimeEvent.recruitmentInterviewCelebration:
       return const FoundingEventDialog(
         title: '初めての採用面接が終わりました',
         body: '採用面接の結果をもとに、内定を出すか判断できます。',
         primaryLabel: 'OK',
+        imageAssetPath: AssetPaths.eventRecruitmentApplication,
+        category: '採用・応募',
       );
     case OneTimeEvent.welfareUnlockCelebration:
       return const FoundingEventDialog(
@@ -100,6 +134,8 @@ FoundingEventDialog? buildFoundingEventDialog(OneTimeEvent event, GameState stat
             'PC、健康診断、賞与などへ投資すると、Moraleや会社へのTrustに影響します。',
         primaryLabel: '社員環境を見る',
         celebration: true,
+        imageAssetPath: AssetPaths.eventCompanyManagement,
+        category: '会社経営',
       );
     case OneTimeEvent.firstOfferTutorial:
       return const FoundingEventDialog(
@@ -138,6 +174,15 @@ FoundingEventDialog? buildFoundingEventDialog(OneTimeEvent event, GameState stat
   }
 }
 
+const TextStyle _celebrationTitleStyle = TextStyle(fontSize: 20, fontWeight: FontWeight.bold);
+const TextStyle _plainTitleStyle = TextStyle(fontSize: 17, fontWeight: FontWeight.bold);
+final TextStyle _categoryStyle = TextStyle(
+  fontSize: 12,
+  fontWeight: FontWeight.bold,
+  letterSpacing: 0.5,
+  color: Colors.blueGrey.shade600,
+);
+
 /// Shows [dialog] and returns `true` if the player tapped the primary
 /// action (used by callers that then navigate somewhere on confirm).
 ///
@@ -145,23 +190,77 @@ FoundingEventDialog? buildFoundingEventDialog(OneTimeEvent event, GameState stat
 /// already carries its own headline (e.g. [FirstContractCelebration]) can
 /// leave both empty rather than repeat itself above a second, identical
 /// title.
+///
+/// When [FoundingEventDialog.imageAssetPath] is set (Phase 1 image-backed
+/// event modal), the image is rendered edge-to-edge above
+/// [FoundingEventDialog.category]/[FoundingEventDialog.title] instead of
+/// using [AlertDialog.title] — that keeps the image full-width, unpadded by
+/// the dialog's default title inset. Everything else (body, [extra],
+/// actions) is unchanged from the plain-text layout: [AlertDialog.actions]
+/// stays outside the scrollable area regardless, so the primary CTA is
+/// always reachable even when the image pushes the text below the fold on
+/// a short viewport (§3: "画像が大きすぎてCTAが画面外へ押し出されないように").
 Future<bool> showFoundingEventDialog(BuildContext context, FoundingEventDialog dialog) async {
+  final hasImage = dialog.imageAssetPath != null;
+  // Only the image layout needs an explicit style here — it moved the
+  // title out of AlertDialog.title (which supplied its own default text
+  // style) into plain content, so it needs a stand-in default. The
+  // no-image path keeps its pre-existing behavior exactly (`null` = the
+  // theme's own AlertDialog title style) so none of the plain tutorial
+  // dialogs change appearance.
+  final imageTitleStyle = dialog.celebration ? _celebrationTitleStyle : _plainTitleStyle;
   final result = await showDialog<bool>(
     context: context,
     builder: (dialogContext) => AlertDialog(
-      title: dialog.title.isEmpty
+      // `null` (the no-image branch) leaves Flutter's own default content
+      // padding in place, unchanged from before this dialog supported
+      // images. Only the image layout overrides it to zero, so the photo
+      // can sit flush against the dialog's edges.
+      contentPadding: hasImage ? EdgeInsets.zero : null,
+      // Moving the title out of AlertDialog.title (image layout) also
+      // moves its `Semantics(namesRoute: true)` — replace it with an
+      // explicit semanticLabel so the dialog keeps an accessible name
+      // built from the same category/title text a sighted player sees.
+      semanticLabel: hasImage
+          ? [if (dialog.category != null) dialog.category!, dialog.title].where((s) => s.isNotEmpty).join(' — ')
+          : null,
+      title: hasImage || dialog.title.isEmpty
           ? null
-          : Text(
-              dialog.title,
-              style: dialog.celebration ? const TextStyle(fontSize: 20, fontWeight: FontWeight.bold) : null,
-            ),
+          : Text(dialog.title, style: dialog.celebration ? _celebrationTitleStyle : null),
       content: SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
+          // .stretch (not .start) at this outer level only: it's what lets
+          // _EventImage fill the dialog's full width via ordinary
+          // constraint-based layout (no explicit `width: double.infinity`
+          // anywhere), the same way AlertDialog stretches its own Material3
+          // content — the width/height explicitly set here comes purely
+          // from those tight constraints, not from an unbounded value that
+          // would fight `IntrinsicWidth` the way AspectRatio did (see
+          // _EventImage's own doc comment). The inner Column below (title/
+          // body text) keeps its own .start, so text still left-aligns.
+          crossAxisAlignment: hasImage ? CrossAxisAlignment.stretch : CrossAxisAlignment.start,
           children: [
-            if (dialog.body.isNotEmpty) Text(dialog.body),
-            if (dialog.extra != null) ...[if (dialog.body.isNotEmpty) const SizedBox(height: 14), dialog.extra!],
+            if (hasImage) _EventImage(assetPath: dialog.imageAssetPath!),
+            Padding(
+              padding: hasImage ? const EdgeInsets.fromLTRB(20, 16, 20, 4) : EdgeInsets.zero,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (hasImage && dialog.category != null) ...[
+                    Text(dialog.category!, style: _categoryStyle),
+                    const SizedBox(height: 4),
+                  ],
+                  if (hasImage && dialog.title.isNotEmpty) ...[
+                    Text(dialog.title, style: imageTitleStyle),
+                    const SizedBox(height: 8),
+                  ],
+                  if (dialog.body.isNotEmpty) Text(dialog.body),
+                  if (dialog.extra != null) ...[if (dialog.body.isNotEmpty) const SizedBox(height: 14), dialog.extra!],
+                ],
+              ),
+            ),
           ],
         ),
       ),
@@ -174,6 +273,58 @@ Future<bool> showFoundingEventDialog(BuildContext context, FoundingEventDialog d
     ),
   );
   return result ?? false;
+}
+
+/// Full-width event photo at the top of an image-backed
+/// [showFoundingEventDialog] (§3 layout spec): a moderate fixed height
+/// (not the whole viewport — §3: "高さは固定しすぎない") with the image
+/// filling that box via [BoxFit.cover], rather than [AspectRatio] — an
+/// [AlertDialog]'s content sits inside Flutter's own `IntrinsicWidth`
+/// (dialog.dart, sizes the dialog to its content), and [AspectRatio]'s
+/// intrinsic-width computation from an unbounded height is a known
+/// incompatibility with that ("'input.isFinite': is not true" at layout
+/// time) — a fixed-height [SizedBox] has no such interaction.
+///
+/// Width is deliberately *not* set here (no `width: double.infinity` on
+/// this [SizedBox] or the [Image] itself) — an explicit infinite width is
+/// the same shape of value that made [AspectRatio] fail against
+/// `IntrinsicWidth` above, so it's avoided defensively even though it
+/// wasn't observed to reproduce the same crash. Instead this widget fills
+/// its parent's width the ordinary, constraint-based way:
+/// [showFoundingEventDialog] gives the [Column] that directly contains
+/// this widget `crossAxisAlignment: CrossAxisAlignment.stretch`, so the
+/// tight width constraint arrives from the parent — the same mechanism
+/// [AlertDialog]'s own Material3 content [Column] already uses internally.
+/// (Verified full-width at both 360px and 390px via an actual rendered
+/// screenshot, not just the absence of a layout exception.)
+///
+/// [showFoundingEventDialog]'s scrollable content plus the CTA staying
+/// outside that scroll area is what actually keeps the primary action
+/// reachable regardless of image size (§3: CTA must never be pushed
+/// off-screen).
+///
+/// Purely decorative (§9 accessibility): [category]/[title]/[body] already
+/// say everything a player needs in text, so the image itself is excluded
+/// from the semantics tree rather than read aloud as an unlabeled image.
+class _EventImage extends StatelessWidget {
+  const _EventImage({required this.assetPath});
+
+  final String assetPath;
+
+  static const double _height = 170;
+
+  @override
+  Widget build(BuildContext context) {
+    return ExcludeSemantics(
+      child: ClipRRect(
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+        child: SizedBox(
+          height: _height,
+          child: Image.asset(assetPath, fit: BoxFit.cover),
+        ),
+      ),
+    );
+  }
 }
 
 extension _FirstOrNull<T> on Iterable<T> {

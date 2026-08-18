@@ -1,4 +1,5 @@
 import '../../game/game.dart';
+import '../asset_paths.dart';
 import '../theme.dart';
 import 'expense_breakdown_sheet.dart';
 import 'founding_dialogs.dart';
@@ -85,6 +86,8 @@ FoundingEventDialog? buildBeginnerModeDialog(BeginnerMilestone milestone, GameSt
             '売上の発生・入金・月末支払い・資金繰りの基本を、実際に経営しながら経験しました。\n'
             'この感覚を活かして、これからも会社を経営していきましょう。',
         celebration: true,
+        imageAssetPath: AssetPaths.eventCompanyManagement,
+        category: '会社経営',
       );
   }
 }

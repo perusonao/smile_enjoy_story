@@ -25,10 +25,20 @@ String _topTechSkillLabel(TechSkillLevels t) {
 }
 
 /// The 社員 tab's own top filter (Playable "Phase 2: 社員画面のレイアウト改修"
-/// §3) — a UI-only view of the same [EngineerStatus] partition
-/// [GameState.assignedEngineerCount]/[GameState.waitingEngineerCount]
-/// already define, never a second, independently-judged notion of "who's
-/// waiting" (§3: "UI側に別の社員状態判定ロジックを二重実装しないでください").
+/// §3) — 参画中 is [GameState.assignedEngineerCount]'s own unambiguous
+/// `EngineerStatus.assigned` check, reused as-is. 待機中 is its complement
+/// ("not assigned"), *not* [GameState.waitingEngineerCount] — that getter
+/// only matches the literal `EngineerStatus.waiting` value, so it silently
+/// excludes the legacy `proposed`/`interviewScheduled` statuses a
+/// pre-SelectionFlow save's in-flight engineers can still carry (Codex
+/// review, PR #25). Those employees are just as unassigned as a `waiting`
+/// one, and hiding them from *both* filters (participating in neither
+/// count) would be worse than this screen simply not existing — this still
+/// isn't a second state-judging algorithm (§3), only the one binary split
+/// the whole roster ⇄ assigned/unassigned already has to satisfy by
+/// construction. [GameState.waitingEngineerCount] itself stays untouched:
+/// TaskEngine/BeginnerModeEngine read it directly for gameplay conditions
+/// this Phase must not change.
 enum _EngineerFilter { all, assigned, waiting }
 
 /// 社員一覧 (Phase 2 §1-2): "誰が参画中で、誰が待機中で、会社全体はどうなって
@@ -59,12 +69,15 @@ class _EngineerListScreenState extends State<EngineerListScreen> {
         return rank(a.status).compareTo(rank(b.status));
       });
 
+    final assignedCount = state.assignedEngineerCount;
+    final waitingCount = engineers.length - assignedCount;
+
     final filtered = switch (_filter) {
       _EngineerFilter.all => engineers,
       _EngineerFilter.assigned =>
         engineers.where((e) => e.status == EngineerStatus.assigned).toList(),
       _EngineerFilter.waiting =>
-        engineers.where((e) => e.status == EngineerStatus.waiting).toList(),
+        engineers.where((e) => e.status != EngineerStatus.assigned).toList(),
     };
 
     return Scaffold(
@@ -79,13 +92,17 @@ class _EngineerListScreenState extends State<EngineerListScreen> {
                     children: [
                       _EngineerFilterRow(
                         selected: _filter,
-                        allCount: state.engineers.length,
-                        assignedCount: state.assignedEngineerCount,
-                        waitingCount: state.waitingEngineerCount,
+                        allCount: engineers.length,
+                        assignedCount: assignedCount,
+                        waitingCount: waitingCount,
                         onChanged: (f) => setState(() => _filter = f),
                       ),
                       const SizedBox(height: 10),
-                      _EngineerSummaryCard(state: state),
+                      _EngineerSummaryCard(
+                        state: state,
+                        assignedCount: assignedCount,
+                        waitingCount: waitingCount,
+                      ),
                     ],
                   ),
                 ),
@@ -107,9 +124,11 @@ class _EngineerListScreenState extends State<EngineerListScreen> {
   }
 }
 
-/// すべて/参画中/待機中 の3セグメント、各件数付き (§3). Counts come straight
-/// from the same [GameState] getters Home's 会社の状況 card already uses, so
-/// this row and that card can never disagree.
+/// すべて/参画中/待機中 の3セグメント、各件数付き (§3). `allCount`/`assignedCount`
+/// come straight from [GameState.engineers]/[GameState.assignedEngineerCount]
+/// (same as Home's 会社の状況 card); `waitingCount` is `allCount -
+/// assignedCount` — see the `_EngineerFilter` enum's own doc comment for why
+/// that, not [GameState.waitingEngineerCount], is this screen's 待機中.
 class _EngineerFilterRow extends StatelessWidget {
   const _EngineerFilterRow({
     required this.selected,
@@ -174,9 +193,19 @@ class _EngineerFilterRow extends StatelessWidget {
 /// する。稼働率の計算そのものは [GameState.utilizationPercent] のまま — Home
 /// 改修で表示先を失っていたのをこの画面へ移すだけで、ロジックは変更しない。
 class _EngineerSummaryCard extends StatelessWidget {
-  const _EngineerSummaryCard({required this.state});
+  const _EngineerSummaryCard({
+    required this.state,
+    required this.assignedCount,
+    required this.waitingCount,
+  });
 
   final GameState state;
+  // Passed in from [_EngineerListScreenState.build] rather than re-derived
+  // here so this card can never show a different 参画中/待機中 split than
+  // the filter row above it — same underlying reasoning as that enum's own
+  // doc comment (Codex review, PR #25).
+  final int assignedCount;
+  final int waitingCount;
 
   @override
   Widget build(BuildContext context) {
@@ -194,8 +223,8 @@ class _EngineerSummaryCard extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.spaceAround,
             children: [
               Expanded(child: _SummaryMetric('社員数', '${state.engineers.length}名')),
-              Expanded(child: _SummaryMetric('参画中', '${state.assignedEngineerCount}名')),
-              Expanded(child: _SummaryMetric('待機中', '${state.waitingEngineerCount}名')),
+              Expanded(child: _SummaryMetric('参画中', '$assignedCount名')),
+              Expanded(child: _SummaryMetric('待機中', '$waitingCount名')),
               Expanded(child: _SummaryMetric('稼働率', '${state.utilizationPercent}%')),
             ],
           ),

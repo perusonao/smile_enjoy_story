@@ -112,6 +112,43 @@ GameState _longStringsState() {
   );
 }
 
+/// One assigned engineer plus two *legacy* in-flight statuses a
+/// pre-SelectionFlow save can still carry (`EngineerStatus.proposed`,
+/// `EngineerStatus.interviewScheduled` — set by the legacy single-interview
+/// path in `GameEngine.proposeEngineer`/`advanceWeek`, never by current
+/// project generation). Neither is `assigned`, so both must show up under
+/// 待機中 — regression coverage for Codex review, PR #25: a predicate that
+/// only matched the literal `EngineerStatus.waiting` value hid them from
+/// *both* 参画中 and 待機中 at once.
+GameState _legacyInFlightState() {
+  var state = GameEngine.skipFoundingTutorial(GameEngine.newGame(seed: 24));
+  final assigned = buildEngineer(
+    id: 'e-assigned',
+    profile: buildApplicant(id: 'a-assigned', name: '佐藤 次郎'),
+    status: EngineerStatus.assigned,
+  );
+  final proposed = buildEngineer(
+    id: 'e-proposed',
+    profile: buildApplicant(id: 'a-proposed', name: '高橋 三郎'),
+    status: EngineerStatus.proposed,
+  );
+  final interviewScheduled = buildEngineer(
+    id: 'e-interview-scheduled',
+    profile: buildApplicant(id: 'a-interview', name: '伊藤 四郎'),
+    status: EngineerStatus.interviewScheduled,
+  );
+  final engineers = [assigned, proposed, interviewScheduled];
+  final project = buildProject(id: 'proj-legacy', clientId: sampleClients[0].id, title: 'legacy案件');
+  return state.copyWith(
+    engineers: engineers,
+    company: state.company.copyWith(engineerIds: engineers.map((e) => e.id).toList()),
+    skillSheets: _skillSheetsFor(engineers, state.week),
+    activeAssignments: [
+      ActiveAssignment(engineerId: assigned.id, project: project, remainingWeeks: 4, assignedWeek: 1),
+    ],
+  );
+}
+
 Future<GameController> _pumpList(WidgetTester tester, GameState state, {double width = 390}) async {
   tester.view.physicalSize = Size(width, 844);
   tester.view.devicePixelRatio = 1;
@@ -270,6 +307,31 @@ void main() {
       expect(state.utilizationPercent, 67);
       await _pumpList(tester, state);
       expect(find.text('${state.utilizationPercent}%'), findsOneWidget);
+    });
+  });
+
+  group('M: legacy proposed/interviewScheduled engineers count as 待機中', () {
+    testWidgets('counts stay consistent and neither status disappears from both filters', (tester) async {
+      await _pumpList(tester, _legacyInFlightState());
+
+      // 1 assigned, 2 legacy in-flight (neither literally `waiting`) — the
+      // すべて/参画中/待機中 split must still add up to the full roster.
+      expect(find.text('すべて 3'), findsOneWidget);
+      expect(find.text('参画中 1'), findsOneWidget);
+      expect(find.text('待機中 2'), findsOneWidget);
+
+      await tester.tap(find.text('参画中 1'));
+      await tester.pumpAndSettle();
+      expect(find.text('佐藤 次郎'), findsOneWidget);
+      expect(find.text('高橋 三郎'), findsNothing);
+      expect(find.text('伊藤 四郎'), findsNothing);
+
+      await tester.tap(find.text('待機中 2'));
+      await tester.pumpAndSettle();
+      expect(find.text('佐藤 次郎'), findsNothing);
+      expect(find.text('高橋 三郎'), findsOneWidget);
+      expect(find.text('伊藤 四郎'), findsOneWidget);
+      expect(tester.takeException(), isNull);
     });
   });
 }

@@ -282,6 +282,77 @@ GameState _manyEngineersState() {
   );
 }
 
+/// 現在参画中（ActiveAssignmentあり）だが、次契約のオファーも1件届いている
+/// 社員 (Codex review, PR #26): `EmployeeWorkflowEngine.forEngineer` は常に
+/// `assigned` を返すため、この次契約オファーが 要対応 から見えなくなって
+/// いないかを確認する。`GameEngine.startSales`/`acceptOffer` はどちらも参画中
+/// の社員に対して次契約の営業・オファー受諾を禁止していない。
+GameState _assignedWithNextOfferState() {
+  var state = GameEngine.skipFoundingTutorial(GameEngine.newGame(seed: 95));
+  final currentProject = buildProject(id: 'proj-current', clientId: sampleClients[0].id, title: '現在稼働中の案件');
+  final nextProject = buildProject(id: 'proj-next', clientId: sampleClients[1].id, title: '次契約の案件');
+  final engineer = buildEngineer(
+    id: 'e-assigned-next-offer',
+    profile: buildApplicant(id: 'a-assigned-next-offer', name: '木村 八郎'),
+    status: EngineerStatus.assigned,
+  );
+  final proposalNext = ProjectProposal(
+    id: 'proposal-next',
+    engineerId: engineer.id,
+    project: nextProject,
+    proposedWeek: state.week,
+    stage: ProposalStage.proposed,
+    currentStepIndex: nextProject.selectionFlow.steps.length - 1,
+    status: ApplicationStatus.offered,
+  );
+  return state.copyWith(
+    engineers: [engineer],
+    company: state.company.copyWith(engineerIds: [engineer.id]),
+    skillSheets: _skillSheetsFor([engineer], state.week),
+    proposals: [proposalNext],
+    offers: [
+      Offer(
+        id: 'offer-next',
+        applicationId: proposalNext.id,
+        projectId: nextProject.id,
+        employeeId: engineer.id,
+        monthlyRate: nextProject.monthlyRate,
+        startWeek: state.week + 10,
+        responseDeadlineWeek: state.week + 2,
+      ),
+    ],
+    activeAssignments: [
+      ActiveAssignment(engineerId: engineer.id, project: currentProject, remainingWeeks: 4, assignedWeek: 1),
+    ],
+  );
+}
+
+/// オファー受諾済み・まだ参画開始前（`assignmentScheduled`）の社員 (Codex
+/// review, PR #26): `ActiveAssignment` はまだ存在しないため、参画中の
+/// カウントに含めるなら「参画中の案件」セクションにもカードが必要。
+GameState _assignmentScheduledState() {
+  var state = GameEngine.skipFoundingTutorial(GameEngine.newGame(seed: 96));
+  final project = buildProject(id: 'proj-scheduled', clientId: sampleClients[0].id, title: '参画予定の案件');
+  final engineer = buildEngineer(id: 'e-scheduled', profile: buildApplicant(id: 'a-scheduled', name: '林 九郎'));
+  final proposal = ProjectProposal(
+    id: 'proposal-scheduled',
+    engineerId: engineer.id,
+    project: project,
+    proposedWeek: state.week,
+    stage: ProposalStage.interviewPassed,
+    currentStepIndex: project.selectionFlow.steps.length - 1,
+    status: ApplicationStatus.accepted,
+    assignWeek: state.week + 3,
+  );
+  return state.copyWith(
+    engineers: [engineer],
+    company: state.company.copyWith(engineerIds: [engineer.id]),
+    skillSheets: _skillSheetsFor([engineer], state.week),
+    proposals: [proposal],
+    activeAssignments: const [],
+  );
+}
+
 Future<GameController> _pumpScreen(WidgetTester tester, GameState state, {double width = 390}) async {
   tester.view.physicalSize = Size(width, 844);
   tester.view.devicePixelRatio = 1;
@@ -493,6 +564,49 @@ void main() {
     testWidgets('要対応カードの「社員詳細を見る」からも社員詳細へ遷移できる', (tester) async {
       await _pumpScreen(tester, _mixedSalesState());
       await tester.tap(find.text('社員詳細を見る').first);
+      await tester.pumpAndSettle();
+      expect(find.byType(EngineerDetailScreen), findsOneWidget);
+    });
+  });
+
+  group('Codex review PR #26: 参画中の社員でも次契約のオファーは要対応に出る', () {
+    testWidgets('assigned でも pendingOffer があれば 要対応 に表示される', (tester) async {
+      await _pumpScreen(tester, _assignedWithNextOfferState());
+      // Also appears as the engineer name on the 参画中の案件 card below for
+      // their *current* project — that's correct, not a bug (§11: this
+      // engineer really is both 参画中 and has a next-contract offer).
+      expect(find.text('木村 八郎'), findsWidgets);
+      expect(find.textContaining('オファーが届いています'), findsOneWidget);
+      // Compare CTA only appears for >=2 pending offers — this fixture has
+      // exactly one, so it must not show up.
+      expect(find.text('案件を比較する'), findsNothing);
+
+      // 参画中の案件 still only lists the *current*, already-active
+      // assignment — the next contract is still just an offer, not yet
+      // accepted, so it must not appear there.
+      await _scrollTo(tester, find.text('現在稼働中の案件'));
+      expect(find.text('現在稼働中の案件'), findsOneWidget);
+      expect(find.text('次契約の案件'), findsNothing);
+    });
+  });
+
+  group('Codex review PR #26: assignmentScheduled counts and cards agree', () {
+    testWidgets('オファー受諾済み・未参画の社員は参画中1名として数えられ、カードも表示される', (tester) async {
+      final state = _assignmentScheduledState();
+      await _pumpScreen(tester, state);
+      // Only one bucket (参画中) is non-zero in this single-engineer fixture.
+      expect(find.text('1名'), findsOneWidget);
+      expect(find.text('0名'), findsNWidgets(3));
+
+      await _scrollTo(tester, find.text('参画中の案件'));
+      expect(find.text('参画中の案件'), findsOneWidget);
+      await _scrollTo(tester, find.text('参画予定の案件'));
+      expect(find.text('参画予定の案件'), findsOneWidget);
+      expect(find.text('参画予定'), findsOneWidget);
+      expect(find.textContaining('Week ${state.week + 3}〜'), findsOneWidget);
+      expect(find.text('林 九郎'), findsOneWidget);
+
+      await tester.tap(find.text('参画予定の案件'));
       await tester.pumpAndSettle();
       expect(find.byType(EngineerDetailScreen), findsOneWidget);
     });

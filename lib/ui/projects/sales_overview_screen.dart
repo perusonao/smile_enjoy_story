@@ -35,6 +35,55 @@ _SalesBucket? _bucketFor(EmployeeWorkflowState s) => switch (s) {
 /// 含めない。
 enum _SalesFilter { all, selling, inSelection, offer }
 
+/// The three actionable [EmployeeWorkflowState]s [EmployeeWorkflowEngine]
+/// itself would report for [engineerId] *if it didn't already know they're
+/// assigned* — i.e. the exact same predicates `forEngineer` checks
+/// internally (Codex review, PR #26), just without its own
+/// assigned/assignmentScheduled early-return. `GameEngine.startSales`
+/// explicitly allows an already-assigned employee to start selling their
+/// *next* contract (see its `availableFromWeek` handling), and
+/// `GameEngine.acceptOffer` never blocks accepting a next-contract offer
+/// while still on a current one — so a pending offer/客先面談/面談依頼 for
+/// that next contract is a real, live thing needing the player's attention,
+/// even though `forEngineer` always reports `assigned` for them (correctly,
+/// for their headline status everywhere else in the app). Returns `null`
+/// when none of the three apply.
+EmployeeWorkflowState? _secondarySalesActionState(GameState state, String engineerId) {
+  final hasPendingOffer = state.offers.any(
+    (o) => o.employeeId == engineerId && o.status == OfferStatus.pending,
+  );
+  if (hasPendingOffer) return EmployeeWorkflowState.finalOfferPending;
+
+  final clientInterviewPending = state.proposals.any(
+    (p) =>
+        p.engineerId == engineerId &&
+        p.status == ApplicationStatus.active &&
+        p.currentStep == SelectionStep.clientInterview &&
+        !state.clientInterviews.any((s) => s.applicationId == p.id && s.completed),
+  );
+  if (clientInterviewPending) return EmployeeWorkflowState.clientInterviewActionRequired;
+
+  final hasInterviewRequest = state.interviewOffers.any(
+    (o) => o.employeeId == engineerId && o.status == InterviewOfferStatus.pending,
+  );
+  if (hasInterviewRequest) return EmployeeWorkflowState.interviewRequestPending;
+
+  return null;
+}
+
+/// The state to key 要対応 off of for one engineer: [primary] itself when
+/// that's already actionable, or — only for an engineer whose primary state
+/// is `assigned`/`assignmentScheduled` — the hidden secondary state from
+/// [_secondarySalesActionState]. `null` means nothing needs the player's
+/// attention right now.
+EmployeeWorkflowState? _actionStateFor(GameState state, Engineer engineer, EmployeeWorkflowState primary) {
+  if (EmployeeWorkflowEngine.requiresAction(primary)) return primary;
+  if (primary == EmployeeWorkflowState.assigned || primary == EmployeeWorkflowState.assignmentScheduled) {
+    return _secondarySalesActionState(state, engineer.id);
+  }
+  return null;
+}
+
 /// ある社員が今アクティブに関わっている案件（あれば）— [EmployeeWorkflowEngine]
 /// や `_CurrentStatusCard`（engineer_detail_screen.dart）が同じ状態のために
 /// 既に読んでいるのと同じレコードから導出する。*どの状態か* を再判定するもの
@@ -127,10 +176,11 @@ class _SalesOverviewScreenState extends State<SalesOverviewScreen> {
     final offerCount = countFor(_SalesBucket.offer);
     final assignedCount = countFor(_SalesBucket.assigned);
 
-    final actionNeeded = state.engineers
-        .where((e) => EmployeeWorkflowEngine.requiresAction(workflowStates[e.id]!))
-        .toList()
-      ..sort((a, b) => workflowStates[a.id]!.index.compareTo(workflowStates[b.id]!.index));
+    final actionStates = {
+      for (final e in state.engineers) e.id: _actionStateFor(state, e, workflowStates[e.id]!),
+    };
+    final actionNeeded = state.engineers.where((e) => actionStates[e.id] != null).toList()
+      ..sort((a, b) => actionStates[a.id]!.index.compareTo(actionStates[b.id]!.index));
 
     final pipeline = state.engineers.where((e) {
       final bucket = buckets[e.id];
@@ -142,6 +192,24 @@ class _SalesOverviewScreenState extends State<SalesOverviewScreen> {
         _SalesFilter.offer => bucket == _SalesBucket.offer,
       };
     }).toList()..sort((a, b) => workflowStates[a.id]!.index.compareTo(workflowStates[b.id]!.index));
+
+    // 参画中の案件 (§11): [GameState.activeAssignments] alone misses an
+    // engineer whose offer was accepted but whose contract hasn't started
+    // yet (`assignmentScheduled` — no ActiveAssignment exists for them
+    // until then), even though the 参画中 summary count above already
+    // includes them. Adding their still-accepted [ProjectProposal] here
+    // keeps the count and this list in agreement (Codex review, PR #26).
+    // `GameEngine`'s weekly tick removes a proposal from `state.proposals`
+    // the moment it actually starts (finalizedProposalIds), so this can
+    // never double up with an already-started assignment for the same
+    // project.
+    final assignmentCards = [
+      for (final a in state.activeAssignments)
+        _AssignmentCardData(engineerId: a.engineerId, project: a.project, remainingWeeks: a.remainingWeeks),
+      for (final p in state.proposals)
+        if (p.status == ApplicationStatus.accepted)
+          _AssignmentCardData(engineerId: p.engineerId, project: p.project, startWeek: p.assignWeek),
+    ];
 
     return Scaffold(
       appBar: AppBar(title: const Text('営業・案件')),
@@ -163,8 +231,8 @@ class _SalesOverviewScreenState extends State<SalesOverviewScreen> {
                 padding: const EdgeInsets.only(bottom: 8),
                 child: _ActionNeededCard(
                   engineer: e,
-                  workflowState: workflowStates[e.id]!,
-                  primary: _primaryContextFor(state, e, workflowStates[e.id]!),
+                  workflowState: actionStates[e.id]!,
+                  primary: _primaryContextFor(state, e, actionStates[e.id]!),
                 ),
               ),
           ],
@@ -195,14 +263,14 @@ class _SalesOverviewScreenState extends State<SalesOverviewScreen> {
                   primary: _primaryContextFor(state, e, workflowStates[e.id]!),
                 ),
               ),
-          if (state.activeAssignments.isNotEmpty) ...[
+          if (assignmentCards.isNotEmpty) ...[
             const SizedBox(height: 18),
             const _SectionTitle('参画中の案件'),
             const SizedBox(height: 8),
-            for (final a in state.activeAssignments)
+            for (final a in assignmentCards)
               Padding(
                 padding: const EdgeInsets.only(bottom: 8),
-                child: _ActiveAssignmentCard(assignment: a),
+                child: _AssignmentCard(data: a),
               ),
           ],
           const SizedBox(height: 18),
@@ -525,22 +593,39 @@ class _SalesStatusCard extends StatelessWidget {
   }
 }
 
-/// 参画中の案件カード（§11）: 社員画面（誰が参画しているか＝社員中心）とは
-/// 逆に、案件名を先頭に置いた案件中心の表示にする。[GameState.activeAssignments]
-/// をそのまま列挙するだけで、新しい集計ロジックは持たない。
-class _ActiveAssignmentCard extends StatelessWidget {
-  const _ActiveAssignmentCard({required this.assignment});
+/// 参画中の案件カードの表示用データ（§11）。稼働中（[remainingWeeks] あり）
+/// か、オファー受諾済みでまだ参画開始前（[startWeek] あり）かのどちらか一方
+/// のみが入る — 新しい状態判定ではなく、[GameState.activeAssignments]/
+/// `ApplicationStatus.accepted` のどちらの記録から来たかをそのまま運ぶだけ。
+class _AssignmentCardData {
+  const _AssignmentCardData({
+    required this.engineerId,
+    required this.project,
+    this.remainingWeeks,
+    this.startWeek,
+  });
 
-  final ActiveAssignment assignment;
+  final String engineerId;
+  final Project project;
+  final int? remainingWeeks;
+  final int? startWeek;
+}
+
+/// 参画中の案件カード（§11）: 社員画面（誰が参画しているか＝社員中心）とは
+/// 逆に、案件名を先頭に置いた案件中心の表示にする。
+class _AssignmentCard extends StatelessWidget {
+  const _AssignmentCard({required this.data});
+
+  final _AssignmentCardData data;
 
   @override
   Widget build(BuildContext context) {
     final state = context.game.state;
-    final engineer = state.engineerById(assignment.engineerId);
+    final engineer = state.engineerById(data.engineerId);
     return InkWell(
       borderRadius: BorderRadius.circular(12),
       onTap: () => Navigator.of(context).push(
-        MaterialPageRoute(builder: (_) => EngineerDetailScreen(engineerId: assignment.engineerId)),
+        MaterialPageRoute(builder: (_) => EngineerDetailScreen(engineerId: data.engineerId)),
       ),
       child: Container(
         padding: const EdgeInsets.all(12),
@@ -552,24 +637,59 @@ class _ActiveAssignmentCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              assignment.project.title,
-              overflow: TextOverflow.ellipsis,
-              maxLines: 1,
-              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14.5),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    data.project.title,
+                    overflow: TextOverflow.ellipsis,
+                    maxLines: 1,
+                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14.5),
+                  ),
+                ),
+                if (data.startWeek != null)
+                  const Padding(
+                    padding: EdgeInsets.only(left: 6),
+                    child: _StatusTag(text: '参画予定'),
+                  ),
+              ],
             ),
             const SizedBox(height: 6),
             Wrap(
               spacing: 12,
               runSpacing: 4,
               children: [
-                _Bit(Icons.business_outlined, clientNameById(assignment.project.clientId)),
+                _Bit(Icons.business_outlined, clientNameById(data.project.clientId)),
                 _Bit(Icons.person_outline, engineer.profile.name),
-                _Bit(Icons.schedule_outlined, '残り${assignment.remainingWeeks}週'),
+                _Bit(
+                  Icons.schedule_outlined,
+                  data.remainingWeeks != null ? '残り${data.remainingWeeks}週' : 'Week ${data.startWeek}〜',
+                ),
               ],
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _StatusTag extends StatelessWidget {
+  const _StatusTag({required this.text});
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+      decoration: BoxDecoration(
+        color: SesTheme.primaryBlue.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Text(
+        text,
+        style: TextStyle(color: SesTheme.primaryBlue, fontSize: 10.5, fontWeight: FontWeight.bold),
       ),
     );
   }

@@ -17,6 +17,17 @@ export interface ScreenSnapshot {
   /** All texts (buttons, headings, body copy) currently in the a11y tree. */
   texts: string[];
   buttons: ButtonInfo[];
+  /** Names of buttons that are nested under a `dialog`/`alertdialog` node
+   * (Flutter's `Dialog`/`AlertDialog` — both `showDialog`-based, both set
+   * `aria-modal` — see `engine/.../semantics/route.dart`'s `SemanticDialog`/
+   * `SemanticAlertDialog`). A button whose *label text* happens to match a
+   * real dialog's own dismiss button can still appear elsewhere on the same
+   * screen as an entirely unrelated, non-dialog control (Home layout整理
+   * follow-up, PR #22: `_HeroTaskCard`'s CTA can read exactly "採用を見る",
+   * the same text `beginner-mode-player.ts`'s `CLOSE_LABELS` already used
+   * for a *dialog's* "採用を見る" button) — `dialogButtonNames` is what lets
+   * callers tell those two apart instead of matching on name alone. */
+  dialogButtonNames: string[];
 }
 
 // Matches one ariaSnapshot() line, e.g.:
@@ -64,25 +75,42 @@ const CHROME_BUTTON_NAME = /^((back\s*)+|最初からやり直す)$/i;
  * split out from {@link snapshotScreen} so this parsing logic (the actual
  * source of two real bugs found so far: the `[level=N]` annotation gap and
  * the trailing-`:`-on-a-parent-with-children gap) is unit-testable without
- * a real Page/browser (see `tests/game-state.ariaParsing.spec.ts`). */
+ * a real Page/browser (see `tests/game-state.ariaParsing.spec.ts`).
+ *
+ * Also tracks dialog scope (Home layout整理 follow-up, PR #22): `dialog`/
+ * `alertdialog` role lines open a scope for every more-deeply-indented line
+ * that follows, closed the moment a line's own indentation drops back to
+ * (or below) the dialog line's — ariaSnapshot()'s YAML-ish output nests
+ * children two spaces deeper than their parent, consistently, so indentation
+ * alone is enough; no real DOM tree walk needed. */
 export function parseAriaSnapshot(raw: string): ScreenSnapshot {
   const texts: string[] = [];
   const buttons: ButtonInfo[] = [];
+  const dialogButtonNames: string[] = [];
+  // Indentation (in raw, untrimmed columns) of the currently-open dialog/
+  // alertdialog node, or null when no dialog scope is open. A line is
+  // "inside" that dialog for as long as its own indentation is strictly
+  // greater than this value.
+  let dialogIndent: number | null = null;
   for (const line of raw.split('\n')) {
     const trimmed = line.trim();
     if (!trimmed.startsWith('-')) continue;
+    const indent = line.length - line.trimStart().length;
+    if (dialogIndent !== null && indent <= dialogIndent) dialogIndent = null;
     const m = ARIA_LINE.exec(trimmed);
     if (!m) continue;
     const role = m[1];
+    if (role === 'dialog' || role === 'alertdialog') dialogIndent = indent;
     const name = (m[3] ?? m[2] ?? '').replace(/\\"/g, '"').trim();
     if (!name || CHROME_BUTTON_NAME.test(name)) continue;
     if (role === 'button') {
       buttons.push({ name, enabled: !/\[disabled\]/.test(m[4] ?? '') });
+      if (dialogIndent !== null) dialogButtonNames.push(name);
     } else {
       texts.push(name);
     }
   }
-  return { texts, buttons };
+  return { texts, buttons, dialogButtonNames };
 }
 
 /** Reads the full accessibility tree in one round-trip, via ariaSnapshot(). */
@@ -93,6 +121,37 @@ export async function snapshotScreen(page: Page): Promise<ScreenSnapshot> {
 
 export function hasText(snap: ScreenSnapshot, needle: string): boolean {
   return snap.texts.some((t) => t.includes(needle)) || snap.buttons.some((b) => b.name.includes(needle));
+}
+
+/** True only when [name] is both an enabled button *and* inside a real
+ * dialog scope (`dialogButtonNames` — see its own doc comment). The one
+ * safe way for a driver to treat a same-labeled button as "dismiss this
+ * dialog": a plain name match against `snap.buttons` alone can't tell a
+ * dialog's own dismiss button apart from an unrelated, non-dialog control
+ * elsewhere on the same screen that happens to carry identical text (PR
+ * #22 follow-up — `_HeroTaskCard`'s "採用を見る" CTA vs.
+ * `founding_dialogs.dart`'s own "採用を見る" dialog button). */
+export function enabledDialogButton(snap: ScreenSnapshot, name: string): ButtonInfo | undefined {
+  return snap.buttons.find((b) => b.name === name && b.enabled && snap.dialogButtonNames.includes(name));
+}
+
+/** First of [names] (checked in the given order) that is both enabled and
+ * dialog-scoped — the "which known dialog-dismiss button, if any, is
+ * actually open right now" query every CLOSE-list-driven E2E driver in this
+ * harness needs (`helpers/beginner-mode-player.ts`,
+ * `tests/phase-3b1-fit-reason.spec.ts`,
+ * `tests/beginner-mode-waiting-and-recruitment.spec.ts` each keep their own
+ * CLOSE/CLOSE_LABELS list — on purpose, since each file's own dismiss loop
+ * needs different surrounding behavior (e.g. inspecting a dialog's text
+ * before dismissing it) — but all three should resolve "is this really a
+ * dialog" the same, single way rather than drifting into 3 independent
+ * definitions of it (PR #22 root cause). */
+export function firstEnabledDialogButton(snap: ScreenSnapshot, names: readonly string[]): ButtonInfo | undefined {
+  for (const name of names) {
+    const button = enabledDialogButton(snap, name);
+    if (button) return button;
+  }
+  return undefined;
 }
 
 // Phase 3A UX review (P1-3): a dynamically-built Japanese sentence can

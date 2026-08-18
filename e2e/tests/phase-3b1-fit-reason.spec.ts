@@ -284,13 +284,21 @@ for (const seed of parsedSeeds.error ? [] : parsedSeeds.seeds) {
     // shortcut, the same "断る"/"面談へ進む" card a real player sees.
     let offerAccepted = false;
     let weeksWaited = 0;
-    for (; weeksWaited < MAX_WEEKS_TO_WAIT_FOR_OFFER && !offerAccepted; weeksWaited++) {
+    // A `for (...; weeksWaited++)` here undercounts by one: `break` on the
+    // iteration that finds the offer skips the increment clause entirely,
+    // so a genuine 2-week wait was reported as 1 (and an offer found on the
+    // very first advance as 0) in fit-reason-result.json. Incrementing
+    // explicitly right after the week actually advances — independent of
+    // whether *this same* iteration goes on to find the offer — keeps the
+    // reported count accurate regardless of where the loop breaks.
+    while (weeksWaited < MAX_WEEKS_TO_WAIT_FOR_OFFER && !offerAccepted) {
       await settleAndScan(page, textOffenders);
       snap = await snapshotScreen(page);
       const next = snap.buttons.find((b) => b.enabled && b.name.startsWith(NEXT_WEEK_PREFIX));
       if (next) {
         await clickResilient(page, byButton(page, next.name), next.name);
         await page.waitForTimeout(700);
+        weeksWaited++;
       }
       await settleAndScan(page, textOffenders);
 
@@ -309,6 +317,7 @@ for (const seed of parsedSeeds.error ? [] : parsedSeeds.seeds) {
       await page.waitForTimeout(400);
       await clickResilient(page, byTab(page, HOME_TAB), 'ホームタブ');
       await page.waitForTimeout(400);
+      if (!next) break; // no next-week button and no offer — genuinely stuck, don't loop forever
     }
     expect(offerAccepted, `no 面談依頼/${PROCEED_TO_INTERVIEW} appeared within ${MAX_WEEKS_TO_WAIT_FOR_OFFER} weeks (seed=${seed}) — not a stall/timeout tuning issue, see this file's determinism note`).toBe(true);
 

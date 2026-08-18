@@ -212,6 +212,18 @@ Future<bool> showFoundingEventDialog(BuildContext context, FoundingEventDialog d
   final result = await showDialog<bool>(
     context: context,
     builder: (dialogContext) => AlertDialog(
+      // Material3's default Dialog shape is a 28px-radius rounded rect, but
+      // Dialog itself defaults to clipBehavior: Clip.none — content isn't
+      // actually clipped to that shape unless asked. Harmless for the
+      // no-image path (its content stays padded well away from the edges),
+      // but _EventImage sits flush against the top edge (contentPadding:
+      // zero below), so without this its own corner rounding could paint
+      // outside the dialog's rounded silhouette at the two top corners
+      // (Codex review on PR #24). Clipping here — rather than hand-matching
+      // _EventImage's own radius to 28px — stays correct even if the app's
+      // dialog theme shape ever changes, since it defers to whatever shape
+      // Material resolves instead of duplicating the value.
+      clipBehavior: Clip.antiAlias,
       // `null` (the no-image branch) leaves Flutter's own default content
       // padding in place, unchanged from before this dialog supported
       // images. Only the image layout overrides it to zero, so the photo

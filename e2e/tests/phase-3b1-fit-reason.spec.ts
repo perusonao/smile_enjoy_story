@@ -335,16 +335,32 @@ for (const seed of parsedSeeds.error ? [] : parsedSeeds.seeds) {
     await capture('04-fitbadge-visible');
 
     // Click "Fitの理由を見る" and wait for FitReasonSheet's own content to
-    // actually render (bounded poll, not a fixed sleep).
+    // actually render (bounded poll, not a fixed sleep). Checks "Fit内訳"
+    // specifically — never "Fitの理由", which is also a substring of the
+    // "Fitの理由を見る" link itself, still sitting on the *background*
+    // EngineerDetailScreen underneath the not-yet-rendered sheet. A CI
+    // failure (PR #19, run 32101366921) traced to exactly that false
+    // positive: `hasText(candidate, 'Fitの理由')` matched the still-present
+    // link on the very first poll, before the sheet had opened at all —
+    // grabbing the background screen's own semantics (visible in the CI
+    // log's own `sheetText`: skill sheet / personality / basic info, zero
+    // Fit content) as `sheetSnap`, not the sheet's. Passed 5/5 locally only
+    // because local rendering happened to finish before that first poll;
+    // CI's documented slower/contended rendering (see e2e/README.md's own
+    // CPU-throttling findings) exposed the race. Also widened from 20×200ms
+    // (4s) to 40×300ms (12s) — the same order of magnitude this harness's
+    // other real transition-waits already use under CI contention
+    // (`waitForAnyEnabledButton`/`waitForInterviewScreenTransition` in
+    // beginner-mode-waiting-and-recruitment.spec.ts), not an arbitrary bump.
     await clickResilient(page, byButton(page, FIT_REASON_LINK), FIT_REASON_LINK);
     let sheetSnap: ScreenSnapshot | null = null;
-    for (let i = 0; i < 20; i++) {
+    for (let i = 0; i < 40; i++) {
       const candidate = await snapshotScreen(page);
-      if (hasText(candidate, 'Fitの理由')) {
+      if (hasText(candidate, 'Fit内訳')) {
         sheetSnap = candidate;
         break;
       }
-      await page.waitForTimeout(200);
+      await page.waitForTimeout(300);
     }
     expect(sheetSnap, `FitReasonSheet never rendered after tapping ${FIT_REASON_LINK} (seed=${seed})`).not.toBeNull();
     await capture('05-fit-reason-sheet-open');

@@ -92,6 +92,18 @@ const Map<ClientSpecialty, String> clientSpecialtyLabels = {
   ClientSpecialty.general: '総合',
 };
 
+/// 商流 (Phase 3B-1 §3.3 "案件を選ぶ"): how many layers of subcontracting sit
+/// between the player's company and the end client. Shallower (元請 →
+/// 3次請け) generally means better conditions — [ProjectComparisonScreen]
+/// surfaces this as a short caveat next to the raw value, never re-labels
+/// the enum itself.
+const Map<CommercialFlow, String> commercialFlowLabels = {
+  CommercialFlow.prime: '元請',
+  CommercialFlow.firstTier: '1次請け',
+  CommercialFlow.secondTier: '2次請け',
+  CommercialFlow.thirdTier: '3次請け',
+};
+
 /// Looks up a sample client's display name by id, falling back to the id
 /// itself if somehow unknown.
 String clientNameById(String clientId) {

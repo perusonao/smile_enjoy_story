@@ -284,6 +284,20 @@ class GameState {
       ? 0
       : ((assignedEngineerCount / engineers.length) * 100).round();
 
+  /// Roster-wide average of [Engineer.morale], for the 社員 tab summary
+  /// (Playable "Phase 2: 社員画面のレイアウト改修") — the same simple mean a
+  /// player could compute by hand from the per-employee values already
+  /// shown on [EngineerDetailScreen], just derived once here instead of in
+  /// the UI layer so every screen that wants it reads the same number.
+  int get averageMorale => engineers.isEmpty
+      ? 0
+      : (engineers.fold<int>(0, (sum, e) => sum + e.morale) / engineers.length).round();
+
+  /// Roster-wide average of [Engineer.companyTrust] — see [averageMorale].
+  int get averageCompanyTrust => engineers.isEmpty
+      ? 0
+      : (engineers.fold<int>(0, (sum, e) => sum + e.companyTrust) / engineers.length).round();
+
   GameState copyWith({
     int? schemaVersion,
     int? seed,

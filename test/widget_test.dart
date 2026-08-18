@@ -14,6 +14,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:smile_enjoy_story/app/game_controller.dart';
 import 'package:smile_enjoy_story/app/game_scope.dart';
 import 'package:smile_enjoy_story/main.dart';
+import 'package:smile_enjoy_story/ui/widgets/status_chip.dart';
 
 Future<void> _skipToFreeManagement(WidgetTester tester) async {
   final button = find.text('【自由モード】');
@@ -142,8 +143,12 @@ void main() {
 
     expect(find.widgetWithText(AppBar, '社員'), findsOneWidget);
     // Playable 0.3A starts both founders `waiting`, not pre-assigned (§2).
-    expect(find.text('待機中'), findsWidgets);
-    expect(find.text('参画中'), findsNothing);
+    // Scoped to each card's own status chip (not a bare text search) since
+    // Phase 2's summary card always shows a "参画中" *label* next to its
+    // (here: 0) count — a real, always-present piece of UI, not a stray
+    // match to filter out (社員画面 Phase 2 §4).
+    expect(find.widgetWithText(EngineerStatusChip, '待機中'), findsNWidgets(2));
+    expect(find.widgetWithText(EngineerStatusChip, '参画中'), findsNothing);
   });
 
   testWidgets('Recruitment tab is locked until the first assignment (guided game)', (

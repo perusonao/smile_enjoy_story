@@ -4,6 +4,7 @@ import '../../app/game_scope.dart';
 import '../../domain/domain.dart';
 import '../../game/game.dart';
 import '../theme.dart';
+import '../widgets/engineer_avatar.dart';
 import '../widgets/labels.dart';
 import '../widgets/status_chip.dart';
 import 'engineer_detail_screen.dart';
@@ -23,8 +24,36 @@ String _topTechSkillLabel(TechSkillLevels t) {
   return '${best.key} Lv.${best.value}';
 }
 
-class EngineerListScreen extends StatelessWidget {
+/// The 社員 tab's own top filter (Playable "Phase 2: 社員画面のレイアウト改修"
+/// §3) — 参画中 is [GameState.assignedEngineerCount]'s own unambiguous
+/// `EngineerStatus.assigned` check, reused as-is. 待機中 is its complement
+/// ("not assigned"), *not* [GameState.waitingEngineerCount] — that getter
+/// only matches the literal `EngineerStatus.waiting` value, so it silently
+/// excludes the legacy `proposed`/`interviewScheduled` statuses a
+/// pre-SelectionFlow save's in-flight engineers can still carry (Codex
+/// review, PR #25). Those employees are just as unassigned as a `waiting`
+/// one, and hiding them from *both* filters (participating in neither
+/// count) would be worse than this screen simply not existing — this still
+/// isn't a second state-judging algorithm (§3), only the one binary split
+/// the whole roster ⇄ assigned/unassigned already has to satisfy by
+/// construction. [GameState.waitingEngineerCount] itself stays untouched:
+/// TaskEngine/BeginnerModeEngine read it directly for gameplay conditions
+/// this Phase must not change.
+enum _EngineerFilter { all, assigned, waiting }
+
+/// 社員一覧 (Phase 2 §1-2): "誰が参画中で、誰が待機中で、会社全体はどうなって
+/// いるか" が一目でわかり、詳しく見たい社員だけ [EngineerDetailScreen] へ進める
+/// 画面。一覧はあくまで概要 — スキルシート・営業状況・案件比較などの判断/操作
+/// は既存のまま社員詳細に残る（§8-9）。
+class EngineerListScreen extends StatefulWidget {
   const EngineerListScreen({super.key});
+
+  @override
+  State<EngineerListScreen> createState() => _EngineerListScreenState();
+}
+
+class _EngineerListScreenState extends State<EngineerListScreen> {
+  _EngineerFilter _filter = _EngineerFilter.all;
 
   @override
   Widget build(BuildContext context) {
@@ -40,21 +69,207 @@ class EngineerListScreen extends StatelessWidget {
         return rank(a.status).compareTo(rank(b.status));
       });
 
+    final assignedCount = state.assignedEngineerCount;
+    final waitingCount = engineers.length - assignedCount;
+
+    final filtered = switch (_filter) {
+      _EngineerFilter.all => engineers,
+      _EngineerFilter.assigned =>
+        engineers.where((e) => e.status == EngineerStatus.assigned).toList(),
+      _EngineerFilter.waiting =>
+        engineers.where((e) => e.status != EngineerStatus.assigned).toList(),
+    };
+
     return Scaffold(
       appBar: AppBar(title: const Text('社員')),
       body: engineers.isEmpty
           ? const Center(child: Text('社員がいません。'))
-          : ListView.separated(
-              padding: const EdgeInsets.fromLTRB(14, 14, 14, 24),
-              itemCount: engineers.length,
-              separatorBuilder: (context, index) => const SizedBox(height: 8),
-              itemBuilder: (context, i) =>
-                  _EngineerCard(engineer: engineers[i]),
+          : Column(
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(14, 12, 14, 0),
+                  child: Column(
+                    children: [
+                      _EngineerFilterRow(
+                        selected: _filter,
+                        allCount: engineers.length,
+                        assignedCount: assignedCount,
+                        waitingCount: waitingCount,
+                        onChanged: (f) => setState(() => _filter = f),
+                      ),
+                      const SizedBox(height: 10),
+                      _EngineerSummaryCard(
+                        state: state,
+                        assignedCount: assignedCount,
+                        waitingCount: waitingCount,
+                      ),
+                    ],
+                  ),
+                ),
+                Expanded(
+                  child: filtered.isEmpty
+                      ? const Center(child: Text('該当する社員がいません。'))
+                      : ListView.separated(
+                          padding: const EdgeInsets.fromLTRB(14, 10, 14, 24),
+                          itemCount: filtered.length,
+                          separatorBuilder: (context, index) =>
+                              const SizedBox(height: 8),
+                          itemBuilder: (context, i) =>
+                              _EngineerCard(engineer: filtered[i]),
+                        ),
+                ),
+              ],
             ),
     );
   }
 }
 
+/// すべて/参画中/待機中 の3セグメント、各件数付き (§3). `allCount`/`assignedCount`
+/// come straight from [GameState.engineers]/[GameState.assignedEngineerCount]
+/// (same as Home's 会社の状況 card); `waitingCount` is `allCount -
+/// assignedCount` — see the `_EngineerFilter` enum's own doc comment for why
+/// that, not [GameState.waitingEngineerCount], is this screen's 待機中.
+class _EngineerFilterRow extends StatelessWidget {
+  const _EngineerFilterRow({
+    required this.selected,
+    required this.allCount,
+    required this.assignedCount,
+    required this.waitingCount,
+    required this.onChanged,
+  });
+
+  final _EngineerFilter selected;
+  final int allCount;
+  final int assignedCount;
+  final int waitingCount;
+  final ValueChanged<_EngineerFilter> onChanged;
+
+  Widget _chip(BuildContext context, _EngineerFilter filter, String label, int count) {
+    final isSelected = selected == filter;
+    return Expanded(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 3),
+        child: ChoiceChip(
+          label: Center(
+            child: Text(
+              '$label $count',
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 12.5,
+                fontWeight: FontWeight.bold,
+                color: isSelected ? Colors.white : Colors.black87,
+              ),
+            ),
+          ),
+          selected: isSelected,
+          showCheckmark: false,
+          selectedColor: SesTheme.primaryBlue,
+          backgroundColor: Colors.white,
+          side: BorderSide(
+            color: isSelected
+                ? SesTheme.primaryBlue
+                : Theme.of(context).colorScheme.outlineVariant,
+          ),
+          onSelected: (_) => onChanged(filter),
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        _chip(context, _EngineerFilter.all, 'すべて', allCount),
+        _chip(context, _EngineerFilter.assigned, '参画中', assignedCount),
+        _chip(context, _EngineerFilter.waiting, '待機中', waitingCount),
+      ],
+    );
+  }
+}
+
+/// フィルター下のコンパクトなサマリー (§4): 人数系（社員数/参画中/待機中/稼働
+/// 率）と Morale/Trust の平均を別の行に分け、360pxでも詰め込みすぎない構成に
+/// する。稼働率の計算そのものは [GameState.utilizationPercent] のまま — Home
+/// 改修で表示先を失っていたのをこの画面へ移すだけで、ロジックは変更しない。
+class _EngineerSummaryCard extends StatelessWidget {
+  const _EngineerSummaryCard({
+    required this.state,
+    required this.assignedCount,
+    required this.waitingCount,
+  });
+
+  final GameState state;
+  // Passed in from [_EngineerListScreenState.build] rather than re-derived
+  // here so this card can never show a different 参画中/待機中 split than
+  // the filter row above it — same underlying reasoning as that enum's own
+  // doc comment (Codex review, PR #25).
+  final int assignedCount;
+  final int waitingCount;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
+      ),
+      child: Column(
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceAround,
+            children: [
+              Expanded(child: _SummaryMetric('社員数', '${state.engineers.length}名')),
+              Expanded(child: _SummaryMetric('参画中', '$assignedCount名')),
+              Expanded(child: _SummaryMetric('待機中', '$waitingCount名')),
+              Expanded(child: _SummaryMetric('稼働率', '${state.utilizationPercent}%')),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Container(height: 1, color: Colors.black12),
+          const SizedBox(height: 8),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceAround,
+            children: [
+              Expanded(child: _SummaryMetric('平均Morale', '${state.averageMorale}')),
+              Expanded(child: _SummaryMetric('平均Trust', '${state.averageCompanyTrust}')),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SummaryMetric extends StatelessWidget {
+  const _SummaryMetric(this.label, this.value);
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Text(value, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14.5)),
+        ),
+        Text(label, style: const TextStyle(fontSize: 10, color: Colors.black54)),
+      ],
+    );
+  }
+}
+
+/// 一覧カード (§5, §8): P0（顔・氏名・現在状態）と P1（主要スキル・現在案件・
+/// 顧客・契約終了まで）のみ。営業状況の詳細（並行営業数・オファー詳細・選考
+/// ステップ）と案件比較は [EngineerDetailScreen] 側に残したまま、ここへ移植
+/// しない（§8-9）。現在状態は [EngineerStatusChip] 一枚に集約し、参画中/待機
+/// 中はもちろん営業中/面談中/オファー待ちなども含めて色・ラベルとも
+/// [EmployeeWorkflowEngine]/[status_chip.dart] の一箇所だけに従う（§7）。
 class _EngineerCard extends StatelessWidget {
   const _EngineerCard({required this.engineer});
 
@@ -72,34 +287,7 @@ class _EngineerCard extends StatelessWidget {
     // behind it (Playable 0.4C.3 §41-43).
     final isIdle = workflowState == EmployeeWorkflowState.waiting;
     final waitingWeeks = state.waitingStreakFor(engineer.id);
-
-    final applications = state
-        .applicationsForEngineer(engineer.id)
-        .where(
-          (application) =>
-              application.status == ApplicationStatus.active ||
-              application.status == ApplicationStatus.offered,
-        )
-        .toList();
-    final pendingOffers = state.offers.where(
-      (offer) =>
-          offer.employeeId == engineer.id &&
-          offer.status == OfferStatus.pending,
-    );
-    final pendingOffer = pendingOffers.isEmpty ? null : pendingOffers.first;
-    ProjectApplication? offerApplication;
-    if (pendingOffer != null) {
-      offerApplication = state.proposals.firstWhere(
-        (application) => application.id == pendingOffer.applicationId,
-      );
-    }
-
-    String? currentProjectLabel;
     final assignment = state.assignmentForEngineer(engineer.id);
-    if (assignment != null) {
-      currentProjectLabel =
-          '${assignment.project.title} (残${assignment.remainingWeeks}週)';
-    }
 
     final waitingColor = waitingWeeks >= 3
         ? Colors.red
@@ -124,81 +312,105 @@ class _EngineerCard extends StatelessWidget {
             width: isIdle ? 1.4 : 1,
           ),
         ),
-        child: Column(
+        child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    profile.name,
-                    style: const TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 16,
-                    ),
+            EngineerAvatar(applicantType: profile.type),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          profile.name,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15.5),
+                        ),
+                      ),
+                      if (waitingWeeks > 0)
+                        Padding(
+                          padding: const EdgeInsets.only(left: 6),
+                          child: _WaitingBadge(weeks: waitingWeeks, color: waitingColor),
+                        ),
+                      Padding(
+                        padding: const EdgeInsets.only(left: 6),
+                        child: EngineerStatusChip(state: workflowState),
+                      ),
+                    ],
                   ),
-                ),
-                if (waitingWeeks > 0)
-                  Padding(
-                    padding: const EdgeInsets.only(right: 6),
-                    child: _WaitingBadge(
-                      weeks: waitingWeeks,
-                      color: waitingColor,
-                    ),
+                  const SizedBox(height: 3),
+                  Text(
+                    '${languageLabels[profile.mainLanguage] ?? profile.mainLanguage.name} / ${_topTechSkillLabel(profile.techSkills)}',
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontSize: 12.5, color: Colors.black54),
                   ),
-                EngineerStatusChip(state: workflowState),
-              ],
-            ),
-            const SizedBox(height: 6),
-            Wrap(
-              spacing: 12,
-              runSpacing: 4,
-              children: [
-                _InfoBit(
-                  icon: Icons.payments_outlined,
-                  text: formatYen(engineer.salary),
-                ),
-                _InfoBit(
-                  icon: Icons.code,
-                  text:
-                      languageLabels[profile.mainLanguage] ??
-                      profile.mainLanguage.name,
-                ),
-                _InfoBit(
-                  icon: Icons.star_outline,
-                  text: _topTechSkillLabel(profile.techSkills),
-                ),
-              ],
-            ),
-            const SizedBox(height: 6),
-            if (pendingOffer != null && offerApplication != null) ...[
-              _OfferBanner(
-                title: offerApplication.project.title,
-                monthlyRate: pendingOffer.monthlyRate,
-                deadlineThisWeek:
-                    pendingOffer.responseDeadlineWeek == state.week,
+                  if (assignment != null) ...[
+                    const SizedBox(height: 6),
+                    _InfoLine(
+                      icon: Icons.work_outline,
+                      label: '案件',
+                      value: assignment.project.title,
+                    ),
+                    _InfoLine(
+                      icon: Icons.business_outlined,
+                      label: '顧客',
+                      value: clientNameById(assignment.project.clientId),
+                    ),
+                    _InfoLine(
+                      icon: Icons.schedule_outlined,
+                      label: '契約終了まで',
+                      value: '${assignment.remainingWeeks}週',
+                    ),
+                  ],
+                ],
               ),
-              const SizedBox(height: 7),
-            ],
-            if (assignment == null) ...[
-              if (workflowState == EmployeeWorkflowState.assignmentScheduled)
-                _ScheduledBanner(
-                  proposal: state.proposals.firstWhere(
-                    (p) => p.engineerId == engineer.id && p.status == ApplicationStatus.accepted,
-                  ),
-                )
-              else if(engineer.salesStatus==SalesStatus.selling)
-                Container(width:double.infinity,padding:const EdgeInsets.all(8),margin:const EdgeInsets.only(bottom:6),color:Colors.blue.shade50,child:Text('営業中\n公開先 ${state.unlockedClientCount}社 / 参画可能 ${engineer.availableFromWeek<=state.week?'現在':'Week ${engineer.availableFromWeek}'}\n面談依頼待ち',style:const TextStyle(fontSize:12,fontWeight:FontWeight.bold))),
-              _SalesCapacity(count: applications.length),
-              for (final application in applications.take(3))
-                _ApplicationSummary(application: application),
-            ] else if (currentProjectLabel != null)
-              _ProjectLine(text: currentProjectLabel),
+            ),
           ],
         ),
       ),
     );
   }
+}
+
+/// 案件/顧客/契約終了までの1行 (§5, §13): ラベル+値を1本の [Text.rich] に
+/// して、長い案件名・顧客名でも `overflow: ellipsis` だけで確実に折り返さず
+/// 収まるようにする（固定幅の2カラムレイアウトは長い文字列で崩れやすいため
+/// あえて避けている）。
+class _InfoLine extends StatelessWidget {
+  const _InfoLine({required this.icon, required this.label, required this.value});
+
+  final IconData icon;
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.only(top: 2),
+    child: Row(
+      children: [
+        Icon(icon, size: 13, color: Colors.black45),
+        const SizedBox(width: 4),
+        Expanded(
+          child: Text.rich(
+            TextSpan(
+              children: [
+                TextSpan(text: '$label  ', style: const TextStyle(fontSize: 11, color: Colors.black45)),
+                TextSpan(
+                  text: value,
+                  style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: Colors.black87),
+                ),
+              ],
+            ),
+            overflow: TextOverflow.ellipsis,
+            maxLines: 1,
+          ),
+        ),
+      ],
+    ),
+  );
 }
 
 class _WaitingBadge extends StatelessWidget {
@@ -220,180 +432,6 @@ class _WaitingBadge extends StatelessWidget {
         '待機$weeks週目',
         style: TextStyle(color: c, fontSize: 10.5, fontWeight: FontWeight.bold),
       ),
-    );
-  }
-}
-
-class _SalesCapacity extends StatelessWidget {
-  const _SalesCapacity({required this.count});
-  final int count;
-
-  @override
-  Widget build(BuildContext context) => Row(
-    children: [
-      const Icon(
-        Icons.workspaces_outline,
-        size: 15,
-        color: SesTheme.primaryBlue,
-      ),
-      const SizedBox(width: 5),
-      Text(
-        '並行営業 $count / $maxParallelProposalsPerEmployee',
-        style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.bold),
-      ),
-      const SizedBox(width: 8),
-      for (var i = 0; i < maxParallelProposalsPerEmployee; i++)
-        Padding(
-          padding: const EdgeInsets.only(right: 3),
-          child: Icon(
-            i < count ? Icons.circle : Icons.circle_outlined,
-            size: 9,
-            color: i < count ? SesTheme.primaryBlue : Colors.black26,
-          ),
-        ),
-    ],
-  );
-}
-
-class _ApplicationSummary extends StatelessWidget {
-  const _ApplicationSummary({required this.application});
-  final ProjectApplication application;
-
-  @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.only(top: 4),
-    child: Row(
-      children: [
-        const SizedBox(width: 20),
-        Expanded(
-          child: Text(
-            application.project.title,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(fontSize: 12.5),
-          ),
-        ),
-        const SizedBox(width: 8),
-        Text(
-          selectionStepLabels[application.currentStep]!,
-          style: const TextStyle(
-            fontSize: 12,
-            color: SesTheme.primaryBlue,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-      ],
-    ),
-  );
-}
-
-class _OfferBanner extends StatelessWidget {
-  const _OfferBanner({
-    required this.title,
-    required this.monthlyRate,
-    required this.deadlineThisWeek,
-  });
-  final String title;
-  final int monthlyRate;
-  final bool deadlineThisWeek;
-
-  @override
-  Widget build(BuildContext context) => Container(
-    width: double.infinity,
-    padding: const EdgeInsets.all(8),
-    decoration: BoxDecoration(
-      color: Colors.red.withValues(alpha: 0.07),
-      borderRadius: BorderRadius.circular(8),
-      border: Border.all(color: Colors.red.withValues(alpha: 0.4)),
-    ),
-    child: Row(
-      children: [
-        const Icon(Icons.notification_important, color: Colors.red, size: 18),
-        const SizedBox(width: 6),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                '参画オファー',
-                style: TextStyle(
-                  color: Colors.red,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 12,
-                ),
-              ),
-              Text(
-                title,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(fontWeight: FontWeight.bold),
-              ),
-              Text(
-                '${formatYen(monthlyRate)} / 月  回答期限: ${deadlineThisWeek ? '今週' : '確認してください'}',
-                style: const TextStyle(fontSize: 11.5),
-              ),
-            ],
-          ),
-        ),
-      ],
-    ),
-  );
-}
-
-/// Shown instead of the "営業中" banner once a final Offer has been
-/// accepted but the assignment hasn't started yet (Playable 0.4C.3 §5-7) —
-/// the whole point being that "参画予定" is never just a status-chip word
-/// with nothing backing it up on the card itself.
-class _ScheduledBanner extends StatelessWidget {
-  const _ScheduledBanner({required this.proposal});
-  final ProjectApplication proposal;
-
-  @override
-  Widget build(BuildContext context) => Container(
-    width: double.infinity,
-    padding: const EdgeInsets.all(8),
-    margin: const EdgeInsets.only(bottom: 6),
-    color: Colors.purple.shade50,
-    child: Text(
-      '参画予定\n${proposal.project.title}\nWeek ${proposal.assignWeek} から参画',
-      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
-    ),
-  );
-}
-
-class _ProjectLine extends StatelessWidget {
-  const _ProjectLine({required this.text});
-  final String text;
-
-  @override
-  Widget build(BuildContext context) => Row(
-    children: [
-      const Icon(Icons.work_outline, size: 15, color: Colors.black45),
-      const SizedBox(width: 4),
-      Expanded(
-        child: Text(
-          text,
-          overflow: TextOverflow.ellipsis,
-          style: const TextStyle(fontSize: 12.5, color: Colors.black54),
-        ),
-      ),
-    ],
-  );
-}
-
-class _InfoBit extends StatelessWidget {
-  const _InfoBit({required this.icon, required this.text});
-
-  final IconData icon;
-  final String text;
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Icon(icon, size: 14, color: Colors.black54),
-        const SizedBox(width: 3),
-        Text(text, style: const TextStyle(fontSize: 12.5)),
-      ],
     );
   }
 }

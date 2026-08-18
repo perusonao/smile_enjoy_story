@@ -29,8 +29,35 @@ Future<void> _openEmployees(WidgetTester tester, GameState state) async {
   await tester.pumpAndSettle();
 }
 
+/// Opens [engineer]'s own [EngineerDetailScreen] from the 社員 tab list and
+/// scrolls its `ListView` down to the "営業状況" section. 社員画面 Phase 2
+/// moved 並行営業/参画オファー detail off the roster card (§5, §8-9: "一覧＝
+/// 概要" / "詳細＝判断・操作") — it still lives in full on the detail screen
+/// this reaches, just one tap further than before. The scroll is required,
+/// not cosmetic: "営業状況" renders well below the fold, and (same as
+/// `guided_flow_consistency_test.dart`'s own "スキルシート / 営業" scroll,
+/// and the Chromium E2E harness's `scrollUntilButtonFound` doc comment)
+/// Flutter's `SliverList` only materializes children within/near the
+/// current viewport, so a fresh route mount never has it in the widget
+/// tree until scrolled into view.
+Future<void> _openEmployeeDetail(WidgetTester tester, GameState state, Engineer engineer) async {
+  await _openEmployees(tester, state);
+  await tester.tap(find.text(engineer.profile.name));
+  await tester.pumpAndSettle();
+  await tester.dragUntilVisible(
+    find.textContaining('並行営業'),
+    find.byType(ListView),
+    const Offset(0, -300),
+  );
+}
+
 GameState _stateWithApplications(int count, {bool offer = false}) {
-  final state = GameEngine.newGame(seed: 42);
+  // Free management (guided founding skipped): EngineerDetailScreen's own
+  // "スキルシート / 営業" combined section only exists as a *tutorial*
+  // simplification (§skillSheet stage) and never shows 並行営業's count —
+  // the full 営業状況 section with that count is what a real post-tutorial
+  // player sees, and what these tests are actually about.
+  final state = GameEngine.skipFoundingTutorial(GameEngine.newGame(seed: 42));
   final engineer = state.engineers.first;
   final projects = state.openProjects.map((entry) => entry.project).toList();
   final applications = <ProjectProposal>[
@@ -85,20 +112,29 @@ Future<void> _pumpEmployeeProjectList(WidgetTester tester, GameState state) asyn
 
 void main() {
   for (final count in [0, 1, 3]) {
-    testWidgets('employee card shows parallel sales $count/3', (tester) async {
-      await _openEmployees(tester, _stateWithApplications(count));
-      expect(find.text('並行営業 $count / 3'), findsWidgets);
+    testWidgets('employee detail shows parallel sales $count/3', (tester) async {
+      final state = _stateWithApplications(count);
+      await _openEmployeeDetail(tester, state, state.engineers.first);
+      expect(find.textContaining('並行営業 $count / 3'), findsWidgets);
       if (count > 1) {
         expect(find.textContaining('選考'), findsWidgets);
       }
     });
   }
 
-  testWidgets('employee card prioritizes a pending Offer', (tester) async {
-    await _openEmployees(tester, _stateWithApplications(2, offer: true));
-    expect(find.text('参画オファー'), findsOneWidget);
-    expect(find.textContaining('回答期限: 今週'), findsOneWidget);
-    expect(find.text('並行営業 2 / 3'), findsWidgets);
+  testWidgets('employee detail prioritizes a pending Offer', (tester) async {
+    final state = _stateWithApplications(2, offer: true);
+    await _openEmployeeDetail(tester, state, state.engineers.first);
+    expect(find.textContaining('並行営業 2 / 3'), findsWidgets);
+    // "参画オファー比較・回答" sits below "営業状況" in the ListView, so the
+    // scroll from _openEmployeeDetail alone isn't guaranteed to reach it —
+    // same lazy-SliverList reasoning as that helper's own doc comment.
+    await tester.dragUntilVisible(
+      find.text('参画オファー比較・回答'),
+      find.byType(ListView),
+      const Offset(0, -300),
+    );
+    expect(find.text('参画オファー比較・回答'), findsOneWidget);
   });
 
   testWidgets(

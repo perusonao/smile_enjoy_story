@@ -155,13 +155,24 @@ async function settleAndScan(page: import('@playwright/test').Page, textOffender
   return snap;
 }
 
+/** 社員画面 Phase 2 (レイアウト改修) added a top すべて/参画中/待機中 filter row
+ * above the roster — each chip is itself a real, enabled a11y `button`
+ * ("すべて N", "参画中 N", "待機中 N"), so it now sits ahead of the real
+ * engineer card in a plain "first enabled button" scan. Excluded by prefix,
+ * the same way `!b.name.startsWith('経営状況')` already excludes the
+ * ManagementHud button below. */
+const FILTER_CHIP_PREFIXES = ['すべて ', '参画中 ', '待機中 '];
+
 /** The one (Beginner Mode never hires a second engineer by Week 13) real
- * engineer card on the 社員 tab — matched by "not the ManagementHud button"
- * the same way every other driver in this harness distinguishes it (its own
- * label is a dynamic "${name} ${status} ¥${salary} ... (残N週)" string that
- * changes week to week, so it's never matched by a fixed name). */
+ * engineer card on the 社員 tab — matched by "not the ManagementHud button
+ * / not a filter chip" the same way every other driver in this harness
+ * distinguishes it (its own label is a dynamic "${name} ${status} ¥{salary}
+ * ... (残N週)" string that changes week to week, so it's never matched by a
+ * fixed name). */
 function findEngineerCard(snap: ScreenSnapshot) {
-  return snap.buttons.find((b) => b.enabled && !b.name.startsWith('経営状況'));
+  return snap.buttons.find(
+    (b) => b.enabled && !b.name.startsWith('経営状況') && !FILTER_CHIP_PREFIXES.some((p) => b.name.startsWith(p)),
+  );
 }
 
 async function openEngineerDetail(page: import('@playwright/test').Page): Promise<ScreenSnapshot> {

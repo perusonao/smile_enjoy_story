@@ -98,17 +98,26 @@ void main() {
         expect(find.text('${expected.total}'), findsOneWidget);
         expect(find.text(PlayerVisibleFit.fromScore(expected.total).symbol), findsWidgets);
 
-        // 2. Fit内訳 — the four existing FitBreakdown sub-scores, real
-        // field names/weights (55/15/20/10), never UI-invented ones.
+        // 2. Fit内訳 — the four existing FitBreakdown sub-scores (real
+        // field names/weights 55/15/20/10, never UI-invented ones), shown
+        // only as the bucketed ◎○△× rating — never the raw score/max
+        // number, since 人物・相性 folds in the hidden
+        // `projectInterviewSkill` alongside two *visible* traits, and an
+        // exact fraction there would let a player back-solve a stat
+        // `HiddenParameters` says is never shown (Codex review on PR #18).
         expect(find.text('Fit内訳'), findsOneWidget);
         expect(find.text('技術'), findsOneWidget);
-        expect(find.text('${expected.techScore} / 55'), findsOneWidget);
         expect(find.text('経験'), findsOneWidget);
-        expect(find.text('${expected.experienceScore} / 15'), findsOneWidget);
         expect(find.text('人物・相性'), findsOneWidget);
-        expect(find.text('${expected.personalityScore} / 20'), findsOneWidget);
         expect(find.text('条件'), findsOneWidget);
-        expect(find.text('${expected.conditionScore} / 10'), findsOneWidget);
+        expect(find.textContaining('/'), findsNothing); // no raw "x / y" fraction anywhere in the sheet
+        final techRating = PlayerVisibleFit.fromRaw(expected.techScore, 55);
+        final experienceRating = PlayerVisibleFit.fromRaw(expected.experienceScore, 15);
+        final personalityRating = PlayerVisibleFit.fromRaw(expected.personalityScore, 20);
+        final conditionRating = PlayerVisibleFit.fromRaw(expected.conditionScore, 10);
+        for (final rating in [techRating, experienceRating, personalityRating, conditionRating]) {
+          expect(find.text(rating.label), findsWidgets);
+        }
 
         // 3. 良い点 — this fixture's language/tech-domain/communication/
         // Japanese details are all ◎, so at least one positive line exists.

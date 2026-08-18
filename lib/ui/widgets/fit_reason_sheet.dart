@@ -153,10 +153,23 @@ class FitReasonSheet extends StatelessWidget {
   }
 }
 
-/// One 技術/経験/人物・相性/条件 row: `score/max` plus the same ◎○△×
-/// [PlayerVisibleFit.fromRaw] conversion [MatchingEngine] already uses for
-/// its own per-dimension [FitDetailItem]s — not a new rating rule, just the
-/// existing model-layer helper applied to the four aggregate sub-scores.
+/// One 技術/経験/人物・相性/条件 row: the same ◎○△× [PlayerVisibleFit.fromRaw]
+/// conversion [MatchingEngine] already uses for its own per-dimension
+/// [FitDetailItem]s — not a new rating rule, just the existing model-layer
+/// helper applied to the four aggregate sub-scores.
+///
+/// Deliberately never renders the raw `score`/`max` numbers (only the
+/// bucketed ◎○△× symbol+label, same as every other Fit display in the
+/// app) — 人物・相性 folds in `HiddenParameters.projectInterviewSkill`
+/// alongside the two *visible* personality traits `communication`/
+/// `cleanliness` (both already shown as ★ ratings on this same engineer's
+/// detail screen), so an exact `x / 20` here would let a player back-solve
+/// for a stat `HiddenParameters`'s own doc comment says is "never shown to
+/// the player" (docs/DEVELOPMENT_PLAN.md §3.0 rule 2 — mirrors the existing
+/// hidden-value leak guard in `ux_guidance_test.dart`). 技術/経験/条件 have
+/// no hidden inputs, but showing the exact number for only one of the four
+/// rows would look like an inconsistent, oddly-vague UI — so every row
+/// stays qualitative.
 class _BreakdownRow extends StatelessWidget {
   const _BreakdownRow({required this.label, required this.score, required this.max});
 
@@ -172,9 +185,7 @@ class _BreakdownRow extends StatelessWidget {
       child: Row(
         children: [
           SizedBox(width: 68, child: Text(label, style: const TextStyle(fontSize: 13))),
-          Expanded(
-            child: Text('$score / $max', style: const TextStyle(fontSize: 13, color: Colors.black54)),
-          ),
+          const Spacer(),
           Text(rating.symbol, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
           const SizedBox(width: 4),
           Text(rating.label, style: const TextStyle(fontSize: 11.5, color: Colors.black54)),

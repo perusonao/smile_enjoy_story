@@ -10,14 +10,12 @@ import '../main_shell.dart';
 import '../projects/client_interview_screen.dart';
 import '../projects/interview_results_screen.dart';
 import '../recruitment/applicant_detail_screen.dart';
-import '../theme.dart';
 import '../widgets/beginner_mode_card.dart';
 import '../widgets/beginner_mode_dialogs.dart';
 import '../widgets/company_phase_indicator.dart';
 import '../widgets/expense_breakdown_sheet.dart';
 import '../widgets/founding_dialogs.dart';
 import '../widgets/monthly_closing_dialog.dart';
-import '../widgets/stat_tile.dart';
 import '../widgets/task_card.dart';
 import '../widgets/week_summary_dialog.dart';
 
@@ -248,7 +246,6 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget build(BuildContext context) {
     final controller = context.game;
     final state = controller.state;
-    final company = state.company;
     final tutorialActive = ProgressionEngine.showFoundingMission(state);
     final guided = ProgressionEngine.guidedAction(state);
     final allTasks = TaskEngine.generateTasks(state);
@@ -265,9 +262,16 @@ class _HomeScreenState extends State<HomeScreen> {
     final primaryTasks = tutorialActive ? criticalTasks : RecommendationEngine.recommendedActions(state);
     final primaryIds = primaryTasks.map((t) => t.id).toSet();
     final collapsedTasks = allTasks.where((t) => !primaryIds.contains(t.id)).toList();
-    final showAdvancedFinance = ProgressionEngine.canUseAdvancedFinance(state);
-    final runway = FinanceEngine.cashRunwayMonths(state);
-    final runwayColor = RunwayIndicator.colorFor(FinanceEngine.classifyRunway(runway));
+    // Home layout整理 (§1): outside the guided founding tutorial, the single
+    // highest-priority recommendation becomes the "今やること" hero — the
+    // exact same [RecommendationEngine] ranking free management already
+    // used for its old top-3 list, just showing only its first entry as the
+    // one obvious next step instead of three equally-weighted cards. The
+    // rest of that same top-3 (no new ranking, no UI-side re-sorting)
+    // becomes "重要なお知らせ" below, capped at 2 so Home never shows more
+    // than 3 recommended items total.
+    final heroTask = tutorialActive ? null : (primaryTasks.isEmpty ? null : primaryTasks.first);
+    final noticeTasks = tutorialActive ? const <HomeTask>[] : primaryTasks.skip(1).take(2).toList();
 
     return Scaffold(
       appBar: AppBar(
@@ -297,70 +301,41 @@ class _HomeScreenState extends State<HomeScreen> {
       body: ListView(
         padding: const EdgeInsets.fromLTRB(14, 12, 14, 100),
         children: [
-          // --- 会社指標: Stage 1 は最小限、初参画後は現行のフルダッシュボード
-          // (§35-37) ---------------------------------------------------
-          if (showAdvancedFinance) ...[
-            Row(
-              children: [
-                Expanded(
-                  child: StatTile(label: '現預金', value: formatCompactYen(company.cash), emphasis: true),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: InkWell(
-                    borderRadius: BorderRadius.circular(10),
-                    onTap: () => showExpenseBreakdownSheet(context, state),
-                    child: StatTile(
-                      label: '資金余命',
-                      value: RunwayIndicator.labelFor(runway).replaceAll('で資金枯渇', ''),
-                      emphasis: true,
-                      valueColor: runwayColor,
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: StatTile(label: '稼働率', value: '${state.utilizationPercent}%', emphasis: true),
-                ),
-              ],
-            ),
-            const SizedBox(height: 6),
-            InkWell(
-              borderRadius: BorderRadius.circular(10),
-              onTap: () => showExpenseBreakdownSheet(context, state),
-              child: _FinanceLine(state: state),
-            ),
-            const SizedBox(height: 6),
-            _HeadcountLine(state: state),
-          ] else
-            _SimplifiedDashboard(state: state),
-          const SizedBox(height: 8),
-          CompanyPhaseBanner(state: state),
-          if (BeginnerModeEngine.isPhase3AActive(state)) ...[
-            const SizedBox(height: 8),
-            BeginnerModeCard(state: state),
-          ],
-          const SizedBox(height: 14),
-
-          if (tutorialActive) ...[
-            // --- "今やること" leads (§9-11, §33-37) — a labeled Critical
-            // section can follow when one genuinely exists, but it never
-            // competes visually with the guided card as "just another
-            // recommendation": it's a clearly-marked exception, not a peer.
+          // --- ① 今やること (§1-2): exactly one hero card, always in the
+          // same spot at the top of Home — the guided founding tutorial's
+          // own single-step card while it's active, otherwise the single
+          // highest-priority [RecommendationEngine] task. Never two
+          // equally-weighted "what should I do" cards on screen at once.
+          if (tutorialActive)
             if (guided != null)
               _GuidedActionCard(
                 action: guided,
                 onCta: guided.ctaLabel == null ? null : () => _onGuidedActionCta(context, guided),
-              ),
+              )
+            else
+              const SizedBox.shrink()
+          else
+            _HeroTaskCard(
+              task: heroTask,
+              onTap: heroTask == null || heroTask.targetType == TaskTargetType.none
+                  ? null
+                  : () => _onTaskTap(context, heroTask.targetType, heroTask.targetId),
+            ),
+
+          // Beginner Mode's "今月の経営ポイント" (§3): a teaching-only label,
+          // never a second set of facts already covered by "会社の状況" or
+          // "重要なお知らせ" below (§4, §11).
+          if (BeginnerModeEngine.isPhase3AActive(state)) ...[
+            const SizedBox(height: 10),
+            BeginnerModeCard(state: state),
+          ],
+
+          // --- ② 重要なお知らせ (§4): at most a handful of short notices,
+          // never every task's full detail — "すべて見る" expands the rest.
+          if (tutorialActive) ...[
             if (criticalTasks.isNotEmpty) ...[
               const SizedBox(height: 10),
-              Row(
-                children: [
-                  const Icon(Icons.error_outline, size: 15, color: Colors.red),
-                  const SizedBox(width: 4),
-                  Text('重要なお知らせ', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.bold, color: Colors.red.shade700)),
-                ],
-              ),
+              const _SectionHeader(icon: Icons.error_outline, iconColor: Colors.red, label: '重要なお知らせ', labelColor: Colors.red),
               const SizedBox(height: 6),
               for (final task in criticalTasks)
                 TaskCard(
@@ -370,55 +345,45 @@ class _HomeScreenState extends State<HomeScreen> {
                       : () => _onTaskTap(context, task.targetType, task.targetId),
                 ),
             ],
-            if (collapsedTasks.isNotEmpty)
-              Padding(
-                padding: const EdgeInsets.only(top: 10),
-                child: ExpansionTile(
-                  tilePadding: EdgeInsets.zero,
-                  title: Text('その他 ${collapsedTasks.length}件', style: const TextStyle(fontSize: 13, color: Colors.black45)),
-                  children: [for (final task in collapsedTasks) TaskCard(task: task, onTap: task.targetType == TaskTargetType.none ? null : () => _onTaskTap(context, task.targetType, task.targetId))],
-                ),
-              ),
           ] else ...[
-            // --- 今週の経営判断 (free management: unchanged 0.4C behavior) --
-            Row(
-              children: [
-                Text('今週のおすすめ行動', style: Theme.of(context).textTheme.titleMedium),
-                const SizedBox(width: 6),
-                const Text('今週の経営判断', style: TextStyle(fontSize: 10, color: Colors.black45)),
-                const SizedBox(width: 6),
-                if (primaryTasks.isNotEmpty)
-                  Text('(${primaryTasks.length})', style: const TextStyle(color: Colors.black45, fontSize: 13)),
-              ],
-            ),
-            const SizedBox(height: 8),
-            if (primaryTasks.isEmpty)
-              Container(
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
-                ),
-                child: const Text('今週やることは特にありません。「次の週へ」進めましょう。'),
-              )
-            else
-              for (final task in primaryTasks)
+            if (noticeTasks.isNotEmpty) ...[
+              const SizedBox(height: 10),
+              const _SectionHeader(icon: Icons.notifications_none, iconColor: Colors.orange, label: '重要なお知らせ', labelColor: Colors.deepOrange),
+              const SizedBox(height: 6),
+              for (final task in noticeTasks)
                 TaskCard(
                   task: task,
                   onTap: task.targetType == TaskTargetType.none
                       ? null
                       : () => _onTaskTap(context, task.targetType, task.targetId),
                 ),
-            if (collapsedTasks.isNotEmpty)
-              ExpansionTile(
+            ],
+            if (heroTask == null && noticeTasks.isEmpty && collapsedTasks.isEmpty)
+              const Padding(
+                padding: EdgeInsets.only(top: 10),
+                child: Text('重要なお知らせはありません。', style: TextStyle(fontSize: 12, color: Colors.black45)),
+              ),
+          ],
+          if (collapsedTasks.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 10),
+              child: ExpansionTile(
                 tilePadding: EdgeInsets.zero,
-                title: Text('その他 ${collapsedTasks.length}件', style: const TextStyle(fontSize: 13)),
+                title: Text('すべて見る（${collapsedTasks.length}件）', style: const TextStyle(fontSize: 13, color: Colors.black45)),
                 children: [for (final task in collapsedTasks) TaskCard(task: task, onTap: task.targetType == TaskTargetType.none ? null : () => _onTaskTap(context, task.targetType, task.targetId))],
               ),
-            if (state.listings.where((listing) => listing.isActiveOn(state.week)).isEmpty)
-              const Padding(padding: EdgeInsets.only(top: 4), child: Text('求人媒体が掲載されていません', style: TextStyle(fontSize: 11, color: Colors.black54))),
-          ],
+            ),
+          if (!tutorialActive && state.listings.where((listing) => listing.isActiveOn(state.week)).isEmpty)
+            const Padding(padding: EdgeInsets.only(top: 4), child: Text('求人媒体が掲載されていません', style: TextStyle(fontSize: 11, color: Colors.black54))),
+
+          // --- ③ 会社の状況（要約） (§5-6): the compact numbers every
+          // player needs at a glance — detail (AR,今月の入出金, 稼働率 etc.)
+          // lives one tap away in the existing 資金状況 sheet / 社員 tab
+          // instead of being spelled out again on Home.
+          const SizedBox(height: 14),
+          _CompanySummaryCard(state: state),
+          const SizedBox(height: 8),
+          CompanyPhaseBanner(state: state),
 
           const SizedBox(height: 10),
           Theme(
@@ -447,47 +412,24 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 }
 
-/// Stage 1's Home (§35): only cash, this month's expected outflow, and the
-/// waiting headcount — the full dashboard grows in once there's an actual
-/// assignment to show revenue/AR/utilization for.
-class _SimplifiedDashboard extends StatelessWidget {
-  const _SimplifiedDashboard({required this.state});
-  final GameState state;
+/// Small labeled section divider used by both "重要なお知らせ" branches
+/// (§4) — a single shared widget instead of two near-identical `Row`s.
+class _SectionHeader extends StatelessWidget {
+  const _SectionHeader({required this.icon, required this.iconColor, required this.label, required this.labelColor});
+
+  final IconData icon;
+  final Color iconColor;
+  final String label;
+  final Color labelColor;
 
   @override
   Widget build(BuildContext context) {
-    final outflow = FinanceEngine.expectedOutflowThisMonth(state);
-    // "待機人数" alone reads as "nothing is happening" even right after
-    // sales started — a selling-but-unassigned employee is still counted
-    // as waiting for salary purposes, but the player needs to see that
-    // activity separately (Playable 0.4C.3 §41-43).
-    final sellingCount = state.engineers
-        .where((e) => e.salesStatus != SalesStatus.notSelling && state.assignmentForEngineer(e.id) == null)
-        .length;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceAround,
-        children: [
-          Expanded(child: _Metric('現預金', formatCompactYen(state.company.cash))),
-          Container(width: 1, height: 24, color: Colors.black12),
-          Expanded(child: _Metric('今月支払予定', formatCompactYen(outflow))),
-          Container(width: 1, height: 24, color: Colors.black12),
-          Expanded(
-            child: _Metric(
-              '待機人数',
-              '${state.waitingEngineerCount}名',
-              color: state.waitingEngineerCount > 0 ? Colors.red : null,
-              caption: sellingCount > 0 ? 'うち営業中 $sellingCount' : null,
-            ),
-          ),
-        ],
-      ),
+    return Row(
+      children: [
+        Icon(icon, size: 15, color: iconColor),
+        const SizedBox(width: 4),
+        Text(label, style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.bold, color: labelColor)),
+      ],
     );
   }
 }
@@ -549,37 +491,138 @@ class _GuidedActionCard extends StatelessWidget {
   }
 }
 
-class _FinanceLine extends StatelessWidget {
-  const _FinanceLine({required this.state});
+/// Non-tutorial "今やること" hero (§1-2): mirrors [_GuidedActionCard]'s
+/// framing (same heading, same one-card-only rule) but reads from a
+/// [HomeTask] — the single highest-priority [RecommendationEngine] result
+/// — instead of a [GuidedAction], so free management and post-tutorial
+/// Beginner Mode get the same "one obvious next step" treatment the guided
+/// founding flow already has. `task == null` (nothing recommended right
+/// now) keeps the same card in place with a quiet "特にありません" body
+/// instead of making Home's layout jump.
+class _HeroTaskCard extends StatelessWidget {
+  const _HeroTaskCard({required this.task, required this.onTap});
+
+  final HomeTask? task;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final task = this.task;
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.indigo.shade50,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.indigo.withValues(alpha: 0.3)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.flag_outlined, color: Colors.indigo, size: 18),
+              const SizedBox(width: 6),
+              Text('今やること', style: Theme.of(context).textTheme.titleMedium?.copyWith(color: Colors.indigo.shade900)),
+              if (task != null) ...[
+                const Spacer(),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(color: Colors.indigo, borderRadius: BorderRadius.circular(4)),
+                  child: Text(task.priorityLabel, style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.bold, color: Colors.white)),
+                ),
+              ],
+            ],
+          ),
+          const SizedBox(height: 8),
+          if (task == null)
+            const Text('今週やることは特にありません。「次の週へ」進めましょう。', style: TextStyle(fontSize: 13))
+          else ...[
+            Text(task.title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+            if (task.subtitle != null) ...[
+              const SizedBox(height: 4),
+              Text(task.subtitle!, style: const TextStyle(fontSize: 12.5, height: 1.4)),
+            ],
+            if (onTap != null) ...[
+              const SizedBox(height: 10),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton(onPressed: onTap, child: Text(task.nextActionLabel)),
+              ),
+            ],
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+/// ③ 会社の状況（要約） (§5): the compact set of numbers every player needs
+/// at a glance — headcount split + cash runway — with everything else
+/// (AR, this month's in/outflow, utilization, Morale/Trust, …) left to the
+/// existing 資金状況 sheet (one tap away, via [showExpenseBreakdownSheet])
+/// and the 社員/営業/採用/経営 tabs instead of being spelled out again here.
+class _CompanySummaryCard extends StatelessWidget {
+  const _CompanySummaryCard({required this.state});
 
   final GameState state;
 
   @override
   Widget build(BuildContext context) {
-    final ar = FinanceEngine.totalPendingAr(state);
-    final inflow = FinanceEngine.expectedInflowThisMonth(state);
-    final outflow = FinanceEngine.expectedOutflowThisMonth(state);
-    final projected = FinanceEngine.projectedMonthEndCash(state);
-    final projectedColor = projected >= 0 ? Colors.green.shade700 : Colors.red.shade700;
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceAround,
-        children: [
-          Expanded(child: _Metric('売掛金', formatCompactYen(ar))),
-          _divider(),
-          Expanded(child: _Metric('今月入金予定', formatCompactYen(inflow))),
-          _divider(),
-          Expanded(child: _Metric('今月支払予定', formatCompactYen(outflow))),
-          _divider(),
-          Expanded(child: _Metric('月末予想現金', formatCompactYen(projected), color: projectedColor)),
-        ],
+    final runway = FinanceEngine.cashRunwayMonths(state);
+    final runwayColor = RunwayIndicator.colorFor(FinanceEngine.classifyRunway(runway));
+    final waiting = state.waitingEngineerCount;
+    return InkWell(
+      borderRadius: BorderRadius.circular(12),
+      onTap: () => showExpenseBreakdownSheet(context, state),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Text('会社の状況', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.bold)),
+                const Spacer(),
+                const Icon(Icons.chevron_right, size: 16, color: Colors.black38),
+              ],
+            ),
+            const SizedBox(height: 6),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceAround,
+              children: [
+                Expanded(child: _Metric('社員', '${state.engineers.length}名')),
+                _divider(),
+                Expanded(child: _Metric('参画中', '${state.assignedEngineerCount}名')),
+                _divider(),
+                Expanded(
+                  child: _Metric(
+                    '待機中',
+                    '$waiting名',
+                    color: waiting > 0 ? Colors.red : null,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            Row(
+              children: [
+                Icon(Icons.hourglass_bottom, size: 14, color: runwayColor),
+                const SizedBox(width: 4),
+                const Text('資金余命', style: TextStyle(fontSize: 11, color: Colors.black54)),
+                const Spacer(),
+                Text(
+                  RunwayIndicator.labelFor(runway).replaceAll('で資金枯渇', ''),
+                  style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.bold, color: runwayColor),
+                ),
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -587,59 +630,12 @@ class _FinanceLine extends StatelessWidget {
   static Widget _divider() => Container(width: 1, height: 24, color: Colors.black12);
 }
 
-class _HeadcountLine extends StatelessWidget {
-  const _HeadcountLine({required this.state});
-
-  final GameState state;
-
-  @override
-  Widget build(BuildContext context) {
-    final sellingCount = state.engineers
-        .where((e) => e.salesStatus != SalesStatus.notSelling && state.assignmentForEngineer(e.id) == null)
-        .length;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceAround,
-        children: [
-          Expanded(child: _Metric('社員', '${state.engineers.length}')),
-          _divider(),
-          Expanded(child: _Metric('稼働', '${state.assignedEngineerCount}')),
-          _divider(),
-          Expanded(
-            child: _Metric(
-              '待機',
-              '${state.waitingEngineerCount}',
-              color: state.waitingEngineerCount > 0 ? Colors.red : null,
-              caption: sellingCount > 0 ? 'うち営業中 $sellingCount' : null,
-            ),
-          ),
-          _divider(),
-          Expanded(child: _Metric('応募', '${state.applicants.where((e) => e.appearedWeek == state.week).length}')),
-          _divider(),
-          Expanded(child: _Metric('市場案件', '${state.openProjects.where((e) => state.relationFor(e.project.clientId).unlocked).length}')),
-        ],
-      ),
-    );
-  }
-
-  static Widget _divider() => Container(width: 1, height: 20, color: Colors.black12);
-}
-
 class _Metric extends StatelessWidget {
-  const _Metric(this.label, this.value, {this.color, this.caption});
+  const _Metric(this.label, this.value, {this.color});
 
   final String label;
   final String value;
   final Color? color;
-
-  /// Small extra line under the label, e.g. "うち営業中 1" (§41-43).
-  final String? caption;
 
   @override
   Widget build(BuildContext context) {
@@ -650,8 +646,6 @@ class _Metric extends StatelessWidget {
           child: Text(value, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13.5, color: color)),
         ),
         Text(label, style: const TextStyle(fontSize: 10, color: Colors.black54)),
-        if (caption != null)
-          Text(caption!, style: const TextStyle(fontSize: 9.5, color: Colors.teal, fontWeight: FontWeight.bold)),
       ],
     );
   }

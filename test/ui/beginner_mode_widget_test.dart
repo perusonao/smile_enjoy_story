@@ -30,12 +30,17 @@ Future<void> _pumpHome(WidgetTester tester, GameState state, double width) async
 void main() {
   group('BeginnerModeCard on Home', () {
     for (final width in _widths) {
-      testWidgets('renders with next-collection + waiting-cost facts, no overflow at ${width}px', (tester) async {
+      testWidgets('renders the 今月の経営ポイント teaching label, no overflow at ${width}px', (tester) async {
         var state = playThroughPrologue(11);
         state = ProgressionEngine.reconcile(PrologueEngine.completePrologue(state));
 
-        // Give it something concrete to show: a pending AR (next expected
-        // collection) and a genuinely waiting second employee.
+        // Give it something concrete going on: a pending AR (next expected
+        // collection) and a genuinely waiting second employee — Home
+        // layout整理 (§3-4) moved those individual facts to "会社の状況"
+        // and "重要なお知らせ" (so they're asserted from BeginnerModeCard's
+        // own engine-level tests, not duplicated here); this widget test's
+        // job is that the card still renders its teaching label, not those
+        // facts a second time.
         final waiter = buildEngineer(id: 'waiter-widget', salary: 320000, status: EngineerStatus.waiting);
         state = state.copyWith(
           engineers: [...state.engineers, waiter],
@@ -58,8 +63,11 @@ void main() {
         await _pumpHome(tester, state, width);
 
         expect(find.textContaining('初心者経営期間'), findsOneWidget);
-        expect(find.textContaining('次回入金予定'), findsOneWidget);
-        expect(find.textContaining('待機社員の給与負担'), findsOneWidget);
+        expect(find.text(BeginnerModeEngine.currentThemeLabel(state)), findsOneWidget);
+        // The facts this card used to repeat now live exactly once each,
+        // in "会社の状況"/"重要なお知らせ" (§4, §11) — not here too.
+        expect(find.textContaining('次回入金予定'), findsNothing);
+        expect(find.textContaining('待機社員の給与負担'), findsNothing);
         expect(tester.takeException(), isNull);
       });
     }

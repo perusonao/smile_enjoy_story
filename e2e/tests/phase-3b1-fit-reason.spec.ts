@@ -51,7 +51,7 @@
 import { test, expect } from '@playwright/test';
 import { playFoundingToFirstAssignment } from '../helpers/ses-player';
 import { playBeginnerModeThroughJune } from '../helpers/beginner-mode-player';
-import { snapshotScreen, hasText, findDoubledParticles, type ScreenSnapshot } from '../helpers/game-state';
+import { snapshotScreen, hasText, findDoubledParticles, firstEnabledDialogButton, type ScreenSnapshot } from '../helpers/game-state';
 import { watchForErrors, captureMilestone, writeArtifacts, buildResultJson } from '../helpers/artifacts';
 import { parseSeeds } from '../helpers/seeds';
 import fs from 'fs';
@@ -88,6 +88,17 @@ const AUTO_RESOLVE_CLIENT_INTERVIEW = '社員に任せる';
 // anything under test — same list every other Phase 3A/3B E2E driver in
 // this harness already uses (beginner-mode-player.ts,
 // beginner-mode-waiting-and-recruitment.spec.ts).
+//
+// A bare name match against this list is *not* enough on its own (Home
+// layout整理 follow-up, PR #22 root cause): "採用を見る" is also
+// `_HeroTaskCard`'s real, non-dialog Home CTA text, and this exact list —
+// matched against every enabled button on screen with no further scoping —
+// is what clicked it, sending a real playthrough off to the 採用 tab mid
+// week-advance loop instead of recognizing it had nothing to actually
+// dismiss. Every lookup below goes through `firstEnabledDialogButton`,
+// which additionally requires the match to be nested under a real
+// `dialog`/`alertdialog` a11y node (see `dialogButtonNames` in
+// game-state.ts) — never against `CLOSE` directly.
 const CLOSE = ['閉じる', 'OK', '会社状況を見る', '面談依頼を見る', '採用を見る', '社員環境を見る', 'それでも進む', '社員に任せて進む'];
 
 // --- clickResilient + friends -------------------------------------------
@@ -116,7 +127,7 @@ async function clickResilient(page: import('@playwright/test').Page, locate: () 
     } catch (err) {
       if (Date.now() >= deadline) throw err;
       const snap = await snapshotScreen(page);
-      const close = snap.buttons.find((b) => b.enabled && CLOSE.includes(b.name) && b.name !== label);
+      const close = firstEnabledDialogButton(snap, CLOSE.filter((name) => name !== label));
       if (close) {
         await page.getByRole('button', { name: close.name, exact: true }).click().catch(() => {});
         await page.waitForTimeout(300);
@@ -135,7 +146,7 @@ async function settleAndScan(page: import('@playwright/test').Page, textOffender
   let snap = await snapshotScreen(page);
   for (let i = 0; i < 10; i++) {
     textOffenders.push(...findDoubledParticles(snap));
-    const close = snap.buttons.find((b) => b.enabled && CLOSE.includes(b.name));
+    const close = firstEnabledDialogButton(snap, CLOSE);
     if (!close) return snap;
     await clickResilient(page, byButton(page, close.name), close.name);
     await page.waitForTimeout(400);

@@ -47,7 +47,7 @@
 // post-assignment" test).
 import { test, expect } from '@playwright/test';
 import { playFoundingToFirstAssignment } from '../helpers/ses-player';
-import { snapshotScreen, hasText, enabledButton, extractInterviewCandidateName, findDoubledParticles, type ScreenSnapshot } from '../helpers/game-state';
+import { snapshotScreen, hasText, enabledButton, extractInterviewCandidateName, findDoubledParticles, firstEnabledDialogButton, type ScreenSnapshot } from '../helpers/game-state';
 import { watchForErrors, captureMilestone } from '../helpers/artifacts';
 import { parseSeeds } from '../helpers/seeds';
 
@@ -75,6 +75,16 @@ const STALL_REPEAT_THRESHOLD = 5;
 // for why a one-off, non-looping dismiss of that specific button (this
 // file's original approach) was the actual root cause of a real CI
 // failure, not a flaky timeout.
+//
+// A bare name match against this list is *not* enough on its own (Home
+// layout整理 follow-up, PR #22 root cause): "採用を見る" is also
+// `_HeroTaskCard`'s real, non-dialog Home CTA text. `settleAndScan`/
+// `clickResilient` below always resolve a `CLOSE` match through
+// `firstEnabledDialogButton` (game-state.ts), which additionally requires
+// the match to be nested under a real `dialog`/`alertdialog` a11y node —
+// `waitForTabBar` does the equivalent with a scoped locator instead (it
+// deliberately avoids a full `snapshotScreen()` per iteration, see its own
+// doc comment) — never against `CLOSE` directly.
 const CLOSE = ['閉じる', 'OK', '会社状況を見る', '面談依頼を見る', '採用を見る', '社員環境を見る', 'それでも進む', '社員に任せて進む', '採用画面へ戻る'];
 
 /** Dismisses every dialog currently stacked on screen, recording each one's
@@ -92,7 +102,7 @@ async function settleAndScan(
     const snap = await snapshotScreen(page);
     textOffenders.push(...findDoubledParticles(snap));
     if (stopWhen?.(snap)) return snap;
-    const close = snap.buttons.find((b) => b.enabled && CLOSE.includes(b.name));
+    const close = firstEnabledDialogButton(snap, CLOSE);
     if (!close) return null;
     await page.getByRole('button', { name: close.name, exact: true }).click();
     await page.waitForTimeout(500);
@@ -176,6 +186,16 @@ async function advanceWeekAndFind(
  * (`fillCompanySetupField`'s confirm-and-retry loop). */
 async function waitForTabBar(page: import('@playwright/test').Page, textOffenders: string[], tabName: string): Promise<boolean> {
   const tab = page.getByRole('tab', { name: tabName, exact: true });
+  // Same dialog-scoping requirement as `settleAndScan`/`clickResilient`
+  // above (Home layout整理 follow-up, PR #22 root cause) — expressed as a
+  // locator instead of a `firstEnabledDialogButton(snapshotScreen(...))`
+  // call so this loop keeps its own cheap, no-full-snapshot cost profile
+  // (see the comment below): `dialogScope.getByRole('button', {name, exact:
+  // true})` only ever matches a CLOSE label when it's actually nested under
+  // a real `dialog`/`alertdialog` a11y node (Flutter's `Dialog`/
+  // `AlertDialog`, both `aria-modal`), never a same-labeled, unrelated
+  // control elsewhere on screen (e.g. `_HeroTaskCard`'s own "採用を見る").
+  const dialogScope = page.locator('[role="dialog"], [role="alertdialog"]');
   for (let i = 0; i < 60; i++) {
     if (await tab.count()) return true;
     // Cheap, targeted `.count()` checks per known dialog label — not a
@@ -191,7 +211,7 @@ async function waitForTabBar(page: import('@playwright/test').Page, textOffender
     // extra dialog *and* the extra snapshot cost stacked together).
     let dismissed = false;
     for (const label of CLOSE) {
-      const btn = page.getByRole('button', { name: label, exact: true });
+      const btn = dialogScope.getByRole('button', { name: label, exact: true });
       if (await btn.count()) {
         await btn.click().catch(() => {});
         dismissed = true;
@@ -267,7 +287,7 @@ async function clickResilient(page: import('@playwright/test').Page, locate: () 
     } catch (err) {
       if (Date.now() >= deadline) throw err;
       const snap = await snapshotScreen(page);
-      const close = snap.buttons.find((b) => b.enabled && CLOSE.includes(b.name) && b.name !== label);
+      const close = firstEnabledDialogButton(snap, CLOSE.filter((name) => name !== label));
       if (close) {
         await page.getByRole('button', { name: close.name, exact: true }).click().catch(() => {});
         await page.waitForTimeout(300);

@@ -11,7 +11,7 @@
 // (a rejected candidate, a declined offer, a quiet no-action week) must
 // never look like a dead end.
 import type { Page } from '@playwright/test';
-import { hasText, snapshotScreen, type ScreenSnapshot } from './game-state';
+import { firstEnabledDialogButton, hasText, snapshotScreen, type ScreenSnapshot } from './game-state';
 
 export interface BeginnerModeMilestones {
   managementPhaseStarted: boolean;
@@ -144,7 +144,15 @@ export async function playBeginnerModeThroughJune(page: Page, options: BeginnerM
     const begin = enabled(snap, BEGIN_MANAGEMENT);
     const proceedCritical = enabled(snap, PROCEED_DESPITE_CRITICAL);
     const letEmployeeHandle = enabled(snap, LET_EMPLOYEE_HANDLE);
-    const closeLabel = CLOSE_LABELS.find((label) => enabled(snap, label));
+    // dialog-scoped only (Home layout整理 follow-up, PR #22 root cause):
+    // CLOSE_LABELS's own strings ("採用を見る" in particular) can now also
+    // be a real, non-dialog Home CTA's exact button text (`_HeroTaskCard`),
+    // so a bare name match against `snap.buttons` is no longer sufficient
+    // to say "this is a dialog's dismiss button" — `firstEnabledDialogButton`
+    // additionally requires the match to be nested under an actual
+    // `dialog`/`alertdialog` a11y node (see `dialogButtonNames`'s own doc
+    // comment in game-state.ts).
+    const closeLabel = firstEnabledDialogButton(snap, CLOSE_LABELS)?.name;
     const back = enabled(snap, DIALOG_BACK);
     const next = enabledNextWeek(snap);
 
@@ -159,10 +167,12 @@ export async function playBeginnerModeThroughJune(page: Page, options: BeginnerM
     } else if (letEmployeeHandle) {
       clicked = LET_EMPLOYEE_HANDLE;
     } else if (closeLabel && !next) {
-      // Only treat a "閉じる/OK/..." button as a dialog-dismiss when
-      // "次の週へ" is NOT also present — Home's own screen never shows
-      // those labels next to the Next Week button, so this can't
-      // accidentally swallow a legitimate Home action.
+      // `closeLabel` is already dialog-scoped (above) — this `!next` check
+      // is now a second, redundant-by-design safety net, not the only line
+      // of defense: even if a background route's semantics ever leaked
+      // "次の週へ" into the same snapshot as an open dialog, an *unscoped*
+      // name match could never reach here as `closeLabel` in the first
+      // place.
       clicked = closeLabel;
     } else if (next) {
       clicked = next.name;

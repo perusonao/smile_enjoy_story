@@ -121,25 +121,38 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('Home shows the simplified dashboard before the first assignment, full dashboard after', (
+  testWidgets('Home shows the same compact 会社の状況 summary before and after the first assignment (§5-6)', (
     WidgetTester tester,
   ) async {
+    // Home layout整理 (§5-6): the old Stage-1-only "simplified dashboard"
+    // vs. post-assignment "full dashboard" (売掛金/稼働率 etc.) split is
+    // gone — Home now always shows the same compact 社員/参画中/待機中/
+    // 資金余命 summary regardless of stage, with 売掛金/稼働率 detail moved
+    // to the 資金状況 sheet one tap away instead of being spelled out here.
     await _pumpWithSave(tester, GameEngine.newGame(seed: 1));
-    expect(find.text('待機人数'), findsOneWidget);
+    expect(find.text('待機中'), findsOneWidget);
+    expect(find.text('資金余命'), findsOneWidget);
     expect(find.text('売掛金'), findsNothing);
+    expect(find.text('稼働率'), findsNothing);
 
     await _pumpWithSave(tester, _assignedState());
-    expect(find.text('待機人数'), findsNothing);
-    expect(find.text('売掛金'), findsOneWidget);
-    expect(find.text('稼働率'), findsOneWidget);
+    expect(find.text('待機中'), findsOneWidget);
+    expect(find.text('資金余命'), findsOneWidget);
+    expect(find.text('売掛金'), findsNothing);
+    expect(find.text('稼働率'), findsNothing);
   });
 
-  testWidgets('a skipped tutorial shows no founding mission card and every feature is open', (
+  testWidgets('a skipped tutorial shows no guided-tutorial step card and every feature is open', (
     WidgetTester tester,
   ) async {
     await _pumpWithSave(tester, GameEngine.skipFoundingTutorial(GameEngine.newGame(seed: 1)));
 
-    expect(find.text('今やること'), findsNothing);
+    // Home layout整理 (§1-2): "今やること" is now free management's own
+    // hero heading too (the single top [RecommendationEngine] task,
+    // instead of a top-3 list) — what a skipped tutorial actually lacks is
+    // the guided founding flow's own "STEP n / total" framing.
+    expect(find.text('今やること'), findsOneWidget);
+    expect(find.textContaining('STEP'), findsNothing);
 
     await tester.tap(
       find.descendant(of: find.byType(NavigationBar), matching: find.text('採用')),

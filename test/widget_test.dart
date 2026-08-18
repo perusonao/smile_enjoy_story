@@ -64,7 +64,10 @@ void main() {
     expect(find.descendant(of: navBar, matching: find.text('案件')), findsOneWidget);
     expect(find.descendant(of: navBar, matching: find.text('その他')), findsOneWidget);
     expect(find.textContaining('次の週へ'), findsOneWidget);
-    expect(find.text('今週の経営判断'), findsOneWidget);
+    // Home layout整理: free management now leads with the same "今やること"
+    // hero card the guided tutorial always has, instead of a top-3
+    // "今週のおすすめ行動" list (§1-2).
+    expect(find.text('今やること'), findsOneWidget);
   });
 
   testWidgets('a fresh guided game shows the Stage 1 founding mission on Home', (
@@ -94,7 +97,7 @@ void main() {
       find.descendant(of: find.byType(NavigationBar), matching: find.text('社員')),
     );
     await tester.pumpAndSettle();
-    expect(find.text('今週の経営判断'), findsNothing);
+    expect(find.text('今やること'), findsNothing);
     expect(find.widgetWithText(AppBar, '社員'), findsOneWidget);
   });
 

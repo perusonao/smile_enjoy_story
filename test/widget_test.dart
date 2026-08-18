@@ -204,6 +204,12 @@ void main() {
     );
     await tester.pumpAndSettle();
 
+    // 営業・案件画面 Phase 2: the 案件 tab now opens on the sales overview
+    // (要対応/営業状況/参画中), not the project market list directly — the
+    // market itself moved one tap further behind "案件一覧を見る" (§10).
+    await tester.tap(find.text('案件一覧を見る'));
+    await tester.pumpAndSettle();
+
     // Playable 0.3A seeds two open project listings at game start instead
     // of pre-assigning the founders to them (§2) — nothing to propose them
     // to yet is no longer the Week 1 story.

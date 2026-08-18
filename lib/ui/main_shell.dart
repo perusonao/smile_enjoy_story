@@ -5,7 +5,7 @@ import '../app/nav_scope.dart';
 import 'engineers/engineer_list_screen.dart';
 import 'home/home_screen.dart';
 import 'others/others_screen.dart';
-import 'projects/project_list_screen.dart';
+import 'projects/sales_overview_screen.dart';
 import 'recruitment/recruitment_screen.dart';
 import 'widgets/management_hud.dart';
 import 'widgets/phone_frame.dart';
@@ -31,7 +31,7 @@ class MainShell extends StatelessWidget {
     HomeScreen(),
     EngineerListScreen(),
     RecruitmentScreen(),
-    ProjectListScreen(),
+    SalesOverviewScreen(),
     OthersScreen(),
   ];
 

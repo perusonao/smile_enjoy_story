@@ -12,6 +12,7 @@ import '../widgets/selection_stepper.dart';
 import '../widgets/skill_chip.dart';
 import '../widgets/status_chip.dart';
 import '../projects/client_interview_screen.dart';
+import '../projects/project_comparison_screen.dart';
 
 /// Tech-skill tags for the 技術スキル header (Playable 0.4C.3 §3) — the same
 /// levels the row-list below already shows, just scannable at a glance.
@@ -235,17 +236,12 @@ class EngineerDetailScreen extends StatelessWidget {
           ),
           if (pendingOffers.isNotEmpty) ...[
             const SizedBox(height: 12),
-            _SectionCard(
-              title: '参画オファー比較・回答',
-              children: [
-                for (final offer in pendingOffers)
-                  _OfferRow(
-                    offer: offer,
-                    application: state.proposals.firstWhere(
-                      (application) => application.id == offer.applicationId,
-                    ),
-                  ),
-              ],
+            _OffersComparisonSection(
+              engineer: engineer,
+              pendingOffers: pendingOffers,
+              applicationFor: (applicationId) => state.proposals.firstWhere(
+                (application) => application.id == applicationId,
+              ),
             ),
           ],
         ],
@@ -688,6 +684,117 @@ class _FitReasonLink extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// "参画オファー比較・回答" (Phase 3B-1 §3.3 "案件を選ぶ"): the real, already-
+/// reachable decision point where a player actually chooses among 2-3
+/// candidate projects for one engineer — the only screen in the app where
+/// accepting/declining a project is an available action at all (applications
+/// still mid-selection have no such choice). A "比較する" toggle here lets
+/// the player check 2 or more of these offers and jump into the full
+/// [ProjectComparisonScreen] before deciding which one to accept — the
+/// "「比較する」→2件以上選択→「選択した案件を比較」" flow (S.E.S. Development
+/// Plan §3.3 UI note). Never shown at all when there's only one pending
+/// offer — nothing to compare yet.
+class _OffersComparisonSection extends StatefulWidget {
+  const _OffersComparisonSection({
+    required this.engineer,
+    required this.pendingOffers,
+    required this.applicationFor,
+  });
+
+  final Engineer engineer;
+  final List<Offer> pendingOffers;
+  final ProjectApplication Function(String applicationId) applicationFor;
+
+  @override
+  State<_OffersComparisonSection> createState() => _OffersComparisonSectionState();
+}
+
+class _OffersComparisonSectionState extends State<_OffersComparisonSection> {
+  bool _comparing = false;
+  final Set<String> _selectedOfferIds = {};
+
+  @override
+  void didUpdateWidget(covariant _OffersComparisonSection oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Drop any selection that no longer refers to a still-pending offer
+    // (accepted/declined/expired elsewhere while this section stayed
+    // mounted) so the "選択した案件を比較" count never counts a stale id.
+    final stillPending = widget.pendingOffers.map((offer) => offer.id).toSet();
+    _selectedOfferIds.removeWhere((id) => !stillPending.contains(id));
+    // If comparing an offer directly out of this list (accept/decline on
+    // an _OfferRow below, not through the comparison flow) drops the
+    // pending count under 2, "比較する" itself disappears next build — exit
+    // comparison mode too, or the player would be stuck looking at a lone
+    // checkbox with no toggle left to turn it off.
+    if (widget.pendingOffers.length < 2) _comparing = false;
+  }
+
+  void _openComparison(BuildContext context) {
+    final projects = [
+      for (final offer in widget.pendingOffers)
+        if (_selectedOfferIds.contains(offer.id)) widget.applicationFor(offer.applicationId).project,
+    ];
+    showProjectComparisonScreen(
+      context,
+      engineer: widget.engineer,
+      projects: projects,
+      totalCandidates: widget.pendingOffers.length,
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final canCompare = widget.pendingOffers.length >= 2;
+    return _SectionCard(
+      title: '参画オファー比較・回答',
+      children: [
+        if (canCompare)
+          Align(
+            alignment: Alignment.centerRight,
+            child: TextButton.icon(
+              onPressed: () => setState(() {
+                _comparing = !_comparing;
+                if (!_comparing) _selectedOfferIds.clear();
+              }),
+              icon: Icon(_comparing ? Icons.close : Icons.compare_arrows, size: 18),
+              label: Text(_comparing ? '比較をやめる' : '比較する'),
+            ),
+          ),
+        for (final offer in widget.pendingOffers)
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (_comparing)
+                Checkbox(
+                  value: _selectedOfferIds.contains(offer.id),
+                  onChanged: (checked) => setState(() {
+                    if (checked == true) {
+                      _selectedOfferIds.add(offer.id);
+                    } else {
+                      _selectedOfferIds.remove(offer.id);
+                    }
+                  }),
+                ),
+              Expanded(
+                child: _OfferRow(offer: offer, application: widget.applicationFor(offer.applicationId)),
+              ),
+            ],
+          ),
+        if (_comparing) ...[
+          const SizedBox(height: 4),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton(
+              onPressed: _selectedOfferIds.length >= 2 ? () => _openComparison(context) : null,
+              child: Text('選択した案件を比較（${_selectedOfferIds.length}件選択中）'),
+            ),
+          ),
+        ],
+      ],
     );
   }
 }

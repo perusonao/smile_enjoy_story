@@ -109,6 +109,9 @@ Project buildProject({
   int interviewCount = 1,
   int difficulty = 3,
   ResidenceArea location = ResidenceArea.tokyo,
+  CommercialFlow commercialFlow = CommercialFlow.secondTier,
+  int paymentTermDays = 30,
+  int contractTermMonths = 3,
 }) {
   return Project(
     id: id,
@@ -132,5 +135,8 @@ Project buildProject({
     interviewCount: interviewCount,
     difficulty: difficulty,
     location: location,
+    commercialFlow: commercialFlow,
+    paymentTermDays: paymentTermDays,
+    contractTermMonths: contractTermMonths,
   );
 }

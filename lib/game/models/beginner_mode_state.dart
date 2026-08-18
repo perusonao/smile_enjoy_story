@@ -40,19 +40,22 @@ enum BeginnerMilestone {
   /// Phase 3B-1 (S.E.S. Development Plan §3.3, weeks 13-24 / July-September):
   /// the player has looked at a project's Fit-reason breakdown (the existing
   /// `MatchingEngine.computeFit` per-dimension ◎○△× detail, surfaced through
-  /// a future UI screen) at least once. Reserved as a data-model placeholder
-  /// only — no engine condition derives it yet (see
-  /// [BeginnerModeEngine._isTrue]'s doc comment on this case) because no
-  /// screen exists in this PR to call [BeginnerModeState.withMilestone] /
-  /// `BeginnerModeEngine.markShown` for it. Not wired into
-  /// [BeginnerModeEngine.weeklyMilestones] or any backfill list yet — that is
-  /// PR3+ work once the actual Fit-reason UI lands.
+  /// `showFitReasonSheet`/`FitReasonSheet`, fit_reason_sheet.dart) at least
+  /// once. No engine condition derives it (see [BeginnerModeEngine._isTrue]'s
+  /// doc comment on this case) — it's a "did the player view this screen"
+  /// fact, so `FitReasonSheet`'s own open callback calls
+  /// [BeginnerModeState.withMilestone] / `BeginnerModeEngine.markShown`
+  /// directly the first time it opens. Not wired into
+  /// [BeginnerModeEngine.weeklyMilestones] or any backfill list — those are
+  /// for milestones with their own celebratory dialog / an engine-derivable
+  /// fact respectively, neither of which applies here.
   fitReasonViewed,
 
   /// Phase 3B-1: the player has used the (future) multi-project comparison
-  /// screen at least once. Same placeholder status as [fitReasonViewed] —
-  /// added now so the enum/JSON shape is stable and additive before the UI
-  /// that will actually set it exists.
+  /// screen at least once. Same placeholder status [fitReasonViewed] had
+  /// before its own screen (fit_reason_sheet.dart) landed — added now so the
+  /// enum/JSON shape is stable and additive before the comparison screen
+  /// that will actually set it exists (a later Phase 3B-1 PR).
   projectComparisonUsed,
 }
 

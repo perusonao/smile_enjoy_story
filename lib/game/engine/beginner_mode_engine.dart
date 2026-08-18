@@ -169,16 +169,17 @@ class BeginnerModeEngine {
         return state.foundingProgress.has(FoundingMilestone.firstAssignment) && state.week > lastWeek;
       case BeginnerMilestone.fitReasonViewed:
       case BeginnerMilestone.projectComparisonUsed:
-        // Phase 3B-1 data-model placeholders only (see each enum value's own
-        // doc comment in beginner_mode_state.dart) — this PR adds no Fit-
-        // reason or project-comparison UI, so there is no GameState fact yet
-        // that proves the player looked at either screen. Unlike every case
-        // above, these aren't "did an accounting/roster event happen" facts;
-        // they're "did the player view this screen" facts, which only the
-        // (future) screen itself can know. Deliberately always `false` here
-        // so `reconcile`/`pendingMilestones` stay complete no-ops for both
-        // until a later PR's UI starts calling `BeginnerModeEngine.markShown`
-        // directly — never speculatively derived from unrelated state.
+        // Unlike every case above, these aren't "did an accounting/roster
+        // event happen" facts derivable from GameState; they're "did the
+        // player view this screen" facts, which only the screen itself can
+        // know. [fitReasonViewed] is marked directly by
+        // `FitReasonSheet`/`showFitReasonSheet` (fit_reason_sheet.dart) the
+        // first time it opens — never through this method.
+        // [projectComparisonUsed] has no screen yet (the multi-project
+        // comparison UI is a later Phase 3B-1 PR). Deliberately always
+        // `false` here either way, so `reconcile`/`pendingMilestones` stay
+        // complete no-ops for both — neither is a "backfill from existing
+        // state" fact, so there is nothing for this method to derive.
         return false;
     }
   }

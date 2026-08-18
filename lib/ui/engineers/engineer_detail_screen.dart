@@ -7,6 +7,7 @@ import '../theme.dart';
 import '../widgets/confirm_dialog.dart';
 import '../widgets/labels.dart';
 import '../widgets/fit_badge.dart';
+import '../widgets/fit_reason_sheet.dart';
 import '../widgets/selection_stepper.dart';
 import '../widgets/skill_chip.dart';
 import '../widgets/status_chip.dart';
@@ -595,6 +596,7 @@ class _ApplicationRow extends StatelessWidget {
               style: const TextStyle(fontWeight: FontWeight.w600),
             ),
             FitBadge(fit: PlayerVisibleFit.fromScore(application.fitScore)),
+            _FitReasonLink(engineer: engineer, project: application.project),
             Text(
               '${paymentTermDaysById(application.project.clientId)}日サイト',
               style: const TextStyle(fontSize: 12.5),
@@ -621,6 +623,41 @@ class _ApplicationRow extends StatelessWidget {
           ),
         if(application.status==ApplicationStatus.active&&application.currentStep==SelectionStep.clientInterview)...[const SizedBox(height:8),const Text('操作: 面談をプレイできます',style:TextStyle(fontWeight:FontWeight.bold,color:Colors.deepOrange)),Row(children:[Expanded(child:FilledButton(onPressed:()=>Navigator.push(context,MaterialPageRoute(builder:(_)=>ClientInterviewScreen(applicationId:application.id))),child:const Text('面談をプレイ'))),const SizedBox(width:8),Expanded(child:OutlinedButton(onPressed:()=>context.game.autoResolveClientInterview(application.id),child:const Text('社員に任せる')))])],
       ],
+    );
+  }
+}
+
+/// "Fitの理由を見る" (Phase 3B-1 §3.3): opens [showFitReasonSheet] for the
+/// same engineer/project pair the sibling [FitBadge] already summarizes —
+/// a "簡易表示 → 詳細" role split, not a second Fit display. Wrapped in a
+/// `Padding` (not a bare `InkWell`) so its tap target stays comfortably
+/// above the `FitBadge`/text it sits next to in a `Wrap`, even though the
+/// visible label is short.
+class _FitReasonLink extends StatelessWidget {
+  const _FitReasonLink({required this.engineer, required this.project});
+
+  final Engineer engineer;
+  final Project project;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      borderRadius: BorderRadius.circular(8),
+      onTap: () => showFitReasonSheet(context, engineer: engineer, project: project),
+      child: const Padding(
+        padding: EdgeInsets.symmetric(horizontal: 6, vertical: 8),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.info_outline, size: 14, color: SesTheme.primaryBlue),
+            SizedBox(width: 3),
+            Text(
+              'Fitの理由を見る',
+              style: TextStyle(fontSize: 12, color: SesTheme.primaryBlue, fontWeight: FontWeight.w600),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -685,6 +722,7 @@ class _OfferRow extends StatelessWidget {
     final deadline = offer.responseDeadlineWeek == context.game.state.week
         ? '今週中'
         : 'Week ${offer.responseDeadlineWeek}';
+    final engineer = context.game.state.engineerById(offer.employeeId);
     return Card(
       color: Colors.orange.shade50,
       child: Padding(
@@ -696,10 +734,14 @@ class _OfferRow extends StatelessWidget {
               application.project.title,
               style: const TextStyle(fontWeight: FontWeight.bold),
             ),
-            Row(
+            Wrap(
+              spacing: 8,
+              runSpacing: 4,
+              crossAxisAlignment: WrapCrossAlignment.center,
               children: [
-                Text('月単価 ${formatYen(offer.monthlyRate)} / '),
+                Text('月単価 ${formatYen(offer.monthlyRate)}'),
                 FitBadge(fit: PlayerVisibleFit.fromScore(application.fitScore)),
+                _FitReasonLink(engineer: engineer, project: application.project),
               ],
             ),
             Text(

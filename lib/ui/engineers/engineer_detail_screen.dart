@@ -641,21 +641,51 @@ class _FitReasonLink extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return InkWell(
-      borderRadius: BorderRadius.circular(8),
-      onTap: () => showFitReasonSheet(context, engineer: engineer, project: project),
-      child: const Padding(
-        padding: EdgeInsets.symmetric(horizontal: 6, vertical: 8),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.info_outline, size: 14, color: SesTheme.primaryBlue),
-            SizedBox(width: 3),
-            Text(
-              'Fitの理由を見る',
-              style: TextStyle(fontSize: 12, color: SesTheme.primaryBlue, fontWeight: FontWeight.w600),
-            ),
-          ],
+    // Explicit `Semantics(button: true, ...)` (Playable 0.5A E2E follow-up):
+    // a bare `InkWell` only carries a tap *action*, not the `isButton` flag
+    // real `Button` widgets set — Flutter's semantics compiler keeps any
+    // node with its own flag as a boundary, but merges a flagless
+    // actionable node into the nearest boundary ancestor once real,
+    // flagged buttons exist as siblings in the same merge scope (exactly
+    // what `面談をプレイ`/`社員に任せる` are, right below this link in both
+    // `_ApplicationRow` and `_OfferRow`). Without this, "Fitの理由を見る"
+    // has no independent accessibility node at all — indistinguishable
+    // from the surrounding card text to a screen reader, and unreachable
+    // by role for the same reason. `container: true` additionally stops
+    // that merge from also carrying this node's own flag/label *upward*
+    // into the surrounding card once it's set — `button: true` alone still
+    // let this bubble into the card's own merged node instead of standing
+    // apart (confirmed against the real ariaSnapshot() output before
+    // adding this). `excludeSemantics: true` drops the (redundant)
+    // descendant Icon/Text semantics so this single node's own `label` is
+    // the only thing announced — but that also discards the `InkWell`'s
+    // *own* tap action along with them, so this node needs its own `onTap`
+    // (the exact same callback) or the button reports as clickable while
+    // silently doing nothing — pure a11y annotation otherwise, changes no
+    // visual, no FitReasonSheet content.
+    void openSheet() => showFitReasonSheet(context, engineer: engineer, project: project);
+    return Semantics(
+      container: true,
+      button: true,
+      label: 'Fitの理由を見る',
+      excludeSemantics: true,
+      onTap: openSheet,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(8),
+        onTap: openSheet,
+        child: const Padding(
+          padding: EdgeInsets.symmetric(horizontal: 6, vertical: 8),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.info_outline, size: 14, color: SesTheme.primaryBlue),
+              SizedBox(width: 3),
+              Text(
+                'Fitの理由を見る',
+                style: TextStyle(fontSize: 12, color: SesTheme.primaryBlue, fontWeight: FontWeight.w600),
+              ),
+            ],
+          ),
         ),
       ),
     );

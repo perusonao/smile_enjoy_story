@@ -69,6 +69,16 @@ flutter:
   # For details regarding adding assets from package dependencies, see
   # https://flutter.dev/to/asset-from-package
 
+  # UI material crops (characters/events/locations) — S.E.S. UI asset
+  # import. Directory form bundles every file already in each folder;
+  # reference them via lib/ui/asset_paths.dart's AssetPaths constants
+  # rather than string literals. Registration only for now — no screen
+  # wires these in yet (no event modal, no portraitId).
+  assets:
+    - assets/images/characters/
+    - assets/images/events/
+    - assets/images/locations/
+
   # Bundled locally so Japanese UI text renders correctly without depending
   # on a runtime fetch of a CJK fallback font from a CDN (which fails in
   # offline/sandboxed environments and produces missing-glyph tofu boxes —

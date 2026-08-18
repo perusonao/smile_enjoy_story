@@ -29,6 +29,7 @@ Future<void> showProjectComparisonScreen(
   BuildContext context, {
   required Engineer engineer,
   required List<Project> projects,
+  int? totalCandidates,
 }) async {
   final controller = context.game;
   if (BeginnerModeEngine.isBeginnerJourney(controller.state) &&
@@ -36,7 +37,13 @@ Future<void> showProjectComparisonScreen(
     controller.markBeginnerMilestoneShown(BeginnerMilestone.projectComparisonUsed);
   }
   await Navigator.of(context).push(
-    MaterialPageRoute(builder: (_) => ProjectComparisonScreen(engineer: engineer, projects: projects)),
+    MaterialPageRoute(
+      builder: (_) => ProjectComparisonScreen(
+        engineer: engineer,
+        projects: projects,
+        totalCandidates: totalCandidates,
+      ),
+    ),
   );
 }
 
@@ -49,12 +56,25 @@ Future<void> showProjectComparisonScreen(
 /// an overview card up top, then every required comparison item laid out
 /// as its own row with that project's value in the matching column below.
 class ProjectComparisonScreen extends StatelessWidget {
-  const ProjectComparisonScreen({super.key, required this.engineer, required this.projects});
+  const ProjectComparisonScreen({
+    super.key,
+    required this.engineer,
+    required this.projects,
+    this.totalCandidates,
+  });
 
   final Engineer engineer;
 
   /// 2-3 candidate projects, same order the player selected them in.
   final List<Project> projects;
+
+  /// How many candidates the player was choosing from before narrowing down
+  /// to [projects] (e.g. `pendingOffers.length` at the entry point in
+  /// `engineer_detail_screen.dart`) — shown as "選択中案件 n/合計件" so the
+  /// fraction is a real ratio, not a tautology. `null` (and any pumped-
+  /// directly widget test that never passes it) falls back to
+  /// `projects.length`, i.e. "all of what's shown was selected".
+  final int? totalCandidates;
 
   @override
   Widget build(BuildContext context) {
@@ -84,7 +104,7 @@ class ProjectComparisonScreen extends StatelessWidget {
           ),
           const SizedBox(height: 4),
           Text(
-            '選択中案件 ${rows.length}/${rows.length}件',
+            '選択中案件 ${rows.length}/${totalCandidates ?? rows.length}件',
             style: const TextStyle(fontSize: 12, color: Colors.black54),
           ),
           const SizedBox(height: 14),
@@ -109,10 +129,7 @@ class ProjectComparisonScreen extends StatelessWidget {
           _SpecRow(
             label: '総合Fit',
             helper: '高いほど面談・参画との相性が良い',
-            values: [
-              for (final row in rows)
-                '${PlayerVisibleFit.fromScore(row.totalFit).symbol} ${PlayerVisibleFit.fromScore(row.totalFit).label}',
-            ],
+            values: [for (final row in rows) fitCell(row.totalFit, 100)],
           ),
           // 技術/経験/人物・相性/条件: the same ◎○△× bucketed rating
           // FitReasonSheet's _BreakdownRow already shows for these four
@@ -148,7 +165,22 @@ class ProjectComparisonScreen extends StatelessWidget {
           ),
           _SpecRow(
             label: '契約期間',
-            values: [for (final row in rows) '${row.contractTermMonths}ヶ月'],
+            // `project.durationWeeks`, not `row.contractTermMonths` — the
+            // engine's `contractTermMonths` getter passes through
+            // `Project.contractTermMonths`, which `ProjectGenerator` never
+            // populates (it stays at the class default of 3 for every
+            // generated project) and which the engine only ever *uses* for
+            // renewal-length math (`GameEngine.decideContract`'s
+            // `contractTermMonths*4`), not the initial engagement length.
+            // The actual initial contract length a player is choosing
+            // between is `durationWeeks` (what `GameEngine.proposeEngineer`
+            // /`acceptOffer` actually assign as `remainingWeeks`) — the same
+            // field the existing `project_detail_screen.dart` already shows
+            // under this exact "契約期間" label (Codex review on this PR:
+            // showing "3ヶ月" for every project regardless of its real
+            // 4-36 week duration would mislead the comparison this screen
+            // exists for).
+            values: [for (final row in rows) '${row.project.durationWeeks}週間'],
           ),
         ],
       ),

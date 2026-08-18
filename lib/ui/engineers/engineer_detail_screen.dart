@@ -725,6 +725,12 @@ class _OffersComparisonSectionState extends State<_OffersComparisonSection> {
     // mounted) so the "選択した案件を比較" count never counts a stale id.
     final stillPending = widget.pendingOffers.map((offer) => offer.id).toSet();
     _selectedOfferIds.removeWhere((id) => !stillPending.contains(id));
+    // If comparing an offer directly out of this list (accept/decline on
+    // an _OfferRow below, not through the comparison flow) drops the
+    // pending count under 2, "比較する" itself disappears next build — exit
+    // comparison mode too, or the player would be stuck looking at a lone
+    // checkbox with no toggle left to turn it off.
+    if (widget.pendingOffers.length < 2) _comparing = false;
   }
 
   void _openComparison(BuildContext context) {
@@ -732,7 +738,12 @@ class _OffersComparisonSectionState extends State<_OffersComparisonSection> {
       for (final offer in widget.pendingOffers)
         if (_selectedOfferIds.contains(offer.id)) widget.applicationFor(offer.applicationId).project,
     ];
-    showProjectComparisonScreen(context, engineer: widget.engineer, projects: projects);
+    showProjectComparisonScreen(
+      context,
+      engineer: widget.engineer,
+      projects: projects,
+      totalCandidates: widget.pendingOffers.length,
+    );
   }
 
   @override

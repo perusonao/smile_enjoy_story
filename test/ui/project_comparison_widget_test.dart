@@ -27,9 +27,9 @@ const _widths = [360.0, 390.0];
 
 /// A hand-built engineer plus two candidate projects (client-axis-soft /
 /// 30日サイト, client-future-web / 60日サイト) with deliberately different
-/// monthlyRate/commercialFlow/interviewCount/paymentTermDays/
-/// contractTermMonths — so every comparison item actually differs between
-/// the two columns instead of coincidentally matching.
+/// monthlyRate/commercialFlow/interviewCount/durationWeeks — so every
+/// comparison item actually differs between the two columns instead of
+/// coincidentally matching.
 ({Engineer engineer, Project projectA, Project projectB}) _twoProjectFixture() {
   final profile = buildApplicant(
     mainLanguage: ProgrammingLanguage.java,
@@ -65,7 +65,7 @@ const _widths = [360.0, 390.0];
     requiredBackend: 4,
     requiredJapaneseLevel: 3,
     commercialFlow: CommercialFlow.firstTier,
-    contractTermMonths: 6,
+    durationWeeks: 24,
     interviewCount: 1,
   );
   final projectB = buildProject(
@@ -78,13 +78,19 @@ const _widths = [360.0, 390.0];
     requiredBackend: 2,
     requiredJapaneseLevel: 3,
     commercialFlow: CommercialFlow.thirdTier,
-    contractTermMonths: 3,
+    durationWeeks: 12,
     interviewCount: 3,
   );
   return (engineer: engineer, projectA: projectA, projectB: projectB);
 }
 
-Future<void> _pumpScreen(WidgetTester tester, Engineer engineer, List<Project> projects, double width) async {
+Future<void> _pumpScreen(
+  WidgetTester tester,
+  Engineer engineer,
+  List<Project> projects,
+  double width, {
+  int? totalCandidates,
+}) async {
   // The comparison screen's content (overview cards + up to 11 spec rows)
   // is taller than one mobile viewport — a tall physicalSize (same trick
   // `assignment_acceptance_test.dart`/`prologue_widget_test.dart` use for
@@ -95,7 +101,7 @@ Future<void> _pumpScreen(WidgetTester tester, Engineer engineer, List<Project> p
   addTearDown(tester.view.resetPhysicalSize);
   await tester.pumpWidget(
     MaterialApp(
-      home: ProjectComparisonScreen(engineer: engineer, projects: projects),
+      home: ProjectComparisonScreen(engineer: engineer, projects: projects, totalCandidates: totalCandidates),
     ),
   );
   await tester.pumpAndSettle();
@@ -185,10 +191,16 @@ void main() {
         expect(paymentTermDaysById('client-axis-soft'), 30);
         expect(paymentTermDaysById('client-future-web'), 60);
 
-        // 契約期間
+        // 契約期間 — project.durationWeeks (the field GameEngine actually
+        // assigns as the engagement's remainingWeeks), not
+        // row.contractTermMonths (ProjectComparisonEngine's passthrough of
+        // Project.contractTermMonths, which ProjectGenerator never
+        // populates and which only feeds contract-renewal math elsewhere).
         expect(find.text('契約期間'), findsOneWidget);
-        expect(find.text('6ヶ月'), findsOneWidget);
-        expect(find.text('3ヶ月'), findsOneWidget);
+        expect(find.text('${rows[0].project.durationWeeks}週間'), findsOneWidget);
+        expect(find.text('${rows[1].project.durationWeeks}週間'), findsOneWidget);
+        expect(find.text('24週間'), findsOneWidget);
+        expect(find.text('12週間'), findsOneWidget);
 
         // No RenderFlex overflow at this width.
         expect(tester.takeException(), isNull);
@@ -208,7 +220,7 @@ void main() {
       requiredBackend: 3,
       requiredJapaneseLevel: 3,
       commercialFlow: CommercialFlow.secondTier,
-      contractTermMonths: 12,
+      durationWeeks: 36,
       interviewCount: 2,
     );
     final projects = [fixture.projectA, fixture.projectB, projectC];
@@ -226,13 +238,38 @@ void main() {
         for (final row in rows) {
           expect(find.text(formatYen(row.monthlyRate)), findsOneWidget);
         }
-        expect(find.text('12ヶ月'), findsOneWidget);
+        expect(find.text('36週間'), findsOneWidget);
         expect(find.text('2回'), findsOneWidget);
         expect(find.text(commercialFlowLabels[CommercialFlow.secondTier]!), findsOneWidget);
 
         expect(tester.takeException(), isNull);
       });
     }
+  });
+
+  group('ProjectComparisonScreen — 選択中案件 n/合計件', () {
+    testWidgets('totalCandidates renders as the denominator when more offers were available than were selected', (tester) async {
+      final fixture = _twoProjectFixture();
+      await _pumpScreen(
+        tester,
+        fixture.engineer,
+        [fixture.projectA, fixture.projectB],
+        390,
+        totalCandidates: 3,
+      );
+
+      expect(find.text('選択中案件 2/3件'), findsOneWidget);
+      expect(find.text('選択中案件 2/2件'), findsNothing);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('falls back to the selected count as the denominator when totalCandidates is omitted', (tester) async {
+      final fixture = _twoProjectFixture();
+      await _pumpScreen(tester, fixture.engineer, [fixture.projectA, fixture.projectB], 390);
+
+      expect(find.text('選択中案件 2/2件'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
   });
 
   group('showProjectComparisonScreen — BeginnerMilestone.projectComparisonUsed', () {

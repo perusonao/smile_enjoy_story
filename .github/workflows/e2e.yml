@@ -70,11 +70,19 @@ name: Playwright E2E (S.E.S.)
 #                    timeout) when `build` gets there, the download step
 #                    (`continue-on-error: true`) simply finds nothing and
 #                    `build` deploys the game without updating
-#                    /e2e-replays/ this time — that replay is not retroactively
-#                    published; it will only appear once a *later* push's
-#                    replay-package finishes in time for that push's own
-#                    `build` (Phase 1 scope — see PHASE2 note below for a
-#                    dedicated replay-only follow-up deployment).
+#                    /e2e-replays/ this time. That specific run's replay is
+#                    NOT retried, queued, or picked up by any later run —
+#                    `actions/download-artifact` with no `run-id` only ever
+#                    searches the *current* workflow run, so a late
+#                    `replay-package` artifact is unreachable once this run's
+#                    `build` has already moved on. It is simply never
+#                    published; the next thing a viewer sees in
+#                    /e2e-replays/ is whichever *separate, new* replay a
+#                    later push's own `replay-package` produces, if that one
+#                    also finishes in time for that push's own `build`
+#                    (Phase 1 scope — see PHASE2 note below for a dedicated
+#                    replay-only follow-up deployment that would let a late
+#                    artifact still get published).
 #   deploy         — re-verify the stale guard immediately before
 #                    actions/deploy-pages (build's flutter build web can
 #                    take minutes; re-check right at the point of no
@@ -96,9 +104,13 @@ name: Playwright E2E (S.E.S.)
 #
 # PHASE2 (not implemented — future option, see task report): today a
 # replay that finishes packaging *after* its push's own `build`/`deploy`
-# already ran is simply not published until the next push's deploy folds
-# it in (Phase 1 "best effort, else wait for the next deploy" design). A
-# dedicated follow-up job that re-runs `configure-pages`/
+# already ran is simply never published — it is NOT retried, queued, or
+# folded into any later run (`actions/download-artifact` with no `run-id`
+# only ever looks at the current workflow run). The next replay a viewer
+# sees is whatever separate, new replay a *later* push's own
+# `replay-package` produces, if that one finishes in time for that push's
+# own `build` (Phase 1 "best effort this run, else that run's replay is
+# lost" design). A dedicated follow-up job that re-runs `configure-pages`/
 # `upload-pages-artifact`/`deploy-pages` once replay-package finishes late
 # would need its own copy of the already-built `build/web` (or to re-run
 # `flutter build web`) plus the same `check-latest`/stale-SHA re-verification

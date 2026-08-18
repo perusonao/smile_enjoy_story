@@ -2,10 +2,11 @@
 //
 // This only verifies the plumbing — pubspec.yaml's `assets:` entries and
 // AssetPaths' string literals actually resolve to bundled files — not any
-// screen behavior. No screen renders these images yet (see
-// lib/ui/asset_paths.dart's doc comment): no event modal, no
-// character/location wiring, no portraitId. That's intentionally out of
-// scope for this PR.
+// screen behavior. 画像付きイベントモーダル Phase 1 wired 4 of the 5 event
+// images into founding_dialogs.dart's shared event dialog (see
+// test/ui/event_image_dialog_test.dart for that screen-level coverage);
+// character/location wiring and portraitId are still out of scope here
+// (see lib/ui/asset_paths.dart's doc comment).
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show rootBundle;

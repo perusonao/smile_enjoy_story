@@ -8,10 +8,17 @@
 /// Scope note: this is asset-path bookkeeping only. Nothing here wires an
 /// image into a screen, assigns a portrait to an [Applicant]/[Engineer],
 /// or touches save schema — no `portraitId` field exists yet, and none is
-/// added by this file. Event-modal and character/location wiring are
-/// planned for later PRs; until then these constants simply make the
-/// bundled images loadable and give call sites a stable name to use once
-/// that wiring lands.
+/// added by this file.
+///
+/// 画像付きイベントモーダル Phase 1 wired 4 of the 5 event constants below into
+/// `FoundingEventDialog`/`showFoundingEventDialog`
+/// (lib/ui/widgets/founding_dialogs.dart) for the events that clearly match
+/// one — see that file for the mapping. [eventSystemIncident] stays
+/// registered-but-unused: no システム障害 event exists in the game yet, so
+/// wiring it to a dialog would mean inventing a new event, out of scope for
+/// a presentation-layer PR. Character/location wiring is still planned for
+/// a later PR; those 12 constants simply make the bundled images loadable
+/// and give call sites a stable name to use once that wiring lands.
 class AssetPaths {
   const AssetPaths._();
 
@@ -30,8 +37,10 @@ class AssetPaths {
   static const String engineerVeteran = '$_charactersDir/engineer_veteran.jpg';
   static const String applicantEngineer = '$_charactersDir/applicant_engineer.jpg';
 
-  // Events (5) — for the future event-modal PR (客先から連絡 / 参画決定 /
-  // 新規応募 / 入金 / 資金危機 / システムトラブル etc.).
+  // Events (5) — wired into the image-backed event modal
+  // (lib/ui/widgets/founding_dialogs.dart) by 画像付きイベントモーダル
+  // Phase 1, except eventSystemIncident (no matching event exists yet —
+  // reserved for when one does).
   static const String eventCompanyManagement = '$_eventsDir/company_management.jpg';
   static const String eventClientInterview = '$_eventsDir/client_interview.jpg';
   static const String eventClientContact = '$_eventsDir/client_contact.jpg';

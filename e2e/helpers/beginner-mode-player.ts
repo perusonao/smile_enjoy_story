@@ -139,6 +139,7 @@ export async function playBeginnerModeThroughJune(page: Page, options: BeginnerM
 
     let clicked: string | null = null;
     let usesRoleTab = false;
+    let usesDialogScope = false;
 
     // 1. A blocking dialog wins first, same ordering as ses-player.ts.
     const begin = enabled(snap, BEGIN_MANAGEMENT);
@@ -172,8 +173,13 @@ export async function playBeginnerModeThroughJune(page: Page, options: BeginnerM
       // of defense: even if a background route's semantics ever leaked
       // "次の週へ" into the same snapshot as an open dialog, an *unscoped*
       // name match could never reach here as `closeLabel` in the first
-      // place.
+      // place. The actual *click* below must stay scoped the same way (see
+      // `usesDialogScope`) — a bare page-wide `getByRole` by name alone
+      // would re-open exactly the ambiguity `firstEnabledDialogButton`
+      // exists to close, since the dialog can have already closed (or
+      // chained into another one) by the time the click actually lands.
       clicked = closeLabel;
+      usesDialogScope = true;
     } else if (next) {
       clicked = next.name;
     } else if (back) {
@@ -214,6 +220,8 @@ export async function playBeginnerModeThroughJune(page: Page, options: BeginnerM
 
     if (usesRoleTab) {
       await page.getByRole('tab', { name: HOME_TAB, exact: true }).click();
+    } else if (usesDialogScope) {
+      await page.locator('[role="dialog"], [role="alertdialog"]').getByRole('button', { name: clicked, exact: true }).click();
     } else {
       await page.getByRole('button', { name: clicked, exact: true }).first().click();
     }

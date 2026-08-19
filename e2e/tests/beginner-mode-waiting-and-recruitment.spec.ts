@@ -87,6 +87,29 @@ const STALL_REPEAT_THRESHOLD = 5;
 // doc comment) — never against `CLOSE` directly.
 const CLOSE = ['閉じる', 'OK', '会社状況を見る', '面談依頼を見る', '採用を見る', '社員環境を見る', 'それでも進む', '社員に任せて進む', '採用画面へ戻る'];
 
+/** The same live-dialog scope `waitForTabBar` below already uses to *find*
+ * a dismiss button. `firstEnabledDialogButton`'s dialog-scoping check
+ * (game-state.ts) only proves a button *named* [name] was inside a real
+ * `dialog`/`alertdialog` a11y node *at snapshot time* — it hands back a
+ * bare string, not a Locator, so every call site used to re-resolve that
+ * name with a plain page-wide `page.getByRole('button', { name, exact:
+ * true })` to actually click it. That reintroduces exactly the ambiguity
+ * the dialog-scoped snapshot check exists to rule out: by the time the
+ * click lands, the dialog can have already closed (revealing an
+ * identically-labeled, unrelated control elsewhere on screen — e.g.
+ * `_HeroTaskCard`'s own "採用を見る" CTA, PR #22) or been replaced by a
+ * chained tutorial dialog, so a page-wide-by-name click can resolve to the
+ * wrong node, race a mid-teardown listener, or hang on an element that's
+ * about to detach — the "close button click時にDOM detach" / stray
+ * "採用 tab timeout" / "未面接候補者 click timeout" symptom cluster this fix
+ * addresses (they all cascade from the same unscoped click, not three
+ * independent bugs). Routing the click back through this same scope makes
+ * "is this really the dialog's own button" hold at click time too, not just
+ * at snapshot time. */
+function dialogScope(page: import('@playwright/test').Page) {
+  return page.locator('[role="dialog"], [role="alertdialog"]');
+}
+
 /** Dismisses every dialog currently stacked on screen, recording each one's
  * full text (for the doubled-particle scan) along the way, and stops the
  * instant [stopWhen] matches a dialog's own text — leaving that dialog
@@ -104,7 +127,7 @@ async function settleAndScan(
     if (stopWhen?.(snap)) return snap;
     const close = firstEnabledDialogButton(snap, CLOSE);
     if (!close) return null;
-    await page.getByRole('button', { name: close.name, exact: true }).click();
+    await dialogScope(page).getByRole('button', { name: close.name, exact: true }).click();
     await page.waitForTimeout(500);
     const homeTab = page.getByRole('tab', { name: 'ホーム', exact: true });
     if (await homeTab.count()) {
@@ -289,7 +312,7 @@ async function clickResilient(page: import('@playwright/test').Page, locate: () 
       const snap = await snapshotScreen(page);
       const close = firstEnabledDialogButton(snap, CLOSE.filter((name) => name !== label));
       if (close) {
-        await page.getByRole('button', { name: close.name, exact: true }).click().catch(() => {});
+        await dialogScope(page).getByRole('button', { name: close.name, exact: true }).click().catch(() => {});
         await page.waitForTimeout(300);
       }
       // Otherwise just loop straight back to a fresh `locate()` call — the

@@ -18,13 +18,25 @@
 // itself) is a pure function of (state.seed, state.week, salt) — see
 // project_interview_engine.dart's own doc comment — so under a fixed seed
 // and this file's fixed action sequence, the same interview offer (same
-// project, same Fit) appears at the same week every run. Verified directly
-// against real Chromium during development, not assumed: seed 100001
-// reaches a QA体制強化支援 offer exactly 2 week-advances after starting the
-// second sales search at Week 13. `MAX_WEEKS_TO_WAIT_FOR_OFFER` below still
-// gives real margin (5x) past that observed timing — a bounded, ordinary
-// weekly-progression loop (same shape as every other spec's week-advance
-// loop), not a retry-driven flakiness workaround.
+// project, same Fit) appears at the same week every run, *for a given
+// engine build*. An earlier version of this comment additionally treated
+// "seed 100001 reaches an offer in exactly 2 week-advances" as if it were a
+// fixed, re-derivable fact — it was only ever a one-time observation against
+// whatever SalesEngine/ProjectInterviewEngine behavior existed at the time
+// it was written. Which project offer appears, and when, is a real function
+// of live sales state (which projects are currently open), each project's
+// own deadline, the engineer's participation availability, the Fit
+// threshold, and the seeded roll itself — none of which this spec pins down
+// or should: doing so would make this real-UI test assert a specific
+// SalesEngine outcome instead of just proving the FitBadge/FitReasonSheet
+// flow is reachable once *some* offer arrives. `MAX_WEEKS_TO_WAIT_FOR_OFFER`
+// below is therefore a generous, ordinary bounded weekly-progression loop
+// (same shape as every other spec's week-advance loop) sized to comfortably
+// outlast any legitimate in-game wait for an offer to surface, not a
+// specific week count re-derived from a historical run — and if a real
+// SalesEngine change ever pushes a seed's genuine offer timing past this
+// bound, that is a real timing regression for this loop to catch, not
+// something to paper over by widening the bound without evidence.
 //
 // No RNG-dependent *outcome* is ever a pass/fail condition here (§ this
 // PR's brief): whether the client interview this offer leads into ends up
@@ -71,8 +83,9 @@ const BEGINNER_TARGET_WEEK = 12;
 const BEGINNER_MAX_ACTIONS = 200;
 
 // Bounded ordinary week-advance loop, not a retry mechanism — see the
-// file-level doc comment's determinism note (observed: 2 weeks for seed
-// 100001, this gives 5x margin).
+// file-level doc comment's determinism note: a generous bound on how long a
+// real offer can legitimately take to surface, not a specific week count
+// this test expects or guarantees.
 const MAX_WEEKS_TO_WAIT_FOR_OFFER = 10;
 
 const EMPLOYEES_TAB = '社員';
@@ -100,6 +113,23 @@ const AUTO_RESOLVE_CLIENT_INTERVIEW = '社員に任せる';
 // `dialog`/`alertdialog` a11y node (see `dialogButtonNames` in
 // game-state.ts) — never against `CLOSE` directly.
 const CLOSE = ['閉じる', 'OK', '会社状況を見る', '面談依頼を見る', '採用を見る', '社員環境を見る', 'それでも進む', '社員に任せて進む'];
+
+/** Same live-dialog scope `beginner-mode-waiting-and-recruitment.spec.ts`'s
+ * own `waitForTabBar`/`settleAndScan`/`clickResilient` fix uses (kept as a
+ * local copy for the same reason `clickResilient` below already is — see
+ * its own doc comment). `firstEnabledDialogButton` (game-state.ts) only
+ * proves a button was inside a real `dialog`/`alertdialog` a11y node *at
+ * snapshot time* and hands back a bare name, not a Locator — re-resolving
+ * that name with a page-wide `page.getByRole(...)` to actually click it
+ * reopens exactly the ambiguity the dialog-scoped check exists to close: by
+ * click time the dialog can have already closed (revealing an
+ * identically-labeled, unrelated control elsewhere on screen) or been
+ * replaced by a chained dialog. Routing the click back through this same
+ * scope keeps "is this really the dialog's own button" true at click time,
+ * not just at snapshot time. */
+function dialogScope(page: import('@playwright/test').Page) {
+  return page.locator('[role="dialog"], [role="alertdialog"]');
+}
 
 // --- clickResilient + friends -------------------------------------------
 // Deliberately the *same* implementation as
@@ -129,7 +159,7 @@ async function clickResilient(page: import('@playwright/test').Page, locate: () 
       const snap = await snapshotScreen(page);
       const close = firstEnabledDialogButton(snap, CLOSE.filter((name) => name !== label));
       if (close) {
-        await page.getByRole('button', { name: close.name, exact: true }).click().catch(() => {});
+        await dialogScope(page).getByRole('button', { name: close.name, exact: true }).click().catch(() => {});
         await page.waitForTimeout(300);
       }
     }
@@ -138,6 +168,8 @@ async function clickResilient(page: import('@playwright/test').Page, locate: () 
 
 const byButton = (page: import('@playwright/test').Page, name: string) => () => page.getByRole('button', { name, exact: true }).first();
 const byTab = (page: import('@playwright/test').Page, name: string) => () => page.getByRole('tab', { name, exact: true });
+/** Dialog-scoped counterpart to `byButton` — for clicking a button `firstEnabledDialogButton` already confirmed is a live dialog's own dismiss button (see `dialogScope`'s doc comment above). */
+const byDialogButton = (page: import('@playwright/test').Page, name: string) => () => dialogScope(page).getByRole('button', { name, exact: true });
 
 /** Dismisses every dialog currently stacked on screen, recording each one's
  * text for the doubled-particle scan — same shape as
@@ -148,7 +180,7 @@ async function settleAndScan(page: import('@playwright/test').Page, textOffender
     textOffenders.push(...findDoubledParticles(snap));
     const close = firstEnabledDialogButton(snap, CLOSE);
     if (!close) return snap;
-    await clickResilient(page, byButton(page, close.name), close.name);
+    await clickResilient(page, byDialogButton(page, close.name), close.name);
     await page.waitForTimeout(400);
     snap = await snapshotScreen(page);
   }

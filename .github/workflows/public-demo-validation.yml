@@ -35,7 +35,9 @@ jobs:
         run: flutter analyze lib/game/public_demo lib/ui/public_demo
       - name: Public Demo unit tests
         run: flutter test test/game/public_demo
-      - name: Public Demo widget playthrough
+      - name: Public Demo recovery playthrough
         run: flutter test test/ui/public_demo/public_demo_01_playthrough_test.dart
+      - name: Public Demo success playthrough
+        run: flutter test test/ui/public_demo/public_demo_01_success_playthrough_test.dart
       - name: Build web
         run: flutter build web --release

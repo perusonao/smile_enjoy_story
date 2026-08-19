@@ -180,19 +180,31 @@ async function clickResilient(page: import('@playwright/test').Page, locate: () 
 
 const byButton = (page: import('@playwright/test').Page, name: string) => () => page.getByRole('button', { name, exact: true }).first();
 const byTab = (page: import('@playwright/test').Page, name: string) => () => page.getByRole('tab', { name, exact: true });
-/** Dialog-scoped counterpart to `byButton` — for clicking a button `firstEnabledDialogButton` already confirmed is a live dialog's own dismiss button (see `dialogScope`'s doc comment above). */
-const byDialogButton = (page: import('@playwright/test').Page, name: string) => () => dialogScope(page).getByRole('button', { name, exact: true });
 
 /** Dismisses every dialog currently stacked on screen, recording each one's
  * text for the doubled-particle scan — same shape as
- * beginner-mode-waiting-and-recruitment.spec.ts's own settleAndScan. */
+ * beginner-mode-waiting-and-recruitment.spec.ts's own settleAndScan.
+ *
+ * A direct, `.count()`-gated click, deliberately *not* routed through
+ * `clickResilient` (real WebKit CI evidence, run 32245044228: routing this
+ * through `clickResilient(byDialogButton(...))` made the *primary* attempt
+ * itself un-gated — `clickResilient`'s own retry loop just kept
+ * re-resolving and re-awaiting the same now-empty dialog-scoped locator for
+ * its full 15s budget once the dialog this snapshot saw had already closed,
+ * instead of recognizing "nothing left to dismiss" and moving on).
+ * `clickResilient` is the right tool for chasing a *real* target across
+ * genuine retries; a snapshot-detected dialog dismiss is a one-shot "is it
+ * still there right now" check, which `.count()` answers directly. */
 async function settleAndScan(page: import('@playwright/test').Page, textOffenders: string[]): Promise<ScreenSnapshot> {
   let snap = await snapshotScreen(page);
   for (let i = 0; i < 10; i++) {
     textOffenders.push(...findDoubledParticles(snap));
     const close = firstEnabledDialogButton(snap, CLOSE);
     if (!close) return snap;
-    await clickResilient(page, byDialogButton(page, close.name), close.name);
+    const closeBtn = dialogScope(page).getByRole('button', { name: close.name, exact: true });
+    if (await closeBtn.count()) {
+      await closeBtn.click().catch(() => {});
+    }
     await page.waitForTimeout(400);
     snap = await snapshotScreen(page);
   }

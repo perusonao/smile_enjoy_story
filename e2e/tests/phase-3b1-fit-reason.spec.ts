@@ -63,7 +63,7 @@
 import { test, expect } from '@playwright/test';
 import { playFoundingToFirstAssignment } from '../helpers/ses-player';
 import { playBeginnerModeThroughJune } from '../helpers/beginner-mode-player';
-import { snapshotScreen, hasText, findDoubledParticles, firstEnabledDialogButton, type ScreenSnapshot } from '../helpers/game-state';
+import { snapshotScreen, hasText, findDoubledParticles, firstEnabledDialogButton, isEmptySnapshot, type ScreenSnapshot } from '../helpers/game-state';
 import { watchForErrors, captureMilestone, writeArtifacts, buildResultJson } from '../helpers/artifacts';
 import { parseSeeds } from '../helpers/seeds';
 import fs from 'fs';
@@ -131,6 +131,31 @@ function dialogScope(page: import('@playwright/test').Page) {
   return page.locator('[role="dialog"], [role="alertdialog"]');
 }
 
+// Same values ses-player.ts's / beginner-mode-player.ts's own
+// readStableSemantics already use.
+const EMPTY_SEMANTICS_POLL_MS = 150;
+const EMPTY_SEMANTICS_RECOVERY_MS = 2_000;
+
+/** Reads the accessibility tree, but does not trust a momentarily *empty*
+ * result as the screen itself — the same WebKit mid-route-transition hazard
+ * ses-player.ts's readStableSemantics and beginner-mode-player.ts's own copy
+ * already guard against (see either's doc comment). `settleAndScan` below
+ * used to read a bare `snapshotScreen()`: a transient empty frame there
+ * reads as "no dialog to dismiss" (firstEnabledDialogButton finds nothing on
+ * an empty snapshot) and gets handed straight back to the caller as if the
+ * screen had genuinely settled, when it may really still be mid-transition. */
+async function readStableSemantics(page: import('@playwright/test').Page, maxWaitMs = EMPTY_SEMANTICS_RECOVERY_MS): Promise<ScreenSnapshot> {
+  let snap = await snapshotScreen(page);
+  if (!isEmptySnapshot(snap)) return snap;
+  const start = Date.now();
+  while (Date.now() - start < maxWaitMs) {
+    await page.waitForTimeout(EMPTY_SEMANTICS_POLL_MS);
+    snap = await snapshotScreen(page);
+    if (!isEmptySnapshot(snap)) return snap;
+  }
+  return snap;
+}
+
 // --- clickResilient + friends -------------------------------------------
 // Deliberately the *same* implementation as
 // beginner-mode-waiting-and-recruitment.spec.ts's own clickResilient (not a
@@ -196,7 +221,7 @@ const byTab = (page: import('@playwright/test').Page, name: string) => () => pag
  * genuine retries; a snapshot-detected dialog dismiss is a one-shot "is it
  * still there right now" check, which `.count()` answers directly. */
 async function settleAndScan(page: import('@playwright/test').Page, textOffenders: string[]): Promise<ScreenSnapshot> {
-  let snap = await snapshotScreen(page);
+  let snap = await readStableSemantics(page);
   for (let i = 0; i < 10; i++) {
     textOffenders.push(...findDoubledParticles(snap));
     const close = firstEnabledDialogButton(snap, CLOSE);
@@ -206,7 +231,7 @@ async function settleAndScan(page: import('@playwright/test').Page, textOffender
       await closeBtn.click().catch(() => {});
     }
     await page.waitForTimeout(400);
-    snap = await snapshotScreen(page);
+    snap = await readStableSemantics(page);
   }
   return snap;
 }

@@ -11,7 +11,37 @@
 // (a rejected candidate, a declined offer, a quiet no-action week) must
 // never look like a dead end.
 import type { Page } from '@playwright/test';
-import { firstEnabledDialogButton, hasText, snapshotScreen, type ScreenSnapshot } from './game-state';
+import { firstEnabledDialogButton, hasText, isEmptySnapshot, snapshotScreen, type ScreenSnapshot } from './game-state';
+
+// Same values ses-player.ts's own readStableSemantics already uses.
+const EMPTY_SEMANTICS_POLL_MS = 150;
+const EMPTY_SEMANTICS_RECOVERY_MS = 2_000;
+
+/** Reads the accessibility tree, but does not trust a momentarily *empty*
+ * result (no texts, no buttons at all) as the screen itself — the same
+ * WebKit mid-route-transition hazard ses-player.ts's own readStableSemantics
+ * already guards against (see its doc comment for the original
+ * investigation) for `playFoundingToFirstAssignment`'s loop, but this
+ * file's own `playBeginnerModeThroughJune` loop below read a bare
+ * `snapshotScreen()` directly and had no equivalent protection — real CI
+ * evidence (PR #30's own run, mobile-webkit): "dead-end at week 7: no
+ * recognized action. buttons=[] texts=[]", a transient empty frame
+ * misclassified as a genuine, stable dead-end. Bounded polling, not a fixed
+ * sleep: returns the instant a non-empty read shows up, and only returns
+ * the (still empty) snapshot once `maxWaitMs` has actually elapsed with no
+ * recovery — which the caller then legitimately treats as its own stable
+ * dead-end candidate. */
+async function readStableSemantics(page: Page, maxWaitMs = EMPTY_SEMANTICS_RECOVERY_MS): Promise<ScreenSnapshot> {
+  let snap = await snapshotScreen(page);
+  if (!isEmptySnapshot(snap)) return snap;
+  const start = Date.now();
+  while (Date.now() - start < maxWaitMs) {
+    await page.waitForTimeout(EMPTY_SEMANTICS_POLL_MS);
+    snap = await snapshotScreen(page);
+    if (!isEmptySnapshot(snap)) return snap;
+  }
+  return snap;
+}
 
 export interface BeginnerModeMilestones {
   managementPhaseStarted: boolean;
@@ -108,7 +138,7 @@ export async function playBeginnerModeThroughJune(page: Page, options: BeginnerM
   let week: number | null = null;
 
   while (true) {
-    const snap = await snapshotScreen(page);
+    const snap = await readStableSemantics(page);
     milestones = observeMilestones(snap, milestones);
     const w = currentWeek(snap);
     if (w !== null) week = w;

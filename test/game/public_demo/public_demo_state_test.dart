@@ -11,6 +11,7 @@ void main() {
       expect(state.engineerCount, 2);
       expect(state.adminCount, 1);
       expect(state.engineersWaiting, 2);
+      expect(state.engineersAssigned, 0);
       expect(state.salesCapacity, 4);
       expect(state.salesRemaining, 4);
     });
@@ -28,13 +29,25 @@ void main() {
     test('failed April can advance to May with engineers still waiting', () {
       final may = PublicDemoState.aprilStart().advanceToMay(
         monthlyExpenses: 800000,
+        orderedEngineers: 0,
       );
 
       expect(may.month, 5);
       expect(may.cash, 2200000);
+      expect(may.engineersAssigned, 0);
       expect(may.engineersWaiting, 2);
       expect(may.salesUsed, 0);
       expect(may.salesRemaining, 4);
+    });
+
+    test('only engineers with May orders become assigned', () {
+      final may = PublicDemoState.aprilStart().advanceToMay(
+        monthlyExpenses: 800000,
+        orderedEngineers: 1,
+      );
+
+      expect(may.engineersAssigned, 1);
+      expect(may.engineersWaiting, 1);
     });
   });
 }

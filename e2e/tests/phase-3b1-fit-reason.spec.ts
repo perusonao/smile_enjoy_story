@@ -26,6 +26,15 @@
 // weekly-progression loop (same shape as every other spec's week-advance
 // loop), not a retry-driven flakiness workaround.
 //
+// Correction (WebKit seed-100001 investigation): that determinism claim is
+// about the *game*, and it still holds — but it was never what made this
+// loop fail on `mobile-webkit`. The offer really does arrive on schedule;
+// the loop simply could not *see* it, because "面談へ進む" sits below the
+// fold on the iPhone 14 profile's shorter viewport and Flutter only
+// materializes semantics for the visible part of a `ListView`. See the
+// scroll call inside the offer-wait loop below for the full root cause and
+// the reproduction that separated "viewport height" from "browser engine".
+//
 // No RNG-dependent *outcome* is ever a pass/fail condition here (§ this
 // PR's brief): whether the client interview this offer leads into ends up
 // passing or failing is never inspected — this file only proves the FitBadge
@@ -325,6 +334,35 @@ for (const seed of parsedSeeds.error ? [] : parsedSeeds.seeds) {
       await settleAndScan(page, textOffenders);
 
       snap = await openEngineerDetail(page);
+      // EngineerDetailScreen renders its "面談依頼" card
+      // (`_InterviewOfferCard`, the one that owns "面談へ進む") *below* the
+      // 現在の状況 / 条件 / スキルシート・営業 cards — i.e. below the fold on a
+      // short viewport. Flutter Web's `SliverList` only materializes
+      // semantics for children within/near the current viewport, so on a
+      // fresh route mount `snapshotScreen()` cannot see that card at all
+      // until it is scrolled into view — exactly the behavior
+      // `scrollUntilButtonFound` (below/above) was already written for, and
+      // already used for "Fitの理由を見る" further down this same screen.
+      //
+      // Reading the *unscrolled* snapshot here therefore reported "no offer"
+      // for a game state that genuinely had one, every single week, until the
+      // 10-week budget ran out. Root-caused, not guessed: reproduced by
+      // running this exact spec/seed on the **Chromium** engine under both
+      // project viewports — `mobile-chromium`'s Pixel 7 (412x915) passes,
+      // while `mobile-webkit`'s iPhone 14 (390x664) fails with this file's
+      // own byte-identical "no 面談依頼/面談へ進む appeared within 10 weeks"
+      // error. Same engine, same seed, same build: the variable is viewport
+      // height, not the browser. That is also why the file-level determinism
+      // note's "verified directly against real Chromium during development"
+      // held and CI's mobile-webkit still failed 4/4 — the verification ran
+      // on the taller of the two profiles, where this card happens to land
+      // above the fold.
+      //
+      // A bounded, condition-driven scroll (poll for this specific button's
+      // own a11y node), never a longer wait or a bigger timeout: the offer is
+      // either in the tree once the card is materialized, or it genuinely
+      // isn't there this week.
+      snap = await scrollUntilButtonFound(page, PROCEED_TO_INTERVIEW);
       const proceed = snap.buttons.find((b) => b.enabled && b.name === PROCEED_TO_INTERVIEW);
       if (proceed) {
         await clickResilient(page, byButton(page, PROCEED_TO_INTERVIEW), PROCEED_TO_INTERVIEW);

@@ -5,6 +5,12 @@ enum PublicDemoApplicantStage {
   rejected,
   offerAccepted,
   offerDeclined,
+  preEntrySkillSheet,
+  preEntrySelling,
+  preEntryIntroduced,
+  preEntryPartnerPassed,
+  preEntryPartnerFailed,
+  juneOrdered,
 }
 
 class PublicDemoApplicant {
@@ -14,6 +20,7 @@ class PublicDemoApplicant {
     required this.resumeSummary,
     required this.interviewScore,
     required this.acceptanceScore,
+    required this.salesSkillFit,
     this.stage = PublicDemoApplicantStage.applied,
   });
 
@@ -22,6 +29,7 @@ class PublicDemoApplicant {
   final String resumeSummary;
   final int interviewScore;
   final int acceptanceScore;
+  final int salesSkillFit;
   final PublicDemoApplicantStage stage;
 
   PublicDemoApplicant copyWith({PublicDemoApplicantStage? stage}) => PublicDemoApplicant(
@@ -30,6 +38,7 @@ class PublicDemoApplicant {
         resumeSummary: resumeSummary,
         interviewScore: interviewScore,
         acceptanceScore: acceptanceScore,
+        salesSkillFit: salesSkillFit,
         stage: stage ?? this.stage,
       );
 }
@@ -41,6 +50,7 @@ const publicDemoMayApplicants = <PublicDemoApplicant>[
     resumeSummary: 'Java 4年 / Spring 3年 / 基本設計〜テスト',
     interviewScore: 74,
     acceptanceScore: 68,
+    salesSkillFit: 76,
   ),
   PublicDemoApplicant(
     id: 'app-02',
@@ -48,5 +58,6 @@ const publicDemoMayApplicants = <PublicDemoApplicant>[
     resumeSummary: 'Flutter 2年 / JavaScript 3年 / 製造〜テスト',
     interviewScore: 58,
     acceptanceScore: 82,
+    salesSkillFit: 62,
   ),
 ];

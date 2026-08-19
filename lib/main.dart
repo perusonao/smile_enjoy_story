@@ -1,11 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart';
 
+import 'app/app_entry.dart';
+import 'app/app_experience.dart';
 import 'app/game_controller.dart';
 import 'app/game_scope.dart';
 import 'app/nav_scope.dart';
 import 'game/game.dart';
+import 'game/persistence/save_service.dart';
 import 'ui/main_shell.dart';
+import 'ui/public_demo/public_demo_01_placeholder_screen.dart';
 import 'ui/prologue/prologue_screen.dart';
 import 'ui/result/game_over_screen.dart';
 import 'ui/result/result_screen.dart';
@@ -16,6 +20,7 @@ import 'ui/widgets/start_choice_screen.dart';
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
   final launchParams = Uri.base.queryParameters;
+  final experience = resolveAppExperience(Uri.base);
 
   // QA/E2E-only hook (Playwright harness — see /e2e/README.md), never set by
   // a real player's URL. Flutter Web paints to a bare <canvas> with no DOM
@@ -37,13 +42,20 @@ void main() {
   final seedParam = launchParams['seed'];
   final debugSeed = seedParam != null ? int.tryParse(seedParam) : null;
 
-  runApp(SesApp(controller: GameController(debugSeed: debugSeed)));
+  runApp(SesApp(
+    experience: experience,
+    controller: GameController(
+      debugSeed: debugSeed,
+      saveService: SaveService.forExperience(experience),
+    ),
+  ));
 }
 
 class SesApp extends StatelessWidget {
-  SesApp({super.key, required this.controller});
+  SesApp({super.key, required this.controller, this.experience = AppExperience.development});
 
   final GameController controller;
+  final AppExperience experience;
   final ValueNotifier<int> _tabIndex = ValueNotifier(0);
 
   @override
@@ -56,7 +68,7 @@ class SesApp extends StatelessWidget {
           title: 'S.E.S. - Smile. Enjoy. Story.',
           debugShowCheckedModeBanner: false,
           theme: SesTheme.build(),
-          home: const _GameRoot(),
+          home: _GameRoot(experience: experience),
         ),
       ),
     );
@@ -66,7 +78,9 @@ class SesApp extends StatelessWidget {
 /// Swaps between the loading state, the main game shell, and the
 /// end-of-game screens based on [GameController.state.status].
 class _GameRoot extends StatelessWidget {
-  const _GameRoot();
+  const _GameRoot({required this.experience});
+
+  final AppExperience experience;
 
   @override
   Widget build(BuildContext context) {
@@ -78,6 +92,9 @@ class _GameRoot extends StatelessWidget {
           return const PhoneFrame(
             child: Scaffold(body: Center(child: CircularProgressIndicator())),
           );
+        }
+        if (experience == AppExperience.publicDemo01) {
+          return const PhoneFrame(child: PublicDemo01PlaceholderScreen());
         }
         if (controller.showStartChoice) {
           return const PhoneFrame(child: StartChoiceScreen());

@@ -266,7 +266,20 @@ async function openEngineerDetail(page: import('@playwright/test').Page): Promis
   expect(card, `no engineer card on 社員 tab`).toBeTruthy();
   await clickResilient(page, byButton(page, card!.name), card!.name);
   await page.waitForTimeout(500);
-  return snapshotScreen(page);
+  // Bounded poll for a genuinely non-empty read, not a single snapshot right
+  // after a fixed 500ms wait: this function's return value is exactly what
+  // the offer-wait loop's own `proceed` check reads (§ PROCEED_TO_INTERVIEW
+  // lookup) — a snapshot caught mid-route-transition here (WebKit's own
+  // documented slower settle time, see waitForTabBar's doc comment in the
+  // sibling spec file for the CPU-throttling numbers this order of magnitude
+  // is sized against) would silently read as "no offer this week" even when
+  // a real 面談へ進む card was seconds away from rendering.
+  let detail = await snapshotScreen(page);
+  for (let i = 0; i < 40 && detail.buttons.length === 0 && detail.texts.length === 0; i++) {
+    await page.waitForTimeout(300);
+    detail = await snapshotScreen(page);
+  }
+  return detail;
 }
 
 /** Scrolls the current screen's `ListView` down (bounded, polling for the

@@ -10,6 +10,8 @@ enum PublicDemoApplicantStage {
   preEntryIntroduced,
   preEntryPartnerPassed,
   preEntryPartnerFailed,
+  preEntryClientPassed,
+  preEntryClientFailed,
   juneOrdered,
 }
 

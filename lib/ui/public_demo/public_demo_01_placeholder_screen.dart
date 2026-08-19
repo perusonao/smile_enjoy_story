@@ -1,11 +1,8 @@
 import 'package:flutter/material.dart';
 
+import '../../game/public_demo/public_demo_sales.dart';
 import '../../game/public_demo/public_demo_state.dart';
 
-/// First playable slice of Public Demo 0.1.
-///
-/// This screen intentionally stays isolated from the development build while
-/// the monthly demo loop is introduced incrementally.
 class PublicDemo01PlaceholderScreen extends StatefulWidget {
   const PublicDemo01PlaceholderScreen({super.key});
 
@@ -18,6 +15,7 @@ class _PublicDemo01PlaceholderScreenState
     extends State<PublicDemo01PlaceholderScreen> {
   static const _mvpMonthlyExpenses = 800000;
   PublicDemoState _state = PublicDemoState.aprilStart();
+  List<PublicDemoEngineerSales> _engineers = publicDemoInitialEngineers;
 
   String _yen(int value) {
     final digits = value.toString();
@@ -29,6 +27,90 @@ class _PublicDemo01PlaceholderScreenState
     return '¥$buffer';
   }
 
+  String _stageLabel(PublicDemoSalesStage stage) => switch (stage) {
+        PublicDemoSalesStage.waiting => '待機',
+        PublicDemoSalesStage.skillSheet => 'SkillSheet確認済み',
+        PublicDemoSalesStage.selling => '営業中',
+        PublicDemoSalesStage.introduced => '案件紹介あり',
+        PublicDemoSalesStage.partnerInterviewPassed => '上位会社面談 合格',
+        PublicDemoSalesStage.clientInterviewPassed => '客先面談 合格',
+        PublicDemoSalesStage.ordered => '5月分 受注済み',
+      };
+
+  void _setStage(int index, PublicDemoSalesStage stage) {
+    setState(() {
+      final next = [..._engineers];
+      next[index] = next[index].copyWith(stage: stage);
+      _engineers = next;
+    });
+  }
+
+  void _partnerInterview(int index) {
+    if (_state.salesRemaining <= 0) return;
+    setState(() {
+      _state = _state.useSalesSlot();
+      final next = [..._engineers];
+      next[index] = next[index].copyWith(
+        stage: PublicDemoSalesStage.partnerInterviewPassed,
+      );
+      _engineers = next;
+    });
+  }
+
+  Widget _engineerCard(int index) {
+    final engineer = _engineers[index];
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(engineer.name, style: Theme.of(context).textTheme.titleMedium),
+            Text(engineer.summary),
+            const SizedBox(height: 6),
+            Text('状態：${_stageLabel(engineer.stage)}'),
+            const SizedBox(height: 10),
+            if (engineer.stage == PublicDemoSalesStage.waiting)
+              FilledButton.tonal(
+                onPressed: () => _setStage(index, PublicDemoSalesStage.skillSheet),
+                child: const Text('SkillSheetを確認'),
+              ),
+            if (engineer.stage == PublicDemoSalesStage.skillSheet)
+              FilledButton(
+                onPressed: () => _setStage(index, PublicDemoSalesStage.selling),
+                child: const Text('営業を開始'),
+              ),
+            if (engineer.stage == PublicDemoSalesStage.selling)
+              FilledButton.tonal(
+                onPressed: () => _setStage(index, PublicDemoSalesStage.introduced),
+                child: const Text('案件紹介を確認'),
+              ),
+            if (engineer.stage == PublicDemoSalesStage.introduced)
+              FilledButton(
+                onPressed: _state.salesRemaining == 0
+                    ? null
+                    : () => _partnerInterview(index),
+                child: const Text('上位会社面談（営業1枠）'),
+              ),
+            if (engineer.stage == PublicDemoSalesStage.partnerInterviewPassed)
+              FilledButton.tonal(
+                onPressed: () => _setStage(
+                  index,
+                  PublicDemoSalesStage.clientInterviewPassed,
+                ),
+                child: const Text('客先面談を実施（自動）'),
+              ),
+            if (engineer.stage == PublicDemoSalesStage.clientInterviewPassed)
+              FilledButton(
+                onPressed: () => _setStage(index, PublicDemoSalesStage.ordered),
+                child: const Text('5月分の発注を受注'),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -37,10 +119,7 @@ class _PublicDemo01PlaceholderScreenState
         child: ListView(
           padding: const EdgeInsets.all(16),
           children: [
-            Text(
-              '${_state.month}月',
-              style: Theme.of(context).textTheme.headlineMedium,
-            ),
+            Text('${_state.month}月', style: Theme.of(context).textTheme.headlineMedium),
             const SizedBox(height: 12),
             Card(
               child: Padding(
@@ -49,49 +128,34 @@ class _PublicDemo01PlaceholderScreenState
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text('現預金 ${_yen(_state.cash)}'),
-                    const SizedBox(height: 8),
                     Text('在籍 技術者${_state.engineerCount}名 / 総務${_state.adminCount}名'),
                     Text('待機技術者 ${_state.engineersWaiting}名'),
                     const SizedBox(height: 8),
-                    Text(
-                      '営業対応 ${_state.salesUsed}/${_state.salesCapacity} '
-                      '（残り${_state.salesRemaining}枠）',
-                    ),
+                    Text('営業対応 ${_state.salesUsed}/${_state.salesCapacity}（残り${_state.salesRemaining}枠）'),
                   ],
                 ),
               ),
             ),
-            const SizedBox(height: 12),
             if (_state.month == 4) ...[
-              const Text('4月のMVP-A'),
-              const SizedBox(height: 8),
-              const Text('SkillSheet・案件営業・面談は次の実装単位で接続します。'),
               const SizedBox(height: 12),
-              FilledButton(
-                onPressed: _state.salesRemaining == 0
-                    ? null
-                    : () => setState(() => _state = _state.useSalesSlot()),
-                child: const Text('営業枠を1回使う（仮）'),
-              ),
+              Text('技術者', style: Theme.of(context).textTheme.titleLarge),
               const SizedBox(height: 8),
+              for (var i = 0; i < _engineers.length; i++) _engineerCard(i),
+              const SizedBox(height: 12),
               OutlinedButton(
-                onPressed: () => setState(
-                  () => _state = _state.advanceToMay(
-                    monthlyExpenses: _mvpMonthlyExpenses,
-                  ),
-                ),
-                child: const Text('4月を終了して5月へ（仮）'),
+                onPressed: () => setState(() {
+                  _state = _state.advanceToMay(monthlyExpenses: _mvpMonthlyExpenses);
+                }),
+                child: const Text('4月を終了して5月へ'),
               ),
               const SizedBox(height: 8),
               const Text('暫定月間支出：¥800,000（バランス調整対象）'),
             ] else ...[
-              const Card(
+              const SizedBox(height: 12),
+              Card(
                 child: Padding(
-                  padding: EdgeInsets.all(16),
-                  child: Text(
-                    '5月を開始しました。\n'
-                    '4月に案件を獲得できなかった場合も、技術者2名は待機状態のまま継続します。',
-                  ),
+                  padding: const EdgeInsets.all(16),
+                  child: Text('5月を開始しました。4月に案件を獲得できなかった技術者は待機状態で継続します。'),
                 ),
               ),
             ],

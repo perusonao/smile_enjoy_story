@@ -211,6 +211,33 @@ async function settleAndScan(page: import('@playwright/test').Page, textOffender
   return snap;
 }
 
+// Same order of magnitude as beginner-mode-waiting-and-recruitment.spec.ts's
+// own waitForAnyEnabledButton/waitForInterviewScreenTransition (40×300ms).
+const NEXT_WEEK_POLL_MS = 300;
+const NEXT_WEEK_MAX_WAIT_MS = 12_000;
+
+/** Polls (bounded, not a single instantaneous read) until Home's own "次の
+ * 週へ" button is actually enabled, or the window elapses.
+ *
+ * Real WebKit CI evidence (run 32246344921): the offer-wait loop below used
+ * to read `next` from one bare `snapshotScreen()` call. When that single
+ * read happened to land while "次の週へ" hadn't rendered/enabled yet under
+ * WebKit's slower settle time (the same class of transition this harness
+ * already treats specially everywhere else — see `waitForTabBar`'s own doc
+ * comment for the CPU-throttling numbers this is sized against), the loop's
+ * own `if (!next) break;` gave up on the *entire* wait immediately — not a
+ * real "no offer within 10 weeks" outcome, just a single unlucky read
+ * mistaken for a stable absence. */
+async function waitForNextWeekButton(page: import('@playwright/test').Page, maxWaitMs = NEXT_WEEK_MAX_WAIT_MS): Promise<ScreenSnapshot> {
+  let snap = await snapshotScreen(page);
+  const start = Date.now();
+  while (Date.now() - start < maxWaitMs && !snap.buttons.some((b) => b.enabled && b.name.startsWith(NEXT_WEEK_PREFIX))) {
+    await page.waitForTimeout(NEXT_WEEK_POLL_MS);
+    snap = await snapshotScreen(page);
+  }
+  return snap;
+}
+
 /** 社員画面 Phase 2 (レイアウト改修) added a top すべて/参画中/待機中 filter row
  * above the roster — each chip is itself a real, enabled a11y `button`
  * ("すべて N", "参画中 N", "待機中 N"), so it now sits ahead of the real
@@ -371,7 +398,7 @@ for (const seed of parsedSeeds.error ? [] : parsedSeeds.seeds) {
     // reported count accurate regardless of where the loop breaks.
     while (weeksWaited < MAX_WEEKS_TO_WAIT_FOR_OFFER && !offerAccepted) {
       await settleAndScan(page, textOffenders);
-      snap = await snapshotScreen(page);
+      snap = await waitForNextWeekButton(page);
       const next = snap.buttons.find((b) => b.enabled && b.name.startsWith(NEXT_WEEK_PREFIX));
       if (next) {
         await clickResilient(page, byButton(page, next.name), next.name);

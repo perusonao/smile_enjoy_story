@@ -535,7 +535,18 @@ for (const seed of parsedSeeds.seeds) {
     // individual roll's outcome.
     expect(await waitForTabBar(page, textOffenders, '採用'), '採用 tab never became visible before the first hire attempt').toBe(true);
     await clickResilient(page, byTab(page, '採用'), '採用タブ');
-    await page.waitForTimeout(500);
+    // Real WebKit CI evidence (run 32246344921): a fixed 500ms here was not
+    // always enough for the candidate ListView's own lazily-materialized
+    // semantics to settle under WebKit's slower rendering — the very first
+    // attempt's own `getByRole('button', { name: /未面接/ }).first()` click
+    // (below) resolved to a real, counted node but never passed Playwright's
+    // stability check for the full 15s clickResilient budget. Same
+    // "poll for real readiness, not a fixed sleep" shape already proven at
+    // every other screen-transition wait in this file — `waitForAnyEnabledButton`
+    // reads `buttons`, not `texts`, so the ListView's own truncated-aria-label
+    // issue (§ comment above, why `getByRole` and not `snapshotScreen` is used
+    // for the candidate click itself) doesn't affect it.
+    await waitForAnyEnabledButton(page);
 
     // A handful of candidates in a row is enough to prove the interview ->
     // decision -> back-to-recruitment-tab cycle is genuinely repeatable

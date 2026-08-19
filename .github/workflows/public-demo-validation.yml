@@ -1,0 +1,38 @@
+name: Public Demo Validation
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'lib/game/public_demo/**'
+      - 'lib/ui/public_demo/**'
+      - 'test/game/public_demo/**'
+      - '.github/workflows/public-demo-validation.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: public-demo-validation-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate-public-demo:
+    name: Public Demo only
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: '3.44.8'
+          cache: true
+      - name: Flutter version
+        run: flutter --version
+      - name: Dependencies
+        run: flutter pub get
+      - name: Analyze Public Demo files
+        run: flutter analyze lib/game/public_demo lib/ui/public_demo
+      - name: Public Demo unit tests
+        run: flutter test test/game/public_demo
+      - name: Build web
+        run: flutter build web --release

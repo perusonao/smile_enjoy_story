@@ -221,7 +221,15 @@ export async function playBeginnerModeThroughJune(page: Page, options: BeginnerM
     if (usesRoleTab) {
       await page.getByRole('tab', { name: HOME_TAB, exact: true }).click();
     } else if (usesDialogScope) {
-      await page.locator('[role="dialog"], [role="alertdialog"]').getByRole('button', { name: clicked, exact: true }).click();
+      // `.count()`-gated (same reasoning as the spec files' own dialog-
+      // dismiss fix): an unguarded scoped `.click()` would block for up to
+      // Playwright's default actionTimeout if the dialog this tick's
+      // snapshot saw has already closed by the time this line runs, instead
+      // of just moving on to the next tick's fresh snapshot.
+      const closeBtn = page.locator('[role="dialog"], [role="alertdialog"]').getByRole('button', { name: clicked, exact: true });
+      if (await closeBtn.count()) {
+        await closeBtn.click().catch(() => {});
+      }
     } else {
       await page.getByRole('button', { name: clicked, exact: true }).first().click();
     }

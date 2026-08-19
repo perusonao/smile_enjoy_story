@@ -127,7 +127,20 @@ async function settleAndScan(
     if (stopWhen?.(snap)) return snap;
     const close = firstEnabledDialogButton(snap, CLOSE);
     if (!close) return null;
-    await dialogScope(page).getByRole('button', { name: close.name, exact: true }).click();
+    // `.count()`-gated, same as `waitForTabBar` below (its own doc comment
+    // explains why): a plain scoped `.click()` here would otherwise block on
+    // Playwright's own actionability auto-wait (the config's 15s
+    // actionTimeout) if the dialog this snapshot saw has already closed by
+    // the time this line runs — a real, common race, not a hypothetical one
+    // (CI run 32244016260: this exact class of unguarded wait, one call site
+    // over, starved the rest of this function's own 15-iteration budget and
+    // surfaced as a "ホーム tab never appeared" timeout several steps later).
+    // A `.count()` of 0 here just means the dialog is already gone — nothing
+    // to dismiss, loop back to the top and re-read the screen fresh.
+    const closeBtn = dialogScope(page).getByRole('button', { name: close.name, exact: true });
+    if (await closeBtn.count()) {
+      await closeBtn.click().catch(() => {});
+    }
     await page.waitForTimeout(500);
     const homeTab = page.getByRole('tab', { name: 'ホーム', exact: true });
     if (await homeTab.count()) {
@@ -312,7 +325,16 @@ async function clickResilient(page: import('@playwright/test').Page, locate: () 
       const snap = await snapshotScreen(page);
       const close = firstEnabledDialogButton(snap, CLOSE.filter((name) => name !== label));
       if (close) {
-        await dialogScope(page).getByRole('button', { name: close.name, exact: true }).click().catch(() => {});
+        // `.count()`-gated (see settleAndScan's own doc comment above for
+        // why) — the dialog this snapshot saw can already be gone by the
+        // time this line runs, and a plain scoped `.click()` would then
+        // block for up to this whole function's per-attempt budget waiting
+        // on a match that will never appear, starving every remaining retry
+        // this call still had left.
+        const closeBtn = dialogScope(page).getByRole('button', { name: close.name, exact: true });
+        if (await closeBtn.count()) {
+          await closeBtn.click().catch(() => {});
+        }
         await page.waitForTimeout(300);
       }
       // Otherwise just loop straight back to a fresh `locate()` call — the

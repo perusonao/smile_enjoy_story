@@ -159,7 +159,19 @@ async function clickResilient(page: import('@playwright/test').Page, locate: () 
       const snap = await snapshotScreen(page);
       const close = firstEnabledDialogButton(snap, CLOSE.filter((name) => name !== label));
       if (close) {
-        await dialogScope(page).getByRole('button', { name: close.name, exact: true }).click().catch(() => {});
+        // `.count()`-gated, same as `waitForTabBar` in
+        // beginner-mode-waiting-and-recruitment.spec.ts (its own doc comment
+        // explains why): the dialog this snapshot saw can already be gone by
+        // the time this line runs, and a plain scoped `.click()` would then
+        // block for up to this whole function's per-attempt budget waiting
+        // on a match that will never appear (CI run 32244016260: this exact
+        // unguarded-wait shape, at a sibling call site, starved a retry loop
+        // of its remaining attempts and surfaced as an unrelated tab timeout
+        // several steps later).
+        const closeBtn = dialogScope(page).getByRole('button', { name: close.name, exact: true });
+        if (await closeBtn.count()) {
+          await closeBtn.click().catch(() => {});
+        }
         await page.waitForTimeout(300);
       }
     }

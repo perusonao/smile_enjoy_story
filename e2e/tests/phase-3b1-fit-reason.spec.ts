@@ -35,6 +35,15 @@
 // scroll call inside the offer-wait loop below for the full root cause and
 // the reproduction that separated "viewport height" from "browser engine".
 //
+// Follow-up correction (same investigation, second CI round): that first fix
+// scrolled with `page.mouse.wheel()`, which fixed `mobile-chromium` but threw
+// on `mobile-webkit` — Playwright does not implement `mouse.wheel` for a
+// touch-emulated WebKit context at all. That is a *separate*, purely
+// mechanical issue about **how** to scroll, and changes nothing about the
+// viewport-fold/`SliverList` diagnosis above, which is **why** scrolling is
+// needed. `scrollStep` below replaces the mechanism with plain in-page DOM
+// calls that behave identically on both engines.
+//
 // No RNG-dependent *outcome* is ever a pass/fail condition here (§ this
 // PR's brief): whether the client interview this offer leads into ends up
 // passing or failing is never inspected — this file only proves the FitBadge
@@ -195,27 +204,93 @@ async function openEngineerDetail(page: import('@playwright/test').Page): Promis
   return snapshotScreen(page);
 }
 
+/** One scroll impulse on whatever `Scrollable` the current screen renders,
+ * expressed entirely in standard DOM calls run *inside* the page.
+ *
+ * This is deliberately **not** `page.mouse.wheel()`. That is a Playwright
+ * high-level input API, and on a touch-emulated WebKit context Playwright
+ * refuses it outright ("mouse.wheel: Mouse wheel is not supported in mobile
+ * WebKit") — so the first version of {@link scrollUntilButtonFound} threw on
+ * `mobile-webkit` before it could scroll anything. That is a purely
+ * mechanical *how do we scroll* limitation of Playwright's own mouse API; it
+ * is unrelated to *why* this file has to scroll at all (see
+ * {@link scrollUntilButtonFound}'s own comment for that, separate, still-valid
+ * root cause). `page.evaluate` + `EventTarget.dispatchEvent`/`scrollTop` are
+ * plain DOM, identical in Chromium and WebKit, and never go through the
+ * unsupported API.
+ *
+ * Two engine-agnostic paths, in order — both verified against this app's real
+ * Flutter Web output (canvaskit, `?e2e=1` semantics enabled, iPhone 14
+ * viewport), not assumed:
+ *  1. With semantics on, Flutter's engine gives every `Scrollable` a real
+ *     `<flt-semantics>` element with `overflow-y: scroll`, and mirrors the
+ *     framework's scroll offset onto it; writing its `scrollTop` moves the
+ *     Flutter list by exactly that many pixels (measured: `scrollTop`
+ *     0 → 120 → 240 shifted every child semantics node's `getBoundingClientRect`
+ *     by the same 120px each time). That is the accessibility-scroll path a
+ *     screen reader itself drives, so it is as real as a user gesture.
+ *  2. If no such container exists yet, or it is already clamped at the end of
+ *     the semantics extent while the list still has more to materialize, fall
+ *     back to dispatching a plain `WheelEvent`. Flutter Web's `PointerBinding`
+ *     attaches its `wheel` listener on the view root in *every* one of its
+ *     pointer/touch/mouse adapters, so the engine turns it into the same
+ *     scroll signal a real wheel would (measured: three dispatched events took
+ *     the same list from `scrollTop` 0 to its maximum 286, and Flutter called
+ *     `preventDefault()` on all three — i.e. it really did consume them).
+ *
+ * Returns which of the two paths this step took — diagnostic only; the
+ * caller's own stall detection polls the real semantics tree, never this. */
+async function scrollStep(page: import('@playwright/test').Page, deltaY: number): Promise<'container' | 'wheel'> {
+  return page.evaluate((dy) => {
+    const container = Array.from(document.querySelectorAll('flt-semantics')).find(
+      (el) => getComputedStyle(el).overflowY === 'scroll' && el.scrollHeight > el.clientHeight + 1,
+    ) as HTMLElement | undefined;
+    if (container) {
+      const before = container.scrollTop;
+      container.scrollTop = before + dy;
+      if (container.scrollTop !== before) return 'container' as const;
+    }
+    const x = Math.floor(window.innerWidth / 2);
+    const y = Math.floor(window.innerHeight / 2);
+    const target = document.elementFromPoint(x, y) ?? document.body;
+    target.dispatchEvent(
+      new WheelEvent('wheel', {
+        deltaX: 0,
+        deltaY: dy,
+        deltaMode: 0, // DOM_DELTA_PIXEL — `dy` is already in CSS pixels
+        clientX: x,
+        clientY: y,
+        screenX: x,
+        screenY: y,
+        bubbles: true,
+        cancelable: true,
+        composed: true,
+      }),
+    );
+    return 'wheel' as const;
+  }, deltaY);
+}
+
 /** Scrolls the current screen's `ListView` down (bounded, polling for the
  * target rather than a fixed scroll amount) until [buttonName] shows up
  * among the enabled buttons, or the list stops changing (genuinely not
- * there / already at the bottom). EngineerDetailScreen renders 営業状況
- * (and its "Fitの理由を見る") well below the fold — Flutter Web's
- * `SliverList` only materializes semantics for children within/near the
- * current viewport, so a fresh route mount never has it in the
- * accessibility tree until scrolled into view, confirmed directly against
+ * there / already at the bottom).
+ *
+ * Why this is needed at all: EngineerDetailScreen renders its 面談依頼 card
+ * and its 営業状況 card (and that card's "Fitの理由を見る") well below the
+ * fold — Flutter Web's `SliverList` only materializes semantics for children
+ * within/near the current viewport, so a fresh route mount never has them in
+ * the accessibility tree until scrolled into view, confirmed directly against
  * the real ariaSnapshot() output during development (the section was
- * completely absent, not just unscrolled-to, until this). Mouse wheel
- * events, not a Playwright `scrollIntoView` call — there's no DOM element
- * to target one at until this scroll makes it exist. */
+ * completely absent, not just unscrolled-to, until this). That is also why
+ * this can't be a Playwright `locator.scrollIntoViewIfNeeded()` on the target
+ * itself: there is no DOM element to target one at until this scroll makes it
+ * exist.
+ *
+ * *How* the scrolling is done is a separate concern entirely — see
+ * {@link scrollStep}, which exists because Playwright's `page.mouse.wheel()`
+ * is unavailable on mobile WebKit. */
 async function scrollUntilButtonFound(page: import('@playwright/test').Page, buttonName: string, maxSteps = 15): Promise<ScreenSnapshot> {
-  // `page.mouse.wheel` scrolls whatever is under the *current* virtual mouse
-  // position — which, right after a `.click()` on the previous screen,
-  // still sits wherever that click landed (a different route entirely).
-  // Re-center it over this screen's own body first so the wheel events
-  // reliably land on this screen's `ListView`, not wherever the last click
-  // happened to be.
-  const viewport = page.viewportSize();
-  if (viewport) await page.mouse.move(viewport.width / 2, viewport.height / 2);
   await page.waitForTimeout(200);
   let snap = await snapshotScreen(page);
   let everChanged = false;
@@ -223,7 +298,7 @@ async function scrollUntilButtonFound(page: import('@playwright/test').Page, but
   let lastFingerprint = JSON.stringify(snap.texts);
   for (let i = 0; i < maxSteps; i++) {
     if (snap.buttons.some((b) => b.enabled && b.name === buttonName)) return snap;
-    await page.mouse.wheel(0, 500);
+    await scrollStep(page, 500);
     await page.waitForTimeout(300);
     snap = await snapshotScreen(page);
     const fingerprint = JSON.stringify(snap.texts);

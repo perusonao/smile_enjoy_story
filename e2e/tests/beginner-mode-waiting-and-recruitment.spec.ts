@@ -666,18 +666,22 @@ for (const seed of parsedSeeds.seeds) {
     // fire correctly once the right GameState facts hold, so this long-
     // running E2E has no remaining reason to search for that specific text.
     //
-    // settleAndScan first (real WebKit CI evidence, run 32245044228): the
-    // loop's own waitForTabBar above only confirms the 採用 tab is visible
-    // after the *last* hire attempt — it does not guarantee a chained
-    // tutorial dialog possibly still attaching right around that same
-    // moment has also finished and been dismissed. A straggler dialog like
-    // that can still be covering the tab bar by the time this direct click
-    // runs, technically leaving the ホーム tab present in the DOM (so its
-    // locator resolves) but not yet actionable — which reads identically to
-    // "the tab never appeared" from a bare click's own actionability wait,
-    // and was exactly the observed failure (a 15s+retry timeout on this
-    // exact locator, both attempts, WebKit only).
-    await settleAndScan(page, textOffenders);
+    // waitForTabBar, not a bare settleAndScan + clickResilient (real CI
+    // evidence, run 32245044228 on WebKit and again run 32250974334 on
+    // Chromium — both attempts, both retries, identical "waiting for
+    // getByRole('tab', { name: 'ホーム' })" timeout): the loop's own
+    // waitForTabBar above only confirms the 採用 tab is visible after the
+    // *last* hire attempt — it does not guarantee a chained tutorial dialog
+    // possibly still attaching right around that same moment has also
+    // finished and been dismissed, and a single settleAndScan pass isn't
+    // guaranteed to still be looking at the moment such a straggler
+    // attaches. `waitForTabBar` is this exact file's own already-proven
+    // mechanism for the identical class of problem (see its own doc
+    // comment's CI investigation) — a bounded, repeated dismiss-and-poll
+    // loop, not a one-shot settle — used here for the ホーム tab the same
+    // way every other tab-bar transition in this file already uses it for
+    // 採用.
+    expect(await waitForTabBar(page, textOffenders, 'ホーム'), 'ホーム tab never became visible after the hire-attempt loop').toBe(true);
     await clickResilient(page, byTab(page, 'ホーム'), 'ホームタブ');
     await page.waitForTimeout(500);
     for (let i = 0; i < 3; i++) {

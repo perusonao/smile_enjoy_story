@@ -434,14 +434,29 @@ for (const seed of parsedSeeds.error ? [] : parsedSeeds.seeds) {
     // explicitly right after the week actually advances — independent of
     // whether *this same* iteration goes on to find the offer — keeps the
     // reported count accurate regardless of where the loop breaks.
+    // Consecutive-failure counter for "次の週へ genuinely never appeared",
+    // separate from weeksWaited (real CI evidence: a single `if (!next)
+    // break` on the very first occurrence gave up on the *entire* wait after
+    // one bad read, misreporting a possibly-transient miss as "no offer
+    // within 10 weeks" when only a handful of weeks — sometimes as few as
+    // one — had actually been attempted). Bounded the same as every other
+    // stall-detection counter in this harness (ses-player.ts's
+    // STALL_REPEAT_THRESHOLD, beginner-mode-player.ts's own streak count) —
+    // finite, not the "genuinely stuck" trigger being removed, just no
+    // longer a single-observation trigger.
+    let noNextStreak = 0;
+    const MAX_NO_NEXT_STREAK = 3;
     while (weeksWaited < MAX_WEEKS_TO_WAIT_FOR_OFFER && !offerAccepted) {
       await settleAndScan(page, textOffenders);
       snap = await waitForNextWeekButton(page);
       const next = snap.buttons.find((b) => b.enabled && b.name.startsWith(NEXT_WEEK_PREFIX));
       if (next) {
+        noNextStreak = 0;
         await clickResilient(page, byButton(page, next.name), next.name);
         await page.waitForTimeout(700);
         weeksWaited++;
+      } else {
+        noNextStreak++;
       }
       await settleAndScan(page, textOffenders);
 
@@ -460,9 +475,15 @@ for (const seed of parsedSeeds.error ? [] : parsedSeeds.seeds) {
       await page.waitForTimeout(400);
       await clickResilient(page, byTab(page, HOME_TAB), 'ホームタブ');
       await page.waitForTimeout(400);
-      if (!next) break; // no next-week button and no offer — genuinely stuck, don't loop forever
+      // Genuinely stuck (no next-week button for several iterations in a
+      // row, and no offer) — don't loop forever, but don't give up on the
+      // first miss either.
+      if (noNextStreak >= MAX_NO_NEXT_STREAK) break;
     }
-    expect(offerAccepted, `no 面談依頼/${PROCEED_TO_INTERVIEW} appeared within ${MAX_WEEKS_TO_WAIT_FOR_OFFER} weeks (seed=${seed}) — not a stall/timeout tuning issue, see this file's determinism note`).toBe(true);
+    expect(
+      offerAccepted,
+      `no 面談依頼/${PROCEED_TO_INTERVIEW} appeared within ${MAX_WEEKS_TO_WAIT_FOR_OFFER} weeks (seed=${seed}, actually attempted ${weeksWaited} week-advance(s), noNextStreak=${noNextStreak}) — not a stall/timeout tuning issue, see this file's determinism note`,
+    ).toBe(true);
 
     // Phase 3: the accepted application is now `active` — the exact real
     // GameState transition `_ApplicationRow`'s FitBadge/`Fitの理由を見る`

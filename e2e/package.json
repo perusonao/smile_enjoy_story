@@ -12,7 +12,9 @@
     "report": "playwright show-report",
     "seeds:10": "cross-env SES_E2E_SEEDS=100001,100002,100003,100004,100005,100006,100007,100008,100009,100010 playwright test tests/founding-first-assignment.spec.ts",
     "build:replay": "node scripts/build-replay-manifest.mjs",
-    "test:replay-unit": "node --test scripts/*.test.mjs replay-viewer/lib/*.test.mjs"
+    "test:replay-unit": "node --test scripts/*.test.mjs replay-viewer/lib/*.test.mjs",
+    "showcase:video": "playwright test --config=playwright.showcase.config.ts",
+    "showcase:mp4": "node scripts/convert-showcase-video.mjs"
   },
   "devDependencies": {
     "@playwright/test": "^1.55.0",

@@ -404,3 +404,46 @@ GitHub → **Actions** tab → the "Playwright E2E (S.E.S.)" run → scroll to
 `test-results/` (videos, screenshots, result JSON, action traces) and
 `playwright-report/` (open `playwright-report/index.html` locally for the
 interactive HTML report with embedded video/trace links).
+
+## Video showcase (manual only)
+
+`tests-showcase/ui-showcase-video.spec.ts` is a **separate, manual-only**
+spec whose entire purpose is a video a human can watch — not test speed —
+covering the UI改修 done so far: Home, 社員タブ Phase 2 (すべて/参画中/
+待機中フィルター, サマリー, 稼働率, 平均Morale/Trust, EngineerAvatar), 案件
+タブ Phase 2 (営業中/選考中/オファー/参画中サマリー, 要対応, 営業状況,
+フィルターChip, Fit ◎○△×, 参画中案件, 「案件一覧を見る」導線), and — when
+reachable in a given run — an image-backed event modal (画像付きイベント
+モーダル Phase 1).
+
+It lives in its own `tests-showcase/` directory with its own
+`../playwright.showcase.config.ts` (separate `testDir`, `outputDir`, and
+report folder) — `npm test`/CI's own `playwright test` (which only ever
+looks inside `./tests`, per `playwright.config.ts`) never sees this spec at
+all, so it adds zero time to the normal suite and needed zero changes to
+`playwright.config.ts` or any spec under `tests/`. Its own driver helpers
+live in `helpers/showcase-player.ts`, a new file never imported by anything
+under `tests/`.
+
+```bash
+# 1-2. Same Flutter/E2E setup as above (flutter build web, npm install)
+# 3. Install Playwright's Chromium (this spec only ever uses Chromium,
+#    smartphone-portrait — no WebKit project exists in its config at all)
+npx playwright install chromium
+
+# 4. Run it (Chromium, Pixel 7 portrait profile) — always records video
+npm run showcase:video
+# Fixed seed by default (100001) for a reproducible run/order; override with:
+SES_E2E_SHOWCASE_SEED=12345 npm run showcase:video
+
+# 5. Convert the recorded .webm to an H.264/yuv420p/faststart .mp4
+npm run showcase:mp4
+```
+
+Drives the real Founding→First Assignment flow (reusing
+`helpers/ses-player.ts`'s existing driver, untouched), then a short,
+best-effort enrichment phase (recruit one more employee, start their
+sales) purely so 社員タブ/案件タブ have more than the single founding hire
+to show, before visiting each screen with a short pause so a human can
+actually read it. Every step is a real tap on real production UI — no
+debug/state API (see "Why no debug API" above).

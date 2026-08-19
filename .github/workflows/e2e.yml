@@ -46,13 +46,43 @@ name: Playwright E2E (S.E.S.)
 #                    browsers' results directly. Needed because splitting
 #                    Playwright's own JSON reporter output across two job
 #                    runs would otherwise scatter it into two reports.
+#                    QA-only tool, not part of the game: `build` does NOT
+#                    `needs:` this job (see `build` below), and it carries
+#                    its own bounded `timeout-minutes` so a stuck step here
+#                    (e.g. `apt-get install ffmpeg` hanging) can never stall
+#                    the game's Pages deploy — it can only cost itself up to
+#                    that timeout before failing on its own.
 #   check-latest   — push / workflow_dispatch only. Stale-run guard (see
 #                    e2e/scripts/check-latest-main.mjs): is this run's
 #                    commit still origin/main's actual tip?
-#   build          — Flutter web release build + fold in this *same run's*
-#                    e2e-replay-package artifact (no cross-run token/
-#                    run-id needed — it's the same workflow run) +
-#                    upload-pages-artifact.
+#   build          — Flutter web release build + best-effort fold-in of this
+#                    *same run's* e2e-replay-package artifact (no cross-run
+#                    token/run-id needed — it's the same workflow run) +
+#                    upload-pages-artifact. Deliberately does NOT `needs:
+#                    replay-package` — replay packaging is a QA convenience,
+#                    not a game-deploy gate, and nothing here ever reads
+#                    `needs.replay-package.result`. In practice `build`'s own
+#                    checkout/Flutter-install/analyze/test/build-web steps
+#                    take longer than replay-package's own run, so by the
+#                    time `build` reaches "Download e2e-replay-package" the
+#                    artifact has almost always already been uploaded. If
+#                    replay-package is still running (or failed, or hit its
+#                    timeout) when `build` gets there, the download step
+#                    (`continue-on-error: true`) simply finds nothing and
+#                    `build` deploys the game without updating
+#                    /e2e-replays/ this time. That specific run's replay is
+#                    NOT retried, queued, or picked up by any later run —
+#                    `actions/download-artifact` with no `run-id` only ever
+#                    searches the *current* workflow run, so a late
+#                    `replay-package` artifact is unreachable once this run's
+#                    `build` has already moved on. It is simply never
+#                    published; the next thing a viewer sees in
+#                    /e2e-replays/ is whichever *separate, new* replay a
+#                    later push's own `replay-package` produces, if that one
+#                    also finishes in time for that push's own `build`
+#                    (Phase 1 scope — see PHASE2 note below for a dedicated
+#                    replay-only follow-up deployment that would let a late
+#                    artifact still get published).
 #   deploy         — re-verify the stale guard immediately before
 #                    actions/deploy-pages (build's flutter build web can
 #                    take minutes; re-check right at the point of no
@@ -60,15 +90,33 @@ name: Playwright E2E (S.E.S.)
 #
 # A failed e2e-chromium/e2e-webkit job does NOT by itself block
 # check-latest/build/deploy — matching the previous design's intent ("a red
-# E2E run does not block the game deployment"). What DOES block deploy:
-# `check-latest`/`build` actually failing (build re-runs flutter
-# analyze/test against the same commit as its own independent gate —
-# deliberately not deduplicated against `validate`'s copy, so a broken
+# E2E run does not block the game deployment"). Likewise, replay-package
+# failing, timing out, or simply not having finished yet does NOT block
+# build/deploy (§ `build` above) — it is QA/dev tooling, not the game. What
+# DOES block deploy: `check-latest`/`build` actually failing (build re-runs
+# flutter analyze/test against the same commit as its own independent gate
+# — deliberately not deduplicated against `validate`'s copy, so a broken
 # build is never shipped regardless of what happened in the
 # Playwright/replay portion), the stale-SHA guard failing either check, or
 # either E2E job being cancelled/skipped (e.g. superseded by a newer push —
 # a cancelled run has no reliable replay package and a newer run's chain
 # deploys right behind it anyway).
+#
+# PHASE2 (not implemented — future option, see task report): today a
+# replay that finishes packaging *after* its push's own `build`/`deploy`
+# already ran is simply never published — it is NOT retried, queued, or
+# folded into any later run (`actions/download-artifact` with no `run-id`
+# only ever looks at the current workflow run). The next replay a viewer
+# sees is whatever separate, new replay a *later* push's own
+# `replay-package` produces, if that one finishes in time for that push's
+# own `build` (Phase 1 "best effort this run, else that run's replay is
+# lost" design). A dedicated follow-up job that re-runs `configure-pages`/
+# `upload-pages-artifact`/`deploy-pages` once replay-package finishes late
+# would need its own copy of the already-built `build/web` (or to re-run
+# `flutter build web`) plus the same `check-latest`/stale-SHA re-verification
+# `deploy` already does, to avoid redeploying a stale commit's game purely
+# to attach a replay. Left out of this change as out of scope for a minimal
+# fix.
 #
 # PRs only ever run validate/e2e-chromium/e2e-webkit (see each downstream
 # job's `if:`) — no Pages deploy happens for pull_request events.
@@ -258,6 +306,16 @@ jobs:
     needs: [e2e-chromium, e2e-webkit]
     if: always() && github.event_name == 'push'
     runs-on: ubuntu-latest
+    # QA-only packaging job — bounded so a stuck step (e.g. `apt-get install
+    # ffmpeg` hanging on the runner image, as in run 32168277905) fails this
+    # job on its own instead of running for GitHub's 360-minute default.
+    # 10 minutes is ~5-6x the slowest confirmed normal completion (run
+    # 32152694510: full job 15:19:15Z-15:20:59Z = 1m44s, of which the
+    # `apt-get install ffmpeg` step alone took 48s) — enough headroom for apt
+    # slowness, not so long that a real hang still stalls the next push's
+    # replay-package (its own concurrency group would otherwise queue behind
+    # a hung run for the remainder of that hang).
+    timeout-minutes: 10
     concurrency:
       group: e2e-replay-package-${{ github.ref }}
       cancel-in-progress: true
@@ -368,8 +426,12 @@ jobs:
         if: steps.check.outputs.is_latest != 'true'
         run: echo "::warning::Stale run for commit ${{ steps.check.outputs.target_sha }} — main's current tip has moved on. Skipping the Pages deploy for this run to avoid rolling production back."
 
+  # Deliberately does not `needs: replay-package` — see § `build` in the
+  # jobs comment above. Nothing in this job (or `deploy`) reads
+  # `needs.replay-package.result`; the download step below already treats a
+  # missing/not-yet-ready artifact as a warning, not a failure.
   build:
-    needs: [e2e-chromium, e2e-webkit, check-latest, replay-package]
+    needs: [e2e-chromium, e2e-webkit, check-latest]
     if: |
       always() &&
       needs.check-latest.result == 'success' &&
@@ -416,9 +478,14 @@ jobs:
       # only adds a static subdirectory to the already-built output.
       # Same workflow run as `replay-package`, so no run-id/cross-run token
       # needed — this simply downloads the artifact that job's own upload
-      # step produced a few jobs earlier in this run (absent when
-      # `replay-package` didn't run at all, e.g. a workflow_dispatch run,
-      # or itself failed to produce one).
+      # step produces, IF that job has already produced it by the time this
+      # step runs. `build` no longer `needs: replay-package` (§ jobs comment
+      # at the top of this file), so this is a best-effort race, not a
+      # guarantee: absent when `replay-package` didn't run at all (e.g. a
+      # workflow_dispatch run), itself failed/timed out, or simply hasn't
+      # finished uploading yet. Any of those is treated identically —
+      # `continue-on-error` below turns "not found" into a warning, never a
+      # failure.
       - name: Download e2e-replay-package
         id: download_replay
         continue-on-error: true # missing/failed artifact must not block the game deploy

@@ -1,7 +1,4 @@
 /// Minimal state for Public Demo 0.1 MVP-A.
-///
-/// Public Demo deliberately owns its month progression and sales capacity
-/// instead of reusing the development build's weekly calendar.
 class PublicDemoState {
   const PublicDemoState({
     required this.month,
@@ -11,6 +8,7 @@ class PublicDemoState {
     required this.salesCapacity,
     required this.salesUsed,
     required this.engineersWaiting,
+    required this.engineersAssigned,
   });
 
   factory PublicDemoState.aprilStart() => const PublicDemoState(
@@ -21,6 +19,7 @@ class PublicDemoState {
         salesCapacity: 4,
         salesUsed: 0,
         engineersWaiting: 2,
+        engineersAssigned: 0,
       );
 
   final int month;
@@ -30,6 +29,7 @@ class PublicDemoState {
   final int salesCapacity;
   final int salesUsed;
   final int engineersWaiting;
+  final int engineersAssigned;
 
   int get salesRemaining => salesCapacity - salesUsed;
 
@@ -38,12 +38,18 @@ class PublicDemoState {
     return copyWith(salesUsed: salesUsed + 1);
   }
 
-  PublicDemoState advanceToMay({required int monthlyExpenses}) {
+  PublicDemoState advanceToMay({
+    required int monthlyExpenses,
+    required int orderedEngineers,
+  }) {
     if (month != 4) return this;
+    final assigned = orderedEngineers.clamp(0, engineerCount);
     return copyWith(
       month: 5,
       cash: cash - monthlyExpenses,
       salesUsed: 0,
+      engineersAssigned: assigned,
+      engineersWaiting: engineerCount - assigned,
     );
   }
 
@@ -55,6 +61,7 @@ class PublicDemoState {
     int? salesCapacity,
     int? salesUsed,
     int? engineersWaiting,
+    int? engineersAssigned,
   }) =>
       PublicDemoState(
         month: month ?? this.month,
@@ -64,5 +71,6 @@ class PublicDemoState {
         salesCapacity: salesCapacity ?? this.salesCapacity,
         salesUsed: salesUsed ?? this.salesUsed,
         engineersWaiting: engineersWaiting ?? this.engineersWaiting,
+        engineersAssigned: engineersAssigned ?? this.engineersAssigned,
       );
 }

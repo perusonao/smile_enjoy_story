@@ -18,7 +18,9 @@ void main() {
     await tapAndSettle(tester, '営業開始');
     await tapAndSettle(tester, '案件紹介');
     await tapAndSettle(tester, '上位会社面談');
-    expect(find.text('客先面談'), findsOneWidget);
+    // UX-2A also renders "客先面談" in progress indicators, so the action
+    // label is no longer expected to be globally unique.
+    expect(find.text('客先面談'), findsWidgets);
     await tapAndSettle(tester, '客先面談');
     await tapAndSettle(tester, '受注');
     await tapAndSettle(tester, '4月終了→5月');

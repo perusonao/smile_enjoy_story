@@ -1,0 +1,45 @@
+name: Public Demo Preview
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'lib/app/app_entry.dart'
+      - 'lib/app/app_experience.dart'
+      - 'lib/game/public_demo/**'
+      - 'lib/ui/public_demo/**'
+      - 'lib/main.dart'
+      - '.github/workflows/public-demo-preview.yml'
+
+concurrency:
+  group: public-demo-preview-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-preview:
+    name: Build Public Demo browser preview
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: '3.44.8'
+          cache: true
+      - run: flutter pub get
+      - name: Build standalone web preview
+        run: flutter build web --release --base-href /public-demo-01/
+      - name: Add preview launcher
+        run: |
+          cat > build/web/PLAY_PUBLIC_DEMO.txt <<'EOF'
+          Public Demo 0.1 browser entry:
+          /public-demo-01/#/public-demo-01
+          EOF
+      - name: Upload standalone preview
+        uses: actions/upload-artifact@v4
+        with:
+          name: public-demo-01-web-preview
+          path: build/web
+          retention-days: 14

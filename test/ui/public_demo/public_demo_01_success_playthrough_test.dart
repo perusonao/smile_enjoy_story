@@ -37,8 +37,8 @@ void main() {
     await tapAndSettle(tester, '6月受注');
     await tapAndSettle(tester, '5月終了→6月');
     expect(find.text('6月'), findsOneWidget);
-    expect(find.textContaining('技術者3'), findsOneWidget);
-    expect(find.textContaining('参画2'), findsOneWidget);
+    expect(find.text('参画'), findsOneWidget);
+    expect(find.text('2名'), findsOneWidget);
 
     // June: accept at least one July continuation.
     await tapAndSettle(tester, '7月分の発注を確認');

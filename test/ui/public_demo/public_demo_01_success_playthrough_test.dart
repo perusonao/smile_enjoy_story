@@ -19,6 +19,12 @@ Future<void> tapAndSettle(WidgetTester tester, String text) async {
   await tester.pumpAndSettle();
 }
 
+Future<void> dismissInterviewResult(WidgetTester tester) async {
+  expect(find.text('面談結果'), findsOneWidget);
+  await tester.tap(find.widgetWithText(FilledButton, '確認'));
+  await tester.pumpAndSettle();
+}
+
 void main() {
   testWidgets('successful route reaches July with an active engineer', (tester) async {
     await tester.pumpWidget(const MaterialApp(home: PublicDemo01PlaceholderScreen()));
@@ -28,10 +34,12 @@ void main() {
     await tapAndSettle(tester, '営業開始');
     await tapAndSettle(tester, '案件紹介');
     await tapAndSettle(tester, '上位会社面談');
+    await dismissInterviewResult(tester);
     // UX-2A also renders "客先面談" in progress indicators. Action helpers
     // therefore target the actual button rather than the first matching Text.
     expect(find.text('客先面談'), findsWidgets);
     await tapAndSettle(tester, '客先面談');
+    await dismissInterviewResult(tester);
     await tapAndSettle(tester, '受注');
     await tapAndSettle(tester, '4月終了→5月');
     expect(find.text('5月'), findsOneWidget);

@@ -43,6 +43,10 @@ void main() {
     await dismissInterviewResult(tester, '客先面談');
     await tapAndSettle(tester, '受注');
     await tapAndSettle(tester, '4月終了→5月');
+    expect(find.text('新しい応募が届きました'), findsOneWidget);
+    expect(find.byKey(const Key('public-demo-recruitment-application-image')), findsOneWidget);
+    await tester.tap(find.widgetWithText(FilledButton, '確認'));
+    await tester.pumpAndSettle();
     expect(find.text('5月'), findsOneWidget);
 
     // May: Takahashi is hired and wins a June order before joining.

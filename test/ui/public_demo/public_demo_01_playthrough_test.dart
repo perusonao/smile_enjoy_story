@@ -20,6 +20,10 @@ void main() {
 
     // April: advance without winning an order. The demo must still recover into May.
     await tapAndSettle(tester, '4月終了→5月');
+    expect(find.text('新しい応募が届きました'), findsOneWidget);
+    expect(find.byKey(const Key('public-demo-recruitment-application-image')), findsOneWidget);
+    await tester.tap(find.widgetWithText(FilledButton, '確認'));
+    await tester.pumpAndSettle();
     expect(find.text('5月'), findsOneWidget);
 
     // May: advance without hiring. This is a valid failure/recovery route.

@@ -8,7 +8,7 @@ Future<void> tapAndSettle(WidgetTester tester, String text) async {
     await tester.scrollUntilVisible(
       finder,
       300,
-      scrollable: find.byType(Scrollable).first,
+      scrollable: find.byType(ListView),
     );
   } else {
     await tester.ensureVisible(finder.first);

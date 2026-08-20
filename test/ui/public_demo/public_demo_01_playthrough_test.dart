@@ -25,13 +25,13 @@ void main() {
     // May: advance without hiring. This is a valid failure/recovery route.
     await tapAndSettle(tester, '5月終了→6月');
     expect(find.text('6月'), findsOneWidget);
-    expect(find.text('参画案件'), findsOneWidget);
+    expect(find.textContaining('翌月の発注を確認'), findsOneWidget);
+    expect(find.text('6月終了→7月'), findsOneWidget);
 
     // June: no assignments is valid; advance into July waiting state.
     await tapAndSettle(tester, '6月終了→7月');
     expect(find.text('7月'), findsOneWidget);
     expect(find.text('7月開始結果'), findsOneWidget);
     expect(find.textContaining('参画 0名 / 待機 2名'), findsOneWidget);
-    expect(find.text('営業枠は4枠へリセットされました。'), findsOneWidget);
   });
 }

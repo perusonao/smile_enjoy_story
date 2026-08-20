@@ -35,6 +35,8 @@ jobs:
         run: flutter analyze lib/game/public_demo lib/ui/public_demo
       - name: Public Demo unit tests
         run: flutter test test/game/public_demo
+      - name: Interview result dialog tests
+        run: flutter test test/ui/public_demo/public_demo_interview_result_dialog_test.dart
       - name: Public Demo recovery playthrough
         run: flutter test test/ui/public_demo/public_demo_01_playthrough_test.dart
       - name: Public Demo success playthrough

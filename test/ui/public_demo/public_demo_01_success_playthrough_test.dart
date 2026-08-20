@@ -2,13 +2,18 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:smile_enjoy_story/ui/public_demo/public_demo_01_placeholder_screen.dart';
 
+Finder actionButton(String text) => find.ancestor(
+      of: find.text(text),
+      matching: find.byWidgetPredicate((widget) => widget is ButtonStyleButton),
+    );
+
 Future<void> tapAndSettle(WidgetTester tester, String text) async {
-  final finder = find.text(text);
+  final finder = actionButton(text);
   for (var i = 0; finder.evaluate().isEmpty && i < 20; i++) {
     await tester.drag(find.byType(ListView), const Offset(0, -300));
     await tester.pumpAndSettle();
   }
-  expect(finder, findsWidgets, reason: 'Could not find action: $text');
+  expect(finder, findsWidgets, reason: 'Could not find action button: $text');
   await tester.ensureVisible(finder.first);
   await tester.tap(finder.first);
   await tester.pumpAndSettle();
@@ -23,8 +28,8 @@ void main() {
     await tapAndSettle(tester, '営業開始');
     await tapAndSettle(tester, '案件紹介');
     await tapAndSettle(tester, '上位会社面談');
-    // UX-2A also renders "客先面談" in progress indicators, so the action
-    // label is no longer expected to be globally unique.
+    // UX-2A also renders "客先面談" in progress indicators. Action helpers
+    // therefore target the actual button rather than the first matching Text.
     expect(find.text('客先面談'), findsWidgets);
     await tapAndSettle(tester, '客先面談');
     await tapAndSettle(tester, '受注');

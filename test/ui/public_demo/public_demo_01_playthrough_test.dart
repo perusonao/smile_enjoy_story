@@ -10,6 +10,19 @@ Future<void> tapAndSettle(WidgetTester tester, String text) async {
     scrollable: find.byType(Scrollable).first,
   );
   await tester.tap(finder);
+  // The button's handler now awaits _precacheEventImage(...) before opening
+  // any event dialog (iOS rendering fix: decode the image before first
+  // paint instead of after). In this Flutter SDK, MultiFrameImageStreamCompleter
+  // only resolves via real wall-clock scheduling — the fake clock that
+  // tester.pump()/pumpAndSettle() drives never completes it on its own — so
+  // give the decode a real-time window via runAsync, interleaved with pumps
+  // so a completion queued mid-wait still gets picked up. Looped rather than
+  // one fixed delay since real wall-clock timing is noisier under parallel
+  // test-file execution (CPU contention) than when a file runs alone.
+  for (var i = 0; i < 10; i++) {
+    await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 150)));
+    await tester.pump();
+  }
   await tester.pumpAndSettle();
 }
 

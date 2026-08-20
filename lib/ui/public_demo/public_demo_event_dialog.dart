@@ -19,9 +19,6 @@ class PublicDemoEventDialog extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final devicePixelRatio = MediaQuery.devicePixelRatioOf(context);
-    final logicalImageWidth = MediaQuery.sizeOf(context).width - 64;
-    final cacheWidth = (logicalImageWidth * devicePixelRatio).round();
 
     return AlertDialog(
       insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
@@ -39,9 +36,26 @@ class PublicDemoEventDialog extends StatelessWidget {
                   imageAsset,
                   key: imageKey,
                   fit: BoxFit.cover,
-                  cacheWidth: cacheWidth,
-                  filterQuality: FilterQuality.low,
-                  gaplessPlayback: true,
+                  // No cacheWidth/filterQuality/gaplessPlayback here (PR #36
+                  // re-evaluated per the iOS rendering investigation):
+                  // - cacheWidth: the bundled event images are ~160-220px
+                  //   wide natively, well under any on-screen target size on
+                  //   a high-DPR phone, so a computed cacheWidth can only
+                  //   ask for an *upscale* — Flutter/Skia don't upsample
+                  //   during decode, so it had no measurable effect and just
+                  //   added MediaQuery-dependent complexity.
+                  // - filterQuality.low: dropped the paint-time filter below
+                  //   Image.asset's medium default, making the (already
+                  //   small, already-upscaled) images look softer for no
+                  //   offsetting benefit.
+                  // - gaplessPlayback: only suppresses a flicker when an
+                  //   *existing* Image element's provider is swapped; this
+                  //   dialog is rebuilt fresh via showDialog's builder every
+                  //   time, so there's no persisting element for it to help.
+                  // The actual pop-in/layout-shift this trio was reaching
+                  // for is now addressed by precaching the image before the
+                  // dialog opens (see _precacheEventImage in
+                  // public_demo_01_placeholder_screen.dart).
                   errorBuilder: (context, error, stackTrace) => Container(
                     color: scheme.surfaceContainerHighest,
                     alignment: Alignment.center,

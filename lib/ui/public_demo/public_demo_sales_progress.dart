@@ -34,12 +34,33 @@ class PublicDemoSalesProgress extends StatelessWidget {
                       color: i <= currentStep ? scheme.primaryContainer : scheme.surfaceContainerHighest,
                       borderRadius: BorderRadius.circular(14),
                     ),
-                    child: Text(
-                      '${i < currentStep ? '✓ ' : i == currentStep ? '● ' : ''}${labels[i]}',
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: i == currentStep ? FontWeight.bold : FontWeight.normal,
-                      ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        // Step markers were previously the literal characters
+                        // '✓ ' / '● ' inlined into the Text string below. Both
+                        // codepoints (U+2713, U+25CF) are missing from the
+                        // bundled NotoSansJP subset font, which made CanvasKit
+                        // fall back to an on-demand Google Fonts fetch for
+                        // just those glyphs — visible as a momentary tofu box
+                        // (see investigation report). Icon glyphs come from
+                        // the tree-shaken MaterialIcons font instead, so they
+                        // don't depend on NotoSansJP glyph coverage at all.
+                        if (i < currentStep) ...[
+                          const Icon(Icons.check, size: 12),
+                          const SizedBox(width: 2),
+                        ] else if (i == currentStep) ...[
+                          const Icon(Icons.circle, size: 8),
+                          const SizedBox(width: 3),
+                        ],
+                        Text(
+                          labels[i],
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: i == currentStep ? FontWeight.bold : FontWeight.normal,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                   if (i != labels.length - 1)

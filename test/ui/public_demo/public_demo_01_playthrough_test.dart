@@ -4,8 +4,12 @@ import 'package:smile_enjoy_story/ui/public_demo/public_demo_01_placeholder_scre
 
 Future<void> tapAndSettle(WidgetTester tester, String text) async {
   final finder = find.text(text);
-  await tester.ensureVisible(finder.first);
-  await tester.tap(finder.first);
+  await tester.scrollUntilVisible(
+    finder,
+    300,
+    scrollable: find.byType(Scrollable).first,
+  );
+  await tester.tap(finder);
   await tester.pumpAndSettle();
 }
 

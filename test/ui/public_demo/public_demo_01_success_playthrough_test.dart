@@ -4,15 +4,12 @@ import 'package:smile_enjoy_story/ui/public_demo/public_demo_01_placeholder_scre
 
 Future<void> tapAndSettle(WidgetTester tester, String text) async {
   final finder = find.text(text);
-  if (finder.evaluate().isEmpty) {
-    await tester.scrollUntilVisible(
-      finder,
-      300,
-      scrollable: find.byType(ListView),
-    );
-  } else {
-    await tester.ensureVisible(finder.first);
+  for (var i = 0; finder.evaluate().isEmpty && i < 20; i++) {
+    await tester.drag(find.byType(ListView), const Offset(0, -300));
+    await tester.pumpAndSettle();
   }
+  expect(finder, findsWidgets, reason: 'Could not find action: $text');
+  await tester.ensureVisible(finder.first);
   await tester.tap(finder.first);
   await tester.pumpAndSettle();
 }

@@ -7,6 +7,24 @@ Finder actionButton(String text) => find.ancestor(
       matching: find.byWidgetPredicate((widget) => widget is ButtonStyleButton),
     );
 
+// Some buttons (面談/受注 actions) now await _precacheEventImage(...) before
+// opening a dialog (iOS rendering fix: decode the image before first paint
+// instead of after). In this Flutter SDK, MultiFrameImageStreamCompleter
+// only resolves via real wall-clock scheduling — tester.pump()/
+// pumpAndSettle()'s fake clock never completes it on its own — so give the
+// decode a real-time window via runAsync before settling the UI. Harmless
+// for buttons that don't precache anything; the delay just elapses unused.
+Future<void> _settleAfterPossiblePrecache(WidgetTester tester) async {
+  // Looped rather than one fixed delay since real wall-clock timing is
+  // noisier under parallel test-file execution (CPU contention) than when a
+  // file runs alone.
+  for (var i = 0; i < 10; i++) {
+    await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 150)));
+    await tester.pump();
+  }
+  await tester.pumpAndSettle();
+}
+
 Future<void> tapAndSettle(WidgetTester tester, String text) async {
   final finder = actionButton(text);
   for (var i = 0; finder.evaluate().isEmpty && i < 20; i++) {
@@ -16,7 +34,7 @@ Future<void> tapAndSettle(WidgetTester tester, String text) async {
   expect(finder, findsWidgets, reason: 'Could not find action button: $text');
   await tester.ensureVisible(finder.first);
   await tester.tap(finder.first);
-  await tester.pumpAndSettle();
+  await _settleAfterPossiblePrecache(tester);
 }
 
 Future<void> dismissInterviewResult(

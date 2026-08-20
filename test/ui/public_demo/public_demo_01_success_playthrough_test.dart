@@ -28,6 +28,19 @@ Future<void> dismissInterviewResult(
   await tester.pumpAndSettle();
 }
 
+Future<void> dismissEvent(
+  WidgetTester tester,
+  String title, {
+  Key? imageKey,
+}) async {
+  expect(find.text(title), findsOneWidget);
+  if (imageKey != null) {
+    expect(find.byKey(imageKey), findsOneWidget);
+  }
+  await tester.tap(find.widgetWithText(FilledButton, '確認'));
+  await tester.pumpAndSettle();
+}
+
 void main() {
   testWidgets('successful route reaches July with an active engineer', (tester) async {
     await tester.pumpWidget(const MaterialApp(home: PublicDemo01PlaceholderScreen()));
@@ -42,6 +55,11 @@ void main() {
     await tapAndSettle(tester, '客先面談');
     await dismissInterviewResult(tester, '客先面談');
     await tapAndSettle(tester, '受注');
+    await dismissEvent(
+      tester,
+      '案件を受注しました',
+      imageKey: const Key('public-demo-order-decision-image'),
+    );
     await tapAndSettle(tester, '4月終了→5月');
     expect(find.text('新しい応募が届きました'), findsOneWidget);
     expect(find.byKey(const Key('public-demo-recruitment-application-image')), findsOneWidget);
@@ -62,7 +80,17 @@ void main() {
     await tapAndSettle(tester, '客先面談');
     await dismissInterviewResult(tester, '客先面談');
     await tapAndSettle(tester, '6月受注');
+    await dismissEvent(
+      tester,
+      '案件を受注しました',
+      imageKey: const Key('public-demo-order-decision-image'),
+    );
     await tapAndSettle(tester, '5月終了→6月');
+    await dismissEvent(
+      tester,
+      '入社・初参画！',
+      imageKey: const Key('public-demo-first-assignment-image'),
+    );
     expect(find.text('6月'), findsOneWidget);
     expect(find.text('参画'), findsOneWidget);
     expect(find.text('2名'), findsOneWidget);

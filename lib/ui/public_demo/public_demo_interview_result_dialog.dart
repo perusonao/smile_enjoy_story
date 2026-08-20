@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../asset_paths.dart';
 
 class PublicDemoInterviewResultDialog extends StatelessWidget {
   const PublicDemoInterviewResultDialog({
@@ -22,12 +23,30 @@ class PublicDemoInterviewResultDialog extends StatelessWidget {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     return AlertDialog(
+      insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
       title: Text('$interviewName 結果'),
       content: SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            ClipRRect(
+              borderRadius: BorderRadius.circular(14),
+              child: AspectRatio(
+                aspectRatio: 16 / 9,
+                child: Image.asset(
+                  AssetPaths.eventClientInterview,
+                  key: const Key('public-demo-interview-event-image'),
+                  fit: BoxFit.cover,
+                  errorBuilder: (context, error, stackTrace) => Container(
+                    color: scheme.surfaceContainerHighest,
+                    alignment: Alignment.center,
+                    child: const Icon(Icons.groups_2_outlined, size: 48),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
             Text(personName, style: Theme.of(context).textTheme.titleMedium),
             const SizedBox(height: 12),
             Row(

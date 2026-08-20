@@ -38,8 +38,6 @@ void main() {
     await tapAndSettle(tester, '案件紹介');
     await tapAndSettle(tester, '上位会社面談');
     await dismissInterviewResult(tester, '上位会社面談');
-    // UX-2A also renders "客先面談" in progress indicators. Action helpers
-    // therefore target the actual button rather than the first matching Text.
     expect(find.text('客先面談'), findsWidgets);
     await tapAndSettle(tester, '客先面談');
     await dismissInterviewResult(tester, '客先面談');
@@ -56,7 +54,9 @@ void main() {
     await tapAndSettle(tester, '入社前営業');
     await tapAndSettle(tester, '案件紹介');
     await tapAndSettle(tester, '上位会社面談');
+    await dismissInterviewResult(tester, '上位会社面談');
     await tapAndSettle(tester, '客先面談');
+    await dismissInterviewResult(tester, '客先面談');
     await tapAndSettle(tester, '6月受注');
     await tapAndSettle(tester, '5月終了→6月');
     expect(find.text('6月'), findsOneWidget);

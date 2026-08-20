@@ -19,6 +19,10 @@ class PublicDemoEventDialog extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
+    final devicePixelRatio = MediaQuery.devicePixelRatioOf(context);
+    final logicalImageWidth = MediaQuery.sizeOf(context).width - 64;
+    final cacheWidth = (logicalImageWidth * devicePixelRatio).round();
+
     return AlertDialog(
       insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
       title: Text(title),
@@ -35,6 +39,9 @@ class PublicDemoEventDialog extends StatelessWidget {
                   imageAsset,
                   key: imageKey,
                   fit: BoxFit.cover,
+                  cacheWidth: cacheWidth,
+                  filterQuality: FilterQuality.low,
+                  gaplessPlayback: true,
                   errorBuilder: (context, error, stackTrace) => Container(
                     color: scheme.surfaceContainerHighest,
                     alignment: Alignment.center,

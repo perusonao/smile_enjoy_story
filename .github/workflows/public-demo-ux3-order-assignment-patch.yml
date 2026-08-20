@@ -1,0 +1,42 @@
+name: Public Demo UX3 Order Assignment Patch
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: codex/public-demo-01-mvp-a
+      - name: Patch order and first-assignment events
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('lib/ui/public_demo/public_demo_01_placeholder_screen.dart')
+          s=p.read_text()
+          s=s.replace("void may(){final hires=applicants.where(accepted).length,ordered=applicants.where((a)=>a.stage==PublicDemoApplicantStage.juneOrdered).length;setState((){s=s.advanceToJune(monthlyExpenses:expense,acceptedHires:hires,hiredWithOrders:ordered);assignments=[for(final e in engineers)if(e.stage==PublicDemoSalesStage.ordered)publicDemoInitialAssignments.firstWhere((a)=>a.engineerId==e.id),for(final a in applicants)if(a.stage==PublicDemoApplicantStage.juneOrdered)PublicDemoAssignment(engineerId:a.id,engineerName:a.name,projectName:'新規開発支援',deliveryPressure:50,budgetHealth:70,skill:a.salesSkillFit,humanity:70)];});}", "Future<void> may()async{final hires=applicants.where(accepted).length,ordered=applicants.where((a)=>a.stage==PublicDemoApplicantStage.juneOrdered).length;final first=applicants.where((a)=>a.stage==PublicDemoApplicantStage.juneOrdered).toList();setState((){s=s.advanceToJune(monthlyExpenses:expense,acceptedHires:hires,hiredWithOrders:ordered);assignments=[for(final e in engineers)if(e.stage==PublicDemoSalesStage.ordered)publicDemoInitialAssignments.firstWhere((a)=>a.engineerId==e.id),for(final a in applicants)if(a.stage==PublicDemoApplicantStage.juneOrdered)PublicDemoAssignment(engineerId:a.id,engineerName:a.name,projectName:'新規開発支援',deliveryPressure:50,budgetHealth:70,skill:a.salesSkillFit,humanity:70)];});if(!mounted||first.isEmpty)return;await showDialog<void>(context:context,builder:(context)=>PublicDemoEventDialog(title:'入社・初参画！',imageAsset:AssetPaths.eventFirstAssignment,imageKey:const Key('public-demo-first-assignment-image'),message:'${first.first.name}さんが入社し、案件への参画を開始しました。',nextAction:'参画中メンバーの翌月発注を確認しましょう。'));}")
+          s=s.replace("if(e.stage==PublicDemoSalesStage.clientInterviewPassed)FilledButton(onPressed:()=>es(i,PublicDemoSalesStage.ordered),child:const Text('5月分を受注'))", "if(e.stage==PublicDemoSalesStage.clientInterviewPassed)FilledButton(onPressed:()async{es(i,PublicDemoSalesStage.ordered);await showDialog<void>(context:context,builder:(context)=>PublicDemoEventDialog(title:'案件を受注しました',imageAsset:AssetPaths.eventOrderDecision,imageKey:const Key('public-demo-order-decision-image'),message:'${e.name}さんの5月分案件を受注しました。',nextAction:'翌月からの参画に備え、残りの営業状況も確認しましょう。'));},child:const Text('5月分を受注'))")
+          s=s.replace("if(a.stage==PublicDemoApplicantStage.preEntryClientPassed)FilledButton(onPressed:()=>as(i,PublicDemoApplicantStage.juneOrdered),child:const Text('6月分を受注'))", "if(a.stage==PublicDemoApplicantStage.preEntryClientPassed)FilledButton(onPressed:()async{as(i,PublicDemoApplicantStage.juneOrdered);await showDialog<void>(context:context,builder:(context)=>PublicDemoEventDialog(title:'案件を受注しました',imageAsset:AssetPaths.eventOrderDecision,imageKey:const Key('public-demo-order-decision-image'),message:'${a.name}さんの6月分案件を受注しました。',nextAction:'入社と初参画に向けて6月へ進みましょう。'));},child:const Text('6月分を受注'))")
+          p.write_text(s)
+          PY
+      - name: Format and validate
+        run: |
+          dart format lib/ui/public_demo/public_demo_01_placeholder_screen.dart
+          flutter pub get
+          flutter analyze lib/game/public_demo lib/ui/public_demo
+          flutter test test/game/public_demo
+          flutter test test/ui/public_demo/public_demo_01_playthrough_test.dart
+          flutter test test/ui/public_demo/public_demo_01_success_playthrough_test.dart
+      - name: Commit
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add lib/ui/public_demo/public_demo_01_placeholder_screen.dart
+          git diff --cached --quiet && exit 0
+          git commit -m "feat(public-demo): show order and first assignment events"
+          git push origin HEAD:codex/public-demo-01-mvp-a

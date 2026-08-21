@@ -26,6 +26,24 @@
 // weekly-progression loop (same shape as every other spec's week-advance
 // loop), not a retry-driven flakiness workaround.
 //
+// Correction (WebKit seed-100001 investigation): that determinism claim is
+// about the *game*, and it still holds — but it was never what made this
+// loop fail on `mobile-webkit`. The offer really does arrive on schedule;
+// the loop simply could not *see* it, because "面談へ進む" sits below the
+// fold on the iPhone 14 profile's shorter viewport and Flutter only
+// materializes semantics for the visible part of a `ListView`. See the
+// scroll call inside the offer-wait loop below for the full root cause and
+// the reproduction that separated "viewport height" from "browser engine".
+//
+// Follow-up correction (same investigation, second CI round): that first fix
+// scrolled with `page.mouse.wheel()`, which fixed `mobile-chromium` but threw
+// on `mobile-webkit` — Playwright does not implement `mouse.wheel` for a
+// touch-emulated WebKit context at all. That is a *separate*, purely
+// mechanical issue about **how** to scroll, and changes nothing about the
+// viewport-fold/`SliverList` diagnosis above, which is **why** scrolling is
+// needed. `scrollStep` below replaces the mechanism with plain in-page DOM
+// calls that behave identically on both engines.
+//
 // No RNG-dependent *outcome* is ever a pass/fail condition here (§ this
 // PR's brief): whether the client interview this offer leads into ends up
 // passing or failing is never inspected — this file only proves the FitBadge
@@ -186,27 +204,93 @@ async function openEngineerDetail(page: import('@playwright/test').Page): Promis
   return snapshotScreen(page);
 }
 
+/** One scroll impulse on whatever `Scrollable` the current screen renders,
+ * expressed entirely in standard DOM calls run *inside* the page.
+ *
+ * This is deliberately **not** `page.mouse.wheel()`. That is a Playwright
+ * high-level input API, and on a touch-emulated WebKit context Playwright
+ * refuses it outright ("mouse.wheel: Mouse wheel is not supported in mobile
+ * WebKit") — so the first version of {@link scrollUntilButtonFound} threw on
+ * `mobile-webkit` before it could scroll anything. That is a purely
+ * mechanical *how do we scroll* limitation of Playwright's own mouse API; it
+ * is unrelated to *why* this file has to scroll at all (see
+ * {@link scrollUntilButtonFound}'s own comment for that, separate, still-valid
+ * root cause). `page.evaluate` + `EventTarget.dispatchEvent`/`scrollTop` are
+ * plain DOM, identical in Chromium and WebKit, and never go through the
+ * unsupported API.
+ *
+ * Two engine-agnostic paths, in order — both verified against this app's real
+ * Flutter Web output (canvaskit, `?e2e=1` semantics enabled, iPhone 14
+ * viewport), not assumed:
+ *  1. With semantics on, Flutter's engine gives every `Scrollable` a real
+ *     `<flt-semantics>` element with `overflow-y: scroll`, and mirrors the
+ *     framework's scroll offset onto it; writing its `scrollTop` moves the
+ *     Flutter list by exactly that many pixels (measured: `scrollTop`
+ *     0 → 120 → 240 shifted every child semantics node's `getBoundingClientRect`
+ *     by the same 120px each time). That is the accessibility-scroll path a
+ *     screen reader itself drives, so it is as real as a user gesture.
+ *  2. If no such container exists yet, or it is already clamped at the end of
+ *     the semantics extent while the list still has more to materialize, fall
+ *     back to dispatching a plain `WheelEvent`. Flutter Web's `PointerBinding`
+ *     attaches its `wheel` listener on the view root in *every* one of its
+ *     pointer/touch/mouse adapters, so the engine turns it into the same
+ *     scroll signal a real wheel would (measured: three dispatched events took
+ *     the same list from `scrollTop` 0 to its maximum 286, and Flutter called
+ *     `preventDefault()` on all three — i.e. it really did consume them).
+ *
+ * Returns which of the two paths this step took — diagnostic only; the
+ * caller's own stall detection polls the real semantics tree, never this. */
+async function scrollStep(page: import('@playwright/test').Page, deltaY: number): Promise<'container' | 'wheel'> {
+  return page.evaluate((dy) => {
+    const container = Array.from(document.querySelectorAll('flt-semantics')).find(
+      (el) => getComputedStyle(el).overflowY === 'scroll' && el.scrollHeight > el.clientHeight + 1,
+    ) as HTMLElement | undefined;
+    if (container) {
+      const before = container.scrollTop;
+      container.scrollTop = before + dy;
+      if (container.scrollTop !== before) return 'container' as const;
+    }
+    const x = Math.floor(window.innerWidth / 2);
+    const y = Math.floor(window.innerHeight / 2);
+    const target = document.elementFromPoint(x, y) ?? document.body;
+    target.dispatchEvent(
+      new WheelEvent('wheel', {
+        deltaX: 0,
+        deltaY: dy,
+        deltaMode: 0, // DOM_DELTA_PIXEL — `dy` is already in CSS pixels
+        clientX: x,
+        clientY: y,
+        screenX: x,
+        screenY: y,
+        bubbles: true,
+        cancelable: true,
+        composed: true,
+      }),
+    );
+    return 'wheel' as const;
+  }, deltaY);
+}
+
 /** Scrolls the current screen's `ListView` down (bounded, polling for the
  * target rather than a fixed scroll amount) until [buttonName] shows up
  * among the enabled buttons, or the list stops changing (genuinely not
- * there / already at the bottom). EngineerDetailScreen renders 営業状況
- * (and its "Fitの理由を見る") well below the fold — Flutter Web's
- * `SliverList` only materializes semantics for children within/near the
- * current viewport, so a fresh route mount never has it in the
- * accessibility tree until scrolled into view, confirmed directly against
+ * there / already at the bottom).
+ *
+ * Why this is needed at all: EngineerDetailScreen renders its 面談依頼 card
+ * and its 営業状況 card (and that card's "Fitの理由を見る") well below the
+ * fold — Flutter Web's `SliverList` only materializes semantics for children
+ * within/near the current viewport, so a fresh route mount never has them in
+ * the accessibility tree until scrolled into view, confirmed directly against
  * the real ariaSnapshot() output during development (the section was
- * completely absent, not just unscrolled-to, until this). Mouse wheel
- * events, not a Playwright `scrollIntoView` call — there's no DOM element
- * to target one at until this scroll makes it exist. */
+ * completely absent, not just unscrolled-to, until this). That is also why
+ * this can't be a Playwright `locator.scrollIntoViewIfNeeded()` on the target
+ * itself: there is no DOM element to target one at until this scroll makes it
+ * exist.
+ *
+ * *How* the scrolling is done is a separate concern entirely — see
+ * {@link scrollStep}, which exists because Playwright's `page.mouse.wheel()`
+ * is unavailable on mobile WebKit. */
 async function scrollUntilButtonFound(page: import('@playwright/test').Page, buttonName: string, maxSteps = 15): Promise<ScreenSnapshot> {
-  // `page.mouse.wheel` scrolls whatever is under the *current* virtual mouse
-  // position — which, right after a `.click()` on the previous screen,
-  // still sits wherever that click landed (a different route entirely).
-  // Re-center it over this screen's own body first so the wheel events
-  // reliably land on this screen's `ListView`, not wherever the last click
-  // happened to be.
-  const viewport = page.viewportSize();
-  if (viewport) await page.mouse.move(viewport.width / 2, viewport.height / 2);
   await page.waitForTimeout(200);
   let snap = await snapshotScreen(page);
   let everChanged = false;
@@ -214,7 +298,7 @@ async function scrollUntilButtonFound(page: import('@playwright/test').Page, but
   let lastFingerprint = JSON.stringify(snap.texts);
   for (let i = 0; i < maxSteps; i++) {
     if (snap.buttons.some((b) => b.enabled && b.name === buttonName)) return snap;
-    await page.mouse.wheel(0, 500);
+    await scrollStep(page, 500);
     await page.waitForTimeout(300);
     snap = await snapshotScreen(page);
     const fingerprint = JSON.stringify(snap.texts);
@@ -325,6 +409,35 @@ for (const seed of parsedSeeds.error ? [] : parsedSeeds.seeds) {
       await settleAndScan(page, textOffenders);
 
       snap = await openEngineerDetail(page);
+      // EngineerDetailScreen renders its "面談依頼" card
+      // (`_InterviewOfferCard`, the one that owns "面談へ進む") *below* the
+      // 現在の状況 / 条件 / スキルシート・営業 cards — i.e. below the fold on a
+      // short viewport. Flutter Web's `SliverList` only materializes
+      // semantics for children within/near the current viewport, so on a
+      // fresh route mount `snapshotScreen()` cannot see that card at all
+      // until it is scrolled into view — exactly the behavior
+      // `scrollUntilButtonFound` (below/above) was already written for, and
+      // already used for "Fitの理由を見る" further down this same screen.
+      //
+      // Reading the *unscrolled* snapshot here therefore reported "no offer"
+      // for a game state that genuinely had one, every single week, until the
+      // 10-week budget ran out. Root-caused, not guessed: reproduced by
+      // running this exact spec/seed on the **Chromium** engine under both
+      // project viewports — `mobile-chromium`'s Pixel 7 (412x915) passes,
+      // while `mobile-webkit`'s iPhone 14 (390x664) fails with this file's
+      // own byte-identical "no 面談依頼/面談へ進む appeared within 10 weeks"
+      // error. Same engine, same seed, same build: the variable is viewport
+      // height, not the browser. That is also why the file-level determinism
+      // note's "verified directly against real Chromium during development"
+      // held and CI's mobile-webkit still failed 4/4 — the verification ran
+      // on the taller of the two profiles, where this card happens to land
+      // above the fold.
+      //
+      // A bounded, condition-driven scroll (poll for this specific button's
+      // own a11y node), never a longer wait or a bigger timeout: the offer is
+      // either in the tree once the card is materialized, or it genuinely
+      // isn't there this week.
+      snap = await scrollUntilButtonFound(page, PROCEED_TO_INTERVIEW);
       const proceed = snap.buttons.find((b) => b.enabled && b.name === PROCEED_TO_INTERVIEW);
       if (proceed) {
         await clickResilient(page, byButton(page, PROCEED_TO_INTERVIEW), PROCEED_TO_INTERVIEW);

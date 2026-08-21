@@ -1,4 +1,5 @@
 import 'public_demo_recruitment.dart';
+import 'public_demo_raise.dart';
 
 /// Keeps the existing Public Demo balance neutral when the candidate is paid
 /// their requested salary, while making lower/higher offers affect cash once
@@ -6,11 +7,16 @@ import 'public_demo_recruitment.dart';
 class PublicDemoSalaryFinance {
   const PublicDemoSalaryFinance._();
 
-  static int monthlyExpenseAdjustment(Iterable<PublicDemoApplicant> hires) {
+  static int monthlyExpenseAdjustment(
+    Iterable<PublicDemoApplicant> hires, {
+    int? month,
+  }) {
     var adjustment = 0;
     for (final hire in hires) {
       if (hire.stage == PublicDemoApplicantStage.offerDeclined) continue;
-      final salary = hire.acceptedMonthlySalary;
+      final int? salary = month == null
+          ? hire.acceptedMonthlySalary
+          : hire.salaryForMonth(month);
       if (salary == null) continue;
       adjustment += salary - hire.requestedMonthlySalary;
     }
@@ -20,6 +26,6 @@ class PublicDemoSalaryFinance {
   static int monthlyExpenses({
     required int baselineExpenses,
     required Iterable<PublicDemoApplicant> hires,
-  }) =>
-      baselineExpenses + monthlyExpenseAdjustment(hires);
+    int? month,
+  }) => baselineExpenses + monthlyExpenseAdjustment(hires, month: month);
 }

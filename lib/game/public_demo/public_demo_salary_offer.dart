@@ -63,6 +63,7 @@ class PublicDemoSalaryOffer {
         acceptedMonthlySalary: offeredMonthlySalary,
         salaryMotivationDelta: motivationDelta,
         salaryTrustDelta: trustDelta,
+        salaryRelationshipReason: relationshipReason,
       );
 }
 

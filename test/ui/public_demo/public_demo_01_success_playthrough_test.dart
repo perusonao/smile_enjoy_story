@@ -117,6 +117,11 @@ void main() {
     expect(find.text('6月'), findsOneWidget);
     expect(find.text('参画'), findsOneWidget);
     expect(find.text('2名'), findsOneWidget);
+    expect(find.text('社員コンディション'), findsOneWidget);
+    expect(find.text('モチベーション：高い'), findsOneWidget);
+    expect(find.text('会社への信頼：高い'), findsOneWidget);
+    expect(find.textContaining('65'), findsNothing);
+    expect(find.textContaining('60'), findsNothing);
 
     // June: accept at least one July continuation.
     await tapAndSettle(tester, '7月分の発注を確認');

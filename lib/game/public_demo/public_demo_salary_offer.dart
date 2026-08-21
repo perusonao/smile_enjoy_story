@@ -33,6 +33,15 @@ class PublicDemoSalaryOffer {
     }
     return PublicDemoSalaryOfferLevel.requested;
   }
+
+  /// Records this salary decision on the applicant while retaining their
+  /// recruitment progression. A declined offer is recorded too; callers
+  /// decide whether that applicant has actually become a hire.
+  PublicDemoApplicant applyTo(PublicDemoApplicant applicant) => applicant.copyWith(
+        acceptedMonthlySalary: offeredMonthlySalary,
+        salaryMotivationDelta: motivationDelta,
+        salaryTrustDelta: trustDelta,
+      );
 }
 
 class PublicDemoSalaryOfferEvaluator {

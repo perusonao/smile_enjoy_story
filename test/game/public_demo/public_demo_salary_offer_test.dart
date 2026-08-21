@@ -65,5 +65,18 @@ void main() {
 
       expect(result.accepted, isFalse);
     });
+
+    test('applies the salary result to the applicant', () {
+      final result = PublicDemoSalaryOfferEvaluator.evaluate(
+        applicant: applicant,
+        offeredMonthlySalary: 280000,
+      );
+
+      final updated = result.applyTo(applicant);
+
+      expect(updated.acceptedMonthlySalary, 280000);
+      expect(updated.salaryMotivationDelta, result.motivationDelta);
+      expect(updated.salaryTrustDelta, result.trustDelta);
+    });
   });
 }

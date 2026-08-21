@@ -47,7 +47,7 @@
 // post-assignment" test).
 import { test, expect } from '@playwright/test';
 import { playFoundingToFirstAssignment } from '../helpers/ses-player';
-import { snapshotScreen, hasText, enabledButton, extractInterviewCandidateName, findDoubledParticles, firstEnabledDialogButton, type ScreenSnapshot } from '../helpers/game-state';
+import { snapshotScreen, stableSnapshotScreen, hasText, enabledButton, extractInterviewCandidateName, findDoubledParticles, firstEnabledDialogButton, clickDialogCtaAndWaitForRoute, returnToHome, selectCurrentTab, type ScreenSnapshot } from '../helpers/game-state';
 import { watchForErrors, captureMilestone } from '../helpers/artifacts';
 import { parseSeeds } from '../helpers/seeds';
 
@@ -62,6 +62,7 @@ const FOUNDING_MAX_WEEKS = 12;
 const FOUNDING_MAX_ACTIONS = 100;
 const IDLE_TIMEOUT_MS = 30_000;
 const STALL_REPEAT_THRESHOLD = 5;
+const RECRUITMENT_UNLOCK_MAX_ADVANCES = 6;
 
 // Dialogs whose dismiss button is always safe to tap without losing
 // anything under test — mirrors the CLOSE list every other Phase 3A E2E
@@ -99,13 +100,46 @@ async function settleAndScan(
   stopWhen?: (snap: ScreenSnapshot) => boolean,
 ): Promise<ScreenSnapshot | null> {
   for (let i = 0; i < 15; i++) {
+    // A caller that is explicitly waiting for a result dialog must see that
+    // current dialog before the generic live-dialog cleanup closes it.
+    // This snapshot is intentionally reacquired at the start of every
+    // iteration; it is never retained across a dialog action.
+    if (stopWhen) {
+      const current = await stableSnapshotScreen(page);
+      textOffenders.push(...findDoubledParticles(current));
+      if (stopWhen(current)) return current;
+    }
+    // WebKit can expose a newly-opened AlertDialog's content before its
+    // ariaSnapshot indentation becomes dialog-scoped. Check the live dialog
+    // container first, so a known modal always wins over normal-page state.
+    const dialogScope = page.locator('[role="dialog"], [role="alertdialog"]');
+    let dismissedLiveDialog = false;
+    for (const label of CLOSE) {
+      const button = dialogScope.getByRole('button', { name: label, exact: true }).first();
+      if (await button.count() && await button.isVisible() && await button.isEnabled()) {
+        // This locator is created and used in this one synchronous branch
+        // only. If the dialog disappears between the checks and click, that
+        // is a successful external transition, not a stale-target retry.
+        if (label === '採用を見る') {
+          dismissedLiveDialog = await clickDialogCtaAndWaitForRoute(page, label, '採用').catch(() => false);
+        } else {
+          await button.click({ timeout: 500 }).then(() => { dismissedLiveDialog = true; }).catch(() => {});
+        }
+        break;
+      }
+    }
+    if (dismissedLiveDialog) {
+      continue;
+    }
     const snap = await snapshotScreen(page);
     textOffenders.push(...findDoubledParticles(snap));
     if (stopWhen?.(snap)) return snap;
     const close = firstEnabledDialogButton(snap, CLOSE);
     if (!close) return null;
-    await page.getByRole('button', { name: close.name, exact: true }).click();
-    await page.waitForTimeout(500);
+    // The name came from a dialog-scoped snapshot. Re-resolve it inside a
+    // live dialog too: a global role lookup can otherwise pick a same-named
+    // background CTA after Flutter has started dismissing this dialog.
+    await clickResilient(page, byDialogButton(page, close.name), close.name);
     const homeTab = page.getByRole('tab', { name: 'ホーム', exact: true });
     if (await homeTab.count()) {
       const cur = await snapshotScreen(page);
@@ -289,8 +323,10 @@ async function clickResilient(page: import('@playwright/test').Page, locate: () 
       const snap = await snapshotScreen(page);
       const close = firstEnabledDialogButton(snap, CLOSE.filter((name) => name !== label));
       if (close) {
-        await page.getByRole('button', { name: close.name, exact: true }).click().catch(() => {});
-        await page.waitForTimeout(300);
+        // `close` is known to be in a dialog from the fresh snapshot. Keep
+        // that scope at click time rather than broadening it to the entire
+        // rebuilding screen.
+        await byDialogButton(page, close.name)().click({ timeout: CLICK_RESILIENT_ATTEMPT_MS }).catch(() => {});
       }
       // Otherwise just loop straight back to a fresh `locate()` call — the
       // target may simply need another beat to (re)appear, or to be
@@ -305,6 +341,96 @@ async function clickResilient(page: import('@playwright/test').Page, locate: () 
  * `getByRole` boilerplate. */
 const byButton = (page: import('@playwright/test').Page, name: string) => () => page.getByRole('button', { name, exact: true }).first();
 const byTab = (page: import('@playwright/test').Page, name: string) => () => page.getByRole('tab', { name, exact: true });
+const byDialogButton = (page: import('@playwright/test').Page, name: string) => () =>
+  page.locator('[role="dialog"], [role="alertdialog"]').getByRole('button', { name, exact: true }).first();
+
+/** Select a bottom tab and prove the newly rendered tab is current before
+ * taking another snapshot. Flutter can expose the old tab's semantics for a
+ * frame after the click, particularly in WebKit. */
+async function selectTab(page: import('@playwright/test').Page, name: string): Promise<ScreenSnapshot> {
+  return selectCurrentTab(page, name);
+}
+
+/** Returns a fresh, currently actionable candidate only after dialog
+ * transitions have drained. The snapshot is used to establish that no modal
+ * remains; the candidate locator is then acquired again from the live tree,
+ * never retained from the pre-transition list. */
+async function actionableUninterviewedCandidate(
+  page: import('@playwright/test').Page,
+  textOffenders: string[],
+): Promise<import('@playwright/test').Locator | null> {
+  await settleAndScan(page, textOffenders);
+  const candidate = page.getByRole('button', { name: /未面接/ }).first();
+  if ((await candidate.count()) === 0) return null;
+  if (!(await candidate.isVisible()) || !(await candidate.isEnabled())) return null;
+  return candidate;
+}
+
+function unlockDiagnostic(snap: ScreenSnapshot): string {
+  const week = [...snap.texts, ...snap.buttons.map((b) => b.name)].find((text) => /week\s*\d+/i.test(text)) ?? 'week unknown';
+  return `${week}; buttons=${JSON.stringify(snap.buttons)}; texts=${JSON.stringify(snap.texts)}`;
+}
+
+/** Drives the real Home loop until recruitment renders its real listing CTA.
+ * A locked recruitment tab is a valid intermediate state, never a failure. */
+async function waitForRecruitmentUnlock(
+  page: import('@playwright/test').Page,
+  textOffenders: string[],
+): Promise<void> {
+  for (let advanced = 0; advanced < RECRUITMENT_UNLOCK_MAX_ADVANCES; advanced++) {
+    await settleAndScan(page, textOffenders);
+    let snap = await stableSnapshotScreen(page);
+    const postListing = page.getByRole('button', { name: '掲載する', exact: true }).first();
+    if (await postListing.count() && await postListing.isVisible() && await postListing.isEnabled()) return;
+
+    const next = snap.buttons.find((b) => b.enabled && b.name.startsWith('次の週へ'));
+    if (!next) {
+      const home = page.getByRole('tab', { name: 'ホーム', exact: true });
+      if (await home.count()) snap = await selectTab(page, 'ホーム');
+    }
+    const currentNext = snap.buttons.find((b) => b.enabled && b.name.startsWith('次の週へ'));
+    if (!currentNext) throw new Error(`recruitment remained locked with no legal week advance: ${unlockDiagnostic(snap)}`);
+    await clickResilient(page, byButton(page, currentNext.name), currentNext.name);
+    await settleAndScan(page, textOffenders);
+    const recruitment = page.getByRole('tab', { name: '採用', exact: true });
+    const after = await recruitment.count() ? await selectTab(page, '採用') : await stableSnapshotScreen(page);
+    const listing = page.getByRole('button', { name: '掲載する', exact: true }).first();
+    if (await listing.count() && await listing.isVisible() && await listing.isEnabled()) return;
+    // The unlocked/locked decision is based on the current rendered state;
+    // never reuse the pre-advance snapshot or locator next iteration.
+    if (advanced === RECRUITMENT_UNLOCK_MAX_ADVANCES - 1) {
+      throw new Error(`recruitment did not unlock after ${RECRUITMENT_UNLOCK_MAX_ADVANCES} legal advances: ${unlockDiagnostic(after)}`);
+    }
+  }
+}
+
+type CandidateEntryState = 'candidateList' | 'applicantDetailInterviewable' | 'applicantDetailNotActionable';
+
+/** Resolves the real recruitment entry state. If invoked on the candidate
+ * list it performs the one list action, waits for that route to commit, and
+ * returns only the resulting state — never a Locator from either screen. */
+async function openActionableCandidate(
+  page: import('@playwright/test').Page,
+  textOffenders: string[],
+): Promise<CandidateEntryState> {
+  await settleAndScan(page, textOffenders);
+  const detailInterview = page.getByRole('button', { name: /面接(?:を再開)?する/ }).first();
+  if (await detailInterview.count() && await detailInterview.isVisible() && await detailInterview.isEnabled()) {
+    return 'applicantDetailInterviewable';
+  }
+  const candidate = await actionableUninterviewedCandidate(page, textOffenders);
+  if (!candidate) return 'candidateList';
+  await clickResilient(page, () => page.getByRole('button', { name: /未面接/ }).first(), '未面接候補者');
+  await expect.poll(async () => {
+    const interview = page.getByRole('button', { name: /面接(?:を再開)?する/ }).first();
+    const back = page.getByRole('button', { name: /^Back\b/i }).first();
+    return (await interview.count()) > 0 || (await back.count()) > 0;
+  }, { timeout: 15_000, message: 'candidate selection did not reach Applicant Detail' }).toBe(true);
+  const currentInterview = page.getByRole('button', { name: /面接(?:を再開)?する/ }).first();
+  return (await currentInterview.count()) > 0 && await currentInterview.isVisible() && await currentInterview.isEnabled()
+    ? 'applicantDetailInterviewable'
+    : 'applicantDetailNotActionable';
+}
 
 /** Polls (bounded) until at least one real, enabled action button is on
  * screen — used after a navigation that can transiently render a loading
@@ -434,22 +560,18 @@ for (const seed of parsedSeeds.seeds) {
       stallRepeatThreshold: STALL_REPEAT_THRESHOLD,
     });
     await clickResilient(page, byButton(page, '経営を始める'), '経営を始める').catch(() => {});
-    await page.waitForTimeout(1000);
+    await returnToHome(page);
     await settleAndScan(page, textOffenders);
 
-    // Recruitment unlocks `UnlockEngine.weeksBeforeCompanyGrowth` (2) weeks
-    // after the first assignment — advance a handful of weeks to get there,
-    // same as the real player would.
-    for (let i = 0; i < 4; i++) {
-      await advanceWeekAndFind(page, textOffenders, () => false);
-    }
+    // The tab may legitimately be locked for the first two post-assignment
+    // weeks. Advance from the current Home state until its real listing CTA
+    // exists; every iteration re-reads the rendered UI after the week move.
+    await waitForRecruitmentUnlock(page, textOffenders);
     await captureMilestone(page, testInfo, '01-recruitment-unlocked');
 
     // --- recruitmentTradeoffExplained -------------------------------
     // Post a second listing (Free Work, ¥0 — always affordable) — a real
     // post-founding *growth* decision, not the March founding hire itself.
-    await clickResilient(page, byTab(page, '採用'), '採用タブ');
-    await page.waitForTimeout(500);
     await clickResilient(page, byButton(page, '掲載する'), '掲載する');
     await page.waitForTimeout(600);
     const after = await snapshotScreen(page);
@@ -457,8 +579,7 @@ for (const seed of parsedSeeds.seeds) {
     // trusting the milestone assertion below to mean anything.
     expect(after.buttons.some((b) => b.name.startsWith('掲載中')), 'second listing did not actually post').toBe(true);
 
-    await clickResilient(page, byTab(page, 'ホーム'), 'ホームタブ');
-    await page.waitForTimeout(500);
+    await selectTab(page, 'ホーム');
     const tradeoffDialog = await advanceWeekAndFind(page, textOffenders, (snap) => hasText(snap, '採用のトレードオフ'));
     expect(tradeoffDialog, `採用のトレードオフ dialog never appeared after posting a second listing (seed=${seed})`).not.toBeNull();
     expect(hasText(tradeoffDialog!, '固定支出')).toBe(true);
@@ -489,8 +610,7 @@ for (const seed of parsedSeeds.seeds) {
     // about the *flow itself* staying operable, regardless of any
     // individual roll's outcome.
     expect(await waitForTabBar(page, textOffenders, '採用'), '採用 tab never became visible before the first hire attempt').toBe(true);
-    await clickResilient(page, byTab(page, '採用'), '採用タブ');
-    await page.waitForTimeout(500);
+    await selectTab(page, '採用');
 
     // A handful of candidates in a row is enough to prove the interview ->
     // decision -> back-to-recruitment-tab cycle is genuinely repeatable
@@ -503,16 +623,18 @@ for (const seed of parsedSeeds.seeds) {
     // per the same investigation's "長時間E2Eの責務を縮小" follow-up.
     const HIRE_ATTEMPTS = 3;
     for (let attempt = 0; attempt < HIRE_ATTEMPTS; attempt++) {
-      const candidate = page.getByRole('button', { name: /未面接/ }).first();
-      if ((await candidate.count()) === 0) break;
+      const entryState = await openActionableCandidate(page, textOffenders);
+      if (entryState === 'candidateList') break;
+      if (entryState === 'applicantDetailNotActionable') {
+        expect(await waitForTabBar(page, textOffenders, '採用'), `採用 tab never became visible after non-actionable detail ${attempt} (seed=${seed})`).toBe(true);
+        continue;
+      }
       // CI run 32040338628, HEAD f07fa30: this exact locator resolved, then
       // "element was detached from the DOM, retrying", then timed out — the
       // candidate list re-rendering out from under a plain `.click()`.
-      // `clickResilient` re-runs this same `getByRole(/未面接/).first()`
-      // query fresh on every retry, so a retry re-picks whichever candidate
-      // is *currently* first rather than chasing a specific node that may
-      // no longer exist.
-      await clickResilient(page, () => page.getByRole('button', { name: /未面接/ }).first(), '未面接候補者');
+      // The entry helper above has confirmed that the current route is
+      // Applicant Detail. Reacquire only that route's interview CTA below;
+      // never re-assume the old candidate-list button still exists.
       // `ApplicantDetailScreen` (lib/ui/recruitment/applicant_detail_screen.dart
       // `_LockedPersonalityCard`) renders its interview-entry CTA as "面接する"
       // when no session exists yet, but as "面接を再開する" once one has
@@ -609,8 +731,7 @@ for (const seed of parsedSeeds.seeds) {
     // deterministically, in seconds, that the milestone and its dialog both
     // fire correctly once the right GameState facts hold, so this long-
     // running E2E has no remaining reason to search for that specific text.
-    await clickResilient(page, byTab(page, 'ホーム'), 'ホームタブ');
-    await page.waitForTimeout(500);
+    await returnToHome(page);
     for (let i = 0; i < 3; i++) {
       await advanceWeekAndFind(page, textOffenders, () => false);
     }

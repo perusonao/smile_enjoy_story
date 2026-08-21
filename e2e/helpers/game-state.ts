@@ -6,7 +6,7 @@
 // API"), so everything here is inferred from what a first-time player would
 // actually see: button labels and on-screen text, read through Flutter Web's
 // accessibility/semantics tree (enabled via `?e2e=1`, see lib/main.dart).
-import type { Page } from '@playwright/test';
+import { expect, type Page } from '@playwright/test';
 
 export interface ButtonInfo {
   name: string;
@@ -117,6 +117,160 @@ export function parseAriaSnapshot(raw: string): ScreenSnapshot {
 export async function snapshotScreen(page: Page): Promise<ScreenSnapshot> {
   const raw = await page.locator('body').ariaSnapshot();
   return parseAriaSnapshot(raw);
+}
+
+/**
+ * Flutter WebKit can briefly detach the whole semantics tree while a route
+ * or dialog is committing. An empty tree is not a player-visible state, so
+ * callers that must make a decision should wait for the next real snapshot
+ * rather than classifying that transient frame as a dead end.
+ */
+export async function stableSnapshotScreen(page: Page, maxWaitMs = 5_000): Promise<ScreenSnapshot> {
+  await expect.poll(
+    async () => !isEmptySnapshot(await snapshotScreen(page)),
+    { timeout: maxWaitMs, message: 'Flutter semantics tree remained empty while a route was settling' },
+  ).toBe(true);
+  return snapshotScreen(page);
+}
+
+const DIALOG_SELECTOR = '[role="dialog"], [role="alertdialog"]';
+const ROOT_TABS = ['ホーム', '社員', '採用', '案件', 'その他'] as const;
+
+export type NavigationClassification = 'rootStable' | 'pushedRouteStable' | 'dialogPresent' | 'transitioning' | 'unknown';
+export interface NavigationObservation {
+  classification: NavigationClassification;
+  tabCount: number;
+  selectedTab: string | null;
+  backPresent: boolean;
+  dialogPresent: boolean;
+  markers: string[];
+  elapsedMs: number;
+}
+export interface NavigationState extends NavigationObservation { history: NavigationObservation[]; snapshot: ScreenSnapshot; }
+
+const ROOT_MARKERS = ['S.E.S.', '経営状況', 'Week ', '社員一覧', '掲載する', '掲載中', '営業・案件', '案件を探す', '採用'];
+const PUSHED_MARKERS = ['人物パラメータは面接するまで確認できません。', '面接まとめ', '応募者からの質問', '市場の案件情報', '社員コンディション'];
+
+/** Pure evidence classifier. Missing tabs are deliberately only transitional
+ * until a Back control and a pushed-route marker corroborate the route. */
+export function classifyNavigationObservation(e: Omit<NavigationObservation, 'classification'>): NavigationClassification {
+  if (e.dialogPresent) return 'dialogPresent';
+  if (e.tabCount >= 3 && e.markers.some((m) => ROOT_MARKERS.includes(m))) return 'rootStable';
+  if (e.tabCount === 0 && e.backPresent && e.markers.some((m) => PUSHED_MARKERS.includes(m))) return 'pushedRouteStable';
+  if (e.tabCount === 0 || e.markers.length === 0) return 'transitioning';
+  return 'unknown';
+}
+
+export function navigationSampleBudget(remainingTotalMs: number, perSampleCapMs = 3_000): number {
+  return Math.max(0, Math.min(perSampleCapMs, remainingTotalMs));
+}
+
+/** Pure sequence reducer. Dialog always resets stability; only identical
+ * root/pushed evidence on two consecutive samples settles a route. */
+export function reduceNavigationObservations(observations: readonly NavigationObservation[]): NavigationClassification | null {
+  if (observations.length < 2) return null;
+  const [previous, current] = observations.slice(-2);
+  if (current.classification === 'dialogPresent') return null;
+  const stableKind = current.classification === 'rootStable' || current.classification === 'pushedRouteStable';
+  const sameEvidence = previous.classification === current.classification && previous.selectedTab === current.selectedTab && previous.tabCount === current.tabCount && previous.backPresent === current.backPresent && previous.markers.join('|') === current.markers.join('|');
+  return stableKind && sameEvidence ? current.classification : null;
+}
+
+async function observeNavigation(page: Page, elapsedMs: number): Promise<NavigationState> {
+  const snapshot = await snapshotScreen(page);
+  const tabCount = await page.getByRole('tab').count();
+  let selectedTab: string | null = null;
+  for (const name of ROOT_TABS) if (await page.getByRole('tab', { name, exact: true }).getAttribute('aria-selected') === 'true') selectedTab = name;
+  const backPresent = (await page.getByRole('button', { name: /^Back\b/i }).count()) > 0;
+  const dialogPresent = (await page.locator(DIALOG_SELECTOR).count()) > 0;
+  const corpus = [...snapshot.texts, ...snapshot.buttons.map((b) => b.name)].join('\n');
+  const markers = [...ROOT_MARKERS, ...PUSHED_MARKERS].filter((marker) => corpus.includes(marker));
+  const base = { tabCount, selectedTab, backPresent, dialogPresent, markers, elapsedMs };
+  return { ...base, classification: classifyNavigationObservation(base), history: [], snapshot };
+}
+
+/** Reads repeated current-DOM evidence. The bounded history is attached to
+ * every success and timeout, so callers can report why no stable route was
+ * established without retaining locators. */
+export async function stableNavigationState(page: Page, timeout = 15_000): Promise<NavigationState> {
+  const started = Date.now(); const observations: NavigationObservation[] = [];
+  let latest: NavigationState | null = null;
+  while (Date.now() - started < timeout) {
+    const remaining = timeout - (Date.now() - started);
+    const sampleBudget = navigationSampleBudget(remaining);
+    if (sampleBudget <= 0) break;
+    latest = await observeNavigation(page, Date.now() - started);
+    observations.push({ classification: latest.classification, tabCount: latest.tabCount, selectedTab: latest.selectedTab, backPresent: latest.backPresent, dialogPresent: latest.dialogPresent, markers: latest.markers, elapsedMs: latest.elapsedMs });
+    if (observations.length > 12) observations.shift();
+    if (latest.classification === 'dialogPresent') return { ...latest, history: observations };
+    if (reduceNavigationObservations(observations)) return { ...latest, history: observations };
+    await page.waitForTimeout(Math.min(150, navigationSampleBudget(timeout - (Date.now() - started), 150)));
+  }
+  throw new Error(`navigation state unresolved: ${JSON.stringify({ totalElapsedMs: Date.now() - started, sampleCount: observations.length, observations })}`);
+}
+
+/** Clicks a CTA from the dialog that exists *now*, then proves that dialog
+ * left the current route before any caller classifies the next screen. */
+export async function clickDialogCtaAndWaitForRoute(
+  page: Page,
+  label: string,
+  expectedTab?: string,
+): Promise<boolean> {
+  const button = page.locator(DIALOG_SELECTOR).getByRole('button', { name: label, exact: true }).first();
+  if ((await button.count()) === 0) return false;
+  await button.click();
+  const state = await stableNavigationState(page);
+  if (state.classification === 'dialogPresent' || (expectedTab && (state.classification !== 'rootStable' || state.selectedTab !== expectedTab))) {
+    throw new Error(`dialog CTA ${label} did not reach its next route: ${JSON.stringify(state.history)}`);
+  }
+  return true;
+}
+
+/** Selects a tab from the current root DOM only, then returns a freshly read
+ * snapshot after Flutter has committed the selected tab. */
+export async function selectCurrentTab(page: Page, name: string): Promise<ScreenSnapshot> {
+  const attempts: Array<Record<string, unknown>> = [];
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    const preState = await stableNavigationState(page);
+    const dialogBeforeClick = (await page.locator(DIALOG_SELECTOR).count()) > 0;
+    const record: Record<string, unknown> = { attempt, requestedTab: name, preState: preState.classification, dialogBeforeClick };
+    attempts.push(record);
+    if (dialogBeforeClick || preState.classification === 'dialogPresent') return preState.snapshot;
+    if (preState.classification !== 'rootStable') throw new Error(`cannot select root tab: ${JSON.stringify({ attempts, history: preState.history })}`);
+    try {
+      // Recreate only after the final dialog check; never retain it across a
+      // navigation-state observation. A short action slice avoids spending
+      // Playwright's full action timeout on a detached pre-dialog node.
+      await page.getByRole('tab', { name, exact: true }).click({ timeout: 1_000 });
+      record.clickResult = 'clicked';
+    } catch (error) {
+      const interrupted = (await page.locator(DIALOG_SELECTOR).count()) > 0;
+      record.clickResult = interrupted ? 'dialog-interrupted' : 'failed';
+      if (!interrupted) throw new Error(`root tab click failed: ${JSON.stringify({ attempts, error: String(error) })}`, { cause: error });
+      record.stateAfterInterruption = (await stableNavigationState(page)).classification;
+      return (await stableNavigationState(page)).snapshot;
+    }
+    const after = await stableNavigationState(page);
+    if (after.classification === 'dialogPresent') { record.stateAfterInterruption = 'dialogPresent'; return after.snapshot; }
+    if (after.classification === 'rootStable' && after.selectedTab === name) return after.snapshot;
+    record.stateAfterInterruption = after.classification;
+  }
+  throw new Error(`root tab operation did not settle: ${JSON.stringify(attempts)}`);
+}
+
+/** Returns from a pushed route before trying to touch the root tab bar. This
+ * deliberately tests the current DOM first: a missing tab is a route fact,
+ * not something to wait out with a stale tab locator. */
+export async function returnToHome(page: Page): Promise<ScreenSnapshot> {
+  let state = await stableNavigationState(page);
+  if (state.classification === 'dialogPresent') throw new Error(`cannot return to root while dialog is present: ${JSON.stringify(state.history)}`);
+  if (state.classification === 'pushedRouteStable') {
+    const back = page.getByRole('button', { name: /^Back\b/i }).first();
+    await back.click();
+    state = await stableNavigationState(page);
+  }
+  if (state.classification !== 'rootStable') throw new Error(`could not reach stable root: ${JSON.stringify(state.history)}`);
+  return selectCurrentTab(page, 'ホーム');
 }
 
 export function hasText(snap: ScreenSnapshot, needle: string): boolean {

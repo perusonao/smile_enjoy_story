@@ -11,7 +11,7 @@
 // (a rejected candidate, a declined offer, a quiet no-action week) must
 // never look like a dead end.
 import type { Page } from '@playwright/test';
-import { firstEnabledDialogButton, hasText, snapshotScreen, type ScreenSnapshot } from './game-state';
+import { firstEnabledDialogButton, hasText, snapshotScreen, stableSnapshotScreen, type ScreenSnapshot } from './game-state';
 
 export interface BeginnerModeMilestones {
   managementPhaseStarted: boolean;
@@ -108,7 +108,7 @@ export async function playBeginnerModeThroughJune(page: Page, options: BeginnerM
   let week: number | null = null;
 
   while (true) {
-    const snap = await snapshotScreen(page);
+    const snap = await stableSnapshotScreen(page);
     milestones = observeMilestones(snap, milestones);
     const w = currentWeek(snap);
     if (w !== null) week = w;

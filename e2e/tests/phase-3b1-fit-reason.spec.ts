@@ -19,12 +19,11 @@
 // project_interview_engine.dart's own doc comment — so under a fixed seed
 // and this file's fixed action sequence, the same interview offer (same
 // project, same Fit) appears at the same week every run. Verified directly
-// against real Chromium during development, not assumed: seed 100001
-// reaches a QA体制強化支援 offer exactly 2 week-advances after starting the
-// second sales search at Week 13. `MAX_WEEKS_TO_WAIT_FOR_OFFER` below still
-// gives real margin (5x) past that observed timing — a bounded, ordinary
-// weekly-progression loop (same shape as every other spec's week-advance
-// loop), not a retry-driven flakiness workaround.
+// This test does not assume an offer on a particular week. The offer is
+// generated only after the sales-start transition is committed and a current
+// project passes SalesEngine's eligibility and seeded roll conditions. The
+// bounded loop below observes that real state transition rather than treating
+// an old two-week observation as a product guarantee.
 //
 // No RNG-dependent *outcome* is ever a pass/fail condition here (§ this
 // PR's brief): whether the client interview this offer leads into ends up
@@ -51,7 +50,7 @@
 import { test, expect } from '@playwright/test';
 import { playFoundingToFirstAssignment } from '../helpers/ses-player';
 import { playBeginnerModeThroughJune } from '../helpers/beginner-mode-player';
-import { snapshotScreen, hasText, findDoubledParticles, firstEnabledDialogButton, type ScreenSnapshot } from '../helpers/game-state';
+import { snapshotScreen, stableSnapshotScreen, hasText, findDoubledParticles, firstEnabledDialogButton, type ScreenSnapshot } from '../helpers/game-state';
 import { watchForErrors, captureMilestone, writeArtifacts, buildResultJson } from '../helpers/artifacts';
 import { parseSeeds } from '../helpers/seeds';
 import fs from 'fs';
@@ -70,9 +69,9 @@ const STALL_REPEAT_THRESHOLD = 5;
 const BEGINNER_TARGET_WEEK = 12;
 const BEGINNER_MAX_ACTIONS = 200;
 
-// Bounded ordinary week-advance loop, not a retry mechanism — see the
-// file-level doc comment's determinism note (observed: 2 weeks for seed
-// 100001, this gives 5x margin).
+// Bounded ordinary week-advance loop, not a retry mechanism. This is a
+// scenario budget, not a promised time-to-offer: SalesEngine selects the
+// current eligible project and performs a seeded roll each week.
 const MAX_WEEKS_TO_WAIT_FOR_OFFER = 10;
 
 const EMPLOYEES_TAB = '社員';
@@ -83,6 +82,7 @@ const NEXT_WEEK_PREFIX = '次の週へ';
 const PROCEED_TO_INTERVIEW = '面談へ進む';
 const FIT_REASON_LINK = 'Fitの理由を見る';
 const AUTO_RESOLVE_CLIENT_INTERVIEW = '社員に任せる';
+const REVIEW_EMPLOYEE_OFFER = '社員とOfferを確認';
 
 // Dialogs whose dismiss button is always safe to tap without losing
 // anything under test — same list every other Phase 3A/3B E2E driver in
@@ -129,8 +129,7 @@ async function clickResilient(page: import('@playwright/test').Page, locate: () 
       const snap = await snapshotScreen(page);
       const close = firstEnabledDialogButton(snap, CLOSE.filter((name) => name !== label));
       if (close) {
-        await page.getByRole('button', { name: close.name, exact: true }).click().catch(() => {});
-        await page.waitForTimeout(300);
+        await byDialogButton(page, close.name)().click({ timeout: CLICK_RESILIENT_ATTEMPT_MS }).catch(() => {});
       }
     }
   }
@@ -138,19 +137,20 @@ async function clickResilient(page: import('@playwright/test').Page, locate: () 
 
 const byButton = (page: import('@playwright/test').Page, name: string) => () => page.getByRole('button', { name, exact: true }).first();
 const byTab = (page: import('@playwright/test').Page, name: string) => () => page.getByRole('tab', { name, exact: true });
+const byDialogButton = (page: import('@playwright/test').Page, name: string) => () =>
+  page.locator('[role="dialog"], [role="alertdialog"]').getByRole('button', { name, exact: true }).first();
 
 /** Dismisses every dialog currently stacked on screen, recording each one's
  * text for the doubled-particle scan — same shape as
  * beginner-mode-waiting-and-recruitment.spec.ts's own settleAndScan. */
 async function settleAndScan(page: import('@playwright/test').Page, textOffenders: string[]): Promise<ScreenSnapshot> {
-  let snap = await snapshotScreen(page);
+  let snap = await stableSnapshotScreen(page);
   for (let i = 0; i < 10; i++) {
     textOffenders.push(...findDoubledParticles(snap));
     const close = firstEnabledDialogButton(snap, CLOSE);
     if (!close) return snap;
-    await clickResilient(page, byButton(page, close.name), close.name);
-    await page.waitForTimeout(400);
-    snap = await snapshotScreen(page);
+    await clickResilient(page, byDialogButton(page, close.name), close.name);
+    snap = await stableSnapshotScreen(page);
   }
   return snap;
 }
@@ -184,6 +184,26 @@ async function openEngineerDetail(page: import('@playwright/test').Page): Promis
   await clickResilient(page, byButton(page, card!.name), card!.name);
   await page.waitForTimeout(500);
   return snapshotScreen(page);
+}
+
+/** Wait for the explicit post-confirmation state instead of assuming that a
+ * fixed pause made the dialog action reach GameController/GameEngine. */
+async function waitForSalesToStart(page: import('@playwright/test').Page): Promise<ScreenSnapshot> {
+  await expect.poll(
+    async () => hasText(await stableSnapshotScreen(page), '営業中'),
+    { timeout: 12_000, message: 'sales start did not reach the committed 営業中 state' },
+  ).toBe(true);
+  return stableSnapshotScreen(page);
+}
+
+/** A week advance may render a summary dialog before Home changes. Wait for
+ * either semantic change, then let settleAndScan inspect the latest UI. */
+async function waitForWeekAdvance(page: import('@playwright/test').Page, before: ScreenSnapshot): Promise<void> {
+  const beforeKey = JSON.stringify(before.texts);
+  await expect.poll(
+    async () => JSON.stringify((await stableSnapshotScreen(page)).texts) !== beforeKey,
+    { timeout: 12_000, message: 'week advance did not produce a new rendered state' },
+  ).toBe(true);
 }
 
 /** Scrolls the current screen's `ListView` down (bounded, polling for the
@@ -289,9 +309,9 @@ for (const seed of parsedSeeds.error ? [] : parsedSeeds.seeds) {
     const startSalesBtn = snap.buttons.find((b) => b.enabled && b.name === START_SALES);
     expect(startSalesBtn, `${START_SALES} not available on the engineer's detail screen (seed=${seed})`).toBeTruthy();
     await clickResilient(page, byButton(page, START_SALES), START_SALES);
-    await page.waitForTimeout(400);
-    await clickResilient(page, byButton(page, CONFIRM_START_SALES), CONFIRM_START_SALES);
-    await page.waitForTimeout(400);
+    await clickResilient(page, byDialogButton(page, CONFIRM_START_SALES), CONFIRM_START_SALES);
+    snap = await waitForSalesToStart(page);
+    expect(hasText(snap, '営業中'), `sales start did not reach the committed 営業中 state (seed=${seed})`).toBe(true);
 
     // Back to the tab bar, then Home to advance weeks — mirrors every other
     // driver's own "面談を待ちましょう。次の週へ進めると..." rhythm.
@@ -315,12 +335,25 @@ for (const seed of parsedSeeds.error ? [] : parsedSeeds.seeds) {
     // reported count accurate regardless of where the loop breaks.
     while (weeksWaited < MAX_WEEKS_TO_WAIT_FOR_OFFER && !offerAccepted) {
       await settleAndScan(page, textOffenders);
-      snap = await snapshotScreen(page);
+      snap = await stableSnapshotScreen(page);
+      const reviewOffer = snap.buttons.find((b) => b.enabled && b.name === REVIEW_EMPLOYEE_OFFER);
+      if (reviewOffer) {
+        await clickResilient(page, byButton(page, REVIEW_EMPLOYEE_OFFER), REVIEW_EMPLOYEE_OFFER);
+        await page.waitForTimeout(400);
+        snap = await stableSnapshotScreen(page);
+        const proceed = snap.buttons.find((b) => b.enabled && b.name === PROCEED_TO_INTERVIEW);
+        if (proceed) {
+          await clickResilient(page, byButton(page, PROCEED_TO_INTERVIEW), PROCEED_TO_INTERVIEW);
+          await page.waitForTimeout(700);
+          offerAccepted = true;
+          break;
+        }
+      }
       const next = snap.buttons.find((b) => b.enabled && b.name.startsWith(NEXT_WEEK_PREFIX));
       if (next) {
         await clickResilient(page, byButton(page, next.name), next.name);
-        await page.waitForTimeout(700);
         weeksWaited++;
+        await waitForWeekAdvance(page, snap);
       }
       await settleAndScan(page, textOffenders);
 

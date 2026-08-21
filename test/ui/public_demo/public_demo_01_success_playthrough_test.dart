@@ -85,11 +85,16 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('5月'), findsOneWidget);
 
-    // May: Takahashi is hired and wins a June order before joining.
+    // May: Takahashi is hired at the requested salary and wins a June order
+    // before joining.
     await tapAndSettle(tester, '経歴書確認');
     await tapAndSettle(tester, '採用面談');
     expect(find.textContaining('評価 74'), findsOneWidget);
-    await tapAndSettle(tester, '合格・内定');
+    await tapAndSettle(tester, '合格・給与提示');
+    expect(find.text('給与を提示'), findsOneWidget);
+    expect(find.text('月給 ¥32万'), findsWidgets);
+    await tester.tap(find.byKey(const Key('public-demo-salary-offer-320000')));
+    await tester.pumpAndSettle();
     await tapAndSettle(tester, '入社前SkillSheet');
     await tapAndSettle(tester, '入社前営業');
     await tapAndSettle(tester, '案件紹介');

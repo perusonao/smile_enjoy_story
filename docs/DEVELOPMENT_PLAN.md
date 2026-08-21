@@ -431,6 +431,11 @@ real-UI E2E coverage exists to close.
 
 - contextual guidance only for most systems
 - people/retention/benefit decisions using available mechanics
+- Public Demo-only Phase 2F precursor: after joining, an employee can make a
+  compensation request from June. The player chooses hold / small raise /
+  requested raise; the chosen salary starts next month and records one
+  qualitative Morale/Trust consequence. This is not yet Engineer-runtime,
+  resignation, bonus, loan, or employee-growth integration.
 
 ### Phase 3D — January–March + graduation
 

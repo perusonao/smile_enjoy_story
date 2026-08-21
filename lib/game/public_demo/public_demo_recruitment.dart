@@ -1,5 +1,6 @@
 import '../../domain/models/employee_relationship_event.dart';
 import '../../domain/models/engineer.dart';
+enum PublicDemoRaiseDecision { hold, smallRaise, requestedRaise }
 
 enum PublicDemoApplicantStage {
   applied,
@@ -34,6 +35,9 @@ class PublicDemoApplicant {
     this.employeeMorale,
     this.employeeCompanyTrust,
     this.relationshipHistory = const [],
+    this.raiseDecision,
+    this.raisedMonthlySalary,
+    this.raiseEffectiveMonth,
     this.stage = PublicDemoApplicantStage.applied,
   });
 
@@ -51,6 +55,9 @@ class PublicDemoApplicant {
   final int? employeeMorale;
   final int? employeeCompanyTrust;
   final List<EmployeeRelationshipEvent> relationshipHistory;
+  final PublicDemoRaiseDecision? raiseDecision;
+  final int? raisedMonthlySalary;
+  final int? raiseEffectiveMonth;
   final PublicDemoApplicantStage stage;
 
   PublicDemoApplicant copyWith({
@@ -62,6 +69,9 @@ class PublicDemoApplicant {
     int? employeeMorale,
     int? employeeCompanyTrust,
     List<EmployeeRelationshipEvent>? relationshipHistory,
+    PublicDemoRaiseDecision? raiseDecision,
+    int? raisedMonthlySalary,
+    int? raiseEffectiveMonth,
   }) =>
       PublicDemoApplicant(
         id: id,
@@ -78,6 +88,9 @@ class PublicDemoApplicant {
         employeeMorale: employeeMorale ?? this.employeeMorale,
         employeeCompanyTrust: employeeCompanyTrust ?? this.employeeCompanyTrust,
         relationshipHistory: relationshipHistory ?? this.relationshipHistory,
+        raiseDecision: raiseDecision ?? this.raiseDecision,
+        raisedMonthlySalary: raisedMonthlySalary ?? this.raisedMonthlySalary,
+        raiseEffectiveMonth: raiseEffectiveMonth ?? this.raiseEffectiveMonth,
         stage: stage ?? this.stage,
       );
 

@@ -3,6 +3,7 @@ library;
 
 export 'applicant.dart';
 export 'applicant_type.dart';
+export 'career_history_entry.dart';
 export 'client.dart';
 export 'client_specialty.dart';
 export 'company.dart';

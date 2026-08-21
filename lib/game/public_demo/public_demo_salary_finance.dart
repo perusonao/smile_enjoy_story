@@ -9,6 +9,7 @@ class PublicDemoSalaryFinance {
   static int monthlyExpenseAdjustment(Iterable<PublicDemoApplicant> hires) {
     var adjustment = 0;
     for (final hire in hires) {
+      if (hire.stage == PublicDemoApplicantStage.offerDeclined) continue;
       final salary = hire.acceptedMonthlySalary;
       if (salary == null) continue;
       adjustment += salary - hire.requestedMonthlySalary;

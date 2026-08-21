@@ -24,6 +24,9 @@ class PublicDemoApplicant {
     required this.acceptanceScore,
     required this.salesSkillFit,
     this.requestedMonthlySalary = 320000,
+    this.acceptedMonthlySalary,
+    this.salaryMotivationDelta = 0,
+    this.salaryTrustDelta = 0,
     this.stage = PublicDemoApplicantStage.applied,
   });
 
@@ -34,9 +37,18 @@ class PublicDemoApplicant {
   final int acceptanceScore;
   final int salesSkillFit;
   final int requestedMonthlySalary;
+  final int? acceptedMonthlySalary;
+  final int salaryMotivationDelta;
+  final int salaryTrustDelta;
   final PublicDemoApplicantStage stage;
 
-  PublicDemoApplicant copyWith({PublicDemoApplicantStage? stage}) => PublicDemoApplicant(
+  PublicDemoApplicant copyWith({
+    PublicDemoApplicantStage? stage,
+    int? acceptedMonthlySalary,
+    int? salaryMotivationDelta,
+    int? salaryTrustDelta,
+  }) =>
+      PublicDemoApplicant(
         id: id,
         name: name,
         resumeSummary: resumeSummary,
@@ -44,6 +56,9 @@ class PublicDemoApplicant {
         acceptanceScore: acceptanceScore,
         salesSkillFit: salesSkillFit,
         requestedMonthlySalary: requestedMonthlySalary,
+        acceptedMonthlySalary: acceptedMonthlySalary ?? this.acceptedMonthlySalary,
+        salaryMotivationDelta: salaryMotivationDelta ?? this.salaryMotivationDelta,
+        salaryTrustDelta: salaryTrustDelta ?? this.salaryTrustDelta,
         stage: stage ?? this.stage,
       );
 }

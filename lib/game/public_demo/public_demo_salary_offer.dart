@@ -1,4 +1,5 @@
 import 'public_demo_recruitment.dart';
+import '../../domain/models/employee_relationship_event.dart';
 
 enum PublicDemoSalaryOfferLevel { belowRequest, requested, aboveRequest }
 
@@ -22,6 +23,11 @@ class PublicDemoSalaryOffer {
   final int motivationDelta;
   final int trustDelta;
 
+  /// Public Demo's temporary "motivation" wording maps directly to the
+  /// shared employee model's morale. Keep this mapping here so a future
+  /// applicant-to-[Engineer] conversion does not recreate salary rules.
+  int get moraleDelta => motivationDelta;
+
   bool get accepted => acceptanceScore >= 60;
 
   PublicDemoSalaryOfferLevel get level {
@@ -33,6 +39,22 @@ class PublicDemoSalaryOffer {
     }
     return PublicDemoSalaryOfferLevel.requested;
   }
+
+  String get relationshipReason => switch (level) {
+        PublicDemoSalaryOfferLevel.belowRequest => '希望給与を下回る条件で入社',
+        PublicDemoSalaryOfferLevel.requested => '希望給与どおりの条件で入社',
+        PublicDemoSalaryOfferLevel.aboveRequest => '希望給与を上回る条件で入社',
+      };
+
+  /// The relationship-history entry to apply through [MoraleEngine.applyDelta]
+  /// when this accepted applicant is converted into an Engineer.
+  EmployeeRelationshipEvent relationshipEvent({required int week}) =>
+      EmployeeRelationshipEvent(
+        week: week,
+        reason: relationshipReason,
+        moraleDelta: moraleDelta,
+        trustDelta: trustDelta,
+      );
 
   /// Records this salary decision on the applicant while retaining their
   /// recruitment progression. A declined offer is recorded too; callers

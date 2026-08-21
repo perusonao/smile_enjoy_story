@@ -20,6 +20,9 @@ class PublicDemoEngineerSales {
     required this.interviewProfile,
     this.stage = PublicDemoSalesStage.waiting,
     this.lastInterviewScore,
+    this.mental = 50,
+    this.motivation = 50,
+    this.trust = 50,
   });
 
   final String id;
@@ -28,10 +31,16 @@ class PublicDemoEngineerSales {
   final PublicDemoInterviewProfile interviewProfile;
   final PublicDemoSalesStage stage;
   final int? lastInterviewScore;
+  final int mental;
+  final int motivation;
+  final int trust;
 
   PublicDemoEngineerSales copyWith({
     PublicDemoSalesStage? stage,
     int? lastInterviewScore,
+    int? mental,
+    int? motivation,
+    int? trust,
   }) =>
       PublicDemoEngineerSales(
         id: id,
@@ -40,6 +49,9 @@ class PublicDemoEngineerSales {
         interviewProfile: interviewProfile,
         stage: stage ?? this.stage,
         lastInterviewScore: lastInterviewScore ?? this.lastInterviewScore,
+        mental: mental ?? this.mental,
+        motivation: motivation ?? this.motivation,
+        trust: trust ?? this.trust,
       );
 }
 

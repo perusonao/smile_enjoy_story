@@ -21,7 +21,6 @@ class PublicDemoEngineerSales {
     this.stage = PublicDemoSalesStage.waiting,
     this.lastInterviewScore,
     this.mental = 50,
-    this.motivation = 50,
     this.trust = 50,
   });
 
@@ -32,14 +31,16 @@ class PublicDemoEngineerSales {
   final PublicDemoSalesStage stage;
   final int? lastInterviewScore;
   final int mental;
-  final int motivation;
   final int trust;
+
+  /// Public Demo currently uses the existing morale value as the
+  /// Motivation-equivalent, matching the shared Engineer model semantics.
+  int get motivation => interviewProfile.morale;
 
   PublicDemoEngineerSales copyWith({
     PublicDemoSalesStage? stage,
     int? lastInterviewScore,
     int? mental,
-    int? motivation,
     int? trust,
   }) =>
       PublicDemoEngineerSales(
@@ -50,7 +51,6 @@ class PublicDemoEngineerSales {
         stage: stage ?? this.stage,
         lastInterviewScore: lastInterviewScore ?? this.lastInterviewScore,
         mental: mental ?? this.mental,
-        motivation: motivation ?? this.motivation,
         trust: trust ?? this.trust,
       );
 }

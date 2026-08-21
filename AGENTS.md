@@ -18,6 +18,16 @@ Treat it as the current development-priority source of truth.
 - Run the relevant Flutter/unit/replay/Playwright checks after changes.
 - If an explicit user request changes the roadmap, follow the user request and update `docs/DEVELOPMENT_PLAN.md` when the change is intended to persist.
 
+## AI knowledge base
+
+Before investigating a non-trivial bug or architecture change: read the
+development plan, classify the problem, search `docs/ai-knowledge/INDEX.md`,
+then load only relevant entries and verify them against current code/tests.
+Historical knowledge is never stronger than current code or tests.
+
+After substantial work, record a reusable, evidenced incident/pattern/decision
+when appropriate. Do not promote a one-off observation directly to a core rule.
+
 ## Current focus
 
 Playable 0.4C.2 stabilization and March-to-April accounting correctness are

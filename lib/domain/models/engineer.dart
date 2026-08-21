@@ -8,6 +8,8 @@ import 'sales_profile.dart';
 /// Number of recent [EmployeeRelationshipEvent] rows kept per engineer
 /// (Playable 0.4C §38).
 const int maxRelationshipHistory = 5;
+const int defaultEmployeeCompanyTrust = 60;
+const int defaultEmployeeMorale = 65;
 
 /// An employee, created once an [Applicant] has been hired.
 ///
@@ -62,8 +64,8 @@ class Engineer {
     required this.salary,
     required this.employmentWeek,
     required this.status,
-    this.companyTrust = 60,
-    this.morale = 65,
+    this.companyTrust = defaultEmployeeCompanyTrust,
+    this.morale = defaultEmployeeMorale,
     this.preference = EmployeePreference.stability,
     this.relationshipHistory = const [],
     this.industryExperience = const {},
@@ -151,8 +153,8 @@ class Engineer {
       salary: json['salary'] as int,
       employmentWeek: json['employmentWeek'] as int,
       status: EngineerStatus.fromJson(json['status'] as String),
-      companyTrust: json['companyTrust'] as int? ?? 60,
-      morale: json['morale'] as int? ?? 65,
+      companyTrust: json['companyTrust'] as int? ?? defaultEmployeeCompanyTrust,
+      morale: json['morale'] as int? ?? defaultEmployeeMorale,
       preference: json['preference'] == null
           ? EmployeePreference.stability
           : EmployeePreference.fromJson(json['preference'] as String),

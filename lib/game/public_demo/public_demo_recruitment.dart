@@ -23,6 +23,7 @@ class PublicDemoApplicant {
     required this.interviewScore,
     required this.acceptanceScore,
     required this.salesSkillFit,
+    this.requestedMonthlySalary = 320000,
     this.stage = PublicDemoApplicantStage.applied,
   });
 
@@ -32,6 +33,7 @@ class PublicDemoApplicant {
   final int interviewScore;
   final int acceptanceScore;
   final int salesSkillFit;
+  final int requestedMonthlySalary;
   final PublicDemoApplicantStage stage;
 
   PublicDemoApplicant copyWith({PublicDemoApplicantStage? stage}) => PublicDemoApplicant(
@@ -41,6 +43,7 @@ class PublicDemoApplicant {
         interviewScore: interviewScore,
         acceptanceScore: acceptanceScore,
         salesSkillFit: salesSkillFit,
+        requestedMonthlySalary: requestedMonthlySalary,
         stage: stage ?? this.stage,
       );
 }
@@ -53,6 +56,7 @@ const publicDemoMayApplicants = <PublicDemoApplicant>[
     interviewScore: 74,
     acceptanceScore: 68,
     salesSkillFit: 76,
+    requestedMonthlySalary: 320000,
   ),
   PublicDemoApplicant(
     id: 'app-02',
@@ -61,5 +65,6 @@ const publicDemoMayApplicants = <PublicDemoApplicant>[
     interviewScore: 58,
     acceptanceScore: 82,
     salesSkillFit: 62,
+    requestedMonthlySalary: 300000,
   ),
 ];

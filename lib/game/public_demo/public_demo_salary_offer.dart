@@ -52,16 +52,18 @@ class PublicDemoSalaryOfferEvaluator {
     final acceptanceScore =
         (applicant.acceptanceScore + scoreAdjustment).clamp(0, 100).toInt();
 
+    // Meeting the candidate's request is the neutral baseline. Offering less
+    // creates an employee-state cost; offering more creates a modest benefit.
     final motivationDelta = difference < 0
         ? -6
         : difference > 0
             ? 4
-            : 1;
+            : 0;
     final trustDelta = difference < 0
         ? -8
         : difference > 0
             ? 3
-            : 1;
+            : 0;
 
     return PublicDemoSalaryOffer(
       requestedMonthlySalary: requested,

@@ -18,13 +18,25 @@
 // itself) is a pure function of (state.seed, state.week, salt) — see
 // project_interview_engine.dart's own doc comment — so under a fixed seed
 // and this file's fixed action sequence, the same interview offer (same
-// project, same Fit) appears at the same week every run. Verified directly
-// against real Chromium during development, not assumed: seed 100001
-// reaches a QA体制強化支援 offer exactly 2 week-advances after starting the
-// second sales search at Week 13. `MAX_WEEKS_TO_WAIT_FOR_OFFER` below still
-// gives real margin (5x) past that observed timing — a bounded, ordinary
-// weekly-progression loop (same shape as every other spec's week-advance
-// loop), not a retry-driven flakiness workaround.
+// project, same Fit) appears at the same week every run, *for a given
+// engine build*. An earlier version of this comment additionally treated
+// "seed 100001 reaches an offer in exactly 2 week-advances" as if it were a
+// fixed, re-derivable fact — it was only ever a one-time observation against
+// whatever SalesEngine/ProjectInterviewEngine behavior existed at the time
+// it was written. Which project offer appears, and when, is a real function
+// of live sales state (which projects are currently open), each project's
+// own deadline, the engineer's participation availability, the Fit
+// threshold, and the seeded roll itself — none of which this spec pins down
+// or should: doing so would make this real-UI test assert a specific
+// SalesEngine outcome instead of just proving the FitBadge/FitReasonSheet
+// flow is reachable once *some* offer arrives. `MAX_WEEKS_TO_WAIT_FOR_OFFER`
+// below is therefore a generous, ordinary bounded weekly-progression loop
+// (same shape as every other spec's week-advance loop) sized to comfortably
+// outlast any legitimate in-game wait for an offer to surface, not a
+// specific week count re-derived from a historical run — and if a real
+// SalesEngine change ever pushes a seed's genuine offer timing past this
+// bound, that is a real timing regression for this loop to catch, not
+// something to paper over by widening the bound without evidence.
 //
 // No RNG-dependent *outcome* is ever a pass/fail condition here (§ this
 // PR's brief): whether the client interview this offer leads into ends up
@@ -51,7 +63,7 @@
 import { test, expect } from '@playwright/test';
 import { playFoundingToFirstAssignment } from '../helpers/ses-player';
 import { playBeginnerModeThroughJune } from '../helpers/beginner-mode-player';
-import { snapshotScreen, hasText, findDoubledParticles, firstEnabledDialogButton, type ScreenSnapshot } from '../helpers/game-state';
+import { snapshotScreen, hasText, findDoubledParticles, firstEnabledDialogButton, isEmptySnapshot, type ScreenSnapshot } from '../helpers/game-state';
 import { watchForErrors, captureMilestone, writeArtifacts, buildResultJson } from '../helpers/artifacts';
 import { parseSeeds } from '../helpers/seeds';
 import fs from 'fs';
@@ -71,8 +83,9 @@ const BEGINNER_TARGET_WEEK = 12;
 const BEGINNER_MAX_ACTIONS = 200;
 
 // Bounded ordinary week-advance loop, not a retry mechanism — see the
-// file-level doc comment's determinism note (observed: 2 weeks for seed
-// 100001, this gives 5x margin).
+// file-level doc comment's determinism note: a generous bound on how long a
+// real offer can legitimately take to surface, not a specific week count
+// this test expects or guarantees.
 const MAX_WEEKS_TO_WAIT_FOR_OFFER = 10;
 
 const EMPLOYEES_TAB = '社員';
@@ -100,6 +113,48 @@ const AUTO_RESOLVE_CLIENT_INTERVIEW = '社員に任せる';
 // `dialog`/`alertdialog` a11y node (see `dialogButtonNames` in
 // game-state.ts) — never against `CLOSE` directly.
 const CLOSE = ['閉じる', 'OK', '会社状況を見る', '面談依頼を見る', '採用を見る', '社員環境を見る', 'それでも進む', '社員に任せて進む'];
+
+/** Same live-dialog scope `beginner-mode-waiting-and-recruitment.spec.ts`'s
+ * own `waitForTabBar`/`settleAndScan`/`clickResilient` fix uses (kept as a
+ * local copy for the same reason `clickResilient` below already is — see
+ * its own doc comment). `firstEnabledDialogButton` (game-state.ts) only
+ * proves a button was inside a real `dialog`/`alertdialog` a11y node *at
+ * snapshot time* and hands back a bare name, not a Locator — re-resolving
+ * that name with a page-wide `page.getByRole(...)` to actually click it
+ * reopens exactly the ambiguity the dialog-scoped check exists to close: by
+ * click time the dialog can have already closed (revealing an
+ * identically-labeled, unrelated control elsewhere on screen) or been
+ * replaced by a chained dialog. Routing the click back through this same
+ * scope keeps "is this really the dialog's own button" true at click time,
+ * not just at snapshot time. */
+function dialogScope(page: import('@playwright/test').Page) {
+  return page.locator('[role="dialog"], [role="alertdialog"]');
+}
+
+// Same values ses-player.ts's / beginner-mode-player.ts's own
+// readStableSemantics already use.
+const EMPTY_SEMANTICS_POLL_MS = 150;
+const EMPTY_SEMANTICS_RECOVERY_MS = 2_000;
+
+/** Reads the accessibility tree, but does not trust a momentarily *empty*
+ * result as the screen itself — the same WebKit mid-route-transition hazard
+ * ses-player.ts's readStableSemantics and beginner-mode-player.ts's own copy
+ * already guard against (see either's doc comment). `settleAndScan` below
+ * used to read a bare `snapshotScreen()`: a transient empty frame there
+ * reads as "no dialog to dismiss" (firstEnabledDialogButton finds nothing on
+ * an empty snapshot) and gets handed straight back to the caller as if the
+ * screen had genuinely settled, when it may really still be mid-transition. */
+async function readStableSemantics(page: import('@playwright/test').Page, maxWaitMs = EMPTY_SEMANTICS_RECOVERY_MS): Promise<ScreenSnapshot> {
+  let snap = await snapshotScreen(page);
+  if (!isEmptySnapshot(snap)) return snap;
+  const start = Date.now();
+  while (Date.now() - start < maxWaitMs) {
+    await page.waitForTimeout(EMPTY_SEMANTICS_POLL_MS);
+    snap = await snapshotScreen(page);
+    if (!isEmptySnapshot(snap)) return snap;
+  }
+  return snap;
+}
 
 // --- clickResilient + friends -------------------------------------------
 // Deliberately the *same* implementation as
@@ -129,7 +184,19 @@ async function clickResilient(page: import('@playwright/test').Page, locate: () 
       const snap = await snapshotScreen(page);
       const close = firstEnabledDialogButton(snap, CLOSE.filter((name) => name !== label));
       if (close) {
-        await page.getByRole('button', { name: close.name, exact: true }).click().catch(() => {});
+        // `.count()`-gated, same as `waitForTabBar` in
+        // beginner-mode-waiting-and-recruitment.spec.ts (its own doc comment
+        // explains why): the dialog this snapshot saw can already be gone by
+        // the time this line runs, and a plain scoped `.click()` would then
+        // block for up to this whole function's per-attempt budget waiting
+        // on a match that will never appear (CI run 32244016260: this exact
+        // unguarded-wait shape, at a sibling call site, starved a retry loop
+        // of its remaining attempts and surfaced as an unrelated tab timeout
+        // several steps later).
+        const closeBtn = dialogScope(page).getByRole('button', { name: close.name, exact: true });
+        if (await closeBtn.count()) {
+          await closeBtn.click().catch(() => {});
+        }
         await page.waitForTimeout(300);
       }
     }
@@ -141,15 +208,56 @@ const byTab = (page: import('@playwright/test').Page, name: string) => () => pag
 
 /** Dismisses every dialog currently stacked on screen, recording each one's
  * text for the doubled-particle scan — same shape as
- * beginner-mode-waiting-and-recruitment.spec.ts's own settleAndScan. */
+ * beginner-mode-waiting-and-recruitment.spec.ts's own settleAndScan.
+ *
+ * A direct, `.count()`-gated click, deliberately *not* routed through
+ * `clickResilient` (real WebKit CI evidence, run 32245044228: routing this
+ * through `clickResilient(byDialogButton(...))` made the *primary* attempt
+ * itself un-gated — `clickResilient`'s own retry loop just kept
+ * re-resolving and re-awaiting the same now-empty dialog-scoped locator for
+ * its full 15s budget once the dialog this snapshot saw had already closed,
+ * instead of recognizing "nothing left to dismiss" and moving on).
+ * `clickResilient` is the right tool for chasing a *real* target across
+ * genuine retries; a snapshot-detected dialog dismiss is a one-shot "is it
+ * still there right now" check, which `.count()` answers directly. */
 async function settleAndScan(page: import('@playwright/test').Page, textOffenders: string[]): Promise<ScreenSnapshot> {
-  let snap = await snapshotScreen(page);
+  let snap = await readStableSemantics(page);
   for (let i = 0; i < 10; i++) {
     textOffenders.push(...findDoubledParticles(snap));
     const close = firstEnabledDialogButton(snap, CLOSE);
     if (!close) return snap;
-    await clickResilient(page, byButton(page, close.name), close.name);
+    const closeBtn = dialogScope(page).getByRole('button', { name: close.name, exact: true });
+    if (await closeBtn.count()) {
+      await closeBtn.click().catch(() => {});
+    }
     await page.waitForTimeout(400);
+    snap = await readStableSemantics(page);
+  }
+  return snap;
+}
+
+// Same order of magnitude as beginner-mode-waiting-and-recruitment.spec.ts's
+// own waitForAnyEnabledButton/waitForInterviewScreenTransition (40×300ms).
+const NEXT_WEEK_POLL_MS = 300;
+const NEXT_WEEK_MAX_WAIT_MS = 12_000;
+
+/** Polls (bounded, not a single instantaneous read) until Home's own "次の
+ * 週へ" button is actually enabled, or the window elapses.
+ *
+ * Real WebKit CI evidence (run 32246344921): the offer-wait loop below used
+ * to read `next` from one bare `snapshotScreen()` call. When that single
+ * read happened to land while "次の週へ" hadn't rendered/enabled yet under
+ * WebKit's slower settle time (the same class of transition this harness
+ * already treats specially everywhere else — see `waitForTabBar`'s own doc
+ * comment for the CPU-throttling numbers this is sized against), the loop's
+ * own `if (!next) break;` gave up on the *entire* wait immediately — not a
+ * real "no offer within 10 weeks" outcome, just a single unlucky read
+ * mistaken for a stable absence. */
+async function waitForNextWeekButton(page: import('@playwright/test').Page, maxWaitMs = NEXT_WEEK_MAX_WAIT_MS): Promise<ScreenSnapshot> {
+  let snap = await snapshotScreen(page);
+  const start = Date.now();
+  while (Date.now() - start < maxWaitMs && !snap.buttons.some((b) => b.enabled && b.name.startsWith(NEXT_WEEK_PREFIX))) {
+    await page.waitForTimeout(NEXT_WEEK_POLL_MS);
     snap = await snapshotScreen(page);
   }
   return snap;
@@ -183,7 +291,20 @@ async function openEngineerDetail(page: import('@playwright/test').Page): Promis
   expect(card, `no engineer card on 社員 tab`).toBeTruthy();
   await clickResilient(page, byButton(page, card!.name), card!.name);
   await page.waitForTimeout(500);
-  return snapshotScreen(page);
+  // Bounded poll for a genuinely non-empty read, not a single snapshot right
+  // after a fixed 500ms wait: this function's return value is exactly what
+  // the offer-wait loop's own `proceed` check reads (§ PROCEED_TO_INTERVIEW
+  // lookup) — a snapshot caught mid-route-transition here (WebKit's own
+  // documented slower settle time, see waitForTabBar's doc comment in the
+  // sibling spec file for the CPU-throttling numbers this order of magnitude
+  // is sized against) would silently read as "no offer this week" even when
+  // a real 面談へ進む card was seconds away from rendering.
+  let detail = await snapshotScreen(page);
+  for (let i = 0; i < 40 && detail.buttons.length === 0 && detail.texts.length === 0; i++) {
+    await page.waitForTimeout(300);
+    detail = await snapshotScreen(page);
+  }
+  return detail;
 }
 
 /** Scrolls the current screen's `ListView` down (bounded, polling for the
@@ -313,14 +434,29 @@ for (const seed of parsedSeeds.error ? [] : parsedSeeds.seeds) {
     // explicitly right after the week actually advances — independent of
     // whether *this same* iteration goes on to find the offer — keeps the
     // reported count accurate regardless of where the loop breaks.
+    // Consecutive-failure counter for "次の週へ genuinely never appeared",
+    // separate from weeksWaited (real CI evidence: a single `if (!next)
+    // break` on the very first occurrence gave up on the *entire* wait after
+    // one bad read, misreporting a possibly-transient miss as "no offer
+    // within 10 weeks" when only a handful of weeks — sometimes as few as
+    // one — had actually been attempted). Bounded the same as every other
+    // stall-detection counter in this harness (ses-player.ts's
+    // STALL_REPEAT_THRESHOLD, beginner-mode-player.ts's own streak count) —
+    // finite, not the "genuinely stuck" trigger being removed, just no
+    // longer a single-observation trigger.
+    let noNextStreak = 0;
+    const MAX_NO_NEXT_STREAK = 3;
     while (weeksWaited < MAX_WEEKS_TO_WAIT_FOR_OFFER && !offerAccepted) {
       await settleAndScan(page, textOffenders);
-      snap = await snapshotScreen(page);
+      snap = await waitForNextWeekButton(page);
       const next = snap.buttons.find((b) => b.enabled && b.name.startsWith(NEXT_WEEK_PREFIX));
       if (next) {
+        noNextStreak = 0;
         await clickResilient(page, byButton(page, next.name), next.name);
         await page.waitForTimeout(700);
         weeksWaited++;
+      } else {
+        noNextStreak++;
       }
       await settleAndScan(page, textOffenders);
 
@@ -339,9 +475,15 @@ for (const seed of parsedSeeds.error ? [] : parsedSeeds.seeds) {
       await page.waitForTimeout(400);
       await clickResilient(page, byTab(page, HOME_TAB), 'ホームタブ');
       await page.waitForTimeout(400);
-      if (!next) break; // no next-week button and no offer — genuinely stuck, don't loop forever
+      // Genuinely stuck (no next-week button for several iterations in a
+      // row, and no offer) — don't loop forever, but don't give up on the
+      // first miss either.
+      if (noNextStreak >= MAX_NO_NEXT_STREAK) break;
     }
-    expect(offerAccepted, `no 面談依頼/${PROCEED_TO_INTERVIEW} appeared within ${MAX_WEEKS_TO_WAIT_FOR_OFFER} weeks (seed=${seed}) — not a stall/timeout tuning issue, see this file's determinism note`).toBe(true);
+    expect(
+      offerAccepted,
+      `no 面談依頼/${PROCEED_TO_INTERVIEW} appeared within ${MAX_WEEKS_TO_WAIT_FOR_OFFER} weeks (seed=${seed}, actually attempted ${weeksWaited} week-advance(s), noNextStreak=${noNextStreak}) — not a stall/timeout tuning issue, see this file's determinism note`,
+    ).toBe(true);
 
     // Phase 3: the accepted application is now `active` — the exact real
     // GameState transition `_ApplicationRow`'s FitBadge/`Fitの理由を見る`

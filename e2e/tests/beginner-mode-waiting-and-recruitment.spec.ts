@@ -87,6 +87,29 @@ const STALL_REPEAT_THRESHOLD = 5;
 // doc comment) — never against `CLOSE` directly.
 const CLOSE = ['閉じる', 'OK', '会社状況を見る', '面談依頼を見る', '採用を見る', '社員環境を見る', 'それでも進む', '社員に任せて進む', '採用画面へ戻る'];
 
+/** The same live-dialog scope `waitForTabBar` below already uses to *find*
+ * a dismiss button. `firstEnabledDialogButton`'s dialog-scoping check
+ * (game-state.ts) only proves a button *named* [name] was inside a real
+ * `dialog`/`alertdialog` a11y node *at snapshot time* — it hands back a
+ * bare string, not a Locator, so every call site used to re-resolve that
+ * name with a plain page-wide `page.getByRole('button', { name, exact:
+ * true })` to actually click it. That reintroduces exactly the ambiguity
+ * the dialog-scoped snapshot check exists to rule out: by the time the
+ * click lands, the dialog can have already closed (revealing an
+ * identically-labeled, unrelated control elsewhere on screen — e.g.
+ * `_HeroTaskCard`'s own "採用を見る" CTA, PR #22) or been replaced by a
+ * chained tutorial dialog, so a page-wide-by-name click can resolve to the
+ * wrong node, race a mid-teardown listener, or hang on an element that's
+ * about to detach — the "close button click時にDOM detach" / stray
+ * "採用 tab timeout" / "未面接候補者 click timeout" symptom cluster this fix
+ * addresses (they all cascade from the same unscoped click, not three
+ * independent bugs). Routing the click back through this same scope makes
+ * "is this really the dialog's own button" hold at click time too, not just
+ * at snapshot time. */
+function dialogScope(page: import('@playwright/test').Page) {
+  return page.locator('[role="dialog"], [role="alertdialog"]');
+}
+
 /** Dismisses every dialog currently stacked on screen, recording each one's
  * full text (for the doubled-particle scan) along the way, and stops the
  * instant [stopWhen] matches a dialog's own text — leaving that dialog
@@ -104,7 +127,20 @@ async function settleAndScan(
     if (stopWhen?.(snap)) return snap;
     const close = firstEnabledDialogButton(snap, CLOSE);
     if (!close) return null;
-    await page.getByRole('button', { name: close.name, exact: true }).click();
+    // `.count()`-gated, same as `waitForTabBar` below (its own doc comment
+    // explains why): a plain scoped `.click()` here would otherwise block on
+    // Playwright's own actionability auto-wait (the config's 15s
+    // actionTimeout) if the dialog this snapshot saw has already closed by
+    // the time this line runs — a real, common race, not a hypothetical one
+    // (CI run 32244016260: this exact class of unguarded wait, one call site
+    // over, starved the rest of this function's own 15-iteration budget and
+    // surfaced as a "ホーム tab never appeared" timeout several steps later).
+    // A `.count()` of 0 here just means the dialog is already gone — nothing
+    // to dismiss, loop back to the top and re-read the screen fresh.
+    const closeBtn = dialogScope(page).getByRole('button', { name: close.name, exact: true });
+    if (await closeBtn.count()) {
+      await closeBtn.click().catch(() => {});
+    }
     await page.waitForTimeout(500);
     const homeTab = page.getByRole('tab', { name: 'ホーム', exact: true });
     if (await homeTab.count()) {
@@ -289,7 +325,16 @@ async function clickResilient(page: import('@playwright/test').Page, locate: () 
       const snap = await snapshotScreen(page);
       const close = firstEnabledDialogButton(snap, CLOSE.filter((name) => name !== label));
       if (close) {
-        await page.getByRole('button', { name: close.name, exact: true }).click().catch(() => {});
+        // `.count()`-gated (see settleAndScan's own doc comment above for
+        // why) — the dialog this snapshot saw can already be gone by the
+        // time this line runs, and a plain scoped `.click()` would then
+        // block for up to this whole function's per-attempt budget waiting
+        // on a match that will never appear, starving every remaining retry
+        // this call still had left.
+        const closeBtn = dialogScope(page).getByRole('button', { name: close.name, exact: true });
+        if (await closeBtn.count()) {
+          await closeBtn.click().catch(() => {});
+        }
         await page.waitForTimeout(300);
       }
       // Otherwise just loop straight back to a fresh `locate()` call — the
@@ -490,7 +535,18 @@ for (const seed of parsedSeeds.seeds) {
     // individual roll's outcome.
     expect(await waitForTabBar(page, textOffenders, '採用'), '採用 tab never became visible before the first hire attempt').toBe(true);
     await clickResilient(page, byTab(page, '採用'), '採用タブ');
-    await page.waitForTimeout(500);
+    // Real WebKit CI evidence (run 32246344921): a fixed 500ms here was not
+    // always enough for the candidate ListView's own lazily-materialized
+    // semantics to settle under WebKit's slower rendering — the very first
+    // attempt's own `getByRole('button', { name: /未面接/ }).first()` click
+    // (below) resolved to a real, counted node but never passed Playwright's
+    // stability check for the full 15s clickResilient budget. Same
+    // "poll for real readiness, not a fixed sleep" shape already proven at
+    // every other screen-transition wait in this file — `waitForAnyEnabledButton`
+    // reads `buttons`, not `texts`, so the ListView's own truncated-aria-label
+    // issue (§ comment above, why `getByRole` and not `snapshotScreen` is used
+    // for the candidate click itself) doesn't affect it.
+    await waitForAnyEnabledButton(page);
 
     // A handful of candidates in a row is enough to prove the interview ->
     // decision -> back-to-recruitment-tab cycle is genuinely repeatable
@@ -609,6 +665,23 @@ for (const seed of parsedSeeds.seeds) {
     // deterministically, in seconds, that the milestone and its dialog both
     // fire correctly once the right GameState facts hold, so this long-
     // running E2E has no remaining reason to search for that specific text.
+    //
+    // waitForTabBar, not a bare settleAndScan + clickResilient (real CI
+    // evidence, run 32245044228 on WebKit and again run 32250974334 on
+    // Chromium — both attempts, both retries, identical "waiting for
+    // getByRole('tab', { name: 'ホーム' })" timeout): the loop's own
+    // waitForTabBar above only confirms the 採用 tab is visible after the
+    // *last* hire attempt — it does not guarantee a chained tutorial dialog
+    // possibly still attaching right around that same moment has also
+    // finished and been dismissed, and a single settleAndScan pass isn't
+    // guaranteed to still be looking at the moment such a straggler
+    // attaches. `waitForTabBar` is this exact file's own already-proven
+    // mechanism for the identical class of problem (see its own doc
+    // comment's CI investigation) — a bounded, repeated dismiss-and-poll
+    // loop, not a one-shot settle — used here for the ホーム tab the same
+    // way every other tab-bar transition in this file already uses it for
+    // 採用.
+    expect(await waitForTabBar(page, textOffenders, 'ホーム'), 'ホーム tab never became visible after the hire-attempt loop').toBe(true);
     await clickResilient(page, byTab(page, 'ホーム'), 'ホームタブ');
     await page.waitForTimeout(500);
     for (let i = 0; i < 3; i++) {

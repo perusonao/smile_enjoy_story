@@ -253,6 +253,10 @@ class Offer {
 }
 
 /// An engineer currently staffed on a project, generating weekly revenue.
+///
+/// Gameplay Phase 1A adds stable storage for the placement-time fit and the
+/// evolving field evaluation; both default to null so schema-v6 saves
+/// remain compatible.
 class ActiveAssignment {
   final String engineerId;
   final Project project;
@@ -262,6 +266,8 @@ class ActiveAssignment {
   final int contractEndWeek;
   final int contractTermMonths;
   final ContractDecision contractDecision;
+  final int? assignmentFitScore;
+  final int? fieldEvaluation;
 
   ActiveAssignment({
     required this.engineerId,
@@ -272,11 +278,13 @@ class ActiveAssignment {
     int? contractEndWeek,
     int? contractTermMonths,
     this.contractDecision = ContractDecision.undecided,
+    this.assignmentFitScore,
+    this.fieldEvaluation,
   }) : contractStartWeek = contractStartWeek ?? assignedWeek,
        contractEndWeek = contractEndWeek ?? (assignedWeek + remainingWeeks - 1),
        contractTermMonths = contractTermMonths ?? project.contractTermMonths;
 
-  ActiveAssignment copyWith({int? remainingWeeks, int? contractEndWeek, ContractDecision? contractDecision}) => ActiveAssignment(
+  ActiveAssignment copyWith({int? remainingWeeks, int? contractEndWeek, ContractDecision? contractDecision, int? assignmentFitScore, int? fieldEvaluation}) => ActiveAssignment(
     engineerId: engineerId,
     project: project,
     remainingWeeks: remainingWeeks ?? this.remainingWeeks,
@@ -285,6 +293,8 @@ class ActiveAssignment {
     contractEndWeek: contractEndWeek ?? this.contractEndWeek,
     contractTermMonths: contractTermMonths,
     contractDecision: contractDecision ?? this.contractDecision,
+    assignmentFitScore: assignmentFitScore ?? this.assignmentFitScore,
+    fieldEvaluation: fieldEvaluation ?? this.fieldEvaluation,
   );
 
   Map<String, dynamic> toJson() => {
@@ -296,6 +306,8 @@ class ActiveAssignment {
     'contractEndWeek': contractEndWeek,
     'contractTermMonths': contractTermMonths,
     'contractDecision': contractDecision.name,
+    'assignmentFitScore': assignmentFitScore,
+    'fieldEvaluation': fieldEvaluation,
   };
 
   factory ActiveAssignment.fromJson(Map<String, dynamic> json) =>
@@ -308,6 +320,8 @@ class ActiveAssignment {
         contractEndWeek: json['contractEndWeek'] as int?,
         contractTermMonths: json['contractTermMonths'] as int?,
         contractDecision: ContractDecision.values.byName(json['contractDecision'] as String? ?? 'undecided'),
+        assignmentFitScore: json['assignmentFitScore'] as int?,
+        fieldEvaluation: json['fieldEvaluation'] as int?,
       );
 }
 

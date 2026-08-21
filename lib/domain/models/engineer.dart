@@ -1,4 +1,5 @@
 import 'applicant.dart';
+import 'career_history_entry.dart';
 import 'employee_preference.dart';
 import 'employee_relationship_event.dart';
 import 'engineer_status.dart';
@@ -50,6 +51,10 @@ class Engineer {
   final SalesStatus salesStatus;
   final int availableFromWeek;
 
+  /// Actual project-by-project career facts. SkillSheet remains the separate
+  /// sales-facing representation and may intentionally differ from this.
+  final List<CareerHistoryEntry> careerHistory;
+
   const Engineer({
     required this.id,
     required this.sourceApplicantId,
@@ -69,6 +74,7 @@ class Engineer {
     this.abilities = const {},
     this.salesStatus = SalesStatus.notSelling,
     this.availableFromWeek = 1,
+    this.careerHistory = const [],
   });
 
   Engineer copyWith({
@@ -90,6 +96,7 @@ class Engineer {
     Set<EmployeeAbility>? abilities,
     SalesStatus? salesStatus,
     int? availableFromWeek,
+    List<CareerHistoryEntry>? careerHistory,
   }) {
     return Engineer(
       id: id ?? this.id,
@@ -110,6 +117,7 @@ class Engineer {
       abilities: abilities ?? this.abilities,
       salesStatus: salesStatus ?? this.salesStatus,
       availableFromWeek: availableFromWeek ?? this.availableFromWeek,
+      careerHistory: careerHistory ?? this.careerHistory,
     );
   }
 
@@ -132,6 +140,7 @@ class Engineer {
     'abilities': abilities.map((e)=>e.name).toList(),
     'salesStatus': salesStatus.name,
     'availableFromWeek': availableFromWeek,
+    'careerHistory': careerHistory.map((e) => e.toJson()).toList(),
   };
 
   factory Engineer.fromJson(Map<String, dynamic> json) {
@@ -158,6 +167,9 @@ class Engineer {
       abilities: (json['abilities'] as List? ?? const []).map((e)=>EmployeeAbility.values.byName(e as String)).toSet(),
       salesStatus: SalesStatus.values.byName(json['salesStatus'] as String? ?? 'notSelling'),
       availableFromWeek: json['availableFromWeek'] as int? ?? 1,
+      careerHistory: (json['careerHistory'] as List? ?? const [])
+          .map((e) => CareerHistoryEntry.fromJson(e as Map<String, dynamic>))
+          .toList(),
     );
   }
 

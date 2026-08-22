@@ -1,4 +1,8 @@
 import 'package:flutter/material.dart';
+import '../../domain/models/hidden_parameters.dart';
+import '../../domain/models/language_skill.dart';
+import '../../domain/models/programming_language.dart';
+import '../../domain/models/tech_skill_levels.dart';
 import '../../game/public_demo/public_demo_assignment.dart';
 import '../../game/public_demo/public_demo_interview.dart';
 import '../../game/public_demo/public_demo_recruitment.dart';
@@ -6,9 +10,11 @@ import '../../game/public_demo/public_demo_sales.dart';
 import '../../game/public_demo/public_demo_salary_finance.dart';
 import '../../game/public_demo/public_demo_state.dart';
 import '../../game/public_demo/public_demo_employee_condition.dart';
+import '../../game/public_demo/public_demo_engineer_runtime.dart';
 import '../../game/public_demo/public_demo_raise.dart';
 import '../asset_paths.dart';
 import 'public_demo_event_dialog.dart';
+import 'public_demo_growth_result_card.dart';
 import 'public_demo_interview_result_dialog.dart';
 import 'public_demo_sales_progress.dart';
 import 'public_demo_salary_offer_dialog.dart';
@@ -27,6 +33,24 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
   List<PublicDemoEngineerSales> engineers = publicDemoInitialEngineers;
   List<PublicDemoApplicant> applicants = publicDemoMayApplicants;
   List<PublicDemoAssignment> assignments = [];
+
+  int capabilityFor(String engineerId) =>
+      s.runtimeFor(engineerId).actualCapability;
+
+  Map<String, int> get _moraleByEngineerId => {
+    for (final engineer in engineers) engineer.id: engineer.motivation,
+    for (final applicant in applicants)
+      if (applicant.hasJoined) applicant.id: applicant.employeeMorale!,
+  };
+
+  /// This is called only by the month-end command, after all current-month
+  /// work/contract decisions and before the next month transition. It never
+  /// runs from build or dialog lifecycle code.
+  PublicDemoState _closeGrowth(Set<String> assignedEngineerIds) =>
+      s.applyMonthlyGrowth(
+        assignedEngineerIds: assignedEngineerIds,
+        moraleByEngineerId: _moraleByEngineerId,
+      );
 
   @override
   void dispose() {
@@ -162,8 +186,11 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
     );
     if (!mounted) return;
     setState(
-      () => s = s.advanceToMay(monthlyExpenses: expense, orderedEngineers: o),
+      () => s = _closeGrowth(
+        const {},
+      ).advanceToMay(monthlyExpenses: expense, orderedEngineers: o),
     );
+    _resetMonthScroll();
   }
 
   void recruit(int i) {
@@ -286,7 +313,6 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
             projectName: '新規開発支援',
             deliveryPressure: 50,
             budgetHealth: 70,
-            skill: a.salesSkillFit,
             humanity: 70,
           ),
     ];
@@ -312,17 +338,54 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
           .map((a) => a.join(week: 9))
           .toList();
       applicants = joined;
-      s = s.advanceToJune(
-        monthlyExpenses: expense,
-        acceptedHires: hires,
-        hiredWithOrders: ordered,
-        joinedApplicantIds: joined
-            .where((a) => a.hasJoined)
-            .map((a) => a.id)
-            .toList(),
-      );
+      s =
+          _closeGrowth(
+                engineers
+                    .where(
+                      (engineer) =>
+                          engineer.stage == PublicDemoSalesStage.ordered,
+                    )
+                    .map((engineer) => engineer.id)
+                    .toSet(),
+              )
+              .advanceToJune(
+                monthlyExpenses: expense,
+                acceptedHires: hires,
+                hiredWithOrders: ordered,
+                joinedApplicantIds: joined
+                    .where((a) => a.hasJoined)
+                    .map((a) => a.id)
+                    .toList(),
+              )
+              .copyWith(
+                engineerRuntimes: [
+                  ...s.engineerRuntimes,
+                  for (final applicant in joined.where((a) => a.hasJoined))
+                    PublicDemoEngineerRuntime(
+                      engineerId: applicant.id,
+                      primaryLanguage: ProgrammingLanguage.java,
+                      languageSkills: {
+                        ProgrammingLanguage.java: LanguageSkill(
+                          language: ProgrammingLanguage.java,
+                          displayedExperienceMonths: 0,
+                          actualExperienceMonths: 0,
+                          actualSkill: applicant.salesSkillFit,
+                        ),
+                      },
+                      techSkills: const TechSkillLevels.zero(),
+                      hidden: const HiddenParameters(
+                        growthPotential: 3,
+                        stressTolerance: 3,
+                        retention: 3,
+                        projectInterviewSkill: 3,
+                        turnoverIntent: 50,
+                      ),
+                    ),
+                ],
+              );
       assignments = nextAssignments;
     });
+    _resetMonthScroll();
   }
 
   void decideOrder(int i) {
@@ -330,7 +393,7 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
     setState(() {
       final n = [...assignments];
       n[i] = a.copyWith(
-        nextOrderStatus: a.willOfferNextMonth
+        nextOrderStatus: a.willOfferNextMonthFor(capabilityFor(a.engineerId))
             ? PublicDemoNextOrderStatus.offered
             : PublicDemoNextOrderStatus.notOffered,
       );
@@ -353,7 +416,8 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
       s = s.useSalesSlot();
       final n = [...assignments];
       n[i] = a.copyWith(
-        replacementStage: a.replacementPartnerScore >= 60
+        replacementStage:
+            a.replacementPartnerScoreFor(capabilityFor(a.engineerId)) >= 60
             ? PublicDemoReplacementStage.partnerPassed
             : PublicDemoReplacementStage.partnerFailed,
       );
@@ -365,7 +429,7 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
     final a = assignments[i];
     ars(
       i,
-      a.replacementClientScore >= 60
+      a.replacementClientScoreFor(capabilityFor(a.engineerId)) >= 60
           ? PublicDemoReplacementStage.clientPassed
           : PublicDemoReplacementStage.clientFailed,
     );
@@ -381,13 +445,16 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
         .length;
     final joinedHires = applicants.where(accepted);
     setState(
-      () => s = s.advanceToJuly(
-        monthlyExpenses: PublicDemoSalaryFinance.monthlyExpenses(
-          baselineExpenses: expense,
-          hires: joinedHires,
-        ),
-        assignedInJuly: assigned,
-      ),
+      () => s =
+          _closeGrowth(
+            assignments.map((assignment) => assignment.engineerId).toSet(),
+          ).advanceToJuly(
+            monthlyExpenses: PublicDemoSalaryFinance.monthlyExpenses(
+              baselineExpenses: expense,
+              hires: joinedHires,
+            ),
+            assignedInJuly: assigned,
+          ),
     );
     _resetMonthScroll();
   }
@@ -413,14 +480,27 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
   void july() {
     final joined = applicants.where((a) => a.hasJoined);
     setState(
-      () => s = s.advanceToAugust(
-        monthlyExpenses: PublicDemoSalaryFinance.monthlyExpenses(
-          baselineExpenses: expense,
-          hires: joined,
-          month: 7,
-        ),
-      ),
+      () => s =
+          _closeGrowth(
+            assignments
+                .where(
+                  (assignment) =>
+                      assignment.nextOrderStatus ==
+                          PublicDemoNextOrderStatus.accepted ||
+                      assignment.replacementStage ==
+                          PublicDemoReplacementStage.ordered,
+                )
+                .map((assignment) => assignment.engineerId)
+                .toSet(),
+          ).advanceToAugust(
+            monthlyExpenses: PublicDemoSalaryFinance.monthlyExpenses(
+              baselineExpenses: expense,
+              hires: joined,
+              month: 7,
+            ),
+          ),
     );
+    _resetMonthScroll();
   }
 
   String julyResult(PublicDemoAssignment a) {
@@ -536,8 +616,28 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
         ],
       ),
       const SizedBox(height: 8),
+      if (s.latestGrowthResults.isNotEmpty) ...[
+        const Text('今月の成長', style: TextStyle(fontWeight: FontWeight.bold)),
+        const SizedBox(height: 4),
+        for (final result in s.latestGrowthResults)
+          PublicDemoGrowthResultCard(
+            engineerName: _engineerName(result.engineerId),
+            result: result,
+          ),
+      ],
     ],
   );
+
+  String _engineerName(String engineerId) {
+    for (final engineer in engineers) {
+      if (engineer.id == engineerId) return engineer.name;
+    }
+    for (final applicant in applicants) {
+      if (applicant.id == engineerId) return applicant.name;
+    }
+    return '社員';
+  }
+
   Widget badge(String text) => Container(
     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
     decoration: BoxDecoration(

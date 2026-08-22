@@ -1,14 +1,244 @@
+import 'public_demo_engineer_runtime.dart';
+import 'public_demo_growth_engine.dart';
+import 'public_demo_monthly_growth.dart';
+
 /// Minimal state for Public Demo 0.1 MVP-A.
 class PublicDemoState {
-  const PublicDemoState({required this.month,required this.cash,required this.engineerCount,required this.adminCount,required this.salesCapacity,required this.salesUsed,required this.engineersWaiting,required this.engineersAssigned,this.joinedApplicantIds=const []});
-  factory PublicDemoState.aprilStart()=>const PublicDemoState(month:4,cash:3000000,engineerCount:2,adminCount:1,salesCapacity:4,salesUsed:0,engineersWaiting:2,engineersAssigned:0);
-  final int month,cash,engineerCount,adminCount,salesCapacity,salesUsed,engineersWaiting,engineersAssigned;
+  const PublicDemoState({
+    required this.month,
+    required this.cash,
+    required this.engineerCount,
+    required this.adminCount,
+    required this.salesCapacity,
+    required this.salesUsed,
+    required this.engineersWaiting,
+    required this.engineersAssigned,
+    this.joinedApplicantIds = const [],
+    this.engineerRuntimes = publicDemoInitialEngineerRuntimes,
+    this.latestGrowthResults = const [],
+    this.growthAppliedMonths = const [],
+  });
+  factory PublicDemoState.aprilStart() => const PublicDemoState(
+    month: 4,
+    cash: 3000000,
+    engineerCount: 2,
+    adminCount: 1,
+    salesCapacity: 4,
+    salesUsed: 0,
+    engineersWaiting: 2,
+    engineersAssigned: 0,
+  );
+  final int month,
+      cash,
+      engineerCount,
+      adminCount,
+      salesCapacity,
+      salesUsed,
+      engineersWaiting,
+      engineersAssigned;
   final List<String> joinedApplicantIds;
-  int get salesRemaining=>salesCapacity-salesUsed;
-  PublicDemoState useSalesSlot(){if(salesRemaining<=0)return this;return copyWith(salesUsed:salesUsed+1);}
-  PublicDemoState advanceToMay({required int monthlyExpenses,required int orderedEngineers}){if(month!=4)return this;final assigned=orderedEngineers.clamp(0,engineerCount);return copyWith(month:5,cash:cash-monthlyExpenses,salesUsed:0,engineersAssigned:assigned,engineersWaiting:engineerCount-assigned);}
-  PublicDemoState advanceToJune({required int monthlyExpenses,required int acceptedHires,required int hiredWithOrders,List<String> joinedApplicantIds=const []}){if(month!=5)return this;final hires=acceptedHires<0?0:acceptedHires;final ordered=hiredWithOrders.clamp(0,hires);return copyWith(month:6,cash:cash-monthlyExpenses,salesUsed:0,engineerCount:engineerCount+hires,engineersAssigned:engineersAssigned+ordered,engineersWaiting:engineersWaiting+(hires-ordered),joinedApplicantIds:[...this.joinedApplicantIds,...joinedApplicantIds.where((id)=>!this.joinedApplicantIds.contains(id))]);}
-  PublicDemoState advanceToJuly({required int monthlyExpenses,required int assignedInJuly}){if(month!=6)return this;final assigned=assignedInJuly.clamp(0,engineerCount);return copyWith(month:7,cash:cash-monthlyExpenses,salesUsed:0,engineersAssigned:assigned,engineersWaiting:engineerCount-assigned);}
-  PublicDemoState advanceToAugust({required int monthlyExpenses}){if(month!=7)return this;return copyWith(month:8,cash:cash-monthlyExpenses,salesUsed:0);}
-  PublicDemoState copyWith({int? month,int? cash,int? engineerCount,int? adminCount,int? salesCapacity,int? salesUsed,int? engineersWaiting,int? engineersAssigned,List<String>? joinedApplicantIds})=>PublicDemoState(month:month??this.month,cash:cash??this.cash,engineerCount:engineerCount??this.engineerCount,adminCount:adminCount??this.adminCount,salesCapacity:salesCapacity??this.salesCapacity,salesUsed:salesUsed??this.salesUsed,engineersWaiting:engineersWaiting??this.engineersWaiting,engineersAssigned:engineersAssigned??this.engineersAssigned,joinedApplicantIds:joinedApplicantIds??this.joinedApplicantIds);
+
+  /// Actual employee capabilities. Assignments only own project conditions.
+  final List<PublicDemoEngineerRuntime> engineerRuntimes;
+
+  /// Most recently closed month's results for EG-4.  Results are historical
+  /// facts, not UI text or a prompt to recalculate growth.
+  final List<PublicDemoMonthlyGrowth> latestGrowthResults;
+
+  /// Month numbers whose growth has already been applied.  This makes a
+  /// repeated month-end command a no-op even outside the normal UI flow.
+  final List<int> growthAppliedMonths;
+  int get salesRemaining => salesCapacity - salesUsed;
+  PublicDemoState useSalesSlot() {
+    if (salesRemaining <= 0) return this;
+    return copyWith(salesUsed: salesUsed + 1);
+  }
+
+  PublicDemoState advanceToMay({
+    required int monthlyExpenses,
+    required int orderedEngineers,
+  }) {
+    if (month != 4) return this;
+    final assigned = orderedEngineers.clamp(0, engineerCount);
+    return copyWith(
+      month: 5,
+      cash: cash - monthlyExpenses,
+      salesUsed: 0,
+      engineersAssigned: assigned,
+      engineersWaiting: engineerCount - assigned,
+    );
+  }
+
+  PublicDemoState advanceToJune({
+    required int monthlyExpenses,
+    required int acceptedHires,
+    required int hiredWithOrders,
+    List<String> joinedApplicantIds = const [],
+  }) {
+    if (month != 5) return this;
+    final hires = acceptedHires < 0 ? 0 : acceptedHires;
+    final ordered = hiredWithOrders.clamp(0, hires);
+    return copyWith(
+      month: 6,
+      cash: cash - monthlyExpenses,
+      salesUsed: 0,
+      engineerCount: engineerCount + hires,
+      engineersAssigned: engineersAssigned + ordered,
+      engineersWaiting: engineersWaiting + (hires - ordered),
+      joinedApplicantIds: [
+        ...this.joinedApplicantIds,
+        ...joinedApplicantIds.where(
+          (id) => !this.joinedApplicantIds.contains(id),
+        ),
+      ],
+    );
+  }
+
+  PublicDemoState advanceToJuly({
+    required int monthlyExpenses,
+    required int assignedInJuly,
+  }) {
+    if (month != 6) return this;
+    final assigned = assignedInJuly.clamp(0, engineerCount);
+    return copyWith(
+      month: 7,
+      cash: cash - monthlyExpenses,
+      salesUsed: 0,
+      engineersAssigned: assigned,
+      engineersWaiting: engineerCount - assigned,
+    );
+  }
+
+  PublicDemoState advanceToAugust({required int monthlyExpenses}) {
+    if (month != 7) return this;
+    return copyWith(month: 8, cash: cash - monthlyExpenses, salesUsed: 0);
+  }
+
+  PublicDemoEngineerRuntime runtimeFor(String engineerId) => engineerRuntimes
+      .firstWhere((runtime) => runtime.engineerId == engineerId);
+
+  /// Closes growth for the current month exactly once, before its state is
+  /// advanced. Assignment IDs and morale are supplied by the live Public Demo
+  /// workflow because those transient workflow objects own that information.
+  ///
+  /// The current demo assignment model has no reliable industry field, so this
+  /// method intentionally does not invent one; industry experience remains 0.
+  PublicDemoState applyMonthlyGrowth({
+    required Set<String> assignedEngineerIds,
+    required Map<String, int> moraleByEngineerId,
+  }) {
+    if (growthAppliedMonths.contains(month)) return this;
+    final results = <PublicDemoMonthlyGrowth>[];
+    final runtimes = [
+      for (final runtime in engineerRuntimes)
+        () {
+          final source = assignedEngineerIds.contains(runtime.engineerId)
+              ? PublicDemoGrowthSource.assignment
+              : PublicDemoGrowthSource.waiting;
+          final result = PublicDemoGrowthEngine.calculate(
+            runtime,
+            PublicDemoGrowthRequest(
+              source: source,
+              morale: moraleByEngineerId[runtime.engineerId] ?? 50,
+            ),
+          );
+          results.add(
+            PublicDemoMonthlyGrowth(
+              engineerId: runtime.engineerId,
+              source: source,
+              primaryLanguage: runtime.primaryLanguage,
+              capabilityBefore: result.capabilityChange.before,
+              capabilityAfter: result.capabilityChange.after,
+              actualExperienceMonthsDelta: result.actualExperienceMonthsDelta,
+              industryExperienceMonthsDelta:
+                  result.industryExperienceMonthsDelta,
+            ),
+          );
+          return result.after;
+        }(),
+    ];
+    return copyWith(
+      engineerRuntimes: runtimes,
+      latestGrowthResults: results,
+      growthAppliedMonths: [...growthAppliedMonths, month],
+    );
+  }
+
+  PublicDemoState copyWith({
+    int? month,
+    int? cash,
+    int? engineerCount,
+    int? adminCount,
+    int? salesCapacity,
+    int? salesUsed,
+    int? engineersWaiting,
+    int? engineersAssigned,
+    List<String>? joinedApplicantIds,
+    List<PublicDemoEngineerRuntime>? engineerRuntimes,
+    List<PublicDemoMonthlyGrowth>? latestGrowthResults,
+    List<int>? growthAppliedMonths,
+  }) => PublicDemoState(
+    month: month ?? this.month,
+    cash: cash ?? this.cash,
+    engineerCount: engineerCount ?? this.engineerCount,
+    adminCount: adminCount ?? this.adminCount,
+    salesCapacity: salesCapacity ?? this.salesCapacity,
+    salesUsed: salesUsed ?? this.salesUsed,
+    engineersWaiting: engineersWaiting ?? this.engineersWaiting,
+    engineersAssigned: engineersAssigned ?? this.engineersAssigned,
+    joinedApplicantIds: joinedApplicantIds ?? this.joinedApplicantIds,
+    engineerRuntimes: engineerRuntimes ?? this.engineerRuntimes,
+    latestGrowthResults: latestGrowthResults ?? this.latestGrowthResults,
+    growthAppliedMonths: growthAppliedMonths ?? this.growthAppliedMonths,
+  );
+  Map<String, dynamic> toJson() => {
+    'month': month,
+    'cash': cash,
+    'engineerCount': engineerCount,
+    'adminCount': adminCount,
+    'salesCapacity': salesCapacity,
+    'salesUsed': salesUsed,
+    'engineersWaiting': engineersWaiting,
+    'engineersAssigned': engineersAssigned,
+    'joinedApplicantIds': joinedApplicantIds,
+    'engineerRuntimes': engineerRuntimes
+        .map((runtime) => runtime.toJson())
+        .toList(),
+    'latestGrowthResults': latestGrowthResults
+        .map((result) => result.toJson())
+        .toList(),
+    'growthAppliedMonths': growthAppliedMonths,
+  };
+  factory PublicDemoState.fromJson(
+    Map<String, dynamic> json,
+  ) => PublicDemoState(
+    month: json['month'] as int,
+    cash: json['cash'] as int,
+    engineerCount: json['engineerCount'] as int,
+    adminCount: json['adminCount'] as int,
+    salesCapacity: json['salesCapacity'] as int,
+    salesUsed: json['salesUsed'] as int,
+    engineersWaiting: json['engineersWaiting'] as int,
+    engineersAssigned: json['engineersAssigned'] as int,
+    joinedApplicantIds: (json['joinedApplicantIds'] as List? ?? const [])
+        .cast<String>(),
+    engineerRuntimes:
+        (json['engineerRuntimes'] as List? ?? publicDemoInitialEngineerRuntimes)
+            .map(
+              (runtime) => runtime is PublicDemoEngineerRuntime
+                  ? runtime
+                  : PublicDemoEngineerRuntime.fromJson(
+                      runtime as Map<String, dynamic>,
+                    ),
+            )
+            .toList(),
+    latestGrowthResults: (json['latestGrowthResults'] as List? ?? const [])
+        .map(
+          (result) =>
+              PublicDemoMonthlyGrowth.fromJson(result as Map<String, dynamic>),
+        )
+        .toList(),
+    growthAppliedMonths: (json['growthAppliedMonths'] as List? ?? const [])
+        .cast<int>(),
+  );
 }

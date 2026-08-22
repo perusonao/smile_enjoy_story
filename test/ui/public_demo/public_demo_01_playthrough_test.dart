@@ -38,6 +38,11 @@ void main() {
     await tester.tap(find.widgetWithText(FilledButton, '確認'));
     await tester.pumpAndSettle();
     expect(find.text('5月'), findsOneWidget);
+    // The completed April growth is visible without another modal. Both
+    // engineers waited, so no practical experience is claimed.
+    expect(find.text('今月の成長'), findsOneWidget);
+    expect(find.text('待機中の自己学習'), findsNWidgets(2));
+    expect(find.textContaining('実務経験'), findsNothing);
 
     // May: advance without hiring. This is a valid failure/recovery route.
     await tapAndSettle(tester, '5月終了→6月');

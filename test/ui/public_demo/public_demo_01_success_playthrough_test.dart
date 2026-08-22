@@ -131,6 +131,16 @@ void main() {
     await tapAndSettle(tester, '6月終了→7月');
 
     expect(find.text('7月'), findsOneWidget);
+    // The new month opens at the dashboard so the completed June growth is
+    // immediately visible; Sato's assigned result includes practical work.
+    expect(find.text('今月の成長'), findsOneWidget);
+    expect(find.text('案件参画を通じて成長'), findsWidgets);
+    expect(find.text('実務経験 +1か月'), findsWidgets);
+    await tester.scrollUntilVisible(
+      find.text('7月開始結果'),
+      300,
+      scrollable: find.byType(Scrollable).first,
+    );
     expect(find.text('7月開始結果'), findsOneWidget);
     expect(find.textContaining('参画 1名'), findsOneWidget);
   });

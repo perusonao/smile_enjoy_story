@@ -62,6 +62,13 @@ void main() {
     // June: no assignments is valid; advance into July waiting state.
     await tapAndSettle(tester, '6月終了→7月');
     expect(find.text('7月'), findsOneWidget);
+    // Recruitment media is now presented at the top of July. Keep asserting
+    // the exact July assignment/waiting contract after scrolling to it.
+    await tester.scrollUntilVisible(
+      find.textContaining('参画 0名 / 待機 2名'),
+      300,
+      scrollable: find.byType(Scrollable).first,
+    );
     expect(find.text('7月開始結果'), findsOneWidget);
     expect(find.textContaining('参画 0名 / 待機 2名'), findsOneWidget);
     expect(find.text('夏季賞与'), findsOneWidget);
@@ -73,5 +80,38 @@ void main() {
       find.byKey(const Key('public-demo-summer-bonus-none')),
       findsOneWidget,
     );
+  });
+
+  testWidgets('recruitment media adds applicants through the existing flow', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      const MaterialApp(home: PublicDemo01PlaceholderScreen()),
+    );
+    await tapAndSettle(tester, '4月終了→5月');
+    await tester.tap(find.widgetWithText(FilledButton, '確認'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(
+      find.byKey(const Key('public-demo-open-recruitment-media')),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('無料求人'), findsOneWidget);
+    expect(find.text('エンジニア求人'), findsOneWidget);
+    expect(find.text('費用: ¥0 / 応募: 1名'), findsOneWidget);
+    expect(find.text('費用: ¥100000 / 応募: 2名'), findsOneWidget);
+    expect(find.text('利用後の現預金: ¥2100000'), findsOneWidget);
+
+    await tester.tap(
+      find.byKey(const Key('public-demo-recruitment-medium-engineer')),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('現預金 ¥2100000'), findsWidgets);
+    expect(
+      find.byKey(const Key('public-demo-open-recruitment-media')),
+      findsOneWidget,
+    );
+    expect(find.text('今月は利用済み'), findsOneWidget);
+    expect(find.text('応募者2名を追加しました。'), findsOneWidget);
   });
 }

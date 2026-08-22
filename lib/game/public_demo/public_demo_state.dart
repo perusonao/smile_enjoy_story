@@ -27,6 +27,7 @@ class PublicDemoState {
     bool summerBonusPaid = false,
     int? summerBonusPaidMonth,
     int? summerBonusPaidAmount,
+    int? recruitmentMediumUsedMonth,
   }) => PublicDemoState._(
     month: month,
     cash: cash,
@@ -61,6 +62,9 @@ class PublicDemoState {
     )
         ? summerBonusPaidAmount
         : null,
+    recruitmentMediumUsedMonth: _normalizedRecruitmentMediaMonth(
+      recruitmentMediumUsedMonth,
+    ),
   );
 
   const PublicDemoState._({
@@ -81,6 +85,7 @@ class PublicDemoState {
     required this.summerBonusPaid,
     required this.summerBonusPaidMonth,
     required this.summerBonusPaidAmount,
+    required this.recruitmentMediumUsedMonth,
   });
 
   factory PublicDemoState.aprilStart() => PublicDemoState(
@@ -125,11 +130,20 @@ class PublicDemoState {
   final int? summerBonusPaidMonth;
   final int? summerBonusPaidAmount;
 
+  /// The one month in which the company used a recruitment medium.
+  ///
+  /// Public Demo 0.1 only needs the latest use because a medium may be used
+  /// once per company per month. JOB-2 owns the transaction that calls this.
+  final int? recruitmentMediumUsedMonth;
+
   static bool _hasValidSummerBonusPayment({
     required bool paid,
     required int? month,
     required int? amount,
   }) => paid && month == 7 && amount != null && amount >= 0;
+
+  static int? _normalizedRecruitmentMediaMonth(int? month) =>
+      month != null && month >= 4 && month <= 8 ? month : null;
 
   static Map<String, PublicDemoGrowthSource> _trainingSelectionsOnly(
     Map<String, PublicDemoGrowthSource> selections,
@@ -143,6 +157,17 @@ class PublicDemoState {
       source == PublicDemoGrowthSource.externalTraining;
 
   int get salesRemaining => salesCapacity - salesUsed;
+
+  bool canUseRecruitmentMediaInMonth(int month) =>
+      _normalizedRecruitmentMediaMonth(month) != null &&
+      recruitmentMediumUsedMonth != month;
+
+  /// Records only the company-wide monthly usage guard. It deliberately does
+  /// not select a medium, charge cash, or generate applicants.
+  PublicDemoState markRecruitmentMediaUsed(int month) {
+    if (!canUseRecruitmentMediaInMonth(month)) return this;
+    return copyWith(recruitmentMediumUsedMonth: month);
+  }
 
   PublicDemoState selectInternalTraining(String engineerId) =>
       _selectTraining(engineerId, PublicDemoGrowthSource.internalTraining);
@@ -318,6 +343,7 @@ class PublicDemoState {
     bool? summerBonusPaid,
     Object? summerBonusPaidMonth = _unset,
     Object? summerBonusPaidAmount = _unset,
+    Object? recruitmentMediumUsedMonth = _unset,
   }) => PublicDemoState(
     month: month ?? this.month,
     cash: cash ?? this.cash,
@@ -340,6 +366,9 @@ class PublicDemoState {
     summerBonusPaidAmount: identical(summerBonusPaidAmount, _unset)
         ? this.summerBonusPaidAmount
         : summerBonusPaidAmount as int?,
+    recruitmentMediumUsedMonth: identical(recruitmentMediumUsedMonth, _unset)
+        ? this.recruitmentMediumUsedMonth
+        : recruitmentMediumUsedMonth as int?,
   );
   static const Object _unset = Object();
   Map<String, dynamic> toJson() => {
@@ -366,6 +395,7 @@ class PublicDemoState {
     'summerBonusPaid': summerBonusPaid,
     'summerBonusPaidMonth': summerBonusPaidMonth,
     'summerBonusPaidAmount': summerBonusPaidAmount,
+    'recruitmentMediumUsedMonth': recruitmentMediumUsedMonth,
   };
   factory PublicDemoState.fromJson(
     Map<String, dynamic> json,
@@ -407,6 +437,9 @@ class PublicDemoState {
         json['summerBonusPaidMonth'] is int ? json['summerBonusPaidMonth'] as int : null,
     summerBonusPaidAmount: json['summerBonusPaidAmount'] is int
         ? json['summerBonusPaidAmount'] as int
+        : null,
+    recruitmentMediumUsedMonth: json['recruitmentMediumUsedMonth'] is int
+        ? json['recruitmentMediumUsedMonth'] as int
         : null,
   );
 

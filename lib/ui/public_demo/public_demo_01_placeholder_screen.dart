@@ -6,6 +6,8 @@ import '../../domain/models/tech_skill_levels.dart';
 import '../../game/public_demo/public_demo_assignment.dart';
 import '../../game/public_demo/public_demo_interview.dart';
 import '../../game/public_demo/public_demo_recruitment.dart';
+import '../../game/public_demo/public_demo_recruitment_medium.dart';
+import '../../game/public_demo/public_demo_recruitment_transaction.dart';
 import '../../game/public_demo/public_demo_sales.dart';
 import '../../game/public_demo/public_demo_salary_finance.dart';
 import '../../game/public_demo/public_demo_salary.dart';
@@ -37,6 +39,50 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
   List<PublicDemoApplicant> applicants = publicDemoMayApplicants;
   List<PublicDemoAssignment> assignments = [];
   bool _summerBonusDecisionConfirmed = false;
+
+  Future<void> _openRecruitmentMedia() async {
+    final selected = await showModalBottomSheet<PublicDemoRecruitmentMedium>(
+      context: context,
+      isScrollControlled: true,
+      builder: (context) => _RecruitmentMediaSheet(state: s),
+    );
+    if (!mounted || selected == null) return;
+
+    final result = const PublicDemoRecruitmentTransaction().execute(
+      state: s,
+      medium: selected,
+    );
+    if (!result.isSuccess) {
+      final message = switch (result.status) {
+        PublicDemoRecruitmentTransactionStatus.insufficientCash =>
+          '現預金が不足しているため利用できません。',
+        PublicDemoRecruitmentTransactionStatus.alreadyUsedThisMonth =>
+          '今月はすでに求人媒体を利用しています。',
+        PublicDemoRecruitmentTransactionStatus.generationFailed =>
+          '応募者を用意できませんでした。もう一度お試しください。',
+        PublicDemoRecruitmentTransactionStatus.success => '',
+      };
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(message)));
+      return;
+    }
+    setState(() {
+      s = result.state;
+      final existingIds = applicants.map((applicant) => applicant.id).toSet();
+      applicants = [
+        ...applicants,
+        ...result.generatedApplicants.where(
+          (applicant) => existingIds.add(applicant.id),
+        ),
+      ];
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('応募者${result.generatedApplicants.length}名を追加しました。'),
+      ),
+    );
+  }
 
   int capabilityFor(String engineerId) =>
       s.runtimeFor(engineerId).actualCapability;
@@ -1020,6 +1066,7 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
               OutlinedButton(onPressed: april, child: const Text('4月終了→5月')),
             ],
             if (s.month == 5) ...[
+              _RecruitmentMediaCard(state: s, onPressed: _openRecruitmentMedia),
               for (var i = 0; i < applicants.length; i++) ac(i),
               OutlinedButton(onPressed: may, child: const Text('5月終了→6月')),
             ],
@@ -1034,6 +1081,7 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
               OutlinedButton(onPressed: june, child: const Text('6月終了→7月')),
             ],
             if (s.month == 7) ...[
+              _RecruitmentMediaCard(state: s, onPressed: _openRecruitmentMedia),
               Text('7月開始結果', style: Theme.of(c).textTheme.titleLarge),
               Text('参画 ${s.engineersAssigned}名 / 待機 ${s.engineersWaiting}名'),
               for (final a in assignments)
@@ -1091,4 +1139,117 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
       ),
     ),
   );
+}
+
+class _RecruitmentMediaCard extends StatelessWidget {
+  const _RecruitmentMediaCard({required this.state, required this.onPressed});
+
+  final PublicDemoState state;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final used = !state.canUseRecruitmentMediaInMonth(state.month);
+    return Card(
+      key: const Key('public-demo-recruitment-media-card'),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              '候補者を追加募集',
+              style: TextStyle(fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 4),
+            Text('現預金 ¥${state.cash}'),
+            const SizedBox(height: 8),
+            FilledButton.tonal(
+              key: const Key('public-demo-open-recruitment-media'),
+              onPressed: used ? null : onPressed,
+              child: Text(used ? '今月は利用済み' : '求人媒体を選ぶ'),
+            ),
+            if (used)
+              const Padding(
+                padding: EdgeInsets.only(top: 6),
+                child: Text('求人媒体は月に1回までです。', style: TextStyle(fontSize: 12)),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _RecruitmentMediaSheet extends StatelessWidget {
+  const _RecruitmentMediaSheet({required this.state});
+
+  final PublicDemoState state;
+
+  @override
+  Widget build(BuildContext context) => SafeArea(
+    child: SingleChildScrollView(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('求人媒体を選ぶ', style: Theme.of(context).textTheme.titleLarge),
+            const SizedBox(height: 4),
+            Text('現在の現預金 ¥${state.cash}'),
+            const SizedBox(height: 12),
+            for (final medium in PublicDemoRecruitmentMedium.values)
+              _RecruitmentMediumOption(state: state, medium: medium),
+          ],
+        ),
+      ),
+    ),
+  );
+}
+
+class _RecruitmentMediumOption extends StatelessWidget {
+  const _RecruitmentMediumOption({required this.state, required this.medium});
+
+  final PublicDemoState state;
+  final PublicDemoRecruitmentMedium medium;
+
+  @override
+  Widget build(BuildContext context) {
+    final affordable = state.cash >= medium.cost;
+    final label = medium == PublicDemoRecruitmentMedium.free
+        ? '無料求人'
+        : 'エンジニア求人';
+    final description = medium == PublicDemoRecruitmentMedium.free
+        ? '費用をかけずに募集'
+        : '費用をかけて候補を増やす';
+    final unavailable = !affordable ? '現預金が不足しています。' : null;
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(label, style: const TextStyle(fontWeight: FontWeight.bold)),
+            Text('費用: ¥${medium.cost} / 応募: ${medium.applicantCount}名'),
+            Text(description),
+            if (medium.cost > 0) Text('利用後の現預金: ¥${state.cash - medium.cost}'),
+            if (unavailable != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Text(unavailable, style: const TextStyle(fontSize: 12)),
+              ),
+            const SizedBox(height: 8),
+            FilledButton(
+              key: Key('public-demo-recruitment-medium-${medium.name}'),
+              onPressed: affordable
+                  ? () => Navigator.pop(context, medium)
+                  : null,
+              child: const Text('この方法で募集する'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }

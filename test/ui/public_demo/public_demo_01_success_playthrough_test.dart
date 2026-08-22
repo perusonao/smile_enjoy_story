@@ -3,9 +3,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:smile_enjoy_story/ui/public_demo/public_demo_01_placeholder_screen.dart';
 
 Finder actionButton(String text) => find.ancestor(
-      of: find.text(text),
-      matching: find.byWidgetPredicate((widget) => widget is ButtonStyleButton),
-    );
+  of: find.text(text),
+  matching: find.byWidgetPredicate((widget) => widget is ButtonStyleButton),
+);
 
 // Some buttons (面談/受注 actions) now await _precacheEventImage(...) before
 // opening a dialog (iOS rendering fix: decode the image before first paint
@@ -19,7 +19,9 @@ Future<void> _settleAfterPossiblePrecache(WidgetTester tester) async {
   // noisier under parallel test-file execution (CPU contention) than when a
   // file runs alone.
   for (var i = 0; i < 10; i++) {
-    await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 150)));
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 150)),
+    );
     await tester.pump();
   }
   await tester.pumpAndSettle();
@@ -33,6 +35,9 @@ Future<void> tapAndSettle(WidgetTester tester, String text) async {
   }
   expect(finder, findsWidgets, reason: 'Could not find action button: $text');
   await tester.ensureVisible(finder.first);
+  // The recruitment-media card can change the scroll extent between the
+  // visibility request and the next pointer event; commit that layout first.
+  await tester.pumpAndSettle();
   await tester.tap(finder.first);
   await _settleAfterPossiblePrecache(tester);
 }
@@ -60,8 +65,12 @@ Future<void> dismissEvent(
 }
 
 void main() {
-  testWidgets('successful route reaches July with an active engineer', (tester) async {
-    await tester.pumpWidget(const MaterialApp(home: PublicDemo01PlaceholderScreen()));
+  testWidgets('successful route reaches July with an active engineer', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      const MaterialApp(home: PublicDemo01PlaceholderScreen()),
+    );
 
     // April: Sato wins the May order.
     await tapAndSettle(tester, 'SkillSheet確認');
@@ -80,7 +89,10 @@ void main() {
     );
     await tapAndSettle(tester, '4月終了→5月');
     expect(find.text('新しい応募が届きました'), findsOneWidget);
-    expect(find.byKey(const Key('public-demo-recruitment-application-image')), findsOneWidget);
+    expect(
+      find.byKey(const Key('public-demo-recruitment-application-image')),
+      findsOneWidget,
+    );
     await tester.tap(find.widgetWithText(FilledButton, '確認'));
     await tester.pumpAndSettle();
     expect(find.text('5月'), findsOneWidget);
@@ -142,6 +154,11 @@ void main() {
       scrollable: find.byType(Scrollable).first,
     );
     expect(find.text('7月開始結果'), findsOneWidget);
+    await tester.scrollUntilVisible(
+      find.textContaining('参画 1名'),
+      300,
+      scrollable: find.byType(Scrollable).first,
+    );
     expect(find.textContaining('参画 1名'), findsOneWidget);
   });
 }

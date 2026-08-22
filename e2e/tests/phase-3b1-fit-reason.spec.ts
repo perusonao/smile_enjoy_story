@@ -50,7 +50,7 @@
 import { test, expect } from '@playwright/test';
 import { playFoundingToFirstAssignment } from '../helpers/ses-player';
 import { playBeginnerModeThroughJune } from '../helpers/beginner-mode-player';
-import { snapshotScreen, stableSnapshotScreen, hasText, findDoubledParticles, firstEnabledDialogButton, type ScreenSnapshot } from '../helpers/game-state';
+import { snapshotScreen, stableSnapshotScreen, hasText, findDoubledParticles, firstEnabledDialogButton, clickDialogCtaAndWaitForRoute, type ScreenSnapshot } from '../helpers/game-state';
 import { watchForErrors, captureMilestone, writeArtifacts, buildResultJson } from '../helpers/artifacts';
 import { parseSeeds } from '../helpers/seeds';
 import fs from 'fs';
@@ -129,7 +129,11 @@ async function clickResilient(page: import('@playwright/test').Page, locate: () 
       const snap = await snapshotScreen(page);
       const close = firstEnabledDialogButton(snap, CLOSE.filter((name) => name !== label));
       if (close) {
-        await byDialogButton(page, close.name)().click({ timeout: CLICK_RESILIENT_ATTEMPT_MS }).catch(() => {});
+        await clickDialogCtaAndWaitForRoute(
+          page,
+          close.name,
+          (state) => state.classification === 'rootStable' || state.classification === 'pushedRouteStable',
+        ).catch(() => {});
       }
     }
   }
@@ -149,7 +153,13 @@ async function settleAndScan(page: import('@playwright/test').Page, textOffender
     textOffenders.push(...findDoubledParticles(snap));
     const close = firstEnabledDialogButton(snap, CLOSE);
     if (!close) return snap;
-    await clickResilient(page, byDialogButton(page, close.name), close.name);
+    await clickDialogCtaAndWaitForRoute(
+      page,
+      close.name,
+      close.name === '閉じる'
+        ? (state) => state.classification === 'rootStable' && state.selectedTab === HOME_TAB
+        : (state) => state.classification === 'rootStable' || state.classification === 'pushedRouteStable',
+    );
     snap = await stableSnapshotScreen(page);
   }
   return snap;

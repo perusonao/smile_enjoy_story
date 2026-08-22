@@ -116,14 +116,18 @@ async function settleAndScan(
     let dismissedLiveDialog = false;
     for (const label of CLOSE) {
       const button = dialogScope.getByRole('button', { name: label, exact: true }).first();
-      if (await button.count() && await button.isVisible() && await button.isEnabled()) {
+      if (await button.count()) {
         // This locator is created and used in this one synchronous branch
         // only. If the dialog disappears between the checks and click, that
         // is a successful external transition, not a stale-target retry.
         if (label === '採用を見る') {
-          dismissedLiveDialog = await clickDialogCtaAndWaitForRoute(page, label, '採用').catch(() => false);
+          dismissedLiveDialog = await clickDialogCtaAndWaitForRoute(
+            page,
+            label,
+            (state) => state.classification === 'rootStable' && state.selectedTab === '採用',
+          ).catch(() => false);
         } else {
-          await button.click({ timeout: 500 }).then(() => { dismissedLiveDialog = true; }).catch(() => {});
+          dismissedLiveDialog = await clickDialogCtaAndWaitForRoute(page, label).catch(() => false);
         }
         break;
       }
@@ -136,10 +140,14 @@ async function settleAndScan(
     if (stopWhen?.(snap)) return snap;
     const close = firstEnabledDialogButton(snap, CLOSE);
     if (!close) return null;
+    // The live operation above owned every currently-present dialog CTA.
+    // Do not replay a label whose dialog vanished between that operation and
+    // this snapshot; it is an external transition, not a stale click target.
+    if ((await page.locator('[role="dialog"], [role="alertdialog"]').count()) === 0) continue;
     // The name came from a dialog-scoped snapshot. Re-resolve it inside a
     // live dialog too: a global role lookup can otherwise pick a same-named
     // background CTA after Flutter has started dismissing this dialog.
-    await clickResilient(page, byDialogButton(page, close.name), close.name);
+    await clickDialogCtaAndWaitForRoute(page, close.name).catch(() => {});
     const homeTab = page.getByRole('tab', { name: 'ホーム', exact: true });
     if (await homeTab.count()) {
       const cur = await snapshotScreen(page);

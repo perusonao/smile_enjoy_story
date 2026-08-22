@@ -28,6 +28,14 @@ export interface ScreenSnapshot {
    * for a *dialog's* "採用を見る" button) — `dialogButtonNames` is what lets
    * callers tell those two apart instead of matching on name alone. */
   dialogButtonNames: string[];
+  /** Tab semantics from this same ariaSnapshot; never read later via a
+   * separate locator while a route can be rebuilding. */
+  tabs: Array<{ name: string; selected: boolean }>;
+  /** AppBar back chrome remains excluded from texts/buttons, but is useful
+   * as route evidence. */
+  backPresent: boolean;
+  /** True for any dialog/alertdialog, including one without buttons. */
+  dialogPresent: boolean;
 }
 
 // Matches one ariaSnapshot() line, e.g.:
@@ -87,6 +95,9 @@ export function parseAriaSnapshot(raw: string): ScreenSnapshot {
   const texts: string[] = [];
   const buttons: ButtonInfo[] = [];
   const dialogButtonNames: string[] = [];
+  const tabs: Array<{ name: string; selected: boolean }> = [];
+  let backPresent = false;
+  let dialogPresent = false;
   // Indentation (in raw, untrimmed columns) of the currently-open dialog/
   // alertdialog node, or null when no dialog scope is open. A line is
   // "inside" that dialog for as long as its own indentation is strictly
@@ -100,22 +111,25 @@ export function parseAriaSnapshot(raw: string): ScreenSnapshot {
     const m = ARIA_LINE.exec(trimmed);
     if (!m) continue;
     const role = m[1];
-    if (role === 'dialog' || role === 'alertdialog') dialogIndent = indent;
+    if (role === 'dialog' || role === 'alertdialog') { dialogIndent = indent; dialogPresent = true; }
     const name = (m[3] ?? m[2] ?? '').replace(/\\"/g, '"').trim();
-    if (!name || CHROME_BUTTON_NAME.test(name)) continue;
+    if (CHROME_BUTTON_NAME.test(name)) { if (/^back\b/i.test(name)) backPresent = true; continue; }
+    if (!name) continue;
     if (role === 'button') {
       buttons.push({ name, enabled: !/\[disabled\]/.test(m[4] ?? '') });
       if (dialogIndent !== null) dialogButtonNames.push(name);
+    } else if (role === 'tab') {
+      tabs.push({ name, selected: /\[selected\]/.test(m[4] ?? '') });
     } else {
       texts.push(name);
     }
   }
-  return { texts, buttons, dialogButtonNames };
+  return { texts, buttons, dialogButtonNames, tabs, backPresent, dialogPresent };
 }
 
 /** Reads the full accessibility tree in one round-trip, via ariaSnapshot(). */
-export async function snapshotScreen(page: Page): Promise<ScreenSnapshot> {
-  const raw = await page.locator('body').ariaSnapshot();
+export async function snapshotScreen(page: Page, timeout?: number): Promise<ScreenSnapshot> {
+  const raw = await page.locator('body').ariaSnapshot(timeout === undefined ? undefined : { timeout });
   return parseAriaSnapshot(raw);
 }
 
@@ -176,13 +190,12 @@ export function reduceNavigationObservations(observations: readonly NavigationOb
   return stableKind && sameEvidence ? current.classification : null;
 }
 
-async function observeNavigation(page: Page, elapsedMs: number): Promise<NavigationState> {
-  const snapshot = await snapshotScreen(page);
-  const tabCount = await page.getByRole('tab').count();
-  let selectedTab: string | null = null;
-  for (const name of ROOT_TABS) if (await page.getByRole('tab', { name, exact: true }).getAttribute('aria-selected') === 'true') selectedTab = name;
-  const backPresent = (await page.getByRole('button', { name: /^Back\b/i }).count()) > 0;
-  const dialogPresent = (await page.locator(DIALOG_SELECTOR).count()) > 0;
+async function observeNavigation(page: Page, elapsedMs: number, sampleBudget: number): Promise<NavigationState> {
+  const snapshot = await snapshotScreen(page, sampleBudget);
+  const tabCount = snapshot.tabs.length;
+  const selectedTab = snapshot.tabs.find((tab) => tab.selected)?.name ?? null;
+  const backPresent = snapshot.backPresent;
+  const dialogPresent = snapshot.dialogPresent;
   const corpus = [...snapshot.texts, ...snapshot.buttons.map((b) => b.name)].join('\n');
   const markers = [...ROOT_MARKERS, ...PUSHED_MARKERS].filter((marker) => corpus.includes(marker));
   const base = { tabCount, selectedTab, backPresent, dialogPresent, markers, elapsedMs };
@@ -199,7 +212,7 @@ export async function stableNavigationState(page: Page, timeout = 15_000): Promi
     const remaining = timeout - (Date.now() - started);
     const sampleBudget = navigationSampleBudget(remaining);
     if (sampleBudget <= 0) break;
-    latest = await observeNavigation(page, Date.now() - started);
+    latest = await observeNavigation(page, Date.now() - started, sampleBudget);
     observations.push({ classification: latest.classification, tabCount: latest.tabCount, selectedTab: latest.selectedTab, backPresent: latest.backPresent, dialogPresent: latest.dialogPresent, markers: latest.markers, elapsedMs: latest.elapsedMs });
     if (observations.length > 12) observations.shift();
     if (latest.classification === 'dialogPresent') return { ...latest, history: observations };
@@ -214,16 +227,28 @@ export async function stableNavigationState(page: Page, timeout = 15_000): Promi
 export async function clickDialogCtaAndWaitForRoute(
   page: Page,
   label: string,
-  expectedTab?: string,
+  expectedState: (state: NavigationState) => boolean = (state) => state.classification === 'rootStable',
 ): Promise<boolean> {
+  const diagnostic: Record<string, unknown> = { label, expectedTransition: expectedState.toString() };
   const button = page.locator(DIALOG_SELECTOR).getByRole('button', { name: label, exact: true }).first();
-  if ((await button.count()) === 0) return false;
-  await button.click();
-  const state = await stableNavigationState(page);
-  if (state.classification === 'dialogPresent' || (expectedTab && (state.classification !== 'rootStable' || state.selectedTab !== expectedTab))) {
-    throw new Error(`dialog CTA ${label} did not reach its next route: ${JSON.stringify(state.history)}`);
+  diagnostic.dialogBeforeClick = (await page.locator(DIALOG_SELECTOR).count()) > 0;
+  if ((await button.count()) === 0) {
+    const state = await stableNavigationState(page); diagnostic.clickResult = 'cta-absent'; diagnostic.dialogAfterClick = state.classification === 'dialogPresent';
+    if (state.classification !== 'dialogPresent' && expectedState(state)) return true;
+    throw new Error(`dialog CTA unavailable: ${JSON.stringify({ ...diagnostic, navigationState: state.classification, observations: state.history })}`);
   }
-  return true;
+  try {
+    await button.click({ timeout: 500 });
+    diagnostic.clickResult = 'clicked';
+  } catch (error) {
+    diagnostic.clickResult = 'interrupted';
+    const state = await stableNavigationState(page); diagnostic.dialogAfterClick = state.classification === 'dialogPresent';
+    if (state.classification !== 'dialogPresent' && expectedState(state)) return true;
+    throw new Error(`dialog CTA click failed: ${JSON.stringify({ ...diagnostic, navigationState: state.classification, observations: state.history })}`, { cause: error });
+  }
+  const state = await stableNavigationState(page); diagnostic.dialogAfterClick = state.classification === 'dialogPresent';
+  if (state.classification !== 'dialogPresent' && expectedState(state)) return true;
+  throw new Error(`dialog CTA reached unexpected state: ${JSON.stringify({ ...diagnostic, navigationState: state.classification, observations: state.history })}`);
 }
 
 /** Selects a tab from the current root DOM only, then returns a freshly read

@@ -12,6 +12,23 @@ import { test, expect } from '@playwright/test';
 import { enabledDialogButton, firstEnabledDialogButton, hasText, parseAriaSnapshot } from '../helpers/game-state';
 
 test.describe('parseAriaSnapshot', () => {
+  test('extracts selected tabs without a second DOM read', () => {
+    const snap = parseAriaSnapshot('- tab "ホーム" [selected]\n- tab "採用"');
+    expect(snap.tabs).toEqual([{ name: 'ホーム', selected: true }, { name: '採用', selected: false }]);
+    expect(snap.tabs.filter((tab) => tab.selected)).toEqual([{ name: 'ホーム', selected: true }]);
+  });
+
+  test('keeps Back out of normal content while exposing route evidence', () => {
+    const snap = parseAriaSnapshot('- button "Back"');
+    expect(snap.backPresent).toBe(true);
+    expect(snap.buttons).toEqual([]);
+    expect(snap.texts).toEqual([]);
+  });
+
+  test('detects dialogs even when they contain no buttons', () => {
+    expect(parseAriaSnapshot('- alertdialog').dialogPresent).toBe(true);
+    expect(parseAriaSnapshot('- generic "plain screen"').dialogPresent).toBe(false);
+  });
   test('a plain quoted button line is parsed as before', () => {
     const snap = parseAriaSnapshot('- button "この方法で募集する"');
     expect(snap.buttons).toEqual([{ name: 'この方法で募集する', enabled: true }]);

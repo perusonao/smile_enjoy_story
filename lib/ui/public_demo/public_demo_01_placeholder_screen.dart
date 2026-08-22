@@ -14,6 +14,7 @@ import '../../game/public_demo/public_demo_engineer_runtime.dart';
 import '../../game/public_demo/public_demo_raise.dart';
 import '../asset_paths.dart';
 import 'public_demo_event_dialog.dart';
+import 'public_demo_growth_result_card.dart';
 import 'public_demo_interview_result_dialog.dart';
 import 'public_demo_sales_progress.dart';
 import 'public_demo_salary_offer_dialog.dart';
@@ -189,6 +190,7 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
         const {},
       ).advanceToMay(monthlyExpenses: expense, orderedEngineers: o),
     );
+    _resetMonthScroll();
   }
 
   void recruit(int i) {
@@ -383,6 +385,7 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
               );
       assignments = nextAssignments;
     });
+    _resetMonthScroll();
   }
 
   void decideOrder(int i) {
@@ -497,6 +500,7 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
             ),
           ),
     );
+    _resetMonthScroll();
   }
 
   String julyResult(PublicDemoAssignment a) {
@@ -612,8 +616,28 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
         ],
       ),
       const SizedBox(height: 8),
+      if (s.latestGrowthResults.isNotEmpty) ...[
+        const Text('今月の成長', style: TextStyle(fontWeight: FontWeight.bold)),
+        const SizedBox(height: 4),
+        for (final result in s.latestGrowthResults)
+          PublicDemoGrowthResultCard(
+            engineerName: _engineerName(result.engineerId),
+            result: result,
+          ),
+      ],
     ],
   );
+
+  String _engineerName(String engineerId) {
+    for (final engineer in engineers) {
+      if (engineer.id == engineerId) return engineer.name;
+    }
+    for (final applicant in applicants) {
+      if (applicant.id == engineerId) return applicant.name;
+    }
+    return '社員';
+  }
+
   Widget badge(String text) => Container(
     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
     decoration: BoxDecoration(

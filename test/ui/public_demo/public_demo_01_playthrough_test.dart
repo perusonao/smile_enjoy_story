@@ -62,6 +62,13 @@ void main() {
     // June: no assignments is valid; advance into July waiting state.
     await tapAndSettle(tester, '6月終了→7月');
     expect(find.text('7月'), findsOneWidget);
+    // Recruitment media is now presented at the top of July. Keep asserting
+    // the exact July assignment/waiting contract after scrolling to it.
+    await tester.scrollUntilVisible(
+      find.textContaining('参画 0名 / 待機 2名'),
+      300,
+      scrollable: find.byType(Scrollable).first,
+    );
     expect(find.text('7月開始結果'), findsOneWidget);
     expect(find.textContaining('参画 0名 / 待機 2名'), findsOneWidget);
     expect(find.text('夏季賞与'), findsOneWidget);

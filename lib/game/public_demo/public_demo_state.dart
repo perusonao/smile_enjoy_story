@@ -48,18 +48,20 @@ class PublicDemoState {
       month: summerBonusPaidMonth,
       amount: summerBonusPaidAmount,
     ),
-    summerBonusPaidMonth: _hasValidSummerBonusPayment(
-      paid: summerBonusPaid,
-      month: summerBonusPaidMonth,
-      amount: summerBonusPaidAmount,
-    )
+    summerBonusPaidMonth:
+        _hasValidSummerBonusPayment(
+          paid: summerBonusPaid,
+          month: summerBonusPaidMonth,
+          amount: summerBonusPaidAmount,
+        )
         ? summerBonusPaidMonth
         : null,
-    summerBonusPaidAmount: _hasValidSummerBonusPayment(
-      paid: summerBonusPaid,
-      month: summerBonusPaidMonth,
-      amount: summerBonusPaidAmount,
-    )
+    summerBonusPaidAmount:
+        _hasValidSummerBonusPayment(
+          paid: summerBonusPaid,
+          month: summerBonusPaidMonth,
+          amount: summerBonusPaidAmount,
+        )
         ? summerBonusPaidAmount
         : null,
     recruitmentMediumUsedMonth: _normalizedRecruitmentMediaMonth(
@@ -178,7 +180,8 @@ class PublicDemoState {
   PublicDemoState _selectTraining(
     String engineerId,
     PublicDemoGrowthSource source,
-  ) => copyWith(trainingSelections: {...trainingSelections, engineerId: source});
+  ) =>
+      copyWith(trainingSelections: {...trainingSelections, engineerId: source});
 
   PublicDemoState cancelTraining(String engineerId) => copyWith(
     trainingSelections: {
@@ -196,7 +199,10 @@ class PublicDemoState {
 
   /// Records a completed July payment without applying any cash movement.
   /// BONUS-2A must compose this with its accounting transaction.
-  PublicDemoState markSummerBonusPaid({required int month, required int amount}) {
+  PublicDemoState markSummerBonusPaid({
+    required int month,
+    required int amount,
+  }) {
     if (summerBonusPaid || month != 7 || amount < 0) return this;
     return copyWith(
       summerBonusPaid: true,
@@ -204,6 +210,7 @@ class PublicDemoState {
       summerBonusPaidAmount: amount,
     );
   }
+
   PublicDemoState useSalesSlot() {
     if (salesRemaining <= 0) return this;
     return copyWith(salesUsed: salesUsed + 1);
@@ -275,8 +282,16 @@ class PublicDemoState {
     applicants: applicants,
   );
 
-  PublicDemoEngineerRuntime runtimeFor(String engineerId) => engineerRuntimes
-      .firstWhere((runtime) => runtime.engineerId == engineerId);
+  PublicDemoEngineerRuntime? runtimeForOrNull(String engineerId) {
+    for (final runtime in engineerRuntimes) {
+      if (runtime.engineerId == engineerId) return runtime;
+    }
+    return null;
+  }
+
+  PublicDemoEngineerRuntime runtimeFor(String engineerId) =>
+      runtimeForOrNull(engineerId) ??
+      (throw ArgumentError.value(engineerId, 'engineerId', 'Unknown runtime'));
 
   /// Closes growth for the current month exactly once, before its state is
   /// advanced. Assignment IDs and morale are supplied by the live Public Demo
@@ -295,7 +310,8 @@ class PublicDemoState {
         () {
           final source = assignedEngineerIds.contains(runtime.engineerId)
               ? PublicDemoGrowthSource.assignment
-              : PublicDemoGrowthSource.waiting;
+              : trainingSelections[runtime.engineerId] ??
+                    PublicDemoGrowthSource.waiting;
           final result = PublicDemoGrowthEngine.calculate(
             runtime,
             PublicDemoGrowthRequest(
@@ -322,6 +338,7 @@ class PublicDemoState {
       engineerRuntimes: runtimes,
       latestGrowthResults: results,
       growthAppliedMonths: [...growthAppliedMonths, month],
+      trainingSelections: const {},
     );
   }
 
@@ -429,12 +446,15 @@ class PublicDemoState {
     growthAppliedMonths: (json['growthAppliedMonths'] as List? ?? const [])
         .cast<int>(),
     trainingSelections: _trainingSelectionsFromJson(json['trainingSelections']),
-    summerBonusSelection: _summerBonusPlanFromJson(json['summerBonusSelection']),
+    summerBonusSelection: _summerBonusPlanFromJson(
+      json['summerBonusSelection'],
+    ),
     summerBonusPaid: json['summerBonusPaid'] is bool
         ? json['summerBonusPaid'] as bool
         : false,
-    summerBonusPaidMonth:
-        json['summerBonusPaidMonth'] is int ? json['summerBonusPaidMonth'] as int : null,
+    summerBonusPaidMonth: json['summerBonusPaidMonth'] is int
+        ? json['summerBonusPaidMonth'] as int
+        : null,
     summerBonusPaidAmount: json['summerBonusPaidAmount'] is int
         ? json['summerBonusPaidAmount'] as int
         : null,

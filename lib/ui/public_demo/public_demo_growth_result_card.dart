@@ -22,7 +22,12 @@ class PublicDemoGrowthResultCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final language =
         languageLabels[result.primaryLanguage] ?? result.primaryLanguage.name;
-    final assigned = result.source == PublicDemoGrowthSource.assignment;
+    final sourceLabel = switch (result.source) {
+      PublicDemoGrowthSource.assignment => '案件参画を通じて成長',
+      PublicDemoGrowthSource.internalTraining => '社内研修を通じて成長',
+      PublicDemoGrowthSource.externalTraining => '社外研修を通じて成長',
+      PublicDemoGrowthSource.waiting => '待機中の自己学習',
+    };
     final delta = result.capabilityAfter - result.capabilityBefore;
     return Container(
       key: Key('public-demo-growth-result-${result.engineerId}'),
@@ -47,10 +52,7 @@ class PublicDemoGrowthResultCard extends StatelessWidget {
           if (result.actualExperienceMonthsDelta > 0)
             Text('実務経験 +${result.actualExperienceMonthsDelta}か月'),
           const SizedBox(height: 2),
-          Text(
-            assigned ? '案件参画を通じて成長' : '待機中の自己学習',
-            style: Theme.of(context).textTheme.bodySmall,
-          ),
+          Text(sourceLabel, style: Theme.of(context).textTheme.bodySmall),
           if (delta == 0)
             Text('今月は大きな変化なし', style: Theme.of(context).textTheme.bodySmall),
         ],

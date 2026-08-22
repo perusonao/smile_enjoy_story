@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:smile_enjoy_story/game/public_demo/public_demo_recruitment.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_recruitment_medium.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_recruitment_transaction.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_state.dart';
@@ -96,6 +97,60 @@ void main() {
         isNot(contains(anyOf('app-01', 'app-02'))),
       );
     });
+
+    test('engineer keeps the established experienced 高橋・田中 pool', () {
+      final result = transaction.execute(
+        state: PublicDemoState.aprilStart(),
+        medium: PublicDemoRecruitmentMedium.engineer,
+      );
+
+      expect(
+        result.generatedApplicants.map((applicant) => applicant.name),
+        unorderedEquals(
+          publicDemoMayApplicants.map((applicant) => applicant.name),
+        ),
+      );
+      expect(
+        result.generatedApplicants,
+        everyElement(
+          isNot(
+            predicate(
+              (PublicDemoApplicant applicant) => applicant.isInexperienced,
+            ),
+          ),
+        ),
+      );
+    });
+
+    test(
+      'free media deterministically alternates experienced and inexperienced candidates',
+      () {
+        final inexperienced = transaction.execute(
+          state: PublicDemoState.aprilStart(),
+          medium: PublicDemoRecruitmentMedium.free,
+        );
+        final experienced = transaction.execute(
+          state: PublicDemoState.aprilStart().copyWith(month: 5),
+          medium: PublicDemoRecruitmentMedium.free,
+        );
+
+        final junior = inexperienced.generatedApplicants.single;
+        expect(junior.isInexperienced, isTrue);
+        expect(junior.experienceMonths, 0);
+        expect(junior.requestedMonthlySalary, 220000);
+        expect(junior.salesSkillFit, inInclusiveRange(20, 30));
+        expect(junior.interviewScore, greaterThanOrEqualTo(60));
+        expect(junior.acceptanceScore, inInclusiveRange(70, 80));
+        expect(experienced.generatedApplicants.single.isInexperienced, isFalse);
+
+        final repeated = transaction.execute(
+          state: PublicDemoState.aprilStart(),
+          medium: PublicDemoRecruitmentMedium.free,
+        );
+        expect(repeated.generatedApplicants.single.id, junior.id);
+        expect(repeated.generatedApplicants.single.name, junior.name);
+      },
+    );
 
     test('generation failure is an atomic no-op', () {
       final transaction = PublicDemoRecruitmentTransaction(

@@ -4,6 +4,7 @@ import '../../domain/models/language_skill.dart';
 import '../../domain/models/programming_language.dart';
 import '../../domain/models/sales_profile.dart';
 import '../../domain/models/tech_skill_levels.dart';
+import 'public_demo_recruitment.dart';
 
 /// Ground-truth, growth-ready capability owned by one Public Demo employee.
 ///
@@ -34,6 +35,70 @@ class PublicDemoEngineerRuntime {
   /// Compatibility score for Public Demo 0.1's existing project evaluation.
   /// It is derived from actual capability, never copied onto an assignment.
   int get actualCapability => languageSkills[primaryLanguage]?.actualSkill ?? 0;
+
+  /// This is deliberately derived from the runtime capability, not persisted.
+  bool get isReadyForFieldSales => actualCapability >= 60;
+
+  /// Creates the single runtime representation used after a Public Demo hire
+  /// joins. Experienced applicants retain the pre-JUNIOR-3 values exactly.
+  factory PublicDemoEngineerRuntime.fromApplicant(
+    PublicDemoApplicant applicant,
+  ) {
+    if (!applicant.isInexperienced) {
+      return PublicDemoEngineerRuntime(
+        engineerId: applicant.id,
+        primaryLanguage: ProgrammingLanguage.java,
+        languageSkills: {
+          ProgrammingLanguage.java: LanguageSkill(
+            language: ProgrammingLanguage.java,
+            displayedExperienceMonths: 0,
+            actualExperienceMonths: 0,
+            actualSkill: applicant.salesSkillFit,
+          ),
+        },
+        techSkills: const TechSkillLevels.zero(),
+        hidden: const HiddenParameters(
+          growthPotential: 3,
+          stressTolerance: 3,
+          retention: 3,
+          projectInterviewSkill: 3,
+          turnoverIntent: 50,
+        ),
+      );
+    }
+
+    final isPotentialTemplate = _usesPotentialTemplate(applicant);
+    return PublicDemoEngineerRuntime(
+      engineerId: applicant.id,
+      primaryLanguage: ProgrammingLanguage.java,
+      languageSkills: {
+        ProgrammingLanguage.java: LanguageSkill(
+          language: ProgrammingLanguage.java,
+          displayedExperienceMonths: 0,
+          actualExperienceMonths: 0,
+          actualSkill: isPotentialTemplate ? 20 : 28,
+        ),
+      },
+      techSkills: const TechSkillLevels.zero(),
+      hidden: HiddenParameters(
+        growthPotential: isPotentialTemplate ? 5 : 3,
+        stressTolerance: 3,
+        retention: 3,
+        projectInterviewSkill: 3,
+        turnoverIntent: 50,
+      ),
+      abilities: isPotentialTemplate ? {EmployeeAbility.fastLearner} : const {},
+    );
+  }
+
+  /// Numeric applicant facts make this stable on both VM and web without
+  /// coupling profiles to generated identifier text.
+  static bool _usesPotentialTemplate(PublicDemoApplicant applicant) =>
+      (applicant.interviewScore +
+              applicant.acceptanceScore +
+              applicant.salesSkillFit) %
+          2 ==
+      0;
 
   PublicDemoEngineerRuntime copyWith({
     ProgrammingLanguage? primaryLanguage,

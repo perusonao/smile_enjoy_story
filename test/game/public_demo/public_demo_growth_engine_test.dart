@@ -70,6 +70,85 @@ void main() {
     );
   });
 
+  test('internal and external training grow more than waiting', () {
+    final engineer = runtime(skill: 30, potential: 5);
+    final waiting = grow(
+      engineer,
+      source: PublicDemoGrowthSource.waiting,
+    ).capabilityChange.delta;
+    expect(
+      grow(
+        engineer,
+        source: PublicDemoGrowthSource.internalTraining,
+      ).capabilityChange.delta,
+      greaterThan(waiting),
+    );
+    expect(
+      grow(
+        engineer,
+        source: PublicDemoGrowthSource.externalTraining,
+      ).capabilityChange.delta,
+      greaterThan(waiting),
+    );
+  });
+
+  test('training preserves potential, fast learner, and morale effects', () {
+    const source = PublicDemoGrowthSource.externalTraining;
+    expect(
+      grow(
+        runtime(skill: 30, potential: 5),
+        source: source,
+        morale: 80,
+      ).capabilityChange.delta,
+      greaterThan(
+        grow(
+          runtime(skill: 30, potential: 1),
+          source: source,
+          morale: 80,
+        ).capabilityChange.delta,
+      ),
+    );
+    expect(
+      grow(
+        runtime(skill: 30, potential: 3, fastLearner: true),
+        source: source,
+        morale: 80,
+      ).capabilityChange.delta,
+      greaterThan(
+        grow(
+          runtime(skill: 30, potential: 3),
+          source: source,
+          morale: 80,
+        ).capabilityChange.delta,
+      ),
+    );
+    expect(
+      grow(
+        runtime(skill: 30, potential: 5),
+        source: source,
+        morale: 80,
+      ).capabilityChange.delta,
+      greaterThan(
+        grow(
+          runtime(skill: 30, potential: 5),
+          source: source,
+          morale: 20,
+        ).capabilityChange.delta,
+      ),
+    );
+  });
+
+  test('training adds no practical or industry experience', () {
+    for (final source in const [
+      PublicDemoGrowthSource.internalTraining,
+      PublicDemoGrowthSource.externalTraining,
+    ]) {
+      final result = grow(runtime(), source: source);
+      expect(result.actualExperienceMonthsDelta, 0);
+      expect(result.industryExperienceMonthsDelta, 0);
+    }
+  });
+
   test('high capability has diminishing returns', () {
     expect(
       grow(runtime(skill: 30)).capabilityChange.delta,

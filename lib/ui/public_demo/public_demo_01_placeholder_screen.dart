@@ -8,6 +8,7 @@ import '../../game/public_demo/public_demo_interview.dart';
 import '../../game/public_demo/public_demo_recruitment.dart';
 import '../../game/public_demo/public_demo_sales.dart';
 import '../../game/public_demo/public_demo_salary_finance.dart';
+import '../../game/public_demo/public_demo_salary.dart';
 import '../../game/public_demo/public_demo_state.dart';
 import '../../game/public_demo/public_demo_employee_condition.dart';
 import '../../game/public_demo/public_demo_engineer_runtime.dart';
@@ -27,7 +28,7 @@ class PublicDemo01PlaceholderScreen extends StatefulWidget {
 }
 
 class _S extends State<PublicDemo01PlaceholderScreen> {
-  static const expense = 800000;
+  static final expense = PublicDemoSalary.baselineMonthlyExpenses;
   final _scrollController = ScrollController();
   PublicDemoState s = PublicDemoState.aprilStart();
   List<PublicDemoEngineerSales> engineers = publicDemoInitialEngineers;

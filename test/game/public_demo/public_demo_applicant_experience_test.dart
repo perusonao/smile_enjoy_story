@@ -22,6 +22,28 @@ void main() {
     );
   });
 
+  test('established 高橋・田中 templates remain unchanged', () {
+    expect(
+      publicDemoMayApplicants
+          .map(
+            (applicant) => (
+              applicant.id,
+              applicant.name,
+              applicant.interviewScore,
+              applicant.acceptanceScore,
+              applicant.requestedMonthlySalary,
+              applicant.salesSkillFit,
+              applicant.experienceMonths,
+            ),
+          )
+          .toList(),
+      equals([
+        ('app-01', '高橋 翔', 74, 68, 320000, 76, 48),
+        ('app-02', '田中 美咲', 58, 82, 300000, 62, 36),
+      ]),
+    );
+  });
+
   test('zero experience identifies an inexperienced applicant', () {
     const applicant = PublicDemoApplicant(
       id: 'inexperienced',
@@ -75,6 +97,17 @@ void main() {
     expect(
       result.generatedApplicants.map((applicant) => applicant.experienceMonths),
       everyElement(greaterThan(0)),
+    );
+  });
+
+  test('free pool has both experienced and inexperienced templates', () {
+    expect(
+      publicDemoFreeApplicants.any((applicant) => applicant.isInexperienced),
+      isTrue,
+    );
+    expect(
+      publicDemoFreeApplicants.any((applicant) => !applicant.isInexperienced),
+      isTrue,
     );
   });
 }

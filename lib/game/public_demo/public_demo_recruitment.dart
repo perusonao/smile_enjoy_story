@@ -153,3 +153,31 @@ const publicDemoMayApplicants = <PublicDemoApplicant>[
     requestedMonthlySalary: 300000,
   ),
 ];
+
+/// Free recruitment deliberately has a mixed-quality candidate pool.
+///
+/// This remains separate from [publicDemoMayApplicants] because that pool is
+/// the established engineer-media pair and its order participates in the
+/// deterministic generation contract.
+const publicDemoFreeApplicants = <PublicDemoApplicant>[
+  PublicDemoApplicant(
+    id: 'free-template-inexperienced-01',
+    name: '山本 陽菜',
+    resumeSummary: 'ITスクール修了 / Java・SQLを学習中（実務未経験）',
+    interviewScore: 64,
+    acceptanceScore: 76,
+    salesSkillFit: 26,
+    experienceMonths: 0,
+    requestedMonthlySalary: 220000,
+  ),
+  PublicDemoApplicant(
+    id: 'free-template-experienced-01',
+    name: '鈴木 恒一',
+    resumeSummary: 'Java 2年 / SQL 1年 / 詳細設計〜テスト',
+    interviewScore: 66,
+    acceptanceScore: 74,
+    salesSkillFit: 58,
+    experienceMonths: 24,
+    requestedMonthlySalary: 250000,
+  ),
+];

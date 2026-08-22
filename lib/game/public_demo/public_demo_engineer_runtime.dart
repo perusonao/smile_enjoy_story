@@ -35,6 +35,25 @@ class PublicDemoEngineerRuntime {
   /// It is derived from actual capability, never copied onto an assignment.
   int get actualCapability => languageSkills[primaryLanguage]?.actualSkill ?? 0;
 
+  PublicDemoEngineerRuntime copyWith({
+    ProgrammingLanguage? primaryLanguage,
+    Map<ProgrammingLanguage, LanguageSkill>? languageSkills,
+    TechSkillLevels? techSkills,
+    HiddenParameters? hidden,
+    Set<EmployeeAbility>? abilities,
+    Map<Industry, int>? industryExperience,
+    List<CareerHistoryEntry>? careerHistory,
+  }) => PublicDemoEngineerRuntime(
+    engineerId: engineerId,
+    primaryLanguage: primaryLanguage ?? this.primaryLanguage,
+    languageSkills: languageSkills ?? this.languageSkills,
+    techSkills: techSkills ?? this.techSkills,
+    hidden: hidden ?? this.hidden,
+    abilities: abilities ?? this.abilities,
+    industryExperience: industryExperience ?? this.industryExperience,
+    careerHistory: careerHistory ?? this.careerHistory,
+  );
+
   Map<String, dynamic> toJson() => {
     'engineerId': engineerId,
     'primaryLanguage': primaryLanguage.jsonValue,

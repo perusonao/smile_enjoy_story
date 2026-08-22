@@ -79,6 +79,7 @@ class PublicDemoRecruitmentTransaction {
       interviewScore: template.interviewScore,
       acceptanceScore: template.acceptanceScore,
       salesSkillFit: template.salesSkillFit,
+      experienceMonths: template.experienceMonths,
       requestedMonthlySalary: template.requestedMonthlySalary,
     );
   });

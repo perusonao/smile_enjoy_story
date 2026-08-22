@@ -1,5 +1,6 @@
 import '../../domain/models/employee_relationship_event.dart';
 import '../../domain/models/engineer.dart';
+
 enum PublicDemoRaiseDecision { hold, smallRaise, requestedRaise }
 
 enum PublicDemoApplicantStage {
@@ -27,6 +28,7 @@ class PublicDemoApplicant {
     required this.interviewScore,
     required this.acceptanceScore,
     required this.salesSkillFit,
+    this.experienceMonths = 36,
     this.requestedMonthlySalary = 320000,
     this.acceptedMonthlySalary,
     this.salaryMotivationDelta = 0,
@@ -39,7 +41,7 @@ class PublicDemoApplicant {
     this.raisedMonthlySalary,
     this.raiseEffectiveMonth,
     this.stage = PublicDemoApplicantStage.applied,
-  });
+  }) : assert(experienceMonths >= 0, 'experienceMonths must not be negative');
 
   final String id;
   final String name;
@@ -47,6 +49,13 @@ class PublicDemoApplicant {
   final int interviewScore;
   final int acceptanceScore;
   final int salesSkillFit;
+
+  /// IT practical experience at the time of application.
+  ///
+  /// Public Demo 0.1 treats zero months as genuinely inexperienced. This is
+  /// intentionally separate from [salesSkillFit], which still has its
+  /// pre-entry interview and post-entry initial-skill responsibilities.
+  final int experienceMonths;
   final int requestedMonthlySalary;
   final int? acceptedMonthlySalary;
   final int salaryMotivationDelta;
@@ -72,29 +81,32 @@ class PublicDemoApplicant {
     PublicDemoRaiseDecision? raiseDecision,
     int? raisedMonthlySalary,
     int? raiseEffectiveMonth,
-  }) =>
-      PublicDemoApplicant(
-        id: id,
-        name: name,
-        resumeSummary: resumeSummary,
-        interviewScore: interviewScore,
-        acceptanceScore: acceptanceScore,
-        salesSkillFit: salesSkillFit,
-        requestedMonthlySalary: requestedMonthlySalary,
-        acceptedMonthlySalary: acceptedMonthlySalary ?? this.acceptedMonthlySalary,
-        salaryMotivationDelta: salaryMotivationDelta ?? this.salaryMotivationDelta,
-        salaryTrustDelta: salaryTrustDelta ?? this.salaryTrustDelta,
-        salaryRelationshipReason: salaryRelationshipReason ?? this.salaryRelationshipReason,
-        employeeMorale: employeeMorale ?? this.employeeMorale,
-        employeeCompanyTrust: employeeCompanyTrust ?? this.employeeCompanyTrust,
-        relationshipHistory: relationshipHistory ?? this.relationshipHistory,
-        raiseDecision: raiseDecision ?? this.raiseDecision,
-        raisedMonthlySalary: raisedMonthlySalary ?? this.raisedMonthlySalary,
-        raiseEffectiveMonth: raiseEffectiveMonth ?? this.raiseEffectiveMonth,
-        stage: stage ?? this.stage,
-      );
+  }) => PublicDemoApplicant(
+    id: id,
+    name: name,
+    resumeSummary: resumeSummary,
+    interviewScore: interviewScore,
+    acceptanceScore: acceptanceScore,
+    salesSkillFit: salesSkillFit,
+    experienceMonths: experienceMonths,
+    requestedMonthlySalary: requestedMonthlySalary,
+    acceptedMonthlySalary: acceptedMonthlySalary ?? this.acceptedMonthlySalary,
+    salaryMotivationDelta: salaryMotivationDelta ?? this.salaryMotivationDelta,
+    salaryTrustDelta: salaryTrustDelta ?? this.salaryTrustDelta,
+    salaryRelationshipReason:
+        salaryRelationshipReason ?? this.salaryRelationshipReason,
+    employeeMorale: employeeMorale ?? this.employeeMorale,
+    employeeCompanyTrust: employeeCompanyTrust ?? this.employeeCompanyTrust,
+    relationshipHistory: relationshipHistory ?? this.relationshipHistory,
+    raiseDecision: raiseDecision ?? this.raiseDecision,
+    raisedMonthlySalary: raisedMonthlySalary ?? this.raisedMonthlySalary,
+    raiseEffectiveMonth: raiseEffectiveMonth ?? this.raiseEffectiveMonth,
+    stage: stage ?? this.stage,
+  );
 
   bool get hasJoined => employeeMorale != null && employeeCompanyTrust != null;
+
+  bool get isInexperienced => experienceMonths == 0;
 
   /// Applies the accepted salary condition once, at actual entry rather than
   /// at offer time. Public Demo does not yet own an Engineer runtime.
@@ -112,7 +124,8 @@ class PublicDemoApplicant {
     );
     return copyWith(
       employeeMorale: (defaultEmployeeMorale + event.moraleDelta).clamp(0, 100),
-      employeeCompanyTrust: (defaultEmployeeCompanyTrust + event.trustDelta).clamp(0, 100),
+      employeeCompanyTrust: (defaultEmployeeCompanyTrust + event.trustDelta)
+          .clamp(0, 100),
       relationshipHistory: [...relationshipHistory, event],
     );
   }
@@ -126,6 +139,7 @@ const publicDemoMayApplicants = <PublicDemoApplicant>[
     interviewScore: 74,
     acceptanceScore: 68,
     salesSkillFit: 76,
+    experienceMonths: 48,
     requestedMonthlySalary: 320000,
   ),
   PublicDemoApplicant(
@@ -135,6 +149,7 @@ const publicDemoMayApplicants = <PublicDemoApplicant>[
     interviewScore: 58,
     acceptanceScore: 82,
     salesSkillFit: 62,
+    experienceMonths: 36,
     requestedMonthlySalary: 300000,
   ),
 ];

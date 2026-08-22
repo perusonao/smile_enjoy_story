@@ -1,4 +1,5 @@
 import 'public_demo_interview.dart';
+import 'public_demo_recruitment.dart';
 
 enum PublicDemoSalesStage {
   waiting,
@@ -37,22 +38,37 @@ class PublicDemoEngineerSales {
   /// Motivation-equivalent, matching the shared Engineer model semantics.
   int get motivation => interviewProfile.morale;
 
+  /// Post-join employees use the same sales flow. Their changing capability
+  /// is read from the runtime at evaluation time, not stored here.
+  factory PublicDemoEngineerSales.fromApplicant(
+    PublicDemoApplicant applicant,
+  ) => PublicDemoEngineerSales(
+    id: applicant.id,
+    name: applicant.name,
+    summary: applicant.resumeSummary,
+    interviewProfile: PublicDemoInterviewProfile(
+      skillFit: applicant.salesSkillFit,
+      humanity: 60,
+      morale: applicant.employeeMorale ?? 50,
+      clientTrust: 50,
+    ),
+  );
+
   PublicDemoEngineerSales copyWith({
     PublicDemoSalesStage? stage,
     int? lastInterviewScore,
     int? mental,
     int? trust,
-  }) =>
-      PublicDemoEngineerSales(
-        id: id,
-        name: name,
-        summary: summary,
-        interviewProfile: interviewProfile,
-        stage: stage ?? this.stage,
-        lastInterviewScore: lastInterviewScore ?? this.lastInterviewScore,
-        mental: mental ?? this.mental,
-        trust: trust ?? this.trust,
-      );
+  }) => PublicDemoEngineerSales(
+    id: id,
+    name: name,
+    summary: summary,
+    interviewProfile: interviewProfile,
+    stage: stage ?? this.stage,
+    lastInterviewScore: lastInterviewScore ?? this.lastInterviewScore,
+    mental: mental ?? this.mental,
+    trust: trust ?? this.trust,
+  );
 }
 
 const publicDemoInitialEngineers = <PublicDemoEngineerSales>[

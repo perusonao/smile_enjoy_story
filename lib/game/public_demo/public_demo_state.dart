@@ -282,8 +282,16 @@ class PublicDemoState {
     applicants: applicants,
   );
 
-  PublicDemoEngineerRuntime runtimeFor(String engineerId) => engineerRuntimes
-      .firstWhere((runtime) => runtime.engineerId == engineerId);
+  PublicDemoEngineerRuntime? runtimeForOrNull(String engineerId) {
+    for (final runtime in engineerRuntimes) {
+      if (runtime.engineerId == engineerId) return runtime;
+    }
+    return null;
+  }
+
+  PublicDemoEngineerRuntime runtimeFor(String engineerId) =>
+      runtimeForOrNull(engineerId) ??
+      (throw ArgumentError.value(engineerId, 'engineerId', 'Unknown runtime'));
 
   /// Closes growth for the current month exactly once, before its state is
   /// advanced. Assignment IDs and morale are supplied by the live Public Demo

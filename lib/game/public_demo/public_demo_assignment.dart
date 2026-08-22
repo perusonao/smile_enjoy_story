@@ -54,6 +54,20 @@ class PublicDemoAssignment {
     replacementStage: replacementStage ?? this.replacementStage,
     fieldEvaluation: fieldEvaluation ?? this.fieldEvaluation,
   );
+
+  /// Assignment fallback for any ordered employee, including a post-join hire.
+  factory PublicDemoAssignment.forOrderedEngineer({
+    required String engineerId,
+    required String engineerName,
+    required int humanity,
+  }) => PublicDemoAssignment(
+    engineerId: engineerId,
+    engineerName: engineerName,
+    projectName: '新規開発支援',
+    deliveryPressure: 50,
+    budgetHealth: 70,
+    humanity: humanity,
+  );
 }
 
 const publicDemoInitialAssignments = <PublicDemoAssignment>[

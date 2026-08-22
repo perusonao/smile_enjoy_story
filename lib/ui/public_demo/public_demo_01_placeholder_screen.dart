@@ -82,7 +82,10 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
   }
 
   int capabilityFor(String engineerId) =>
-      s.runtimeFor(engineerId).actualCapability;
+      s.runtimeForOrNull(engineerId)?.actualCapability ?? 0;
+
+  bool readyForFieldSales(String engineerId) =>
+      s.runtimeForOrNull(engineerId)?.isReadyForFieldSales ?? false;
 
   Set<String> get _assignedEngineerIds =>
       assignments.map((assignment) => assignment.engineerId).toSet();
@@ -172,6 +175,7 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
         r = PublicDemoInterviewEvaluator.evaluate(
           type: t,
           profile: e.interviewProfile,
+          actualCapability: capabilityFor(e.id),
         );
     setState(() {
       if (t == PublicDemoInterviewType.partner) s = s.useSalesSlot();
@@ -364,7 +368,14 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
     final nextAssignments = [
       for (final e in engineers)
         if (e.stage == PublicDemoSalesStage.ordered)
-          publicDemoInitialAssignments.firstWhere((a) => a.engineerId == e.id),
+          publicDemoInitialAssignments
+                  .where((a) => a.engineerId == e.id)
+                  .firstOrNull ??
+              PublicDemoAssignment.forOrderedEngineer(
+                engineerId: e.id,
+                engineerName: e.name,
+                humanity: e.interviewProfile.humanity,
+              ),
       for (final a in applicants)
         if (a.stage == PublicDemoApplicantStage.juneOrdered)
           PublicDemoAssignment(
@@ -398,6 +409,15 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
           .map((a) => a.join(week: 9))
           .toList();
       applicants = joined;
+      engineers = [
+        ...engineers,
+        for (final applicant in joined.where(
+          (applicant) =>
+              applicant.hasJoined &&
+              !engineers.any((engineer) => engineer.id == applicant.id),
+        ))
+          PublicDemoEngineerSales.fromApplicant(applicant),
+      ];
       s =
           _closeGrowth(
                 engineers
@@ -914,12 +934,16 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
             internalTrainingCard(engineerId: e.id, engineerName: e.name),
             PublicDemoSalesProgress(currentStep: engineerStep(e)),
             const SizedBox(height: 8),
-            if (e.stage == PublicDemoSalesStage.waiting)
+            if (e.stage == PublicDemoSalesStage.waiting &&
+                readyForFieldSales(e.id)) ...[
+              const Text('営業準備OK', style: TextStyle(fontSize: 12)),
               FilledButton(
                 onPressed: () => es(i, PublicDemoSalesStage.skillSheet),
                 child: const Text('SkillSheet確認'),
               ),
-            if (e.stage == PublicDemoSalesStage.skillSheet)
+            ],
+            if (e.stage == PublicDemoSalesStage.skillSheet &&
+                readyForFieldSales(e.id))
               FilledButton(
                 onPressed: () => es(i, PublicDemoSalesStage.selling),
                 child: const Text('営業開始'),
@@ -1123,6 +1147,13 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
               ))
                 employeeConditionCard(a),
             if (s.month == 6) ...[
+              for (var i = 0; i < engineers.length; i++)
+                if (s.joinedApplicantIds.contains(engineers[i].id) &&
+                    engineers[i].stage != PublicDemoSalesStage.ordered &&
+                    !assignments.any(
+                      (assignment) => assignment.engineerId == engineers[i].id,
+                    ))
+                  ec(i),
               for (var i = 0; i < assignments.length; i++) assignmentCard(i),
               OutlinedButton(onPressed: june, child: const Text('6月終了→7月')),
             ],

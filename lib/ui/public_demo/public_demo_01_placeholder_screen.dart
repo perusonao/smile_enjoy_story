@@ -13,6 +13,7 @@ import '../../game/public_demo/public_demo_state.dart';
 import '../../game/public_demo/public_demo_employee_condition.dart';
 import '../../game/public_demo/public_demo_engineer_runtime.dart';
 import '../../game/public_demo/public_demo_raise.dart';
+import '../../game/public_demo/public_demo_summer_bonus_plan.dart';
 import '../asset_paths.dart';
 import 'public_demo_event_dialog.dart';
 import 'public_demo_growth_result_card.dart';
@@ -20,6 +21,7 @@ import 'public_demo_interview_result_dialog.dart';
 import 'public_demo_sales_progress.dart';
 import 'public_demo_salary_offer_dialog.dart';
 import 'public_demo_raise_dialog.dart';
+import 'public_demo_summer_bonus_dialog.dart';
 
 class PublicDemo01PlaceholderScreen extends StatefulWidget {
   const PublicDemo01PlaceholderScreen({super.key});
@@ -34,6 +36,7 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
   List<PublicDemoEngineerSales> engineers = publicDemoInitialEngineers;
   List<PublicDemoApplicant> applicants = publicDemoMayApplicants;
   List<PublicDemoAssignment> assignments = [];
+  bool _summerBonusDecisionConfirmed = false;
 
   int capabilityFor(String engineerId) =>
       s.runtimeFor(engineerId).actualCapability;
@@ -478,29 +481,53 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
     });
   }
 
-  void july() {
+  int get _julyMonthlyExpenses => PublicDemoSalaryFinance.monthlyExpenses(
+    baselineExpenses: expense,
+    hires: applicants.where((a) => a.hasJoined),
+    month: 7,
+  );
+
+  Future<void> decideSummerBonus() async {
+    final decision = await showDialog<PublicDemoSummerBonusPlan>(
+      context: context,
+      builder: (context) => PublicDemoSummerBonusDialog(
+        state: s,
+        applicants: applicants.where((a) => a.hasJoined),
+        monthlyExpenses: _julyMonthlyExpenses,
+      ),
+    );
+    if (!mounted || decision == null) return;
+    setState(() {
+      s = s.selectSummerBonus(decision);
+      _summerBonusDecisionConfirmed = true;
+    });
+  }
+
+  Future<void> july() async {
+    if (!_summerBonusDecisionConfirmed) {
+      await decideSummerBonus();
+      return;
+    }
     final joined = applicants.where((a) => a.hasJoined);
     setState(
       () => s =
           _closeGrowth(
-            assignments
-                .where(
-                  (assignment) =>
-                      assignment.nextOrderStatus ==
-                          PublicDemoNextOrderStatus.accepted ||
-                      assignment.replacementStage ==
-                          PublicDemoReplacementStage.ordered,
-                )
-                .map((assignment) => assignment.engineerId)
-                .toSet(),
-          ).advanceToAugust(
-            monthlyExpenses: PublicDemoSalaryFinance.monthlyExpenses(
-              baselineExpenses: expense,
-              hires: joined,
-              month: 7,
-            ),
-            applicants: joined,
-          ).state,
+                assignments
+                    .where(
+                      (assignment) =>
+                          assignment.nextOrderStatus ==
+                              PublicDemoNextOrderStatus.accepted ||
+                          assignment.replacementStage ==
+                              PublicDemoReplacementStage.ordered,
+                    )
+                    .map((assignment) => assignment.engineerId)
+                    .toSet(),
+              )
+              .advanceToAugust(
+                monthlyExpenses: _julyMonthlyExpenses,
+                applicants: joined,
+              )
+              .state,
     );
     _resetMonthScroll();
   }
@@ -1014,11 +1041,50 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
                   title: Text(a.engineerName),
                   subtitle: Text(julyResult(a)),
                 ),
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        '夏季賞与',
+                        style: TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        _summerBonusDecisionConfirmed
+                            ? '選択済み：${switch (s.summerBonusSelection) {
+                                PublicDemoSummerBonusPlan.none => 'なし',
+                                PublicDemoSummerBonusPlan.half => '0.5か月',
+                                PublicDemoSummerBonusPlan.one => '1か月',
+                              }}'
+                            : '7月終了前に支給内容を選びましょう。',
+                      ),
+                      const SizedBox(height: 8),
+                      FilledButton(
+                        key: const Key('public-demo-summer-bonus-decision'),
+                        onPressed: decideSummerBonus,
+                        child: Text(
+                          _summerBonusDecisionConfirmed
+                              ? '夏季賞与を変更'
+                              : '夏季賞与を決める',
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
               OutlinedButton(onPressed: july, child: const Text('7月終了→8月')),
             ],
             if (s.month == 8) ...[
               Text('8月開始結果', style: Theme.of(c).textTheme.titleLarge),
               const Text('7月分の給与を反映しました'),
+              Text(
+                s.summerBonusPaidAmount == 0
+                    ? '夏季賞与 なし'
+                    : '夏季賞与 ¥${s.summerBonusPaidAmount}',
+              ),
             ],
           ],
         ),

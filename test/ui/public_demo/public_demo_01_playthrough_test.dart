@@ -20,21 +20,30 @@ Future<void> tapAndSettle(WidgetTester tester, String text) async {
   // one fixed delay since real wall-clock timing is noisier under parallel
   // test-file execution (CPU contention) than when a file runs alone.
   for (var i = 0; i < 10; i++) {
-    await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 150)));
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 150)),
+    );
     await tester.pump();
   }
   await tester.pumpAndSettle();
 }
 
 void main() {
-  testWidgets('Public Demo can be operated from April through July', (tester) async {
-    await tester.pumpWidget(const MaterialApp(home: PublicDemo01PlaceholderScreen()));
+  testWidgets('Public Demo can be operated from April through July', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      const MaterialApp(home: PublicDemo01PlaceholderScreen()),
+    );
     expect(find.text('4月'), findsOneWidget);
 
     // April: advance without winning an order. The demo must still recover into May.
     await tapAndSettle(tester, '4月終了→5月');
     expect(find.text('新しい応募が届きました'), findsOneWidget);
-    expect(find.byKey(const Key('public-demo-recruitment-application-image')), findsOneWidget);
+    expect(
+      find.byKey(const Key('public-demo-recruitment-application-image')),
+      findsOneWidget,
+    );
     await tester.tap(find.widgetWithText(FilledButton, '確認'));
     await tester.pumpAndSettle();
     expect(find.text('5月'), findsOneWidget);
@@ -55,5 +64,14 @@ void main() {
     expect(find.text('7月'), findsOneWidget);
     expect(find.text('7月開始結果'), findsOneWidget);
     expect(find.textContaining('参画 0名 / 待機 2名'), findsOneWidget);
+    expect(find.text('夏季賞与'), findsOneWidget);
+
+    // The default domain plan is none, but July still explicitly asks the
+    // player to confirm that decision before it can be settled.
+    await tapAndSettle(tester, '7月終了→8月');
+    expect(
+      find.byKey(const Key('public-demo-summer-bonus-none')),
+      findsOneWidget,
+    );
   });
 }

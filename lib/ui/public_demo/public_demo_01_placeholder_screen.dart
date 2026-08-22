@@ -36,6 +36,21 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
   int capabilityFor(String engineerId) =>
       s.runtimeFor(engineerId).actualCapability;
 
+  Map<String, int> get _moraleByEngineerId => {
+    for (final engineer in engineers) engineer.id: engineer.motivation,
+    for (final applicant in applicants)
+      if (applicant.hasJoined) applicant.id: applicant.employeeMorale!,
+  };
+
+  /// This is called only by the month-end command, after all current-month
+  /// work/contract decisions and before the next month transition. It never
+  /// runs from build or dialog lifecycle code.
+  PublicDemoState _closeGrowth(Set<String> assignedEngineerIds) =>
+      s.applyMonthlyGrowth(
+        assignedEngineerIds: assignedEngineerIds,
+        moraleByEngineerId: _moraleByEngineerId,
+      );
+
   @override
   void dispose() {
     _scrollController.dispose();
@@ -170,7 +185,9 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
     );
     if (!mounted) return;
     setState(
-      () => s = s.advanceToMay(monthlyExpenses: expense, orderedEngineers: o),
+      () => s = _closeGrowth(
+        const {},
+      ).advanceToMay(monthlyExpenses: expense, orderedEngineers: o),
     );
   }
 
@@ -319,42 +336,51 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
           .map((a) => a.join(week: 9))
           .toList();
       applicants = joined;
-      s = s
-          .advanceToJune(
-            monthlyExpenses: expense,
-            acceptedHires: hires,
-            hiredWithOrders: ordered,
-            joinedApplicantIds: joined
-                .where((a) => a.hasJoined)
-                .map((a) => a.id)
-                .toList(),
-          )
-          .copyWith(
-            engineerRuntimes: [
-              ...s.engineerRuntimes,
-              for (final applicant in joined.where((a) => a.hasJoined))
-                PublicDemoEngineerRuntime(
-                  engineerId: applicant.id,
-                  primaryLanguage: ProgrammingLanguage.java,
-                  languageSkills: {
-                    ProgrammingLanguage.java: LanguageSkill(
-                      language: ProgrammingLanguage.java,
-                      displayedExperienceMonths: 0,
-                      actualExperienceMonths: 0,
-                      actualSkill: applicant.salesSkillFit,
+      s =
+          _closeGrowth(
+                engineers
+                    .where(
+                      (engineer) =>
+                          engineer.stage == PublicDemoSalesStage.ordered,
+                    )
+                    .map((engineer) => engineer.id)
+                    .toSet(),
+              )
+              .advanceToJune(
+                monthlyExpenses: expense,
+                acceptedHires: hires,
+                hiredWithOrders: ordered,
+                joinedApplicantIds: joined
+                    .where((a) => a.hasJoined)
+                    .map((a) => a.id)
+                    .toList(),
+              )
+              .copyWith(
+                engineerRuntimes: [
+                  ...s.engineerRuntimes,
+                  for (final applicant in joined.where((a) => a.hasJoined))
+                    PublicDemoEngineerRuntime(
+                      engineerId: applicant.id,
+                      primaryLanguage: ProgrammingLanguage.java,
+                      languageSkills: {
+                        ProgrammingLanguage.java: LanguageSkill(
+                          language: ProgrammingLanguage.java,
+                          displayedExperienceMonths: 0,
+                          actualExperienceMonths: 0,
+                          actualSkill: applicant.salesSkillFit,
+                        ),
+                      },
+                      techSkills: const TechSkillLevels.zero(),
+                      hidden: const HiddenParameters(
+                        growthPotential: 3,
+                        stressTolerance: 3,
+                        retention: 3,
+                        projectInterviewSkill: 3,
+                        turnoverIntent: 50,
+                      ),
                     ),
-                  },
-                  techSkills: const TechSkillLevels.zero(),
-                  hidden: const HiddenParameters(
-                    growthPotential: 3,
-                    stressTolerance: 3,
-                    retention: 3,
-                    projectInterviewSkill: 3,
-                    turnoverIntent: 50,
-                  ),
-                ),
-            ],
-          );
+                ],
+              );
       assignments = nextAssignments;
     });
   }
@@ -416,13 +442,16 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
         .length;
     final joinedHires = applicants.where(accepted);
     setState(
-      () => s = s.advanceToJuly(
-        monthlyExpenses: PublicDemoSalaryFinance.monthlyExpenses(
-          baselineExpenses: expense,
-          hires: joinedHires,
-        ),
-        assignedInJuly: assigned,
-      ),
+      () => s =
+          _closeGrowth(
+            assignments.map((assignment) => assignment.engineerId).toSet(),
+          ).advanceToJuly(
+            monthlyExpenses: PublicDemoSalaryFinance.monthlyExpenses(
+              baselineExpenses: expense,
+              hires: joinedHires,
+            ),
+            assignedInJuly: assigned,
+          ),
     );
     _resetMonthScroll();
   }
@@ -448,13 +477,25 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
   void july() {
     final joined = applicants.where((a) => a.hasJoined);
     setState(
-      () => s = s.advanceToAugust(
-        monthlyExpenses: PublicDemoSalaryFinance.monthlyExpenses(
-          baselineExpenses: expense,
-          hires: joined,
-          month: 7,
-        ),
-      ),
+      () => s =
+          _closeGrowth(
+            assignments
+                .where(
+                  (assignment) =>
+                      assignment.nextOrderStatus ==
+                          PublicDemoNextOrderStatus.accepted ||
+                      assignment.replacementStage ==
+                          PublicDemoReplacementStage.ordered,
+                )
+                .map((assignment) => assignment.engineerId)
+                .toSet(),
+          ).advanceToAugust(
+            monthlyExpenses: PublicDemoSalaryFinance.monthlyExpenses(
+              baselineExpenses: expense,
+              hires: joined,
+              month: 7,
+            ),
+          ),
     );
   }
 

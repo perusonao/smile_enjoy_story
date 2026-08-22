@@ -1,4 +1,6 @@
 import 'public_demo_engineer_runtime.dart';
+import 'public_demo_growth_engine.dart';
+import 'public_demo_monthly_growth.dart';
 
 /// Minimal state for Public Demo 0.1 MVP-A.
 class PublicDemoState {
@@ -13,6 +15,8 @@ class PublicDemoState {
     required this.engineersAssigned,
     this.joinedApplicantIds = const [],
     this.engineerRuntimes = publicDemoInitialEngineerRuntimes,
+    this.latestGrowthResults = const [],
+    this.growthAppliedMonths = const [],
   });
   factory PublicDemoState.aprilStart() => const PublicDemoState(
     month: 4,
@@ -36,6 +40,14 @@ class PublicDemoState {
 
   /// Actual employee capabilities. Assignments only own project conditions.
   final List<PublicDemoEngineerRuntime> engineerRuntimes;
+
+  /// Most recently closed month's results for EG-4.  Results are historical
+  /// facts, not UI text or a prompt to recalculate growth.
+  final List<PublicDemoMonthlyGrowth> latestGrowthResults;
+
+  /// Month numbers whose growth has already been applied.  This makes a
+  /// repeated month-end command a no-op even outside the normal UI flow.
+  final List<int> growthAppliedMonths;
   int get salesRemaining => salesCapacity - salesUsed;
   PublicDemoState useSalesSlot() {
     if (salesRemaining <= 0) return this;
@@ -104,6 +116,54 @@ class PublicDemoState {
 
   PublicDemoEngineerRuntime runtimeFor(String engineerId) => engineerRuntimes
       .firstWhere((runtime) => runtime.engineerId == engineerId);
+
+  /// Closes growth for the current month exactly once, before its state is
+  /// advanced. Assignment IDs and morale are supplied by the live Public Demo
+  /// workflow because those transient workflow objects own that information.
+  ///
+  /// The current demo assignment model has no reliable industry field, so this
+  /// method intentionally does not invent one; industry experience remains 0.
+  PublicDemoState applyMonthlyGrowth({
+    required Set<String> assignedEngineerIds,
+    required Map<String, int> moraleByEngineerId,
+  }) {
+    if (growthAppliedMonths.contains(month)) return this;
+    final results = <PublicDemoMonthlyGrowth>[];
+    final runtimes = [
+      for (final runtime in engineerRuntimes)
+        () {
+          final source = assignedEngineerIds.contains(runtime.engineerId)
+              ? PublicDemoGrowthSource.assignment
+              : PublicDemoGrowthSource.waiting;
+          final result = PublicDemoGrowthEngine.calculate(
+            runtime,
+            PublicDemoGrowthRequest(
+              source: source,
+              morale: moraleByEngineerId[runtime.engineerId] ?? 50,
+            ),
+          );
+          results.add(
+            PublicDemoMonthlyGrowth(
+              engineerId: runtime.engineerId,
+              source: source,
+              primaryLanguage: runtime.primaryLanguage,
+              capabilityBefore: result.capabilityChange.before,
+              capabilityAfter: result.capabilityChange.after,
+              actualExperienceMonthsDelta: result.actualExperienceMonthsDelta,
+              industryExperienceMonthsDelta:
+                  result.industryExperienceMonthsDelta,
+            ),
+          );
+          return result.after;
+        }(),
+    ];
+    return copyWith(
+      engineerRuntimes: runtimes,
+      latestGrowthResults: results,
+      growthAppliedMonths: [...growthAppliedMonths, month],
+    );
+  }
+
   PublicDemoState copyWith({
     int? month,
     int? cash,
@@ -115,6 +175,8 @@ class PublicDemoState {
     int? engineersAssigned,
     List<String>? joinedApplicantIds,
     List<PublicDemoEngineerRuntime>? engineerRuntimes,
+    List<PublicDemoMonthlyGrowth>? latestGrowthResults,
+    List<int>? growthAppliedMonths,
   }) => PublicDemoState(
     month: month ?? this.month,
     cash: cash ?? this.cash,
@@ -126,6 +188,8 @@ class PublicDemoState {
     engineersAssigned: engineersAssigned ?? this.engineersAssigned,
     joinedApplicantIds: joinedApplicantIds ?? this.joinedApplicantIds,
     engineerRuntimes: engineerRuntimes ?? this.engineerRuntimes,
+    latestGrowthResults: latestGrowthResults ?? this.latestGrowthResults,
+    growthAppliedMonths: growthAppliedMonths ?? this.growthAppliedMonths,
   );
   Map<String, dynamic> toJson() => {
     'month': month,
@@ -140,29 +204,41 @@ class PublicDemoState {
     'engineerRuntimes': engineerRuntimes
         .map((runtime) => runtime.toJson())
         .toList(),
+    'latestGrowthResults': latestGrowthResults
+        .map((result) => result.toJson())
+        .toList(),
+    'growthAppliedMonths': growthAppliedMonths,
   };
-  factory PublicDemoState.fromJson(Map<String, dynamic> json) =>
-      PublicDemoState(
-        month: json['month'] as int,
-        cash: json['cash'] as int,
-        engineerCount: json['engineerCount'] as int,
-        adminCount: json['adminCount'] as int,
-        salesCapacity: json['salesCapacity'] as int,
-        salesUsed: json['salesUsed'] as int,
-        engineersWaiting: json['engineersWaiting'] as int,
-        engineersAssigned: json['engineersAssigned'] as int,
-        joinedApplicantIds: (json['joinedApplicantIds'] as List? ?? const [])
-            .cast<String>(),
-        engineerRuntimes:
-            (json['engineerRuntimes'] as List? ??
-                    publicDemoInitialEngineerRuntimes)
-                .map(
-                  (runtime) => runtime is PublicDemoEngineerRuntime
-                      ? runtime
-                      : PublicDemoEngineerRuntime.fromJson(
-                          runtime as Map<String, dynamic>,
-                        ),
-                )
-                .toList(),
-      );
+  factory PublicDemoState.fromJson(
+    Map<String, dynamic> json,
+  ) => PublicDemoState(
+    month: json['month'] as int,
+    cash: json['cash'] as int,
+    engineerCount: json['engineerCount'] as int,
+    adminCount: json['adminCount'] as int,
+    salesCapacity: json['salesCapacity'] as int,
+    salesUsed: json['salesUsed'] as int,
+    engineersWaiting: json['engineersWaiting'] as int,
+    engineersAssigned: json['engineersAssigned'] as int,
+    joinedApplicantIds: (json['joinedApplicantIds'] as List? ?? const [])
+        .cast<String>(),
+    engineerRuntimes:
+        (json['engineerRuntimes'] as List? ?? publicDemoInitialEngineerRuntimes)
+            .map(
+              (runtime) => runtime is PublicDemoEngineerRuntime
+                  ? runtime
+                  : PublicDemoEngineerRuntime.fromJson(
+                      runtime as Map<String, dynamic>,
+                    ),
+            )
+            .toList(),
+    latestGrowthResults: (json['latestGrowthResults'] as List? ?? const [])
+        .map(
+          (result) =>
+              PublicDemoMonthlyGrowth.fromJson(result as Map<String, dynamic>),
+        )
+        .toList(),
+    growthAppliedMonths: (json['growthAppliedMonths'] as List? ?? const [])
+        .cast<int>(),
+  );
 }

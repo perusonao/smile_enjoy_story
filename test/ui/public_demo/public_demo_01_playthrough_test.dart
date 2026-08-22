@@ -74,4 +74,37 @@ void main() {
       findsOneWidget,
     );
   });
+
+  testWidgets('recruitment media adds applicants through the existing flow', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      const MaterialApp(home: PublicDemo01PlaceholderScreen()),
+    );
+    await tapAndSettle(tester, '4月終了→5月');
+    await tester.tap(find.widgetWithText(FilledButton, '確認'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(
+      find.byKey(const Key('public-demo-open-recruitment-media')),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('無料求人'), findsOneWidget);
+    expect(find.text('エンジニア求人'), findsOneWidget);
+    expect(find.text('費用: ¥0 / 応募: 1名'), findsOneWidget);
+    expect(find.text('費用: ¥100000 / 応募: 2名'), findsOneWidget);
+    expect(find.text('利用後の現預金: ¥2100000'), findsOneWidget);
+
+    await tester.tap(
+      find.byKey(const Key('public-demo-recruitment-medium-engineer')),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('現預金 ¥2100000'), findsWidgets);
+    expect(
+      find.byKey(const Key('public-demo-open-recruitment-media')),
+      findsOneWidget,
+    );
+    expect(find.text('今月は利用済み'), findsOneWidget);
+    expect(find.text('応募者2名を追加しました。'), findsOneWidget);
+  });
 }

@@ -1,7 +1,9 @@
 import 'public_demo_engineer_runtime.dart';
 import 'public_demo_growth_engine.dart';
 import 'public_demo_monthly_growth.dart';
+import 'public_demo_recruitment.dart';
 import 'public_demo_summer_bonus_plan.dart';
+import 'public_demo_summer_bonus_payment.dart';
 
 /// Minimal state for Public Demo 0.1 MVP-A.
 class PublicDemoState {
@@ -237,10 +239,16 @@ class PublicDemoState {
     );
   }
 
-  PublicDemoState advanceToAugust({required int monthlyExpenses}) {
-    if (month != 7) return this;
-    return copyWith(month: 8, cash: cash - monthlyExpenses, salesUsed: 0);
-  }
+  /// Closes July atomically: ordinary monthly expenses and the selected summer
+  /// bonus either both settle, or neither state nor cash changes.
+  PublicDemoSummerBonusPaymentResult advanceToAugust({
+    required int monthlyExpenses,
+    required Iterable<PublicDemoApplicant> applicants,
+  }) => PublicDemoSummerBonusPayment.closeJuly(
+    state: this,
+    monthlyExpenses: monthlyExpenses,
+    applicants: applicants,
+  );
 
   PublicDemoEngineerRuntime runtimeFor(String engineerId) => engineerRuntimes
       .firstWhere((runtime) => runtime.engineerId == engineerId);

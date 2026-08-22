@@ -499,7 +499,8 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
               hires: joined,
               month: 7,
             ),
-          ),
+            applicants: joined,
+          ).state,
     );
     _resetMonthScroll();
   }

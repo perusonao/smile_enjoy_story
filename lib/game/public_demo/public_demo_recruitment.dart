@@ -108,6 +108,11 @@ class PublicDemoApplicant {
 
   bool get isInexperienced => experienceMonths == 0;
 
+  /// Inexperienced hires enter through the normal monthly join boundary and
+  /// begin development after joining; they do not participate in pre-join
+  /// sales.
+  bool get canEnterPreJoinSales => !isInexperienced;
+
   /// Applies the accepted salary condition once, at actual entry rather than
   /// at offer time. Public Demo does not yet own an Engineer runtime.
   PublicDemoApplicant join({required int week}) {

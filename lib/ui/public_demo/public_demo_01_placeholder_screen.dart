@@ -1,8 +1,4 @@
 import 'package:flutter/material.dart';
-import '../../domain/models/hidden_parameters.dart';
-import '../../domain/models/language_skill.dart';
-import '../../domain/models/programming_language.dart';
-import '../../domain/models/tech_skill_levels.dart';
 import '../../game/public_demo/public_demo_assignment.dart';
 import '../../game/public_demo/public_demo_interview.dart';
 import '../../game/public_demo/public_demo_recruitment.dart';
@@ -411,26 +407,7 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
                 engineerRuntimes: [
                   ...s.engineerRuntimes,
                   for (final applicant in joined.where((a) => a.hasJoined))
-                    PublicDemoEngineerRuntime(
-                      engineerId: applicant.id,
-                      primaryLanguage: ProgrammingLanguage.java,
-                      languageSkills: {
-                        ProgrammingLanguage.java: LanguageSkill(
-                          language: ProgrammingLanguage.java,
-                          displayedExperienceMonths: 0,
-                          actualExperienceMonths: 0,
-                          actualSkill: applicant.salesSkillFit,
-                        ),
-                      },
-                      techSkills: const TechSkillLevels.zero(),
-                      hidden: const HiddenParameters(
-                        growthPotential: 3,
-                        stressTolerance: 3,
-                        retention: 3,
-                        projectInterviewSkill: 3,
-                        turnoverIntent: 50,
-                      ),
-                    ),
+                    PublicDemoEngineerRuntime.fromApplicant(applicant),
                 ],
               );
       assignments = nextAssignments;
@@ -977,12 +954,16 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
                 child: const Text('合格・給与提示'),
               ),
             ],
-            if (a.stage == PublicDemoApplicantStage.offerAccepted)
+            if (a.stage == PublicDemoApplicantStage.offerAccepted &&
+                a.canEnterPreJoinSales)
               FilledButton(
                 onPressed: () =>
                     as(i, PublicDemoApplicantStage.preEntrySkillSheet),
                 child: const Text('入社前SkillSheet'),
               ),
+            if (a.stage == PublicDemoApplicantStage.offerAccepted &&
+                !a.canEnterPreJoinSales)
+              const Text('入社後、研修で育成します'),
             if (a.stage == PublicDemoApplicantStage.preEntrySkillSheet)
               FilledButton(
                 onPressed: () =>

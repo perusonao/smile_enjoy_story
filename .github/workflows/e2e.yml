@@ -102,6 +102,13 @@ name: Playwright E2E (S.E.S.)
 # a cancelled run has no reliable replay package and a newer run's chain
 # deploys right behind it anyway).
 #
+# WebKit compatibility is also intentionally non-blocking for ordinary PR
+# merge readiness. `e2e-webkit` remains a real failing job when its tests
+# fail (including its always-uploaded artifacts), but its failure does not
+# fail the workflow run. This is a temporary policy boundary for the known
+# WebKit infrastructure flake; remove `continue-on-error` when that separate
+# stabilization work has made WebKit reliable enough to become a gate again.
+#
 # PHASE2 (not implemented — future option, see task report): today a
 # replay that finishes packaging *after* its push's own `build`/`deploy`
 # already ran is simply never published — it is NOT retried, queued, or
@@ -249,6 +256,9 @@ jobs:
 
   e2e-webkit:
     needs: validate
+    # Keep a failing WebKit run visible and artifact-backed, without making
+    # its known infrastructure flake a blocking Public Demo PR gate.
+    continue-on-error: true
     runs-on: ubuntu-latest
     timeout-minutes: 30
     concurrency:

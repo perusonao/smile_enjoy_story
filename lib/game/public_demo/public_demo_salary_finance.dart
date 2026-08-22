@@ -1,9 +1,7 @@
 import 'public_demo_recruitment.dart';
-import 'public_demo_raise.dart';
+import 'public_demo_salary.dart';
 
-/// Keeps the existing Public Demo balance neutral when the candidate is paid
-/// their requested salary, while making lower/higher offers affect cash once
-/// the hire actually joins.
+/// Calculates payroll additions without hiding the founding team's baseline.
 class PublicDemoSalaryFinance {
   const PublicDemoSalaryFinance._();
 
@@ -13,12 +11,13 @@ class PublicDemoSalaryFinance {
   }) {
     var adjustment = 0;
     for (final hire in hires) {
-      if (hire.stage == PublicDemoApplicantStage.offerDeclined) continue;
-      final int? salary = month == null
-          ? hire.acceptedMonthlySalary
-          : hire.salaryForMonth(month);
+      final salary = PublicDemoSalary.currentMonthlySalaryFor(
+        hire.id,
+        applicants: [hire],
+        month: month,
+      );
       if (salary == null) continue;
-      adjustment += salary - hire.requestedMonthlySalary;
+      adjustment += salary;
     }
     return adjustment;
   }

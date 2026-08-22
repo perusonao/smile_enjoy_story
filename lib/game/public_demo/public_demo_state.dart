@@ -1,6 +1,9 @@
 import 'public_demo_engineer_runtime.dart';
 import 'public_demo_growth_engine.dart';
 import 'public_demo_monthly_growth.dart';
+import 'public_demo_recruitment.dart';
+import 'public_demo_summer_bonus_plan.dart';
+import 'public_demo_summer_bonus_payment.dart';
 
 /// Minimal state for Public Demo 0.1 MVP-A.
 class PublicDemoState {
@@ -19,6 +22,11 @@ class PublicDemoState {
     List<PublicDemoMonthlyGrowth> latestGrowthResults = const [],
     List<int> growthAppliedMonths = const [],
     Map<String, PublicDemoGrowthSource> trainingSelections = const {},
+    PublicDemoSummerBonusPlan summerBonusSelection =
+        PublicDemoSummerBonusPlan.none,
+    bool summerBonusPaid = false,
+    int? summerBonusPaidMonth,
+    int? summerBonusPaidAmount,
   }) => PublicDemoState._(
     month: month,
     cash: cash,
@@ -33,6 +41,26 @@ class PublicDemoState {
     latestGrowthResults: latestGrowthResults,
     growthAppliedMonths: growthAppliedMonths,
     trainingSelections: _trainingSelectionsOnly(trainingSelections),
+    summerBonusSelection: summerBonusSelection,
+    summerBonusPaid: _hasValidSummerBonusPayment(
+      paid: summerBonusPaid,
+      month: summerBonusPaidMonth,
+      amount: summerBonusPaidAmount,
+    ),
+    summerBonusPaidMonth: _hasValidSummerBonusPayment(
+      paid: summerBonusPaid,
+      month: summerBonusPaidMonth,
+      amount: summerBonusPaidAmount,
+    )
+        ? summerBonusPaidMonth
+        : null,
+    summerBonusPaidAmount: _hasValidSummerBonusPayment(
+      paid: summerBonusPaid,
+      month: summerBonusPaidMonth,
+      amount: summerBonusPaidAmount,
+    )
+        ? summerBonusPaidAmount
+        : null,
   );
 
   const PublicDemoState._({
@@ -49,6 +77,10 @@ class PublicDemoState {
     required this.latestGrowthResults,
     required this.growthAppliedMonths,
     required this.trainingSelections,
+    required this.summerBonusSelection,
+    required this.summerBonusPaid,
+    required this.summerBonusPaidMonth,
+    required this.summerBonusPaidAmount,
   });
 
   factory PublicDemoState.aprilStart() => PublicDemoState(
@@ -86,6 +118,19 @@ class PublicDemoState {
   /// never assignment or waiting states.
   final Map<String, PublicDemoGrowthSource> trainingSelections;
 
+  /// The player's intended July summer bonus. Selection and payment are
+  /// deliberately separate: BONUS-2A will calculate and deduct the payment.
+  final PublicDemoSummerBonusPlan summerBonusSelection;
+  final bool summerBonusPaid;
+  final int? summerBonusPaidMonth;
+  final int? summerBonusPaidAmount;
+
+  static bool _hasValidSummerBonusPayment({
+    required bool paid,
+    required int? month,
+    required int? amount,
+  }) => paid && month == 7 && amount != null && amount >= 0;
+
   static Map<String, PublicDemoGrowthSource> _trainingSelectionsOnly(
     Map<String, PublicDemoGrowthSource> selections,
   ) => Map.unmodifiable({
@@ -116,6 +161,24 @@ class PublicDemoState {
         if (entry.key != engineerId) entry.key: entry.value,
     },
   );
+
+  /// Updates the intended bonus without changing cash, salary, or growth.
+  /// Once paid, the historical decision is immutable.
+  PublicDemoState selectSummerBonus(PublicDemoSummerBonusPlan plan) {
+    if (summerBonusPaid || plan == summerBonusSelection) return this;
+    return copyWith(summerBonusSelection: plan);
+  }
+
+  /// Records a completed July payment without applying any cash movement.
+  /// BONUS-2A must compose this with its accounting transaction.
+  PublicDemoState markSummerBonusPaid({required int month, required int amount}) {
+    if (summerBonusPaid || month != 7 || amount < 0) return this;
+    return copyWith(
+      summerBonusPaid: true,
+      summerBonusPaidMonth: month,
+      summerBonusPaidAmount: amount,
+    );
+  }
   PublicDemoState useSalesSlot() {
     if (salesRemaining <= 0) return this;
     return copyWith(salesUsed: salesUsed + 1);
@@ -176,10 +239,16 @@ class PublicDemoState {
     );
   }
 
-  PublicDemoState advanceToAugust({required int monthlyExpenses}) {
-    if (month != 7) return this;
-    return copyWith(month: 8, cash: cash - monthlyExpenses, salesUsed: 0);
-  }
+  /// Closes July atomically: ordinary monthly expenses and the selected summer
+  /// bonus either both settle, or neither state nor cash changes.
+  PublicDemoSummerBonusPaymentResult advanceToAugust({
+    required int monthlyExpenses,
+    required Iterable<PublicDemoApplicant> applicants,
+  }) => PublicDemoSummerBonusPayment.closeJuly(
+    state: this,
+    monthlyExpenses: monthlyExpenses,
+    applicants: applicants,
+  );
 
   PublicDemoEngineerRuntime runtimeFor(String engineerId) => engineerRuntimes
       .firstWhere((runtime) => runtime.engineerId == engineerId);
@@ -245,6 +314,10 @@ class PublicDemoState {
     List<PublicDemoMonthlyGrowth>? latestGrowthResults,
     List<int>? growthAppliedMonths,
     Map<String, PublicDemoGrowthSource>? trainingSelections,
+    PublicDemoSummerBonusPlan? summerBonusSelection,
+    bool? summerBonusPaid,
+    Object? summerBonusPaidMonth = _unset,
+    Object? summerBonusPaidAmount = _unset,
   }) => PublicDemoState(
     month: month ?? this.month,
     cash: cash ?? this.cash,
@@ -259,7 +332,16 @@ class PublicDemoState {
     latestGrowthResults: latestGrowthResults ?? this.latestGrowthResults,
     growthAppliedMonths: growthAppliedMonths ?? this.growthAppliedMonths,
     trainingSelections: trainingSelections ?? this.trainingSelections,
+    summerBonusSelection: summerBonusSelection ?? this.summerBonusSelection,
+    summerBonusPaid: summerBonusPaid ?? this.summerBonusPaid,
+    summerBonusPaidMonth: identical(summerBonusPaidMonth, _unset)
+        ? this.summerBonusPaidMonth
+        : summerBonusPaidMonth as int?,
+    summerBonusPaidAmount: identical(summerBonusPaidAmount, _unset)
+        ? this.summerBonusPaidAmount
+        : summerBonusPaidAmount as int?,
   );
+  static const Object _unset = Object();
   Map<String, dynamic> toJson() => {
     'month': month,
     'cash': cash,
@@ -280,6 +362,10 @@ class PublicDemoState {
     'trainingSelections': trainingSelections.map(
       (engineerId, source) => MapEntry(engineerId, source.name),
     ),
+    'summerBonusSelection': summerBonusSelection.name,
+    'summerBonusPaid': summerBonusPaid,
+    'summerBonusPaidMonth': summerBonusPaidMonth,
+    'summerBonusPaidAmount': summerBonusPaidAmount,
   };
   factory PublicDemoState.fromJson(
     Map<String, dynamic> json,
@@ -313,7 +399,24 @@ class PublicDemoState {
     growthAppliedMonths: (json['growthAppliedMonths'] as List? ?? const [])
         .cast<int>(),
     trainingSelections: _trainingSelectionsFromJson(json['trainingSelections']),
+    summerBonusSelection: _summerBonusPlanFromJson(json['summerBonusSelection']),
+    summerBonusPaid: json['summerBonusPaid'] is bool
+        ? json['summerBonusPaid'] as bool
+        : false,
+    summerBonusPaidMonth:
+        json['summerBonusPaidMonth'] is int ? json['summerBonusPaidMonth'] as int : null,
+    summerBonusPaidAmount: json['summerBonusPaidAmount'] is int
+        ? json['summerBonusPaidAmount'] as int
+        : null,
   );
+
+  static PublicDemoSummerBonusPlan _summerBonusPlanFromJson(Object? raw) {
+    if (raw is! String) return PublicDemoSummerBonusPlan.none;
+    return PublicDemoSummerBonusPlan.values
+            .where((plan) => plan.name == raw)
+            .firstOrNull ??
+        PublicDemoSummerBonusPlan.none;
+  }
 
   static Map<String, PublicDemoGrowthSource> _trainingSelectionsFromJson(
     Object? raw,

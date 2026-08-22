@@ -8,10 +8,7 @@ void main() {
     var state = PublicDemoState.aprilStart();
 
     // April: one of two engineers wins a May order.
-    state = state.advanceToMay(
-      monthlyExpenses: 800000,
-      orderedEngineers: 1,
-    );
+    state = state.advanceToMay(monthlyExpenses: 800000, orderedEngineers: 1);
     expect(state.month, 5);
     expect(state.engineersAssigned, 1);
     expect(state.engineersWaiting, 1);
@@ -28,10 +25,7 @@ void main() {
     expect(state.engineersWaiting, 1);
 
     // June: only one engineer has a July assignment; the others become waiting.
-    state = state.advanceToJuly(
-      monthlyExpenses: 800000,
-      assignedInJuly: 1,
-    );
+    state = state.advanceToJuly(monthlyExpenses: 800000, assignedInJuly: 1);
     expect(state.month, 7);
     expect(state.cash, 600000);
     expect(state.engineerCount, 3);
@@ -60,7 +54,9 @@ void main() {
         );
 
     PublicDemoState throughJuly(int salary) {
-      final hire = applicant.copyWith(acceptedMonthlySalary: salary);
+      final hire = applicant
+          .copyWith(acceptedMonthlySalary: salary)
+          .join(week: 9);
       return throughJune(salary).advanceToJuly(
         monthlyExpenses: PublicDemoSalaryFinance.monthlyExpenses(
           baselineExpenses: 800000,
@@ -79,7 +75,7 @@ void main() {
     final lowJuly = throughJuly(280000);
     final standardJuly = throughJuly(320000);
     final highJuly = throughJuly(360000);
-    expect(standardJuly.cash, 600000);
+    expect(standardJuly.cash, 280000);
     expect(lowJuly.cash, standardJuly.cash + 40000);
     expect(highJuly.cash, standardJuly.cash - 40000);
   });

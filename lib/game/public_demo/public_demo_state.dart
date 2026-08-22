@@ -4,7 +4,38 @@ import 'public_demo_monthly_growth.dart';
 
 /// Minimal state for Public Demo 0.1 MVP-A.
 class PublicDemoState {
-  const PublicDemoState({
+  factory PublicDemoState({
+    required int month,
+    required int cash,
+    required int engineerCount,
+    required int adminCount,
+    required int salesCapacity,
+    required int salesUsed,
+    required int engineersWaiting,
+    required int engineersAssigned,
+    List<String> joinedApplicantIds = const [],
+    List<PublicDemoEngineerRuntime> engineerRuntimes =
+        publicDemoInitialEngineerRuntimes,
+    List<PublicDemoMonthlyGrowth> latestGrowthResults = const [],
+    List<int> growthAppliedMonths = const [],
+    Map<String, PublicDemoGrowthSource> trainingSelections = const {},
+  }) => PublicDemoState._(
+    month: month,
+    cash: cash,
+    engineerCount: engineerCount,
+    adminCount: adminCount,
+    salesCapacity: salesCapacity,
+    salesUsed: salesUsed,
+    engineersWaiting: engineersWaiting,
+    engineersAssigned: engineersAssigned,
+    joinedApplicantIds: joinedApplicantIds,
+    engineerRuntimes: engineerRuntimes,
+    latestGrowthResults: latestGrowthResults,
+    growthAppliedMonths: growthAppliedMonths,
+    trainingSelections: _trainingSelectionsOnly(trainingSelections),
+  );
+
+  const PublicDemoState._({
     required this.month,
     required this.cash,
     required this.engineerCount,
@@ -13,12 +44,14 @@ class PublicDemoState {
     required this.salesUsed,
     required this.engineersWaiting,
     required this.engineersAssigned,
-    this.joinedApplicantIds = const [],
-    this.engineerRuntimes = publicDemoInitialEngineerRuntimes,
-    this.latestGrowthResults = const [],
-    this.growthAppliedMonths = const [],
+    required this.joinedApplicantIds,
+    required this.engineerRuntimes,
+    required this.latestGrowthResults,
+    required this.growthAppliedMonths,
+    required this.trainingSelections,
   });
-  factory PublicDemoState.aprilStart() => const PublicDemoState(
+
+  factory PublicDemoState.aprilStart() => PublicDemoState(
     month: 4,
     cash: 3000000,
     engineerCount: 2,
@@ -48,7 +81,41 @@ class PublicDemoState {
   /// Month numbers whose growth has already been applied.  This makes a
   /// repeated month-end command a no-op even outside the normal UI flow.
   final List<int> growthAppliedMonths;
+
+  /// Selected training for each engineer. Values are always training sources,
+  /// never assignment or waiting states.
+  final Map<String, PublicDemoGrowthSource> trainingSelections;
+
+  static Map<String, PublicDemoGrowthSource> _trainingSelectionsOnly(
+    Map<String, PublicDemoGrowthSource> selections,
+  ) => Map.unmodifiable({
+    for (final entry in selections.entries)
+      if (_isTrainingSource(entry.value)) entry.key: entry.value,
+  });
+
+  static bool _isTrainingSource(PublicDemoGrowthSource source) =>
+      source == PublicDemoGrowthSource.internalTraining ||
+      source == PublicDemoGrowthSource.externalTraining;
+
   int get salesRemaining => salesCapacity - salesUsed;
+
+  PublicDemoState selectInternalTraining(String engineerId) =>
+      _selectTraining(engineerId, PublicDemoGrowthSource.internalTraining);
+
+  PublicDemoState selectExternalTraining(String engineerId) =>
+      _selectTraining(engineerId, PublicDemoGrowthSource.externalTraining);
+
+  PublicDemoState _selectTraining(
+    String engineerId,
+    PublicDemoGrowthSource source,
+  ) => copyWith(trainingSelections: {...trainingSelections, engineerId: source});
+
+  PublicDemoState cancelTraining(String engineerId) => copyWith(
+    trainingSelections: {
+      for (final entry in trainingSelections.entries)
+        if (entry.key != engineerId) entry.key: entry.value,
+    },
+  );
   PublicDemoState useSalesSlot() {
     if (salesRemaining <= 0) return this;
     return copyWith(salesUsed: salesUsed + 1);
@@ -177,6 +244,7 @@ class PublicDemoState {
     List<PublicDemoEngineerRuntime>? engineerRuntimes,
     List<PublicDemoMonthlyGrowth>? latestGrowthResults,
     List<int>? growthAppliedMonths,
+    Map<String, PublicDemoGrowthSource>? trainingSelections,
   }) => PublicDemoState(
     month: month ?? this.month,
     cash: cash ?? this.cash,
@@ -190,6 +258,7 @@ class PublicDemoState {
     engineerRuntimes: engineerRuntimes ?? this.engineerRuntimes,
     latestGrowthResults: latestGrowthResults ?? this.latestGrowthResults,
     growthAppliedMonths: growthAppliedMonths ?? this.growthAppliedMonths,
+    trainingSelections: trainingSelections ?? this.trainingSelections,
   );
   Map<String, dynamic> toJson() => {
     'month': month,
@@ -208,6 +277,9 @@ class PublicDemoState {
         .map((result) => result.toJson())
         .toList(),
     'growthAppliedMonths': growthAppliedMonths,
+    'trainingSelections': trainingSelections.map(
+      (engineerId, source) => MapEntry(engineerId, source.name),
+    ),
   };
   factory PublicDemoState.fromJson(
     Map<String, dynamic> json,
@@ -240,5 +312,23 @@ class PublicDemoState {
         .toList(),
     growthAppliedMonths: (json['growthAppliedMonths'] as List? ?? const [])
         .cast<int>(),
+    trainingSelections: _trainingSelectionsFromJson(json['trainingSelections']),
   );
+
+  static Map<String, PublicDemoGrowthSource> _trainingSelectionsFromJson(
+    Object? raw,
+  ) {
+    if (raw is! Map) return const {};
+    final selections = <String, PublicDemoGrowthSource>{};
+    for (final entry in raw.entries) {
+      if (entry.key is! String || entry.value is! String) continue;
+      final source = PublicDemoGrowthSource.values
+          .where((candidate) => candidate.name == entry.value)
+          .firstOrNull;
+      if (source != null && _isTrainingSource(source)) {
+        selections[entry.key] = source;
+      }
+    }
+    return selections;
+  }
 }

@@ -8,13 +8,28 @@ import 'public_demo_state.dart';
 /// [PublicDemoState.engineersAssigned] (via [PublicDemoRevenue]) as the new
 /// pending balance — so this month's billing is not collectible until next
 /// month's settlement. There is no failure mode: this always succeeds, even
-/// when both amounts are 0.
+/// when both amounts are 0 — except once [PublicDemoState.fiscalYearCompleted]
+/// is true, where [state] is the sole, non-bypassable authority (no
+/// caller-supplied flag) and this becomes a no-op returning [state]
+/// unchanged (POST-12MONTH-1-FIX1 P1-2).
+///
+/// Every [PublicDemoMonthlyClose] caller of this (including March's own
+/// close) always applies it *before* [PublicDemoState.completeFiscalYear]
+/// sets the flag, so this guard cannot suppress March's own Revenue
+/// settlement — only a call made *after* completion, direct or otherwise.
 class PublicDemoRevenuePayment {
   const PublicDemoRevenuePayment._();
 
   static PublicDemoRevenuePaymentResult apply({
     required PublicDemoState state,
   }) {
+    if (state.fiscalYearCompleted) {
+      return PublicDemoRevenuePaymentResult._(
+        state: state,
+        revenueReceived: 0,
+        revenueRecognized: 0,
+      );
+    }
     final revenueReceived = state.pendingRevenue;
     final revenueRecognized = PublicDemoRevenue.monthlyRevenueForAssignedCount(
       state.engineersAssigned,

@@ -204,23 +204,40 @@ class PublicDemoState {
   PublicDemoState selectExternalTraining(String engineerId) =>
       _selectTraining(engineerId, PublicDemoGrowthSource.externalTraining);
 
+  /// POST-12MONTH-1: once the fiscal year is closed out, no further
+  /// training selection or cancellation may mutate state — Public Demo 0.1
+  /// is a read-only terminal state from that point on. This is the single
+  /// SSOT guard for both [selectInternalTraining] and
+  /// [selectExternalTraining] (which both delegate here).
   PublicDemoState _selectTraining(
     String engineerId,
     PublicDemoGrowthSource source,
-  ) =>
-      copyWith(trainingSelections: {...trainingSelections, engineerId: source});
+  ) {
+    if (fiscalYearCompleted) return this;
+    return copyWith(
+      trainingSelections: {...trainingSelections, engineerId: source},
+    );
+  }
 
-  PublicDemoState cancelTraining(String engineerId) => copyWith(
-    trainingSelections: {
-      for (final entry in trainingSelections.entries)
-        if (entry.key != engineerId) entry.key: entry.value,
-    },
-  );
+  PublicDemoState cancelTraining(String engineerId) {
+    if (fiscalYearCompleted) return this;
+    return copyWith(
+      trainingSelections: {
+        for (final entry in trainingSelections.entries)
+          if (entry.key != engineerId) entry.key: entry.value,
+      },
+    );
+  }
 
   /// Updates the intended bonus without changing cash, salary, or growth.
-  /// Once paid, the historical decision is immutable.
+  /// Once paid, the historical decision is immutable. Once the fiscal year
+  /// is completed, this is a no-op as well (POST-12MONTH-1).
   PublicDemoState selectSummerBonus(PublicDemoSummerBonusPlan plan) {
-    if (summerBonusPaid || plan == summerBonusSelection) return this;
+    if (fiscalYearCompleted ||
+        summerBonusPaid ||
+        plan == summerBonusSelection) {
+      return this;
+    }
     return copyWith(summerBonusSelection: plan);
   }
 
@@ -238,8 +255,10 @@ class PublicDemoState {
     );
   }
 
+  /// A no-op once the fiscal year is completed (POST-12MONTH-1): sales
+  /// activity is a game-progression action, not read-only navigation.
   PublicDemoState useSalesSlot() {
-    if (salesRemaining <= 0) return this;
+    if (fiscalYearCompleted || salesRemaining <= 0) return this;
     return copyWith(salesUsed: salesUsed + 1);
   }
 
@@ -362,11 +381,18 @@ class PublicDemoState {
   ///
   /// The current demo assignment model has no reliable industry field, so this
   /// method intentionally does not invent one; industry experience remains 0.
+  ///
+  /// Also a no-op once [fiscalYearCompleted] is true (POST-12MONTH-1): the
+  /// live UI always closes growth before completion is set, so this guard is
+  /// defense in depth for any other caller, or a restored state whose
+  /// [growthAppliedMonths] doesn't yet include month 15.
   PublicDemoState applyMonthlyGrowth({
     required Set<String> assignedEngineerIds,
     required Map<String, int> moraleByEngineerId,
   }) {
-    if (growthAppliedMonths.contains(month)) return this;
+    if (fiscalYearCompleted || growthAppliedMonths.contains(month)) {
+      return this;
+    }
     final results = <PublicDemoMonthlyGrowth>[];
     final runtimes = [
       for (final runtime in engineerRuntimes)

@@ -47,6 +47,14 @@ class PublicDemoRaiseRequest {
 }
 
 extension PublicDemoRaiseApplicant on PublicDemoApplicant {
+  /// This is purely an in-window/decision-already-made check: [PublicDemoApplicant]
+  /// has no reference to [PublicDemoState] and so cannot know whether the
+  /// fiscal year is completed. Enforcing that terminal-state guard is
+  /// [PublicDemoRaiseTransaction]'s job — it takes the actual state as a
+  /// required parameter, so completion can never be skipped by a caller
+  /// omitting or overriding a flag here (POST-12MONTH-1-FIX1 P1-1). Do not
+  /// call [decideRaise] directly from UI or transaction code; go through
+  /// [PublicDemoRaiseTransaction.execute] instead.
   bool canRequestRaiseIn(int month) =>
       hasJoined && month >= 6 && raiseDecision == null;
 
@@ -59,7 +67,9 @@ extension PublicDemoRaiseApplicant on PublicDemoApplicant {
 
   /// Applies both the decision and its relationship effect exactly once.
   /// A second tap is harmless: the already-decided immutable record is
-  /// returned unchanged.
+  /// returned unchanged. This has no notion of the fiscal year being
+  /// completed (see [canRequestRaiseIn]) — callers must gate on
+  /// [PublicDemoRaiseTransaction] instead of calling this directly.
   PublicDemoApplicant decideRaise({
     required int decisionMonth,
     required int week,

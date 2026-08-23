@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../game/public_demo/public_demo_recruitment.dart';
+import '../../game/public_demo/public_demo_revenue_payment.dart';
 import '../../game/public_demo/public_demo_state.dart';
 import '../../game/public_demo/public_demo_summer_bonus_payment.dart';
 import '../../game/public_demo/public_demo_summer_bonus_plan.dart';
@@ -30,9 +31,16 @@ class PublicDemoSummerBonusDialog extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Same-close preview: closeJuly settles pendingRevenue into cash before
+    // its own cash guard runs (PublicDemoMonthlyClose.closeJuly), so this
+    // reuses the same transaction to keep the preview's affordability basis
+    // identical to what the close actually checks.
+    final availableCash = PublicDemoRevenuePayment.apply(
+      state: state,
+    ).state.cash;
     Widget choice(PublicDemoSummerBonusPlan plan, String label) {
       final amount = _amount(plan);
-      final projectedCash = state.cash - monthlyExpenses - amount;
+      final projectedCash = availableCash - monthlyExpenses - amount;
       final enabled = projectedCash >= 0;
       return Padding(
         padding: const EdgeInsets.only(bottom: 8),

@@ -265,8 +265,10 @@ UX guidance, applicant generator, etc.).
 
 ## 23. Remote HEAD
 
-Not yet pushed at time of writing this section; see final push step. Branch:
+Pushed successfully (normal push, no force). Branch:
 `feature/public-demo-12month-1-monthly-close-scaffold`.
+`origin/feature/public-demo-12month-1-monthly-close-scaffold` =
+`9b899720eca51db1e6da2db6f30984471d3a3031`, matching local `HEAD`.
 
 ## 24. Remaining blockers
 
@@ -313,7 +315,7 @@ Also note: this sandbox had no Flutter SDK preinstalled. Flutter 3.44.8
 ```
 BASE MAIN: 220f6b45bb38bf2265031f725273de26de2d88a3
 BRANCH: feature/public-demo-12month-1-monthly-close-scaffold
-HEAD: (set after commit, see push confirmation)
+HEAD: 9b899720eca51db1e6da2db6f30984471d3a3031 (implementation commit; a follow-up doc-only commit records these final values)
 COMMON CLOSE API: PublicDemoMonthlyClose (closeApril/closeMay/closeJune/closeJuly) — lib/game/public_demo/public_demo_monthly_close.dart
 UI MIGRATED: YES (all 4 month-end handlers in public_demo_01_placeholder_screen.dart)
 4→5: PASS (3 tests)
@@ -332,7 +334,7 @@ FOCUSED: PASS (10/10 public_demo_monthly_close_test.dart)
 PUBLIC DEMO: PASS (188/188)
 FULL TEST: PASS (720/720)
 DIFF CHECK: PASS
-REMOTE HEAD: (set after push, see push confirmation)
+REMOTE HEAD: 9b899720eca51db1e6da2db6f30984471d3a3031 (origin/feature/public-demo-12month-1-monthly-close-scaffold, matches HEAD)
 
 VERDICT:
 PASS

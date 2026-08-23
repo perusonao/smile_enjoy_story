@@ -47,13 +47,16 @@ class PublicDemoRaiseRequest {
 }
 
 extension PublicDemoRaiseApplicant on PublicDemoApplicant {
-  /// [fiscalYearCompleted] mirrors [PublicDemoState.fiscalYearCompleted]
-  /// (POST-12MONTH-1): once the fiscal year is closed out, Public Demo 0.1
-  /// is a read-only terminal state, so no further raise request may open —
-  /// defaults to false so every pre-existing caller keeps its prior
-  /// behavior unchanged.
-  bool canRequestRaiseIn(int month, {bool fiscalYearCompleted = false}) =>
-      !fiscalYearCompleted && hasJoined && month >= 6 && raiseDecision == null;
+  /// This is purely an in-window/decision-already-made check: [PublicDemoApplicant]
+  /// has no reference to [PublicDemoState] and so cannot know whether the
+  /// fiscal year is completed. Enforcing that terminal-state guard is
+  /// [PublicDemoRaiseTransaction]'s job — it takes the actual state as a
+  /// required parameter, so completion can never be skipped by a caller
+  /// omitting or overriding a flag here (POST-12MONTH-1-FIX1 P1-1). Do not
+  /// call [decideRaise] directly from UI or transaction code; go through
+  /// [PublicDemoRaiseTransaction.execute] instead.
+  bool canRequestRaiseIn(int month) =>
+      hasJoined && month >= 6 && raiseDecision == null;
 
   int salaryForMonth(int month) {
     if (raiseEffectiveMonth != null && month >= raiseEffectiveMonth!) {
@@ -64,20 +67,15 @@ extension PublicDemoRaiseApplicant on PublicDemoApplicant {
 
   /// Applies both the decision and its relationship effect exactly once.
   /// A second tap is harmless: the already-decided immutable record is
-  /// returned unchanged. Once [fiscalYearCompleted] is true, this is a
-  /// no-op regardless of [decisionMonth] (POST-12MONTH-1).
+  /// returned unchanged. This has no notion of the fiscal year being
+  /// completed (see [canRequestRaiseIn]) — callers must gate on
+  /// [PublicDemoRaiseTransaction] instead of calling this directly.
   PublicDemoApplicant decideRaise({
     required int decisionMonth,
     required int week,
     required PublicDemoRaiseDecision decision,
-    bool fiscalYearCompleted = false,
   }) {
-    if (!canRequestRaiseIn(
-      decisionMonth,
-      fiscalYearCompleted: fiscalYearCompleted,
-    )) {
-      return this;
-    }
+    if (!canRequestRaiseIn(decisionMonth)) return this;
     final request = PublicDemoRaiseRequest.forApplicant(this);
     final event = EmployeeRelationshipEvent(
       week: week,

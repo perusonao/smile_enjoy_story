@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_growth_engine.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_internal_training_transaction.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_raise.dart';
+import 'package:smile_enjoy_story/game/public_demo/public_demo_raise_transaction.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_recruitment.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_state.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_summer_bonus_plan.dart';
@@ -32,38 +33,59 @@ void main() {
   ).join(week: 9);
 
   group('A. Raise is locked after fiscal year completion', () {
-    test('canRequestRaiseIn is false once completed, even in-window', () {
-      final applicant = joinedApplicant();
-      expect(applicant.canRequestRaiseIn(6), isTrue);
-      expect(
-        applicant.canRequestRaiseIn(6, fiscalYearCompleted: true),
-        isFalse,
+    // POST-12MONTH-1-FIX1 P1-1: PublicDemoRaiseTransaction — not
+    // PublicDemoApplicant.decideRaise itself — is the sanctioned entry
+    // point. It takes the real PublicDemoState as a required parameter and
+    // reads state.fiscalYearCompleted directly, so there is no bool
+    // parameter a caller could omit or override to bypass the guard.
+    const transaction = PublicDemoRaiseTransaction();
+
+    test('PublicDemoRaiseTransaction rejects with fiscalYearCompleted once '
+        'completed, even though the applicant is in-window and eligible', () {
+      final before = joinedApplicant();
+      final state = completedState();
+      final result = transaction.execute(
+        state: state,
+        applicant: before,
+        decisionMonth: 15,
+        week: 60,
+        decision: PublicDemoRaiseDecision.requestedRaise,
       );
       expect(
-        applicant.canRequestRaiseIn(15, fiscalYearCompleted: true),
-        isFalse,
+        result.status,
+        PublicDemoRaiseTransactionStatus.fiscalYearCompleted,
       );
+      expect(identical(result.applicant, before), isTrue);
+      expect(result.applicant.raiseDecision, isNull);
+      expect(result.applicant.raisedMonthlySalary, isNull);
+      expect(result.applicant.employeeMorale, before.employeeMorale);
+      expect(
+        result.applicant.employeeCompanyTrust,
+        before.employeeCompanyTrust,
+      );
+      expect(result.applicant.relationshipHistory, before.relationshipHistory);
+      expect(result.applicant.salaryForMonth(16), before.salaryForMonth(16));
     });
 
-    test(
-      'decideRaise is a no-op once completed: salary and state unchanged',
-      () {
-        final before = joinedApplicant();
-        final after = before.decideRaise(
-          decisionMonth: 15,
-          week: 60,
-          decision: PublicDemoRaiseDecision.requestedRaise,
-          fiscalYearCompleted: true,
-        );
-        expect(identical(after, before), isTrue);
-        expect(after.raiseDecision, isNull);
-        expect(after.raisedMonthlySalary, isNull);
-        expect(after.employeeMorale, before.employeeMorale);
-        expect(after.employeeCompanyTrust, before.employeeCompanyTrust);
-        expect(after.relationshipHistory, before.relationshipHistory);
-        expect(after.salaryForMonth(16), before.salaryForMonth(16));
-      },
-    );
+    test('the transaction API has no flag to override: completion is read '
+        'only from the state object passed in, so passing an otherwise '
+        'identical but not-completed state still succeeds — proving the '
+        'rejection above came from state.fiscalYearCompleted, not some '
+        'other eligibility check', () {
+      final before = joinedApplicant();
+      final notCompleted = completedState().copyWith(
+        fiscalYearCompleted: false,
+      );
+      final result = transaction.execute(
+        state: notCompleted,
+        applicant: before,
+        decisionMonth: 15,
+        week: 60,
+        decision: PublicDemoRaiseDecision.requestedRaise,
+      );
+      expect(result.status, PublicDemoRaiseTransactionStatus.success);
+      expect(result.applicant.raiseDecision, isNotNull);
+    });
   });
 
   group('B. Training is locked after fiscal year completion', () {
@@ -144,6 +166,43 @@ void main() {
       expect(after.raiseDecision, PublicDemoRaiseDecision.requestedRaise);
       expect(after.raisedMonthlySalary, 380000);
       expect(after.salaryForMonth(7), 380000);
+    });
+
+    test(
+      'PublicDemoRaiseTransaction (the sanctioned entry point) produces the '
+      'exact same result as calling decideRaise directly when not completed',
+      () {
+        const transaction = PublicDemoRaiseTransaction();
+        final before = joinedApplicant();
+        final result = transaction.execute(
+          state: PublicDemoState.aprilStart().copyWith(month: 6),
+          applicant: before,
+          decisionMonth: 6,
+          week: 24,
+          decision: PublicDemoRaiseDecision.requestedRaise,
+        );
+        expect(result.status, PublicDemoRaiseTransactionStatus.success);
+        expect(
+          result.applicant.raiseDecision,
+          PublicDemoRaiseDecision.requestedRaise,
+        );
+        expect(result.applicant.raisedMonthlySalary, 380000);
+        expect(result.applicant.salaryForMonth(7), 380000);
+      },
+    );
+
+    test('PublicDemoRaiseTransaction still respects the pre-existing month/'
+        'already-decided eligibility window when not completed', () {
+      const transaction = PublicDemoRaiseTransaction();
+      final tooEarly = transaction.execute(
+        state: PublicDemoState.aprilStart().copyWith(month: 5),
+        applicant: joinedApplicant(),
+        decisionMonth: 5,
+        week: 20,
+        decision: PublicDemoRaiseDecision.hold,
+      );
+      expect(tooEarly.status, PublicDemoRaiseTransactionStatus.notEligible);
+      expect(tooEarly.applicant.raiseDecision, isNull);
     });
 
     test('internal training still works exactly as before when not '

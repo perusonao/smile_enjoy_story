@@ -14,6 +14,7 @@ import '../../game/public_demo/public_demo_state.dart';
 import '../../game/public_demo/public_demo_employee_condition.dart';
 import '../../game/public_demo/public_demo_engineer_runtime.dart';
 import '../../game/public_demo/public_demo_raise.dart';
+import '../../game/public_demo/public_demo_raise_transaction.dart';
 import '../../game/public_demo/public_demo_summer_bonus_plan.dart';
 import '../asset_paths.dart';
 import 'public_demo_event_dialog.dart';
@@ -564,12 +565,15 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
     if (!mounted || decision == null) return;
     setState(() {
       final n = [...applicants];
-      n[i] = a.decideRaise(
-        decisionMonth: s.month,
-        week: s.month * 4,
-        decision: decision,
-        fiscalYearCompleted: s.fiscalYearCompleted,
-      );
+      n[i] = const PublicDemoRaiseTransaction()
+          .execute(
+            state: s,
+            applicant: a,
+            decisionMonth: s.month,
+            week: s.month * 4,
+            decision: decision,
+          )
+          .applicant;
       applicants = n;
     });
   }
@@ -814,14 +818,9 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
             Text('会社への信頼：${PublicDemoEmployeeCondition.label(trust)}'),
             const SizedBox(height: 4),
             Text(reason, style: Theme.of(context).textTheme.bodySmall),
-            if (a.canRequestRaiseIn(
-              s.month,
-              fiscalYearCompleted: s.fiscalYearCompleted,
-            )) ...const [SizedBox(height: 8)],
-            if (a.canRequestRaiseIn(
-              s.month,
-              fiscalYearCompleted: s.fiscalYearCompleted,
-            ))
+            if (!s.fiscalYearCompleted &&
+                a.canRequestRaiseIn(s.month)) ...const [SizedBox(height: 8)],
+            if (!s.fiscalYearCompleted && a.canRequestRaiseIn(s.month))
               FilledButton(
                 key: Key('public-demo-raise-request-${a.id}'),
                 onPressed: () =>

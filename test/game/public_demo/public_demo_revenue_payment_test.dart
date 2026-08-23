@@ -164,5 +164,70 @@ void main() {
         );
       }
     });
+
+    // POST-12MONTH-1-FIX1 P1-2: apply() reads state.fiscalYearCompleted
+    // directly off the required [state] parameter — there is no separate
+    // flag a caller could omit or override, so this cannot be bypassed the
+    // way the pre-FIX1 raise API could.
+    group('terminal state guard (POST-12MONTH-1-FIX1 P1-2)', () {
+      test('a direct call once completed leaves cash and pendingRevenue '
+          'unchanged, even with pending revenue and assigned engineers '
+          'that would otherwise move both', () {
+        final state = PublicDemoState.aprilStart().copyWith(
+          month: 15,
+          cash: 4000000,
+          pendingRevenue: 1000000,
+          engineersAssigned: 2,
+          fiscalYearCompleted: true,
+        );
+        final result = PublicDemoRevenuePayment.apply(state: state);
+        expect(identical(result.state, state), isTrue);
+        expect(result.state.cash, state.cash);
+        expect(result.state.pendingRevenue, state.pendingRevenue);
+        expect(result.revenueReceived, 0);
+        expect(result.revenueRecognized, 0);
+      });
+
+      test('an otherwise-identical not-completed state still settles '
+          'normally — proving the guard above is fiscalYearCompleted, not '
+          'some other condition', () {
+        final state = PublicDemoState.aprilStart().copyWith(
+          month: 15,
+          cash: 4000000,
+          pendingRevenue: 1000000,
+          engineersAssigned: 2,
+        );
+        final result = PublicDemoRevenuePayment.apply(state: state);
+        expect(result.state.cash, 5000000);
+        expect(result.state.pendingRevenue, 1000000);
+      });
+
+      test('March close still settles Revenue: previous pendingRevenue becomes '
+          'cash and March books its own new pendingRevenue, because '
+          'PublicDemoMonthlyClose.closeOrdinaryMonth always applies Revenue '
+          'while fiscalYearCompleted is still false, before '
+          'completeFiscalYear sets it', () {
+        // This directly exercises PublicDemoRevenuePayment.apply the same
+        // way PublicDemoMonthlyClose.closeOrdinaryMonth does for March,
+        // to pin the ordering this guard depends on without duplicating
+        // the full closeOrdinaryMonth test suite already in
+        // public_demo_monthly_close_ordinary_month_test.dart.
+        final march = PublicDemoState.aprilStart().copyWith(
+          month: 15,
+          cash: 4000000,
+          pendingRevenue: 1000000,
+          engineersAssigned: 2,
+        );
+        expect(march.fiscalYearCompleted, isFalse);
+        final result = PublicDemoRevenuePayment.apply(state: march);
+        expect(result.state.cash, 4000000 + 1000000);
+        expect(result.state.pendingRevenue, 1000000);
+        final completed = result.state.completeFiscalYear(
+          monthlyExpenses: 800000,
+        );
+        expect(completed.fiscalYearCompleted, isTrue);
+        expect(completed.pendingRevenue, 1000000);
+      });
+    });
   });
 }

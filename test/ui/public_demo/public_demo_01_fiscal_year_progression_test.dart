@@ -88,6 +88,13 @@ void main() {
       await tester.pumpAndSettle();
       await tapAndSettle(tester, '7月終了→8月');
       expect(find.text('8月'), findsOneWidget);
+      // 12MONTH-3-FIX1 P1-2: no month past May can process a generated
+      // applicant, so the paid recruitment-media CTA must not render for
+      // any ordinary month (it did briefly, for 8-15, before this fix).
+      expect(
+        find.byKey(const Key('public-demo-recruitment-media-card')),
+        findsNothing,
+      );
 
       // August through February: each closes via the new shared ordinary
       // month button and lands on the next calendar label.
@@ -106,6 +113,11 @@ void main() {
         expect(find.text('13月'), findsNothing);
         expect(find.text('14月'), findsNothing);
         expect(find.text('15月'), findsNothing);
+        expect(
+          find.byKey(const Key('public-demo-recruitment-media-card')),
+          findsNothing,
+          reason: 'month $nextMonthLabel',
+        );
       }
       expect(find.text('3月'), findsOneWidget);
       expect(find.text('13月'), findsNothing);

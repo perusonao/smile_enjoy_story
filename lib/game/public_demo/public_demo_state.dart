@@ -164,8 +164,15 @@ class PublicDemoState {
     required int? amount,
   }) => paid && month == 7 && amount != null && amount >= 0;
 
+  /// Recruitment media is only usable through August (8): no month past 5
+  /// has a UI flow that can process a generated applicant, and 12MONTH-3
+  /// briefly widened this to 4-15 without one, creating a paid dead end for
+  /// September-March (12MONTH-3-FIX1 P1-2). Kept at the pre-12MONTH-3 4-8
+  /// range rather than narrowed further, since month 7's identical
+  /// pre-existing gap is an intentional follow-up, not something this fix
+  /// changes (see SES_12MONTH-3_P1_Fixes_Result.md).
   static int? _normalizedRecruitmentMediaMonth(int? month) =>
-      month != null && month >= 4 && month <= 15 ? month : null;
+      month != null && month >= 4 && month <= 8 ? month : null;
 
   static Map<String, PublicDemoGrowthSource> _trainingSelectionsOnly(
     Map<String, PublicDemoGrowthSource> selections,

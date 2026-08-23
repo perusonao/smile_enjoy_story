@@ -92,11 +92,43 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
   Set<String> get _assignedEngineerIds =>
       assignments.map((assignment) => assignment.engineerId).toSet();
 
+  /// The engineer IDs currently backing [PublicDemoState.engineersAssigned]
+  /// — the single SSOT [Revenue], [Growth], and training eligibility must
+  /// all agree on (12MONTH-3-FIX1 P1-1).
+  ///
+  /// `assignments` means two different things depending on when it is
+  /// read. Through June it is this month's live roster: `may()` builds it
+  /// directly from that month's ordered engineers, the same source
+  /// `engineersAssigned` itself is computed from, so every entry is
+  /// currently assigned regardless of `nextOrderStatus` (June's own
+  /// decision, about *next* month, is still pending at that point) —
+  /// [_assignedEngineerIds] (unfiltered) is correct there. From July
+  /// onward, `engineersAssigned` reflects only whichever entries June's
+  /// `decideOrder`/`acceptOrder`/`replacementPartner`/`replacementClient`
+  /// flow actually marked `accepted`/`ordered` — exactly what `july()`
+  /// already computes inline for Growth — and Public Demo 0.1 formally
+  /// carries that same roster forward through the rest of the fiscal year
+  /// (P1-1 DESIGN DECISION: "一度案件参画が成立した社員は、第1期終了まで同じ
+  /// 案件へ継続参画する"), so the filtered subset stays the correct
+  /// identity set for every month 7-15, not just July itself.
+  Set<String> get _currentlyAssignedEngineerIds => s.month >= 7
+      ? assignments
+            .where(
+              (assignment) =>
+                  assignment.nextOrderStatus ==
+                      PublicDemoNextOrderStatus.accepted ||
+                  assignment.replacementStage ==
+                      PublicDemoReplacementStage.ordered,
+            )
+            .map((assignment) => assignment.engineerId)
+            .toSet()
+      : _assignedEngineerIds;
+
   void _selectInternalTraining(String engineerId) {
     final result = const PublicDemoInternalTrainingTransaction().execute(
       state: s,
       engineerId: engineerId,
-      assignedEngineerIds: _assignedEngineerIds,
+      assignedEngineerIds: _currentlyAssignedEngineerIds,
     );
     if (!result.isSuccess) return;
     setState(() => s = result.state);
@@ -604,7 +636,7 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
   void closeOrdinaryMonth() {
     setState(
       () => s = PublicDemoMonthlyClose.closeOrdinaryMonth(
-        state: _closeGrowth(_assignedEngineerIds),
+        state: _closeGrowth(_currentlyAssignedEngineerIds),
         monthlyExpenses: _ordinaryMonthlyExpenses,
       ).state,
     );
@@ -800,7 +832,7 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
     required String engineerName,
   }) {
     final selected = s.trainingSelections.containsKey(engineerId);
-    final assigned = _assignedEngineerIds.contains(engineerId);
+    final assigned = _currentlyAssignedEngineerIds.contains(engineerId);
     final affordable = s.cash >= PublicDemoInternalTrainingTransaction.cost;
     if (assigned) return const SizedBox.shrink();
     return Card(
@@ -1240,7 +1272,6 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
                       : '夏季賞与 ¥${s.summerBonusPaidAmount}',
                 ),
               ],
-              _RecruitmentMediaCard(state: s, onPressed: _openRecruitmentMedia),
               OutlinedButton(
                 onPressed: closeOrdinaryMonth,
                 child: Text(
@@ -1254,7 +1285,6 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
                 '${publicDemoMonthLabel(s.month)}開始結果',
                 style: Theme.of(c).textTheme.titleLarge,
               ),
-              _RecruitmentMediaCard(state: s, onPressed: _openRecruitmentMedia),
               OutlinedButton(
                 key: const Key('public-demo-march-close'),
                 onPressed: closeOrdinaryMonth,

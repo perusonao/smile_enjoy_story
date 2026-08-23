@@ -57,13 +57,18 @@ void main() {
     });
   });
 
-  group('recruitment media usage extends to the new months', () {
-    test('months 9 through 15 are now valid for recruitment media', () {
+  group('recruitment media stays scoped to 4-8 (12MONTH-3-FIX1 P1-2)', () {
+    // 12MONTH-3 briefly widened this to 4-15, but no UI past month 5 can
+    // process a generated applicant, so a widened *domain* range let a
+    // player pay for a medium in September-March with no way to ever act
+    // on the result — a paid dead end (Codex P1-2). Reverted to the
+    // pre-12MONTH-3 4-8 range; see SES_12MONTH-3_P1_Fixes_Result.md.
+    test('months 9 through 15 are rejected again (dead-end fix)', () {
       final state = PublicDemoState.aprilStart();
       for (var month = 9; month <= 15; month++) {
         expect(
           state.canUseRecruitmentMediaInMonth(month),
-          isTrue,
+          isFalse,
           reason: 'month $month',
         );
       }
@@ -74,13 +79,17 @@ void main() {
       expect(state.canUseRecruitmentMediaInMonth(16), isFalse);
     });
 
-    test('recruitmentMediumUsedMonth round trips for a month 9-15 value', () {
-      final used = PublicDemoState.aprilStart().markRecruitmentMediaUsed(13);
-      expect(used.recruitmentMediumUsedMonth, 13);
-      expect(
-        PublicDemoState.fromJson(used.toJson()).recruitmentMediumUsedMonth,
-        13,
-      );
+    test('month 8 (the pre-12MONTH-3 upper bound) is still valid', () {
+      final state = PublicDemoState.aprilStart();
+      expect(state.canUseRecruitmentMediaInMonth(8), isTrue);
+    });
+
+    test('markRecruitmentMediaUsed for a 9-15 value is a no-op (matches the '
+        'reverted 4-8 range)', () {
+      final start = PublicDemoState.aprilStart();
+      final used = start.markRecruitmentMediaUsed(13);
+      expect(used, same(start));
+      expect(used.recruitmentMediumUsedMonth, isNull);
     });
   });
 }

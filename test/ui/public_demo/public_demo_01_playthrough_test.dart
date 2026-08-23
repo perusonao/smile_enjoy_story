@@ -9,6 +9,12 @@ Future<void> tapAndSettle(WidgetTester tester, String text) async {
     300,
     scrollable: find.byType(Scrollable).first,
   );
+  // scrollUntilVisible only guarantees the target exists in the tree, not
+  // that it is within the current viewport (FINANCE-UX-1's monthly
+  // cash-flow card made this screen's content tall enough for that gap to
+  // matter) — ensureVisible explicitly scrolls it into the tappable area.
+  await tester.ensureVisible(finder);
+  await tester.pumpAndSettle();
   await tester.tap(finder);
   // The button's handler now awaits _precacheEventImage(...) before opening
   // any event dialog (iOS rendering fix: decode the image before first
@@ -92,9 +98,12 @@ void main() {
     await tester.tap(find.widgetWithText(FilledButton, '確認'));
     await tester.pumpAndSettle();
 
-    await tester.tap(
-      find.byKey(const Key('public-demo-open-recruitment-media')),
+    final recruitmentMediaButton = find.byKey(
+      const Key('public-demo-open-recruitment-media'),
     );
+    await tester.ensureVisible(recruitmentMediaButton);
+    await tester.pumpAndSettle();
+    await tester.tap(recruitmentMediaButton);
     await tester.pumpAndSettle();
     expect(find.text('無料求人'), findsOneWidget);
     expect(find.text('エンジニア求人'), findsOneWidget);

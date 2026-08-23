@@ -11,11 +11,13 @@ class PublicDemoSummerBonusPayment {
     required PublicDemoSummerBonusPlan plan,
     required Iterable<PublicDemoApplicant> applicants,
     required int month,
-  }) => (PublicDemoSalary.bonusEligibleMonthlySalaryTotal(
-        applicants: applicants,
-        month: month,
-      ) *
-      plan.months).round();
+  }) =>
+      (PublicDemoSalary.bonusEligibleMonthlySalaryTotal(
+                applicants: applicants,
+                month: month,
+              ) *
+              plan.months)
+          .round();
 
   /// Returns an unchanged state when this is not July, has already closed its
   /// bonus decision, or cannot pay both ordinary monthly costs and the bonus.
@@ -43,10 +45,16 @@ class PublicDemoSummerBonusPayment {
         bonusAmount: bonusAmount,
       );
     }
+    final nextCash = state.cash - totalOutflow;
     final paid = state
-        .copyWith(cash: state.cash - totalOutflow, salesUsed: 0)
+        .copyWith(cash: nextCash, salesUsed: 0)
         .markSummerBonusPaid(month: 7, amount: bonusAmount)
-        .copyWith(month: 8);
+        .copyWith(
+          month: 8,
+          monthOpeningCash: nextCash,
+          monthTrainingSpent: 0,
+          monthRecruitmentSpent: 0,
+        );
     return PublicDemoSummerBonusPaymentResult.paid(
       state: paid,
       cashBefore: state.cash,
@@ -117,4 +125,8 @@ class PublicDemoSummerBonusPaymentResult {
   int get cashMovement => cashAfter - cashBefore;
 }
 
-enum PublicDemoSummerBonusPaymentStatus { paid, insufficientCash, notApplicable }
+enum PublicDemoSummerBonusPaymentStatus {
+  paid,
+  insufficientCash,
+  notApplicable,
+}

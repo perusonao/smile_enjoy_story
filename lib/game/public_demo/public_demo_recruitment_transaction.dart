@@ -54,6 +54,7 @@ class PublicDemoRecruitmentTransaction {
 
     final committed = state
         .copyWith(cash: state.cash - medium.cost)
+        .recordRecruitmentSpend(medium.cost)
         .markRecruitmentMediaUsed(state.month);
     return PublicDemoRecruitmentTransactionResult.success(
       state: committed,

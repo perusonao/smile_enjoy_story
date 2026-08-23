@@ -20,6 +20,7 @@ import '../asset_paths.dart';
 import 'public_demo_event_dialog.dart';
 import 'public_demo_growth_result_card.dart';
 import 'public_demo_interview_result_dialog.dart';
+import 'public_demo_monthly_cash_flow_card.dart';
 import 'public_demo_sales_progress.dart';
 import 'public_demo_salary_offer_dialog.dart';
 import 'public_demo_raise_dialog.dart';
@@ -761,6 +762,10 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
         ],
       ),
       const SizedBox(height: 8),
+      if (s.latestMonthlyCashFlow != null) ...[
+        PublicDemoMonthlyCashFlowCard(flow: s.latestMonthlyCashFlow!),
+        const SizedBox(height: 8),
+      ],
       if (s.latestGrowthResults.isNotEmpty) ...[
         const Text('今月の成長', style: TextStyle(fontWeight: FontWeight.bold)),
         const SizedBox(height: 4),
@@ -1194,143 +1199,174 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
         child: ListView(
           controller: _scrollController,
           padding: const EdgeInsets.all(16),
+          // The monthly cash-flow card (FINANCE-UX-1) made this screen's
+          // total content large enough to trip a Flutter SliverList layout
+          // quirk in this SDK: past a certain child height, ListView's
+          // sliver-based children stop being mounted at all beyond that
+          // point (not just scrolled off-screen — genuinely absent from the
+          // widget tree), independent of cacheExtent (confirmed up to
+          // 20000px, no effect). Wrapping everything in one Column keeps
+          // this a ListView (existing tests still find/scroll it by type)
+          // but gives the sliver exactly one child to lay out, which
+          // Flutter always builds in full regardless of height.
           children: [
-            Text(
-              publicDemoMonthLabel(s.month),
-              style: Theme.of(c).textTheme.headlineMedium,
-            ),
-            dashboard(),
-            if (s.month == 4) ...[
-              for (var i = 0; i < engineers.length; i++) ec(i),
-              OutlinedButton(onPressed: april, child: const Text('4月終了→5月')),
-            ],
-            if (s.month == 5) ...[
-              _RecruitmentMediaCard(state: s, onPressed: _openRecruitmentMedia),
-              for (var i = 0; i < applicants.length; i++) ac(i),
-              OutlinedButton(onPressed: may, child: const Text('5月終了→6月')),
-            ],
-            if (s.month == 6)
-              for (final a in applicants.where(
-                (a) => s.joinedApplicantIds.contains(a.id) && a.hasJoined,
-              ))
-                employeeConditionCard(a),
-            if (s.month == 6) ...[
-              for (var i = 0; i < engineers.length; i++)
-                if (s.joinedApplicantIds.contains(engineers[i].id) &&
-                    engineers[i].stage != PublicDemoSalesStage.ordered &&
-                    !assignments.any(
-                      (assignment) => assignment.engineerId == engineers[i].id,
-                    ))
-                  ec(i),
-              for (var i = 0; i < assignments.length; i++) assignmentCard(i),
-              OutlinedButton(onPressed: june, child: const Text('6月終了→7月')),
-            ],
-            if (s.month == 7) ...[
-              _RecruitmentMediaCard(state: s, onPressed: _openRecruitmentMedia),
-              Text('7月開始結果', style: Theme.of(c).textTheme.titleLarge),
-              Text('参画 ${s.engineersAssigned}名 / 待機 ${s.engineersWaiting}名'),
-              for (final a in assignments)
-                ListTile(
-                  title: Text(a.engineerName),
-                  subtitle: Text(julyResult(a)),
-                ),
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(12),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        '夏季賞与',
-                        style: TextStyle(fontWeight: FontWeight.bold),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        _summerBonusDecisionConfirmed
-                            ? '選択済み：${switch (s.summerBonusSelection) {
-                                PublicDemoSummerBonusPlan.none => 'なし',
-                                PublicDemoSummerBonusPlan.half => '0.5か月',
-                                PublicDemoSummerBonusPlan.one => '1か月',
-                              }}'
-                            : '7月終了前に支給内容を選びましょう。',
-                      ),
-                      const SizedBox(height: 8),
-                      FilledButton(
-                        key: const Key('public-demo-summer-bonus-decision'),
-                        onPressed: decideSummerBonus,
-                        child: Text(
-                          _summerBonusDecisionConfirmed
-                              ? '夏季賞与を変更'
-                              : '夏季賞与を決める',
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              OutlinedButton(onPressed: july, child: const Text('7月終了→8月')),
-            ],
-            if (s.month >= 8 && s.month <= 14) ...[
-              Text(
-                '${publicDemoMonthLabel(s.month)}開始結果',
-                style: Theme.of(c).textTheme.titleLarge,
-              ),
-              if (s.month == 8) ...[
-                const Text('7月分の給与を反映しました'),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
                 Text(
-                  s.summerBonusPaidAmount == 0
-                      ? '夏季賞与 なし'
-                      : '夏季賞与 ¥${s.summerBonusPaidAmount}',
+                  publicDemoMonthLabel(s.month),
+                  style: Theme.of(c).textTheme.headlineMedium,
                 ),
-              ],
-              OutlinedButton(
-                onPressed: closeOrdinaryMonth,
-                child: Text(
-                  '${publicDemoMonthLabel(s.month)}終了→'
-                  '${publicDemoMonthLabel(s.month + 1)}',
-                ),
-              ),
-            ],
-            if (s.month == 15 && !s.fiscalYearCompleted) ...[
-              Text(
-                '${publicDemoMonthLabel(s.month)}開始結果',
-                style: Theme.of(c).textTheme.titleLarge,
-              ),
-              OutlinedButton(
-                key: const Key('public-demo-march-close'),
-                onPressed: closeOrdinaryMonth,
-                child: const Text('3月終了→第1期終了'),
-              ),
-            ],
-            if (s.fiscalYearCompleted) ...[
-              Card(
-                key: const Key('public-demo-fiscal-year-complete'),
-                child: Padding(
-                  padding: const EdgeInsets.all(14),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text('第1期終了', style: Theme.of(c).textTheme.titleLarge),
-                      const SizedBox(height: 8),
-                      const Text('1年間の経営が終了しました。'),
-                      const SizedBox(height: 8),
-                      Text('最終現預金 ¥${s.cash}'),
-                    ],
+                dashboard(),
+                if (s.month == 4) ...[
+                  for (var i = 0; i < engineers.length; i++) ec(i),
+                  OutlinedButton(
+                    onPressed: april,
+                    child: const Text('4月終了→5月'),
                   ),
-                ),
-              ),
-            ],
-            if (s.month >= 7)
-              for (final a in applicants.where(
-                (a) => s.joinedApplicantIds.contains(a.id) && a.hasJoined,
-              ))
-                employeeConditionCard(a),
-            if (s.month >= 6)
-              for (final runtime in s.engineerRuntimes)
-                internalTrainingCard(
-                  engineerId: runtime.engineerId,
-                  engineerName: _engineerName(runtime.engineerId),
-                ),
+                ],
+                if (s.month == 5) ...[
+                  _RecruitmentMediaCard(
+                    state: s,
+                    onPressed: _openRecruitmentMedia,
+                  ),
+                  for (var i = 0; i < applicants.length; i++) ac(i),
+                  OutlinedButton(onPressed: may, child: const Text('5月終了→6月')),
+                ],
+                if (s.month == 6)
+                  for (final a in applicants.where(
+                    (a) => s.joinedApplicantIds.contains(a.id) && a.hasJoined,
+                  ))
+                    employeeConditionCard(a),
+                if (s.month == 6) ...[
+                  for (var i = 0; i < engineers.length; i++)
+                    if (s.joinedApplicantIds.contains(engineers[i].id) &&
+                        engineers[i].stage != PublicDemoSalesStage.ordered &&
+                        !assignments.any(
+                          (assignment) =>
+                              assignment.engineerId == engineers[i].id,
+                        ))
+                      ec(i),
+                  for (var i = 0; i < assignments.length; i++)
+                    assignmentCard(i),
+                  OutlinedButton(onPressed: june, child: const Text('6月終了→7月')),
+                ],
+                if (s.month == 7) ...[
+                  _RecruitmentMediaCard(
+                    state: s,
+                    onPressed: _openRecruitmentMedia,
+                  ),
+                  Text('7月開始結果', style: Theme.of(c).textTheme.titleLarge),
+                  Text(
+                    '参画 ${s.engineersAssigned}名 / 待機 ${s.engineersWaiting}名',
+                  ),
+                  for (final a in assignments)
+                    ListTile(
+                      title: Text(a.engineerName),
+                      subtitle: Text(julyResult(a)),
+                    ),
+                  Card(
+                    child: Padding(
+                      padding: const EdgeInsets.all(12),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            '夏季賞与',
+                            style: TextStyle(fontWeight: FontWeight.bold),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            _summerBonusDecisionConfirmed
+                                ? '選択済み：${switch (s.summerBonusSelection) {
+                                    PublicDemoSummerBonusPlan.none => 'なし',
+                                    PublicDemoSummerBonusPlan.half => '0.5か月',
+                                    PublicDemoSummerBonusPlan.one => '1か月',
+                                  }}'
+                                : '7月終了前に支給内容を選びましょう。',
+                          ),
+                          const SizedBox(height: 8),
+                          FilledButton(
+                            key: const Key('public-demo-summer-bonus-decision'),
+                            onPressed: decideSummerBonus,
+                            child: Text(
+                              _summerBonusDecisionConfirmed
+                                  ? '夏季賞与を変更'
+                                  : '夏季賞与を決める',
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  OutlinedButton(onPressed: july, child: const Text('7月終了→8月')),
+                ],
+                if (s.month >= 8 && s.month <= 14) ...[
+                  Text(
+                    '${publicDemoMonthLabel(s.month)}開始結果',
+                    style: Theme.of(c).textTheme.titleLarge,
+                  ),
+                  if (s.month == 8) ...[
+                    const Text('7月分の給与を反映しました'),
+                    Text(
+                      s.summerBonusPaidAmount == 0
+                          ? '夏季賞与 なし'
+                          : '夏季賞与 ¥${s.summerBonusPaidAmount}',
+                    ),
+                  ],
+                  OutlinedButton(
+                    onPressed: closeOrdinaryMonth,
+                    child: Text(
+                      '${publicDemoMonthLabel(s.month)}終了→'
+                      '${publicDemoMonthLabel(s.month + 1)}',
+                    ),
+                  ),
+                ],
+                if (s.month == 15 && !s.fiscalYearCompleted) ...[
+                  Text(
+                    '${publicDemoMonthLabel(s.month)}開始結果',
+                    style: Theme.of(c).textTheme.titleLarge,
+                  ),
+                  OutlinedButton(
+                    key: const Key('public-demo-march-close'),
+                    onPressed: closeOrdinaryMonth,
+                    child: const Text('3月終了→第1期終了'),
+                  ),
+                ],
+                if (s.fiscalYearCompleted) ...[
+                  Card(
+                    key: const Key('public-demo-fiscal-year-complete'),
+                    child: Padding(
+                      padding: const EdgeInsets.all(14),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            '第1期終了',
+                            style: Theme.of(c).textTheme.titleLarge,
+                          ),
+                          const SizedBox(height: 8),
+                          const Text('1年間の経営が終了しました。'),
+                          const SizedBox(height: 8),
+                          Text('最終現預金 ¥${s.cash}'),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+                if (s.month >= 7)
+                  for (final a in applicants.where(
+                    (a) => s.joinedApplicantIds.contains(a.id) && a.hasJoined,
+                  ))
+                    employeeConditionCard(a),
+                if (s.month >= 6)
+                  for (final runtime in s.engineerRuntimes)
+                    internalTrainingCard(
+                      engineerId: runtime.engineerId,
+                      engineerName: _engineerName(runtime.engineerId),
+                    ),
+              ],
+            ),
           ],
         ),
       ),

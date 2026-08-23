@@ -153,9 +153,9 @@ stable）を一時的にダウンロードし、CIと同じ手順で検証した
 - 作業ブランチ: `claude/public-demo-pwa-start-route-rhqk6a`
   （`origin/main` から作成。過去に本ブランチへ積まれていたコミットは
   main側に既に統合済みだったため、`origin/main` から作り直した）
-- 本タスクの変更: `web/manifest.json` の1行差分をコミットし
-  `origin/claude/public-demo-pwa-start-route-rhqk6a` へpush。
-  （コミットハッシュはpush後にこのファイル下部へ追記——コミットログ参照）
+- 本タスクの変更コミット: `4fa417b`
+  （`fix(web): resolve manifest start_url to Public Demo hash route`）
+  を `origin/claude/public-demo-pwa-start-route-rhqk6a` へpush済み。
 
 ## 12. iPhone再確認手順
 

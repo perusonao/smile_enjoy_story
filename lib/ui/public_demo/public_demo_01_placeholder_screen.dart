@@ -3,6 +3,7 @@ import '../../game/public_demo/public_demo_assignment.dart';
 import '../../game/public_demo/public_demo_interview.dart';
 import '../../game/public_demo/public_demo_internal_training_transaction.dart';
 import '../../game/public_demo/public_demo_monthly_close.dart';
+import '../../game/public_demo/public_demo_month_label.dart';
 import '../../game/public_demo/public_demo_recruitment.dart';
 import '../../game/public_demo/public_demo_recruitment_medium.dart';
 import '../../game/public_demo/public_demo_recruitment_transaction.dart';
@@ -91,11 +92,43 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
   Set<String> get _assignedEngineerIds =>
       assignments.map((assignment) => assignment.engineerId).toSet();
 
+  /// The engineer IDs currently backing [PublicDemoState.engineersAssigned]
+  /// — the single SSOT [Revenue], [Growth], and training eligibility must
+  /// all agree on (12MONTH-3-FIX1 P1-1).
+  ///
+  /// `assignments` means two different things depending on when it is
+  /// read. Through June it is this month's live roster: `may()` builds it
+  /// directly from that month's ordered engineers, the same source
+  /// `engineersAssigned` itself is computed from, so every entry is
+  /// currently assigned regardless of `nextOrderStatus` (June's own
+  /// decision, about *next* month, is still pending at that point) —
+  /// [_assignedEngineerIds] (unfiltered) is correct there. From July
+  /// onward, `engineersAssigned` reflects only whichever entries June's
+  /// `decideOrder`/`acceptOrder`/`replacementPartner`/`replacementClient`
+  /// flow actually marked `accepted`/`ordered` — exactly what `july()`
+  /// already computes inline for Growth — and Public Demo 0.1 formally
+  /// carries that same roster forward through the rest of the fiscal year
+  /// (P1-1 DESIGN DECISION: "一度案件参画が成立した社員は、第1期終了まで同じ
+  /// 案件へ継続参画する"), so the filtered subset stays the correct
+  /// identity set for every month 7-15, not just July itself.
+  Set<String> get _currentlyAssignedEngineerIds => s.month >= 7
+      ? assignments
+            .where(
+              (assignment) =>
+                  assignment.nextOrderStatus ==
+                      PublicDemoNextOrderStatus.accepted ||
+                  assignment.replacementStage ==
+                      PublicDemoReplacementStage.ordered,
+            )
+            .map((assignment) => assignment.engineerId)
+            .toSet()
+      : _assignedEngineerIds;
+
   void _selectInternalTraining(String engineerId) {
     final result = const PublicDemoInternalTrainingTransaction().execute(
       state: s,
       engineerId: engineerId,
-      assignedEngineerIds: _assignedEngineerIds,
+      assignedEngineerIds: _currentlyAssignedEngineerIds,
     );
     if (!result.isSuccess) return;
     setState(() => s = result.state);
@@ -589,6 +622,27 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
     _resetMonthScroll();
   }
 
+  int get _ordinaryMonthlyExpenses => PublicDemoSalaryFinance.monthlyExpenses(
+    baselineExpenses: expense,
+    hires: applicants.where((a) => a.hasJoined),
+    month: s.month,
+  );
+
+  /// Closes any ordinary month from August through March (12MONTH-3). It
+  /// mirrors [june]/[july]'s shape (grow, then close) but delegates to the
+  /// common [PublicDemoMonthlyClose.closeOrdinaryMonth] entry point instead
+  /// of a dedicated per-month handler, since September onward has no
+  /// month-specific event the way July's bonus does.
+  void closeOrdinaryMonth() {
+    setState(
+      () => s = PublicDemoMonthlyClose.closeOrdinaryMonth(
+        state: _closeGrowth(_currentlyAssignedEngineerIds),
+        monthlyExpenses: _ordinaryMonthlyExpenses,
+      ).state,
+    );
+    _resetMonthScroll();
+  }
+
   String julyResult(PublicDemoAssignment a) {
     if (a.nextOrderStatus == PublicDemoNextOrderStatus.accepted) {
       return '現案件を継続';
@@ -656,7 +710,7 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
     4 => '待機中の技術者を営業し、5月の案件参画を決めましょう',
     5 => '応募者を採用し、入社前から6月の案件獲得を目指しましょう',
     6 => '翌月の発注を確認し、7月も稼働できる状態を作りましょう',
-    _ => '4〜6月の経営結果を確認しましょう',
+    _ => '今月の経営状況を確認し、翌月への準備をしましょう',
   };
   Widget stat(String label, String value) => Expanded(
     child: Card(
@@ -778,7 +832,7 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
     required String engineerName,
   }) {
     final selected = s.trainingSelections.containsKey(engineerId);
-    final assigned = _assignedEngineerIds.contains(engineerId);
+    final assigned = _currentlyAssignedEngineerIds.contains(engineerId);
     final affordable = s.cash >= PublicDemoInternalTrainingTransaction.cost;
     if (assigned) return const SizedBox.shrink();
     return Card(
@@ -1130,7 +1184,10 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
           controller: _scrollController,
           padding: const EdgeInsets.all(16),
           children: [
-            Text('${s.month}月', style: Theme.of(c).textTheme.headlineMedium),
+            Text(
+              publicDemoMonthLabel(s.month),
+              style: Theme.of(c).textTheme.headlineMedium,
+            ),
             dashboard(),
             if (s.month == 4) ...[
               for (var i = 0; i < engineers.length; i++) ec(i),
@@ -1202,13 +1259,54 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
               ),
               OutlinedButton(onPressed: july, child: const Text('7月終了→8月')),
             ],
-            if (s.month == 8) ...[
-              Text('8月開始結果', style: Theme.of(c).textTheme.titleLarge),
-              const Text('7月分の給与を反映しました'),
+            if (s.month >= 8 && s.month <= 14) ...[
               Text(
-                s.summerBonusPaidAmount == 0
-                    ? '夏季賞与 なし'
-                    : '夏季賞与 ¥${s.summerBonusPaidAmount}',
+                '${publicDemoMonthLabel(s.month)}開始結果',
+                style: Theme.of(c).textTheme.titleLarge,
+              ),
+              if (s.month == 8) ...[
+                const Text('7月分の給与を反映しました'),
+                Text(
+                  s.summerBonusPaidAmount == 0
+                      ? '夏季賞与 なし'
+                      : '夏季賞与 ¥${s.summerBonusPaidAmount}',
+                ),
+              ],
+              OutlinedButton(
+                onPressed: closeOrdinaryMonth,
+                child: Text(
+                  '${publicDemoMonthLabel(s.month)}終了→'
+                  '${publicDemoMonthLabel(s.month + 1)}',
+                ),
+              ),
+            ],
+            if (s.month == 15 && !s.fiscalYearCompleted) ...[
+              Text(
+                '${publicDemoMonthLabel(s.month)}開始結果',
+                style: Theme.of(c).textTheme.titleLarge,
+              ),
+              OutlinedButton(
+                key: const Key('public-demo-march-close'),
+                onPressed: closeOrdinaryMonth,
+                child: const Text('3月終了→第1期終了'),
+              ),
+            ],
+            if (s.fiscalYearCompleted) ...[
+              Card(
+                key: const Key('public-demo-fiscal-year-complete'),
+                child: Padding(
+                  padding: const EdgeInsets.all(14),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('第1期終了', style: Theme.of(c).textTheme.titleLarge),
+                      const SizedBox(height: 8),
+                      const Text('1年間の経営が終了しました。'),
+                      const SizedBox(height: 8),
+                      Text('最終現預金 ¥${s.cash}'),
+                    ],
+                  ),
+                ),
               ),
             ],
             if (s.month >= 7)

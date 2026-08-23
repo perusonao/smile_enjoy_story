@@ -54,7 +54,9 @@ void main() {
 
     test('negative values normalize to 0, via constructor and JSON alike', () {
       expect(
-        PublicDemoState.aprilStart().copyWith(pendingRevenue: -1).pendingRevenue,
+        PublicDemoState.aprilStart()
+            .copyWith(pendingRevenue: -1)
+            .pendingRevenue,
         0,
       );
       final negative = PublicDemoState.aprilStart().toJson()
@@ -105,7 +107,10 @@ void main() {
     test('does not change recruitment media usage', () {
       final before = PublicDemoState.aprilStart().markRecruitmentMediaUsed(4);
       final after = before.copyWith(pendingRevenue: 500000);
-      expect(after.recruitmentMediumUsedMonth, before.recruitmentMediumUsedMonth);
+      expect(
+        after.recruitmentMediumUsedMonth,
+        before.recruitmentMediumUsedMonth,
+      );
     });
   });
 }

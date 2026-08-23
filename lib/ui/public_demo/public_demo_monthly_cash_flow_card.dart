@@ -66,6 +66,7 @@ class PublicDemoMonthlyCashFlowCard extends StatelessWidget {
                 childrenPadding: const EdgeInsets.only(bottom: 4),
                 children: [
                   _Row('給与', '-${formatYen(flow.salaryPaid)}'),
+                  _Row('固定費', '-${formatYen(flow.fixedCostsPaid)}'),
                   if (flow.bonusPaid > 0)
                     _Row('賞与', '-${formatYen(flow.bonusPaid)}'),
                   if (flow.trainingCost > 0)

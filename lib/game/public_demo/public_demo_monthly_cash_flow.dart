@@ -4,11 +4,16 @@
 /// Every field here is a fact [PublicDemoMonthlyClose] already computed (or
 /// received) while closing the month — this class carries those facts
 /// forward for display, it does not recompute salary, revenue, or
-/// pendingRevenue itself. [openingCash]/[closingCash] always satisfy the
-/// core accounting contract:
+/// pendingRevenue itself. [salaryPaid]/[fixedCostsPaid] split the caller's
+/// `monthlyExpenses` by subtracting the known
+/// [PublicDemoSalary.otherMonthlyFixedCost] constant — every real caller's
+/// `monthlyExpenses` always equals payroll plus that exact constant (FIX1),
+/// so this is a subtraction of a known fixed value, not a recomputation of
+/// payroll. [openingCash]/[closingCash] always satisfy the core accounting
+/// contract:
 ///
-/// openingCash + cashReceived - salaryPaid - bonusPaid - trainingCost -
-/// recruitmentCost == closingCash
+/// openingCash + cashReceived - salaryPaid - fixedCostsPaid - bonusPaid -
+/// trainingCost - recruitmentCost == closingCash
 ///
 /// [revenue] is this month's newly recognized billing (30-day site);
 /// [receivables] is the same amount carried forward as the balance next
@@ -22,6 +27,7 @@ class PublicDemoMonthlyCashFlow {
     required this.openingCash,
     required this.cashReceived,
     required this.salaryPaid,
+    required this.fixedCostsPaid,
     required this.bonusPaid,
     required this.trainingCost,
     required this.recruitmentCost,
@@ -38,6 +44,10 @@ class PublicDemoMonthlyCashFlow {
   final int cashReceived;
   final int salaryPaid;
 
+  /// The non-payroll portion of `monthlyExpenses` (rent, utilities, etc.) —
+  /// every month, not just some (FIX1).
+  final int fixedCostsPaid;
+
   /// July only; 0 in every other month.
   final int bonusPaid;
   final int trainingCost;
@@ -52,7 +62,7 @@ class PublicDemoMonthlyCashFlow {
   final int receivables;
 
   int get totalOutflow =>
-      salaryPaid + bonusPaid + trainingCost + recruitmentCost;
+      salaryPaid + fixedCostsPaid + bonusPaid + trainingCost + recruitmentCost;
 
   int get netCashMovement => closingCash - openingCash;
 
@@ -61,6 +71,7 @@ class PublicDemoMonthlyCashFlow {
     'openingCash': openingCash,
     'cashReceived': cashReceived,
     'salaryPaid': salaryPaid,
+    'fixedCostsPaid': fixedCostsPaid,
     'bonusPaid': bonusPaid,
     'trainingCost': trainingCost,
     'recruitmentCost': recruitmentCost,
@@ -75,6 +86,9 @@ class PublicDemoMonthlyCashFlow {
         openingCash: json['openingCash'] as int,
         cashReceived: json['cashReceived'] as int,
         salaryPaid: json['salaryPaid'] as int,
+        fixedCostsPaid: json['fixedCostsPaid'] is int
+            ? json['fixedCostsPaid'] as int
+            : 0,
         bonusPaid: json['bonusPaid'] as int,
         trainingCost: json['trainingCost'] as int,
         recruitmentCost: json['recruitmentCost'] as int,

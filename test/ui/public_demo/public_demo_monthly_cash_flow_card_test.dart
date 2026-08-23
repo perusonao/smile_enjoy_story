@@ -7,7 +7,8 @@ PublicDemoMonthlyCashFlow flow({
   int month = 5,
   int openingCash = 2200000,
   int cashReceived = 0,
-  int salaryPaid = 800000,
+  int salaryPaid = 750000,
+  int fixedCostsPaid = 50000,
   int bonusPaid = 0,
   int trainingCost = 0,
   int recruitmentCost = 0,
@@ -19,6 +20,7 @@ PublicDemoMonthlyCashFlow flow({
   openingCash: openingCash,
   cashReceived: cashReceived,
   salaryPaid: salaryPaid,
+  fixedCostsPaid: fixedCostsPaid,
   bonusPaid: bonusPaid,
   trainingCost: trainingCost,
   recruitmentCost: recruitmentCost,
@@ -76,7 +78,7 @@ void main() {
   });
 
   testWidgets('shows total outflow', (tester) async {
-    await pump(tester, flow(salaryPaid: 800000));
+    await pump(tester, flow(salaryPaid: 750000, fixedCostsPaid: 50000));
     expect(find.text('支出合計'), findsOneWidget);
     expect(find.text('-¥800,000'), findsOneWidget);
   });
@@ -94,19 +96,54 @@ void main() {
   testWidgets('itemized breakdown is collapsed but reachable', (tester) async {
     await pump(
       tester,
-      flow(salaryPaid: 800000, bonusPaid: 200000, trainingCost: 30000),
+      flow(
+        salaryPaid: 750000,
+        fixedCostsPaid: 50000,
+        bonusPaid: 200000,
+        trainingCost: 30000,
+      ),
     );
+    expect(find.text('給与'), findsNothing);
+    expect(find.text('固定費'), findsNothing);
     expect(find.text('賞与'), findsNothing);
     expect(find.text('研修費'), findsNothing);
 
     await tester.tap(find.text('支出の内訳を見る'));
     await tester.pumpAndSettle();
     expect(find.text('給与'), findsOneWidget);
-    expect(find.text('-¥800,000'), findsOneWidget);
+    expect(find.text('-¥750,000'), findsOneWidget);
+    expect(find.text('固定費'), findsOneWidget);
+    expect(find.text('-¥50,000'), findsOneWidget);
     expect(find.text('賞与'), findsOneWidget);
     expect(find.text('-¥200,000'), findsOneWidget);
     expect(find.text('研修費'), findsOneWidget);
     expect(find.text('-¥30,000'), findsOneWidget);
+  });
+
+  testWidgets(
+    'salary and fixed costs are shown separately, not merged (FIX1)',
+    (tester) async {
+      await pump(tester, flow(salaryPaid: 750000, fixedCostsPaid: 50000));
+      await tester.tap(find.text('支出の内訳を見る'));
+      await tester.pumpAndSettle();
+      // The old behavior folded the ¥50,000 fixed cost into "給与" (shown
+      // as ¥800,000 there). FIX1 requires "給与" itself to read ¥750,000 —
+      // ¥800,000 only appears once, as the always-visible 支出合計 total.
+      expect(find.text('給与'), findsOneWidget);
+      expect(find.text('-¥750,000'), findsOneWidget);
+      expect(find.text('固定費'), findsOneWidget);
+      expect(find.text('-¥50,000'), findsOneWidget);
+      expect(find.text('-¥800,000'), findsOneWidget);
+    },
+  );
+
+  testWidgets('fixed costs are always shown, never omitted like a zero item', (
+    tester,
+  ) async {
+    await pump(tester, flow(bonusPaid: 0, trainingCost: 0, recruitmentCost: 0));
+    await tester.tap(find.text('支出の内訳を見る'));
+    await tester.pumpAndSettle();
+    expect(find.text('固定費'), findsOneWidget);
   });
 
   testWidgets('zero-amount breakdown items are omitted', (tester) async {

@@ -4,6 +4,7 @@ import 'package:smile_enjoy_story/game/public_demo/public_demo_monthly_cash_flow
 import 'package:smile_enjoy_story/game/public_demo/public_demo_monthly_close.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_recruitment_medium.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_recruitment_transaction.dart';
+import 'package:smile_enjoy_story/game/public_demo/public_demo_salary.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_state.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_summer_bonus_plan.dart';
 
@@ -72,6 +73,7 @@ void main() {
         flow.openingCash +
             flow.cashReceived -
             flow.salaryPaid -
+            flow.fixedCostsPaid -
             flow.bonusPaid -
             flow.trainingCost -
             flow.recruitmentCost,
@@ -160,21 +162,59 @@ void main() {
     });
   });
 
-  group('5. salary is reflected in cash outflow', () {
-    test('salaryPaid equals the monthlyExpenses actually charged', () {
+  group('5. salary and fixed costs are reflected in cash outflow (FIX1)', () {
+    test(
+      'salaryPaid excludes otherMonthlyFixedCost; fixedCostsPaid carries it',
+      () {
+        final start = fixture(
+          month: 8,
+          cash: 2000000,
+          pendingRevenue: 0,
+          engineersAssigned: 0,
+        );
+        final result = PublicDemoMonthlyClose.closeOrdinaryMonth(
+          state: start,
+          monthlyExpenses: 800000,
+        );
+        final flow = result.state.latestMonthlyCashFlow!;
+        // 2. salaryPaid must not have the fixed cost mixed in.
+        expect(
+          flow.salaryPaid,
+          800000 - PublicDemoSalary.otherMonthlyFixedCost,
+        );
+        expect(flow.salaryPaid, isNot(800000));
+        // 3. the fixed cost itself must not disappear from the summary.
+        expect(flow.fixedCostsPaid, PublicDemoSalary.otherMonthlyFixedCost);
+        // 4. together they still account for the whole cash outflow.
+        expect(flow.salaryPaid + flow.fixedCostsPaid, 800000);
+        expect(flow.closingCash, start.cash - 800000);
+        expect(flow.totalOutflow, 800000);
+      },
+    );
+
+    test('the April->May regression from the P2 finding', () {
+      // The exact figures from the PR #62 review comment: baseline monthly
+      // expenses of ¥800,000 split into ¥750,000 salary + ¥50,000 fixed
+      // cost, with April's opening cash of ¥3,000,000 closing at
+      // ¥2,200,000.
       final start = fixture(
-        month: 8,
-        cash: 2000000,
+        month: 4,
+        cash: 3000000,
         pendingRevenue: 0,
         engineersAssigned: 0,
       );
-      final result = PublicDemoMonthlyClose.closeOrdinaryMonth(
+      final result = PublicDemoMonthlyClose.closeApril(
         state: start,
-        monthlyExpenses: 800000,
+        monthlyExpenses: PublicDemoSalary.baselineMonthlyExpenses,
+        orderedEngineers: 0,
       );
       final flow = result.state.latestMonthlyCashFlow!;
-      expect(flow.salaryPaid, 800000);
-      expect(flow.closingCash, start.cash - 800000);
+      expect(flow.openingCash, 3000000);
+      expect(flow.cashReceived, 0);
+      expect(flow.salaryPaid, 750000);
+      expect(flow.fixedCostsPaid, 50000);
+      expect(flow.closingCash, 2200000);
+      expect(result.state.cash, 2200000);
     });
   });
 
@@ -193,9 +233,13 @@ void main() {
         applicants: const [],
       );
       final flow = result.state.latestMonthlyCashFlow!;
-      expect(flow.salaryPaid, 800000);
+      expect(flow.salaryPaid, 800000 - PublicDemoSalary.otherMonthlyFixedCost);
+      expect(flow.fixedCostsPaid, PublicDemoSalary.otherMonthlyFixedCost);
       expect(flow.bonusPaid, greaterThan(0));
-      expect(flow.totalOutflow, flow.salaryPaid + flow.bonusPaid);
+      expect(
+        flow.totalOutflow,
+        flow.salaryPaid + flow.fixedCostsPaid + flow.bonusPaid,
+      );
     });
 
     test('bonusPaid is 0 when the plan is none', () {
@@ -315,6 +359,8 @@ void main() {
       final flow = result.state.latestMonthlyCashFlow!;
       expect(flow.month, 15);
       expect(flow.cashReceived, 300000);
+      expect(flow.salaryPaid, 800000 - PublicDemoSalary.otherMonthlyFixedCost);
+      expect(flow.fixedCostsPaid, PublicDemoSalary.otherMonthlyFixedCost);
       expect(
         flow.openingCash + flow.cashReceived - flow.totalOutflow,
         flow.closingCash,

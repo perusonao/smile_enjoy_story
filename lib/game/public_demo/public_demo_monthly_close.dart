@@ -1,6 +1,7 @@
 import 'public_demo_monthly_cash_flow.dart';
 import 'public_demo_recruitment.dart';
 import 'public_demo_revenue_payment.dart';
+import 'public_demo_salary.dart';
 import 'public_demo_state.dart';
 import 'public_demo_summer_bonus_payment.dart';
 
@@ -42,6 +43,11 @@ import 'public_demo_summer_bonus_payment.dart';
 /// caller-supplied `monthlyExpenses`/bonus amount, and the actual mid-month
 /// training/recruitment spend [PublicDemoState] already accumulated. No
 /// salary, revenue, or pendingRevenue value is recomputed for display.
+///
+/// FIX1: `monthlyExpenses` bundles payroll with
+/// [PublicDemoSalary.otherMonthlyFixedCost] — [_cashFlow] splits the two by
+/// subtracting that known constant, so the summary's `salaryPaid` no longer
+/// misreports fixed costs (rent, utilities) as payroll.
 class PublicDemoMonthlyClose {
   const PublicDemoMonthlyClose._();
 
@@ -307,7 +313,13 @@ class PublicDemoMonthlyClose {
     month: closedMonth,
     openingCash: openingCash,
     cashReceived: revenueResult.revenueReceived,
-    salaryPaid: monthlyExpenses,
+    // Every real caller's monthlyExpenses is payroll plus exactly
+    // PublicDemoSalary.otherMonthlyFixedCost (FIX1 P2: the whole amount was
+    // previously shown to the player as "給与", misclassifying the fixed
+    // cost as payroll). Subtracting that known constant splits the two
+    // without recomputing payroll from employee data.
+    salaryPaid: monthlyExpenses - PublicDemoSalary.otherMonthlyFixedCost,
+    fixedCostsPaid: PublicDemoSalary.otherMonthlyFixedCost,
     bonusPaid: bonusPaid,
     trainingCost: trainingCost,
     recruitmentCost: recruitmentCost,

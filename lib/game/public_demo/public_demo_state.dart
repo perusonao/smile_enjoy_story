@@ -28,6 +28,7 @@ class PublicDemoState {
     int? summerBonusPaidMonth,
     int? summerBonusPaidAmount,
     int? recruitmentMediumUsedMonth,
+    int pendingRevenue = 0,
   }) => PublicDemoState._(
     month: month,
     cash: cash,
@@ -67,6 +68,7 @@ class PublicDemoState {
     recruitmentMediumUsedMonth: _normalizedRecruitmentMediaMonth(
       recruitmentMediumUsedMonth,
     ),
+    pendingRevenue: _normalizedPendingRevenue(pendingRevenue),
   );
 
   const PublicDemoState._({
@@ -88,6 +90,7 @@ class PublicDemoState {
     required this.summerBonusPaidMonth,
     required this.summerBonusPaidAmount,
     required this.recruitmentMediumUsedMonth,
+    required this.pendingRevenue,
   });
 
   factory PublicDemoState.aprilStart() => PublicDemoState(
@@ -137,6 +140,14 @@ class PublicDemoState {
   /// Public Demo 0.1 only needs the latest use because a medium may be used
   /// once per company per month. JOB-2 owns the transaction that calls this.
   final int? recruitmentMediumUsedMonth;
+
+  /// Revenue already recognized but not yet collected: it becomes cash at a
+  /// future month-end close under the fixed 30-day payment term (REVENUE-0
+  /// §15-17). REVENUE-1 only carries this balance; REVENUE-2 generates it
+  /// and REVENUE-4 wires it into cash at month-end.
+  final int pendingRevenue;
+
+  static int _normalizedPendingRevenue(int value) => value < 0 ? 0 : value;
 
   static bool _hasValidSummerBonusPayment({
     required bool paid,
@@ -361,6 +372,7 @@ class PublicDemoState {
     Object? summerBonusPaidMonth = _unset,
     Object? summerBonusPaidAmount = _unset,
     Object? recruitmentMediumUsedMonth = _unset,
+    int? pendingRevenue,
   }) => PublicDemoState(
     month: month ?? this.month,
     cash: cash ?? this.cash,
@@ -386,6 +398,7 @@ class PublicDemoState {
     recruitmentMediumUsedMonth: identical(recruitmentMediumUsedMonth, _unset)
         ? this.recruitmentMediumUsedMonth
         : recruitmentMediumUsedMonth as int?,
+    pendingRevenue: pendingRevenue ?? this.pendingRevenue,
   );
   static const Object _unset = Object();
   Map<String, dynamic> toJson() => {
@@ -413,6 +426,7 @@ class PublicDemoState {
     'summerBonusPaidMonth': summerBonusPaidMonth,
     'summerBonusPaidAmount': summerBonusPaidAmount,
     'recruitmentMediumUsedMonth': recruitmentMediumUsedMonth,
+    'pendingRevenue': pendingRevenue,
   };
   factory PublicDemoState.fromJson(
     Map<String, dynamic> json,
@@ -461,6 +475,9 @@ class PublicDemoState {
     recruitmentMediumUsedMonth: json['recruitmentMediumUsedMonth'] is int
         ? json['recruitmentMediumUsedMonth'] as int
         : null,
+    pendingRevenue: json['pendingRevenue'] is int
+        ? json['pendingRevenue'] as int
+        : 0,
   );
 
   static PublicDemoSummerBonusPlan _summerBonusPlanFromJson(Object? raw) {

@@ -625,6 +625,10 @@ for (const seed of parsedSeeds.seeds) {
     // deterministically, in seconds, that the milestone and its dialog both
     // fire correctly once the right GameState facts hold, so this long-
     // running E2E has no remaining reason to search for that specific text.
+    expect(
+      await waitForTabBar(page, textOffenders, 'ホーム'),
+      `ホーム tab never became visible before final week advancement (seed=${seed})`,
+    ).toBe(true);
     await clickResilient(page, byTab(page, 'ホーム'), 'ホームタブ');
     await page.waitForTimeout(500);
     for (let i = 0; i < 3; i++) {

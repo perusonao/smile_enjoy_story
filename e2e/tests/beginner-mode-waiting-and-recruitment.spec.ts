@@ -107,7 +107,7 @@ async function settleAndScan(
     await page.getByRole('button', { name: close.name, exact: true }).click();
     await page.waitForTimeout(500);
     const homeTab = page.getByRole('tab', { name: 'ホーム', exact: true });
-    if (await homeTab.count()) {
+    if (await isVisibleTab(homeTab)) {
       const cur = await snapshotScreen(page);
       if (!cur.buttons.some((b) => b.name.startsWith('次の週へ'))) {
         await homeTab.click().catch(() => {});
@@ -116,6 +116,15 @@ async function settleAndScan(
     }
   }
   return null;
+}
+
+/** A tab in Flutter Web's transitional semantics tree is not proof that the
+ * bottom navigation shell is back on screen.  In particular, a pushed
+ * ApplicantDetailScreen can briefly retain the underlying shell's tab node
+ * while the detail route is still the only visible screen.  Only a visible
+ * tab is a usable shell destination. */
+async function isVisibleTab(tab: import('@playwright/test').Locator): Promise<boolean> {
+  return tab.isVisible().catch(() => false);
 }
 
 /** Taps "次の週へ" (after clearing anything already pending) and returns the
@@ -136,8 +145,8 @@ async function advanceWeekAndFind(
   return settleAndScan(page, textOffenders, stopWhen);
 }
 
-/** Repeatedly dismisses any known dialog until the bottom tab bar's
- * [tabName] tab is actually present, or a bounded number of iterations is
+/** Repeatedly dismisses any known dialog / pops a visible child route until
+ * the bottom navigation shell's [tabName] is visible, or a bounded number of iterations is
  * exhausted — root-caused from a real PR #15 CI failure (GitHub Actions run
  * 32000987476, both mobile-chromium and mobile-webkit, reproducing
  * identically on retry): `getByRole('tab', { name: '採用' }).click()` right
@@ -197,7 +206,10 @@ async function waitForTabBar(page: import('@playwright/test').Page, textOffender
   // control elsewhere on screen (e.g. `_HeroTaskCard`'s own "採用を見る").
   const dialogScope = page.locator('[role="dialog"], [role="alertdialog"]');
   for (let i = 0; i < 60; i++) {
-    if (await tab.count()) return true;
+    // `count()` can see an underlying, non-visible shell during a Flutter
+    // route transition.  Do not advance E2E state until the shell is really
+    // foregrounded and its tab is usable.
+    if (await isVisibleTab(tab)) return true;
     // Cheap, targeted `.count()` checks per known dialog label — not a
     // full `snapshotScreen()` (`ariaSnapshot()`) dump of the whole page
     // every iteration. That was itself real, avoidable CPU work fighting
@@ -218,7 +230,11 @@ async function waitForTabBar(page: import('@playwright/test').Page, textOffender
         break;
       }
     }
-    // Also tries the AppBar back arrow directly (prefix/case-insensitive —
+    // If no dialog owns the foreground, return through the visible AppBar
+    // back arrow. This is normal Flutter Navigator navigation, not a browser
+    // history shortcut; the next loop confirms that its destination is the
+    // visible tab shell before allowing the caller to continue.
+    // The accessible label is prefix/case-insensitive —
     // Flutter Web's own accessible name for it is confirmed to vary: plain
     // "Back" on some renders, doubled "Back Back" on others, see
     // `/^Back\b/i` used the same way below at each hire-attempt call
@@ -239,7 +255,7 @@ async function waitForTabBar(page: import('@playwright/test').Page, textOffender
     }
     await page.waitForTimeout(500);
   }
-  return (await tab.count()) > 0;
+  return isVisibleTab(tab);
 }
 
 // Total/per-attempt budget for `clickResilient`, matching

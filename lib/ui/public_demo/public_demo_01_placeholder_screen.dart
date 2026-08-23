@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../game/public_demo/public_demo_assignment.dart';
 import '../../game/public_demo/public_demo_interview.dart';
 import '../../game/public_demo/public_demo_internal_training_transaction.dart';
+import '../../game/public_demo/public_demo_monthly_close.dart';
 import '../../game/public_demo/public_demo_recruitment.dart';
 import '../../game/public_demo/public_demo_recruitment_medium.dart';
 import '../../game/public_demo/public_demo_recruitment_transaction.dart';
@@ -250,9 +251,11 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
     );
     if (!mounted) return;
     setState(
-      () => s = _closeGrowth(
-        const {},
-      ).advanceToMay(monthlyExpenses: expense, orderedEngineers: o),
+      () => s = PublicDemoMonthlyClose.closeApril(
+        state: _closeGrowth(const {}),
+        monthlyExpenses: expense,
+        orderedEngineers: o,
+      ).state,
     );
     _resetMonthScroll();
   }
@@ -419,31 +422,30 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
           PublicDemoEngineerSales.fromApplicant(applicant),
       ];
       s =
-          _closeGrowth(
-                engineers
-                    .where(
-                      (engineer) =>
-                          engineer.stage == PublicDemoSalesStage.ordered,
-                    )
-                    .map((engineer) => engineer.id)
-                    .toSet(),
-              )
-              .advanceToJune(
-                monthlyExpenses: expense,
-                acceptedHires: hires,
-                hiredWithOrders: ordered,
-                joinedApplicantIds: joined
-                    .where((a) => a.hasJoined)
-                    .map((a) => a.id)
-                    .toList(),
-              )
-              .copyWith(
-                engineerRuntimes: [
-                  ...s.engineerRuntimes,
-                  for (final applicant in joined.where((a) => a.hasJoined))
-                    PublicDemoEngineerRuntime.fromApplicant(applicant),
-                ],
-              );
+          PublicDemoMonthlyClose.closeMay(
+            state: _closeGrowth(
+              engineers
+                  .where(
+                    (engineer) =>
+                        engineer.stage == PublicDemoSalesStage.ordered,
+                  )
+                  .map((engineer) => engineer.id)
+                  .toSet(),
+            ),
+            monthlyExpenses: expense,
+            acceptedHires: hires,
+            hiredWithOrders: ordered,
+            joinedApplicantIds: joined
+                .where((a) => a.hasJoined)
+                .map((a) => a.id)
+                .toList(),
+          ).state.copyWith(
+            engineerRuntimes: [
+              ...s.engineerRuntimes,
+              for (final applicant in joined.where((a) => a.hasJoined))
+                PublicDemoEngineerRuntime.fromApplicant(applicant),
+            ],
+          );
       assignments = nextAssignments;
     });
     _resetMonthScroll();
@@ -506,16 +508,16 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
         .length;
     final joinedHires = applicants.where(accepted);
     setState(
-      () => s =
-          _closeGrowth(
-            assignments.map((assignment) => assignment.engineerId).toSet(),
-          ).advanceToJuly(
-            monthlyExpenses: PublicDemoSalaryFinance.monthlyExpenses(
-              baselineExpenses: expense,
-              hires: joinedHires,
-            ),
-            assignedInJuly: assigned,
-          ),
+      () => s = PublicDemoMonthlyClose.closeJune(
+        state: _closeGrowth(
+          assignments.map((assignment) => assignment.engineerId).toSet(),
+        ),
+        monthlyExpenses: PublicDemoSalaryFinance.monthlyExpenses(
+          baselineExpenses: expense,
+          hires: joinedHires,
+        ),
+        assignedInJuly: assigned,
+      ).state,
     );
     _resetMonthScroll();
   }
@@ -567,24 +569,22 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
     }
     final joined = applicants.where((a) => a.hasJoined);
     setState(
-      () => s =
-          _closeGrowth(
-                assignments
-                    .where(
-                      (assignment) =>
-                          assignment.nextOrderStatus ==
-                              PublicDemoNextOrderStatus.accepted ||
-                          assignment.replacementStage ==
-                              PublicDemoReplacementStage.ordered,
-                    )
-                    .map((assignment) => assignment.engineerId)
-                    .toSet(),
+      () => s = PublicDemoMonthlyClose.closeJuly(
+        state: _closeGrowth(
+          assignments
+              .where(
+                (assignment) =>
+                    assignment.nextOrderStatus ==
+                        PublicDemoNextOrderStatus.accepted ||
+                    assignment.replacementStage ==
+                        PublicDemoReplacementStage.ordered,
               )
-              .advanceToAugust(
-                monthlyExpenses: _julyMonthlyExpenses,
-                applicants: joined,
-              )
-              .state,
+              .map((assignment) => assignment.engineerId)
+              .toSet(),
+        ),
+        monthlyExpenses: _julyMonthlyExpenses,
+        applicants: joined,
+      ).state,
     );
     _resetMonthScroll();
   }

@@ -70,4 +70,78 @@ void main() {
       isNull,
     );
   });
+
+  group('REVENUE-4: pendingRevenue is part of the July affordability basis '
+      '(same as PublicDemoMonthlyClose.closeJuly\'s cash guard)', () {
+    // Same fixture as the "Revenue settling is what makes salary+bonus
+    // payable" case in public_demo_monthly_close_revenue_test.dart:
+    // cash alone (1,000,000) cannot cover totalOutflow (1,350,000), but
+    // cash + pendingRevenue (1,500,000) can.
+    testWidgets(
+      'A. cash alone is short but cash + pendingRevenue affords the bonus',
+      (tester) async {
+        final state = PublicDemoState.aprilStart().copyWith(
+          month: 7,
+          cash: 1000000,
+          pendingRevenue: 500000,
+        );
+        await tester.pumpWidget(
+          MaterialApp(
+            home: PublicDemoSummerBonusDialog(
+              state: state,
+              applicants: const [],
+              monthlyExpenses: 800000,
+            ),
+          ),
+        );
+
+        expect(find.text('現預金不足のため選択できません'), findsNothing);
+        expect(find.text('支給後の予想現預金 ¥150,000'), findsOneWidget);
+        expect(
+          tester
+              .widget<FilledButton>(
+                find.byKey(const Key('public-demo-summer-bonus-one')),
+              )
+              .onPressed,
+          isNotNull,
+        );
+      },
+    );
+
+    // Same fixture as the "insufficient cash even after Revenue settles"
+    // case in public_demo_monthly_close_revenue_test.dart: cash (800,000) +
+    // pendingRevenue (500,000) = 1,300,000, still short of 1,350,000.
+    testWidgets(
+      'B. cash + pendingRevenue is still short: bonus stays disabled',
+      (tester) async {
+        final state = PublicDemoState.aprilStart().copyWith(
+          month: 7,
+          cash: 800000,
+          pendingRevenue: 500000,
+        );
+        await tester.pumpWidget(
+          MaterialApp(
+            home: PublicDemoSummerBonusDialog(
+              state: state,
+              applicants: const [],
+              monthlyExpenses: 800000,
+            ),
+          ),
+        );
+
+        expect(
+          tester
+              .widget<FilledButton>(
+                find.byKey(const Key('public-demo-summer-bonus-one')),
+              )
+              .onPressed,
+          isNull,
+        );
+      },
+    );
+
+    // C. pendingRevenue = 0: identical to the pre-REVENUE-4 behavior exercised
+    // by the two tests above this group (both fixtures leave pendingRevenue
+    // at PublicDemoState's default of 0).
+  });
 }

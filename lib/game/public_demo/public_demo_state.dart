@@ -1,5 +1,6 @@
 import 'public_demo_engineer_runtime.dart';
 import 'public_demo_growth_engine.dart';
+import 'public_demo_monthly_cash_flow.dart';
 import 'public_demo_monthly_growth.dart';
 import 'public_demo_recruitment.dart';
 import 'public_demo_summer_bonus_plan.dart';
@@ -30,6 +31,10 @@ class PublicDemoState {
     int? recruitmentMediumUsedMonth,
     int pendingRevenue = 0,
     bool fiscalYearCompleted = false,
+    int? monthOpeningCash,
+    int monthTrainingSpent = 0,
+    int monthRecruitmentSpent = 0,
+    PublicDemoMonthlyCashFlow? latestMonthlyCashFlow,
   }) => PublicDemoState._(
     month: month,
     cash: cash,
@@ -71,6 +76,12 @@ class PublicDemoState {
     ),
     pendingRevenue: _normalizedPendingRevenue(pendingRevenue),
     fiscalYearCompleted: fiscalYearCompleted,
+    monthOpeningCash: monthOpeningCash ?? cash,
+    monthTrainingSpent: monthTrainingSpent < 0 ? 0 : monthTrainingSpent,
+    monthRecruitmentSpent: monthRecruitmentSpent < 0
+        ? 0
+        : monthRecruitmentSpent,
+    latestMonthlyCashFlow: latestMonthlyCashFlow,
   );
 
   const PublicDemoState._({
@@ -94,6 +105,10 @@ class PublicDemoState {
     required this.recruitmentMediumUsedMonth,
     required this.pendingRevenue,
     required this.fiscalYearCompleted,
+    required this.monthOpeningCash,
+    required this.monthTrainingSpent,
+    required this.monthRecruitmentSpent,
+    required this.latestMonthlyCashFlow,
   });
 
   factory PublicDemoState.aprilStart() => PublicDemoState(
@@ -155,6 +170,28 @@ class PublicDemoState {
   /// to show a year-end state instead of a 16th month; it carries no score,
   /// rank, or other year-end detail (12MONTH-3 scope).
   final bool fiscalYearCompleted;
+
+  /// The cash balance at the moment the current [month] began (FINANCE-UX-1)
+  /// — a snapshot taken by the last month-advancing transition, not a
+  /// recomputation. Mid-month transactions (training, recruitment media)
+  /// change [cash] without touching this, so it stays the true opening
+  /// balance for whichever month is currently in progress.
+  final int monthOpeningCash;
+
+  /// Actual internal-training charges paid so far this month, accumulated
+  /// from each transaction's own already-computed amount. Resets to 0 every
+  /// time the month advances.
+  final int monthTrainingSpent;
+
+  /// Actual recruitment-media charges paid so far this month, accumulated
+  /// the same way as [monthTrainingSpent].
+  final int monthRecruitmentSpent;
+
+  /// The cash-flow explanation for the most recently closed month
+  /// (FINANCE-UX-1). Historical fact recorded by [PublicDemoMonthlyClose],
+  /// not a value the UI recomputes — mirrors [latestGrowthResults]'s role
+  /// for growth.
+  final PublicDemoMonthlyCashFlow? latestMonthlyCashFlow;
 
   static int _normalizedPendingRevenue(int value) => value < 0 ? 0 : value;
 
@@ -268,12 +305,16 @@ class PublicDemoState {
   }) {
     if (month != 4) return this;
     final assigned = orderedEngineers.clamp(0, engineerCount);
+    final nextCash = cash - monthlyExpenses;
     return copyWith(
       month: 5,
-      cash: cash - monthlyExpenses,
+      cash: nextCash,
       salesUsed: 0,
       engineersAssigned: assigned,
       engineersWaiting: engineerCount - assigned,
+      monthOpeningCash: nextCash,
+      monthTrainingSpent: 0,
+      monthRecruitmentSpent: 0,
     );
   }
 
@@ -286,9 +327,10 @@ class PublicDemoState {
     if (month != 5) return this;
     final hires = acceptedHires < 0 ? 0 : acceptedHires;
     final ordered = hiredWithOrders.clamp(0, hires);
+    final nextCash = cash - monthlyExpenses;
     return copyWith(
       month: 6,
-      cash: cash - monthlyExpenses,
+      cash: nextCash,
       salesUsed: 0,
       engineerCount: engineerCount + hires,
       engineersAssigned: engineersAssigned + ordered,
@@ -299,6 +341,9 @@ class PublicDemoState {
           (id) => !this.joinedApplicantIds.contains(id),
         ),
       ],
+      monthOpeningCash: nextCash,
+      monthTrainingSpent: 0,
+      monthRecruitmentSpent: 0,
     );
   }
 
@@ -308,12 +353,16 @@ class PublicDemoState {
   }) {
     if (month != 6) return this;
     final assigned = assignedInJuly.clamp(0, engineerCount);
+    final nextCash = cash - monthlyExpenses;
     return copyWith(
       month: 7,
-      cash: cash - monthlyExpenses,
+      cash: nextCash,
       salesUsed: 0,
       engineersAssigned: assigned,
       engineersWaiting: engineerCount - assigned,
+      monthOpeningCash: nextCash,
+      monthTrainingSpent: 0,
+      monthRecruitmentSpent: 0,
     );
   }
 
@@ -340,10 +389,14 @@ class PublicDemoState {
   /// assignment-renewal UI beyond June's.
   PublicDemoState advanceToNextOrdinaryMonth({required int monthlyExpenses}) {
     if (month < 8 || month > 14) return this;
+    final nextCash = cash - monthlyExpenses;
     return copyWith(
       month: month + 1,
-      cash: cash - monthlyExpenses,
+      cash: nextCash,
       salesUsed: 0,
+      monthOpeningCash: nextCash,
+      monthTrainingSpent: 0,
+      monthRecruitmentSpent: 0,
     );
   }
 
@@ -357,12 +410,35 @@ class PublicDemoState {
   /// this class.
   PublicDemoState completeFiscalYear({required int monthlyExpenses}) {
     if (month != 15 || fiscalYearCompleted) return this;
+    final nextCash = cash - monthlyExpenses;
     return copyWith(
-      cash: cash - monthlyExpenses,
+      cash: nextCash,
       salesUsed: 0,
       fiscalYearCompleted: true,
+      monthOpeningCash: nextCash,
+      monthTrainingSpent: 0,
+      monthRecruitmentSpent: 0,
     );
   }
+
+  /// Records an internal-training charge already computed and applied by
+  /// [PublicDemoInternalTrainingTransaction] against [monthTrainingSpent]
+  /// (FINANCE-UX-1). This does not itself move cash — the transaction's own
+  /// `copyWith(cash: ...)` does that; this only remembers the actual amount
+  /// for the closing month's cash-flow summary.
+  PublicDemoState recordTrainingSpend(int amount) =>
+      copyWith(monthTrainingSpent: monthTrainingSpent + amount);
+
+  /// Records a recruitment-media charge already computed and applied by
+  /// [PublicDemoRecruitmentTransaction], mirroring [recordTrainingSpend].
+  PublicDemoState recordRecruitmentSpend(int amount) =>
+      copyWith(monthRecruitmentSpent: monthRecruitmentSpent + amount);
+
+  /// Attaches the cash-flow explanation [PublicDemoMonthlyClose] computed
+  /// for the month it just closed. Historical record only — never mutates
+  /// [cash] or any other field.
+  PublicDemoState recordMonthlyCashFlow(PublicDemoMonthlyCashFlow flow) =>
+      copyWith(latestMonthlyCashFlow: flow);
 
   PublicDemoEngineerRuntime? runtimeForOrNull(String engineerId) {
     for (final runtime in engineerRuntimes) {
@@ -452,6 +528,10 @@ class PublicDemoState {
     Object? recruitmentMediumUsedMonth = _unset,
     int? pendingRevenue,
     bool? fiscalYearCompleted,
+    int? monthOpeningCash,
+    int? monthTrainingSpent,
+    int? monthRecruitmentSpent,
+    PublicDemoMonthlyCashFlow? latestMonthlyCashFlow,
   }) => PublicDemoState(
     month: month ?? this.month,
     cash: cash ?? this.cash,
@@ -479,6 +559,10 @@ class PublicDemoState {
         : recruitmentMediumUsedMonth as int?,
     pendingRevenue: pendingRevenue ?? this.pendingRevenue,
     fiscalYearCompleted: fiscalYearCompleted ?? this.fiscalYearCompleted,
+    monthOpeningCash: monthOpeningCash ?? this.monthOpeningCash,
+    monthTrainingSpent: monthTrainingSpent ?? this.monthTrainingSpent,
+    monthRecruitmentSpent: monthRecruitmentSpent ?? this.monthRecruitmentSpent,
+    latestMonthlyCashFlow: latestMonthlyCashFlow ?? this.latestMonthlyCashFlow,
   );
   static const Object _unset = Object();
   Map<String, dynamic> toJson() => {
@@ -508,6 +592,10 @@ class PublicDemoState {
     'recruitmentMediumUsedMonth': recruitmentMediumUsedMonth,
     'pendingRevenue': pendingRevenue,
     'fiscalYearCompleted': fiscalYearCompleted,
+    'monthOpeningCash': monthOpeningCash,
+    'monthTrainingSpent': monthTrainingSpent,
+    'monthRecruitmentSpent': monthRecruitmentSpent,
+    'latestMonthlyCashFlow': latestMonthlyCashFlow?.toJson(),
   };
   factory PublicDemoState.fromJson(
     Map<String, dynamic> json,
@@ -562,6 +650,20 @@ class PublicDemoState {
     fiscalYearCompleted: json['fiscalYearCompleted'] is bool
         ? json['fiscalYearCompleted'] as bool
         : false,
+    monthOpeningCash: json['monthOpeningCash'] is int
+        ? json['monthOpeningCash'] as int
+        : json['cash'] as int,
+    monthTrainingSpent: json['monthTrainingSpent'] is int
+        ? json['monthTrainingSpent'] as int
+        : 0,
+    monthRecruitmentSpent: json['monthRecruitmentSpent'] is int
+        ? json['monthRecruitmentSpent'] as int
+        : 0,
+    latestMonthlyCashFlow: json['latestMonthlyCashFlow'] is Map
+        ? PublicDemoMonthlyCashFlow.fromJson(
+            (json['latestMonthlyCashFlow'] as Map).cast<String, dynamic>(),
+          )
+        : null,
   );
 
   static PublicDemoSummerBonusPlan _summerBonusPlanFromJson(Object? raw) {

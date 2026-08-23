@@ -1,3 +1,4 @@
+import 'public_demo_monthly_cash_flow.dart';
 import 'public_demo_recruitment.dart';
 import 'public_demo_revenue_payment.dart';
 import 'public_demo_state.dart';
@@ -31,6 +32,16 @@ import 'public_demo_summer_bonus_payment.dart';
 /// SES_12MONTH-2_REVENUE-4_Close_Integration_Result.md, and
 /// SES_12MONTH-3_Fiscal_Year_Extension_Result.md for the full design
 /// rationale.
+///
+/// FINANCE-UX-1: every method that actually closes a month also attaches a
+/// [PublicDemoMonthlyCashFlow] to the resulting state (via
+/// [PublicDemoState.recordMonthlyCashFlow]), built entirely from values this
+/// facade already computed or received — [PublicDemoState.monthOpeningCash]
+/// (a fact recorded by the *previous* close/[PublicDemoState.aprilStart]),
+/// the [PublicDemoRevenuePaymentResult] this facade already calls, the
+/// caller-supplied `monthlyExpenses`/bonus amount, and the actual mid-month
+/// training/recruitment spend [PublicDemoState] already accumulated. No
+/// salary, revenue, or pendingRevenue value is recomputed for display.
 class PublicDemoMonthlyClose {
   const PublicDemoMonthlyClose._();
 
@@ -41,16 +52,32 @@ class PublicDemoMonthlyClose {
     required int orderedEngineers,
   }) {
     final closedMonth = state.month;
-    final revenueApplied = closedMonth == 4
-        ? PublicDemoRevenuePayment.apply(state: state).state
-        : state;
-    final next = revenueApplied.advanceToMay(
+    final isApril = closedMonth == 4;
+    final revenueResult = isApril
+        ? PublicDemoRevenuePayment.apply(state: state)
+        : null;
+    final revenueApplied = revenueResult?.state ?? state;
+    var next = revenueApplied.advanceToMay(
       monthlyExpenses: monthlyExpenses,
       orderedEngineers: orderedEngineers,
     );
+    if (isApril) {
+      next = next.recordMonthlyCashFlow(
+        _cashFlow(
+          closedMonth: closedMonth,
+          openingCash: state.monthOpeningCash,
+          revenueResult: revenueResult!,
+          monthlyExpenses: monthlyExpenses,
+          bonusPaid: 0,
+          trainingCost: state.monthTrainingSpent,
+          recruitmentCost: state.monthRecruitmentSpent,
+          next: next,
+        ),
+      );
+    }
     return PublicDemoMonthlyCloseResult._(
       state: next,
-      status: closedMonth == 4
+      status: isApril
           ? PublicDemoMonthlyCloseStatus.closed
           : PublicDemoMonthlyCloseStatus.notApplicable,
       cashBefore: state.cash,
@@ -67,18 +94,34 @@ class PublicDemoMonthlyClose {
     List<String> joinedApplicantIds = const [],
   }) {
     final closedMonth = state.month;
-    final revenueApplied = closedMonth == 5
-        ? PublicDemoRevenuePayment.apply(state: state).state
-        : state;
-    final next = revenueApplied.advanceToJune(
+    final isMay = closedMonth == 5;
+    final revenueResult = isMay
+        ? PublicDemoRevenuePayment.apply(state: state)
+        : null;
+    final revenueApplied = revenueResult?.state ?? state;
+    var next = revenueApplied.advanceToJune(
       monthlyExpenses: monthlyExpenses,
       acceptedHires: acceptedHires,
       hiredWithOrders: hiredWithOrders,
       joinedApplicantIds: joinedApplicantIds,
     );
+    if (isMay) {
+      next = next.recordMonthlyCashFlow(
+        _cashFlow(
+          closedMonth: closedMonth,
+          openingCash: state.monthOpeningCash,
+          revenueResult: revenueResult!,
+          monthlyExpenses: monthlyExpenses,
+          bonusPaid: 0,
+          trainingCost: state.monthTrainingSpent,
+          recruitmentCost: state.monthRecruitmentSpent,
+          next: next,
+        ),
+      );
+    }
     return PublicDemoMonthlyCloseResult._(
       state: next,
-      status: closedMonth == 5
+      status: isMay
           ? PublicDemoMonthlyCloseStatus.closed
           : PublicDemoMonthlyCloseStatus.notApplicable,
       cashBefore: state.cash,
@@ -93,16 +136,32 @@ class PublicDemoMonthlyClose {
     required int assignedInJuly,
   }) {
     final closedMonth = state.month;
-    final revenueApplied = closedMonth == 6
-        ? PublicDemoRevenuePayment.apply(state: state).state
-        : state;
-    final next = revenueApplied.advanceToJuly(
+    final isJune = closedMonth == 6;
+    final revenueResult = isJune
+        ? PublicDemoRevenuePayment.apply(state: state)
+        : null;
+    final revenueApplied = revenueResult?.state ?? state;
+    var next = revenueApplied.advanceToJuly(
       monthlyExpenses: monthlyExpenses,
       assignedInJuly: assignedInJuly,
     );
+    if (isJune) {
+      next = next.recordMonthlyCashFlow(
+        _cashFlow(
+          closedMonth: closedMonth,
+          openingCash: state.monthOpeningCash,
+          revenueResult: revenueResult!,
+          monthlyExpenses: monthlyExpenses,
+          bonusPaid: 0,
+          trainingCost: state.monthTrainingSpent,
+          recruitmentCost: state.monthRecruitmentSpent,
+          next: next,
+        ),
+      );
+    }
     return PublicDemoMonthlyCloseResult._(
       state: next,
-      status: closedMonth == 6
+      status: isJune
           ? PublicDemoMonthlyCloseStatus.closed
           : PublicDemoMonthlyCloseStatus.notApplicable,
       cashBefore: state.cash,
@@ -118,8 +177,8 @@ class PublicDemoMonthlyClose {
   /// month's collected revenue is part of the funds available to pay salary
   /// and bonus — matching the 30-day site's payment timing. If the guard
   /// still finds cash insufficient, the whole close (including the revenue
-  /// settlement) is rolled back: this returns the original, untouched
-  /// [state], not the revenue-applied intermediate.
+  /// settlement and any cash-flow summary) is rolled back: this returns the
+  /// original, untouched [state], not the revenue-applied intermediate.
   static PublicDemoMonthlyCloseResult closeJuly({
     required PublicDemoState state,
     required int monthlyExpenses,
@@ -127,20 +186,42 @@ class PublicDemoMonthlyClose {
   }) {
     final closedMonth = state.month;
     final revenueEligible = closedMonth == 7 && !state.summerBonusPaid;
-    final revenueApplied = revenueEligible
-        ? PublicDemoRevenuePayment.apply(state: state).state
-        : state;
+    final revenueResult = revenueEligible
+        ? PublicDemoRevenuePayment.apply(state: state)
+        : null;
+    final revenueApplied = revenueResult?.state ?? state;
     final result = PublicDemoSummerBonusPayment.closeJuly(
       state: revenueApplied,
       monthlyExpenses: monthlyExpenses,
       applicants: applicants,
     );
+    if (result.isInsufficientCash) {
+      return PublicDemoMonthlyCloseResult._(
+        state: state,
+        status: PublicDemoMonthlyCloseStatus.insufficientCash,
+        cashBefore: state.cash,
+        closedMonth: closedMonth,
+      );
+    }
+    var next = result.state;
+    if (result.isPaid) {
+      next = next.recordMonthlyCashFlow(
+        _cashFlow(
+          closedMonth: closedMonth,
+          openingCash: state.monthOpeningCash,
+          revenueResult: revenueResult!,
+          monthlyExpenses: monthlyExpenses,
+          bonusPaid: result.bonusAmount,
+          trainingCost: state.monthTrainingSpent,
+          recruitmentCost: state.monthRecruitmentSpent,
+          next: next,
+        ),
+      );
+    }
     return PublicDemoMonthlyCloseResult._(
-      state: result.isInsufficientCash ? state : result.state,
+      state: next,
       status: result.isPaid
           ? PublicDemoMonthlyCloseStatus.closed
-          : result.isInsufficientCash
-          ? PublicDemoMonthlyCloseStatus.insufficientCash
           : PublicDemoMonthlyCloseStatus.notApplicable,
       cashBefore: state.cash,
       closedMonth: closedMonth,
@@ -160,7 +241,8 @@ class PublicDemoMonthlyClose {
   /// month; it instead completes the fiscal year via
   /// [PublicDemoState.completeFiscalYear], so any revenue booked in March
   /// deliberately stays pending — Public Demo 0.1 ends before its 30-day
-  /// site would collect it.
+  /// site would collect it. March's cash-flow summary is still recorded
+  /// under the exact same contract as every other month.
   ///
   /// Unlike closeApril/closeMay/closeJune/closeJuly, this single method
   /// legitimately fires again and again as the fiscal year progresses
@@ -170,7 +252,8 @@ class PublicDemoMonthlyClose {
   /// completed (state.month stays 15 after that close) — otherwise Revenue
   /// would settle a second time against the same March snapshot, in
   /// violation of the "settle exactly once" contract every other month in
-  /// this facade upholds.
+  /// this facade upholds. The same guard also keeps this method from
+  /// recording a second, double-counted cash-flow summary for March.
   static PublicDemoMonthlyCloseResult closeOrdinaryMonth({
     required PublicDemoState state,
     required int monthlyExpenses,
@@ -178,14 +261,29 @@ class PublicDemoMonthlyClose {
     final closedMonth = state.month;
     final isOrdinaryMonth =
         closedMonth >= 8 && closedMonth <= 15 && !state.fiscalYearCompleted;
-    final revenueApplied = isOrdinaryMonth
-        ? PublicDemoRevenuePayment.apply(state: state).state
-        : state;
-    final next = closedMonth == 15
+    final revenueResult = isOrdinaryMonth
+        ? PublicDemoRevenuePayment.apply(state: state)
+        : null;
+    final revenueApplied = revenueResult?.state ?? state;
+    var next = closedMonth == 15
         ? revenueApplied.completeFiscalYear(monthlyExpenses: monthlyExpenses)
         : revenueApplied.advanceToNextOrdinaryMonth(
             monthlyExpenses: monthlyExpenses,
           );
+    if (isOrdinaryMonth) {
+      next = next.recordMonthlyCashFlow(
+        _cashFlow(
+          closedMonth: closedMonth,
+          openingCash: state.monthOpeningCash,
+          revenueResult: revenueResult!,
+          monthlyExpenses: monthlyExpenses,
+          bonusPaid: 0,
+          trainingCost: state.monthTrainingSpent,
+          recruitmentCost: state.monthRecruitmentSpent,
+          next: next,
+        ),
+      );
+    }
     return PublicDemoMonthlyCloseResult._(
       state: next,
       status: isOrdinaryMonth
@@ -195,6 +293,28 @@ class PublicDemoMonthlyClose {
       closedMonth: closedMonth,
     );
   }
+
+  static PublicDemoMonthlyCashFlow _cashFlow({
+    required int closedMonth,
+    required int openingCash,
+    required PublicDemoRevenuePaymentResult revenueResult,
+    required int monthlyExpenses,
+    required int bonusPaid,
+    required int trainingCost,
+    required int recruitmentCost,
+    required PublicDemoState next,
+  }) => PublicDemoMonthlyCashFlow(
+    month: closedMonth,
+    openingCash: openingCash,
+    cashReceived: revenueResult.revenueReceived,
+    salaryPaid: monthlyExpenses,
+    bonusPaid: bonusPaid,
+    trainingCost: trainingCost,
+    recruitmentCost: recruitmentCost,
+    closingCash: next.cash,
+    revenue: revenueResult.revenueRecognized,
+    receivables: next.pendingRevenue,
+  );
 }
 
 /// Common result shape for every [PublicDemoMonthlyClose] transition.

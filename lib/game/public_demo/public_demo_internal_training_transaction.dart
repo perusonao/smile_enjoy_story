@@ -56,6 +56,7 @@ class PublicDemoInternalTrainingTransaction {
     return PublicDemoInternalTrainingTransactionResult.success(
       state: state
           .copyWith(cash: state.cash - cost)
+          .recordTrainingSpend(cost)
           .selectInternalTraining(engineerId),
       engineerId: engineerId,
     );

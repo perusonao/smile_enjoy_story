@@ -152,6 +152,28 @@ void main() {
       expect(identical(after, before), isTrue);
       expect(after.summerBonusSelection, PublicDemoSummerBonusPlan.none);
     });
+
+    // Codex review (P2): the live UI always closes growth via _closeGrowth
+    // before completion is set, so growthAppliedMonths already contains 15
+    // by the time fiscalYearCompleted becomes true in normal play. This
+    // guards the case a state reaches completion with month 15 still absent
+    // from growthAppliedMonths (a direct completeFiscalYear call bypassing
+    // _closeGrowth, or a restored save) — applyMonthlyGrowth must still not
+    // mutate runtimes/growth results/training selections.
+    test('applyMonthlyGrowth is a no-op once completed, even when month 15 is '
+        'absent from growthAppliedMonths', () {
+      final before = completedState();
+      expect(before.growthAppliedMonths, isNot(contains(15)));
+      final after = before.applyMonthlyGrowth(
+        assignedEngineerIds: const {'eng-01'},
+        moraleByEngineerId: const {'eng-01': 72},
+      );
+      expect(identical(after, before), isTrue);
+      expect(after.engineerRuntimes, before.engineerRuntimes);
+      expect(after.latestGrowthResults, before.latestGrowthResults);
+      expect(after.trainingSelections, before.trainingSelections);
+      expect(after.growthAppliedMonths, before.growthAppliedMonths);
+    });
   });
 
   group('D. Pre-completion regression: existing raise/training behavior '

@@ -381,11 +381,18 @@ class PublicDemoState {
   ///
   /// The current demo assignment model has no reliable industry field, so this
   /// method intentionally does not invent one; industry experience remains 0.
+  ///
+  /// Also a no-op once [fiscalYearCompleted] is true (POST-12MONTH-1): the
+  /// live UI always closes growth before completion is set, so this guard is
+  /// defense in depth for any other caller, or a restored state whose
+  /// [growthAppliedMonths] doesn't yet include month 15.
   PublicDemoState applyMonthlyGrowth({
     required Set<String> assignedEngineerIds,
     required Map<String, int> moraleByEngineerId,
   }) {
-    if (growthAppliedMonths.contains(month)) return this;
+    if (fiscalYearCompleted || growthAppliedMonths.contains(month)) {
+      return this;
+    }
     final results = <PublicDemoMonthlyGrowth>[];
     final runtimes = [
       for (final runtime in engineerRuntimes)

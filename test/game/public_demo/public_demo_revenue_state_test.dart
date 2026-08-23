@@ -11,6 +11,73 @@ void main() {
     });
   });
 
+  group('PublicDemoRevenue.monthlyRevenueForAssignedCount', () {
+    test('0 assigned engineers books no revenue', () {
+      expect(PublicDemoRevenue.monthlyRevenueForAssignedCount(0), 0);
+    });
+
+    test('1 assigned engineer books the per-engineer rate', () {
+      expect(PublicDemoRevenue.monthlyRevenueForAssignedCount(1), 500000);
+    });
+
+    test('2 assigned engineers books double the per-engineer rate', () {
+      expect(PublicDemoRevenue.monthlyRevenueForAssignedCount(2), 1000000);
+    });
+
+    test('scales linearly with assigned count', () {
+      for (final assignedCount in [3, 5, 10]) {
+        expect(
+          PublicDemoRevenue.monthlyRevenueForAssignedCount(assignedCount),
+          assignedCount * PublicDemoRevenue.ratePerAssignedEngineer,
+        );
+      }
+    });
+
+    test('always multiplies by ratePerAssignedEngineer, not a copy of it', () {
+      expect(PublicDemoRevenue.ratePerAssignedEngineer, 500000);
+      expect(PublicDemoRevenue.monthlyRevenueForAssignedCount(4), 2000000);
+    });
+
+    test('negative assigned count is rejected', () {
+      expect(
+        () => PublicDemoRevenue.monthlyRevenueForAssignedCount(-1),
+        throwsA(isA<AssertionError>()),
+      );
+    });
+
+    test('does not change PublicDemoState.cash', () {
+      final state = PublicDemoState.aprilStart();
+      PublicDemoRevenue.monthlyRevenueForAssignedCount(state.engineersAssigned);
+      expect(state.cash, PublicDemoState.aprilStart().cash);
+    });
+
+    test('does not change PublicDemoState.pendingRevenue', () {
+      final state = PublicDemoState.aprilStart();
+      PublicDemoRevenue.monthlyRevenueForAssignedCount(state.engineersAssigned);
+      expect(state.pendingRevenue, PublicDemoState.aprilStart().pendingRevenue);
+    });
+
+    test('counts only PublicDemoState.engineersAssigned, excluding waiting '
+        'engineers from the same engineerCount', () {
+      final state = PublicDemoState.aprilStart()
+          .advanceToMay(monthlyExpenses: 0, orderedEngineers: 0)
+          .advanceToJune(
+            monthlyExpenses: 0,
+            acceptedHires: 3,
+            hiredWithOrders: 1,
+          );
+      expect(state.engineerCount, 5);
+      expect(state.engineersAssigned, 1);
+      expect(state.engineersWaiting, 4);
+      expect(
+        PublicDemoRevenue.monthlyRevenueForAssignedCount(
+          state.engineersAssigned,
+        ),
+        500000,
+      );
+    });
+  });
+
   group('PublicDemoState pendingRevenue', () {
     test('April starts with no pending revenue', () {
       expect(PublicDemoState.aprilStart().pendingRevenue, 0);

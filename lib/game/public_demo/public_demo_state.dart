@@ -29,6 +29,7 @@ class PublicDemoState {
     int? summerBonusPaidAmount,
     int? recruitmentMediumUsedMonth,
     int pendingRevenue = 0,
+    bool fiscalYearCompleted = false,
   }) => PublicDemoState._(
     month: month,
     cash: cash,
@@ -69,6 +70,7 @@ class PublicDemoState {
       recruitmentMediumUsedMonth,
     ),
     pendingRevenue: _normalizedPendingRevenue(pendingRevenue),
+    fiscalYearCompleted: fiscalYearCompleted,
   );
 
   const PublicDemoState._({
@@ -91,6 +93,7 @@ class PublicDemoState {
     required this.summerBonusPaidAmount,
     required this.recruitmentMediumUsedMonth,
     required this.pendingRevenue,
+    required this.fiscalYearCompleted,
   });
 
   factory PublicDemoState.aprilStart() => PublicDemoState(
@@ -147,6 +150,12 @@ class PublicDemoState {
   /// and REVENUE-4 wires it into cash at month-end.
   final int pendingRevenue;
 
+  /// Whether the fiscal year (April through March, internal months 4-15)
+  /// has been closed out. This is the minimal signal Public Demo 0.1 needs
+  /// to show a year-end state instead of a 16th month; it carries no score,
+  /// rank, or other year-end detail (12MONTH-3 scope).
+  final bool fiscalYearCompleted;
+
   static int _normalizedPendingRevenue(int value) => value < 0 ? 0 : value;
 
   static bool _hasValidSummerBonusPayment({
@@ -156,7 +165,7 @@ class PublicDemoState {
   }) => paid && month == 7 && amount != null && amount >= 0;
 
   static int? _normalizedRecruitmentMediaMonth(int? month) =>
-      month != null && month >= 4 && month <= 8 ? month : null;
+      month != null && month >= 4 && month <= 15 ? month : null;
 
   static Map<String, PublicDemoGrowthSource> _trainingSelectionsOnly(
     Map<String, PublicDemoGrowthSource> selections,
@@ -293,6 +302,42 @@ class PublicDemoState {
     applicants: applicants,
   );
 
+  /// Closes any ordinary month from August (8) through February (14) into
+  /// the next month.
+  ///
+  /// September onward introduces no month-specific rule the way July's
+  /// bonus does, so this single method serves the rest of the fiscal year
+  /// instead of a dedicated `advanceToSeptember`/`advanceToOctober`/...
+  /// method per month (12MONTH-3). Only ordinary monthly expenses settle
+  /// and sales slots reset; [engineersAssigned]/[engineersWaiting] carry
+  /// forward unchanged because Public Demo 0.1 has no per-month
+  /// assignment-renewal UI beyond June's.
+  PublicDemoState advanceToNextOrdinaryMonth({required int monthlyExpenses}) {
+    if (month < 8 || month > 14) return this;
+    return copyWith(
+      month: month + 1,
+      cash: cash - monthlyExpenses,
+      salesUsed: 0,
+    );
+  }
+
+  /// Closes March (internal month 15), the last month of the fiscal year.
+  ///
+  /// Ordinary monthly expenses still settle exactly as in
+  /// [advanceToNextOrdinaryMonth], but the month does not advance to a 16th
+  /// value. Instead [fiscalYearCompleted] becomes true — Public Demo 0.1's
+  /// minimal year-end signal (12MONTH-3). Calling this again once already
+  /// completed is a no-op, matching every other idempotent close guard in
+  /// this class.
+  PublicDemoState completeFiscalYear({required int monthlyExpenses}) {
+    if (month != 15 || fiscalYearCompleted) return this;
+    return copyWith(
+      cash: cash - monthlyExpenses,
+      salesUsed: 0,
+      fiscalYearCompleted: true,
+    );
+  }
+
   PublicDemoEngineerRuntime? runtimeForOrNull(String engineerId) {
     for (final runtime in engineerRuntimes) {
       if (runtime.engineerId == engineerId) return runtime;
@@ -373,6 +418,7 @@ class PublicDemoState {
     Object? summerBonusPaidAmount = _unset,
     Object? recruitmentMediumUsedMonth = _unset,
     int? pendingRevenue,
+    bool? fiscalYearCompleted,
   }) => PublicDemoState(
     month: month ?? this.month,
     cash: cash ?? this.cash,
@@ -399,6 +445,7 @@ class PublicDemoState {
         ? this.recruitmentMediumUsedMonth
         : recruitmentMediumUsedMonth as int?,
     pendingRevenue: pendingRevenue ?? this.pendingRevenue,
+    fiscalYearCompleted: fiscalYearCompleted ?? this.fiscalYearCompleted,
   );
   static const Object _unset = Object();
   Map<String, dynamic> toJson() => {
@@ -427,6 +474,7 @@ class PublicDemoState {
     'summerBonusPaidAmount': summerBonusPaidAmount,
     'recruitmentMediumUsedMonth': recruitmentMediumUsedMonth,
     'pendingRevenue': pendingRevenue,
+    'fiscalYearCompleted': fiscalYearCompleted,
   };
   factory PublicDemoState.fromJson(
     Map<String, dynamic> json,
@@ -478,6 +526,9 @@ class PublicDemoState {
     pendingRevenue: json['pendingRevenue'] is int
         ? json['pendingRevenue'] as int
         : 0,
+    fiscalYearCompleted: json['fiscalYearCompleted'] is bool
+        ? json['fiscalYearCompleted'] as bool
+        : false,
   );
 
   static PublicDemoSummerBonusPlan _summerBonusPlanFromJson(Object? raw) {

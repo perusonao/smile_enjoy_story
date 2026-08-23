@@ -21,17 +21,20 @@ void main() {
       expect(state.canUseRecruitmentMediaInMonth(4), isTrue);
     });
 
-    test('marks once per month, safely ignores duplicate use, and resets next month', () {
-      final used = PublicDemoState.aprilStart().markRecruitmentMediaUsed(4);
-      expect(used.recruitmentMediumUsedMonth, 4);
-      expect(used.canUseRecruitmentMediaInMonth(4), isFalse);
-      expect(used.markRecruitmentMediaUsed(4), same(used));
-      expect(used.canUseRecruitmentMediaInMonth(5), isTrue);
-    });
+    test(
+      'marks once per month, safely ignores duplicate use, and resets next month',
+      () {
+        final used = PublicDemoState.aprilStart().markRecruitmentMediaUsed(4);
+        expect(used.recruitmentMediumUsedMonth, 4);
+        expect(used.canUseRecruitmentMediaInMonth(4), isFalse);
+        expect(used.markRecruitmentMediaUsed(4), same(used));
+        expect(used.canUseRecruitmentMediaInMonth(5), isTrue);
+      },
+    );
 
     test('rejects invalid months without changing state', () {
       final state = PublicDemoState.aprilStart();
-      for (final month in [0, -1, 3, 9]) {
+      for (final month in [0, -1, 3, 16]) {
         expect(state.canUseRecruitmentMediaInMonth(month), isFalse);
         expect(state.markRecruitmentMediaUsed(month), same(state));
       }
@@ -54,20 +57,26 @@ void main() {
       expect(after.engineerRuntimes, same(before.engineerRuntimes));
     });
 
-    test('old JSON, malformed values, and invalid months normalize to null', () {
-      final old = PublicDemoState.aprilStart().toJson()
-        ..remove('recruitmentMediumUsedMonth');
-      expect(PublicDemoState.fromJson(old).recruitmentMediumUsedMonth, isNull);
-
-      for (final raw in ['4', 0, -1, 3, 9, null]) {
-        final malformed = PublicDemoState.aprilStart().toJson()
-          ..['recruitmentMediumUsedMonth'] = raw;
+    test(
+      'old JSON, malformed values, and invalid months normalize to null',
+      () {
+        final old = PublicDemoState.aprilStart().toJson()
+          ..remove('recruitmentMediumUsedMonth');
         expect(
-          PublicDemoState.fromJson(malformed).recruitmentMediumUsedMonth,
+          PublicDemoState.fromJson(old).recruitmentMediumUsedMonth,
           isNull,
         );
-      }
-    });
+
+        for (final raw in ['4', 0, -1, 3, 16, null]) {
+          final malformed = PublicDemoState.aprilStart().toJson()
+            ..['recruitmentMediumUsedMonth'] = raw;
+          expect(
+            PublicDemoState.fromJson(malformed).recruitmentMediumUsedMonth,
+            isNull,
+          );
+        }
+      },
+    );
 
     test('new JSON round trips and copyWith can preserve or clear usage', () {
       final used = PublicDemoState.aprilStart().markRecruitmentMediaUsed(5);
@@ -77,7 +86,9 @@ void main() {
       );
       expect(used.copyWith().recruitmentMediumUsedMonth, 5);
       expect(
-        used.copyWith(recruitmentMediumUsedMonth: null).recruitmentMediumUsedMonth,
+        used
+            .copyWith(recruitmentMediumUsedMonth: null)
+            .recruitmentMediumUsedMonth,
         isNull,
       );
     });

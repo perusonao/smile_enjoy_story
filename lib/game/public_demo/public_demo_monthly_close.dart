@@ -24,10 +24,12 @@ import 'public_demo_summer_bonus_payment.dart';
 /// both take effect or neither does: see [closeJuly] for the one path with
 /// a cash guard.
 ///
-/// 12MONTH-1 scaffold only: September onward and a merged month-specific
-/// request type are deliberately out of scope. See
-/// SES_12MONTH-1_Common_Monthly_Close_Result.md and
-/// SES_12MONTH-2_REVENUE-4_Close_Integration_Result.md for the full design
+/// 12MONTH-1 scaffolded April-July only; 12MONTH-3 extends the facade
+/// through March via [closeOrdinaryMonth], one shared method for every
+/// month from August (8) through March (15) rather than a dedicated method
+/// per month. See SES_12MONTH-1_Common_Monthly_Close_Result.md,
+/// SES_12MONTH-2_REVENUE-4_Close_Integration_Result.md, and
+/// SES_12MONTH-3_Fiscal_Year_Extension_Result.md for the full design
 /// rationale.
 class PublicDemoMonthlyClose {
   const PublicDemoMonthlyClose._();
@@ -139,6 +141,55 @@ class PublicDemoMonthlyClose {
           ? PublicDemoMonthlyCloseStatus.closed
           : result.isInsufficientCash
           ? PublicDemoMonthlyCloseStatus.insufficientCash
+          : PublicDemoMonthlyCloseStatus.notApplicable,
+      cashBefore: state.cash,
+      closedMonth: closedMonth,
+    );
+  }
+
+  /// Closes any ordinary month from August (8) through March (15) —
+  /// everything beyond July's fixed bonus event — through one shared entry
+  /// point rather than a dedicated method per month (12MONTH-3).
+  ///
+  /// Revenue settles into cash before the underlying transition runs,
+  /// exactly as every earlier month in this facade does: old
+  /// [PublicDemoState.pendingRevenue] becomes cash, and the current
+  /// [PublicDemoState.engineersAssigned] snapshot books the new pending
+  /// balance, before that same [monthlyExpenses] settlement can change
+  /// anything else. March (closedMonth 15) does not advance to a new
+  /// month; it instead completes the fiscal year via
+  /// [PublicDemoState.completeFiscalYear], so any revenue booked in March
+  /// deliberately stays pending — Public Demo 0.1 ends before its 30-day
+  /// site would collect it.
+  ///
+  /// Unlike closeApril/closeMay/closeJune/closeJuly, this single method
+  /// legitimately fires again and again as the fiscal year progresses
+  /// (August, then September, ...), since there is no dedicated method per
+  /// month to guard on an exact value. The one case this method itself
+  /// must still refuse is calling it again once the fiscal year is already
+  /// completed (state.month stays 15 after that close) — otherwise Revenue
+  /// would settle a second time against the same March snapshot, in
+  /// violation of the "settle exactly once" contract every other month in
+  /// this facade upholds.
+  static PublicDemoMonthlyCloseResult closeOrdinaryMonth({
+    required PublicDemoState state,
+    required int monthlyExpenses,
+  }) {
+    final closedMonth = state.month;
+    final isOrdinaryMonth =
+        closedMonth >= 8 && closedMonth <= 15 && !state.fiscalYearCompleted;
+    final revenueApplied = isOrdinaryMonth
+        ? PublicDemoRevenuePayment.apply(state: state).state
+        : state;
+    final next = closedMonth == 15
+        ? revenueApplied.completeFiscalYear(monthlyExpenses: monthlyExpenses)
+        : revenueApplied.advanceToNextOrdinaryMonth(
+            monthlyExpenses: monthlyExpenses,
+          );
+    return PublicDemoMonthlyCloseResult._(
+      state: next,
+      status: isOrdinaryMonth
+          ? PublicDemoMonthlyCloseStatus.closed
           : PublicDemoMonthlyCloseStatus.notApplicable,
       cashBefore: state.cash,
       closedMonth: closedMonth,

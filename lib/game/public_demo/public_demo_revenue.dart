@@ -18,8 +18,13 @@ class PublicDemoRevenue {
   /// This has no notion of engineer status itself: callers must pass the
   /// count already restricted to the assignment source (see
   /// [PublicDemoState.engineersAssigned]), not waiting or training counts.
+  ///
+  /// The assert fails fast in debug/test; release builds strip asserts, so
+  /// a negative count (e.g. from unnormalized JSON) is also clamped to 0
+  /// rather than producing negative revenue.
   static int monthlyRevenueForAssignedCount(int assignedCount) {
     assert(assignedCount >= 0, 'assignedCount must not be negative');
-    return assignedCount * ratePerAssignedEngineer;
+    final normalizedCount = assignedCount < 0 ? 0 : assignedCount;
+    return normalizedCount * ratePerAssignedEngineer;
   }
 }

@@ -19,9 +19,19 @@ void main() {
     requestedMonthlySalary: 320000,
   );
 
-  void expectStateEquivalent(PublicDemoState legacy, PublicDemoState viaClose) {
+  /// [checkMoney] gates `cash`/`pendingRevenue` equivalence: REVENUE-4 makes
+  /// the common close intentionally diverge from the legacy per-month path
+  /// on those two fields whenever Revenue actually settles (see the 5->6 and
+  /// 6->7 groups below, which pass `checkMoney: false` and assert the
+  /// Revenue-adjusted values explicitly instead). Every other field must
+  /// still match exactly in every case: Revenue touches only cash and
+  /// pendingRevenue.
+  void expectStateEquivalent(
+    PublicDemoState legacy,
+    PublicDemoState viaClose, {
+    bool checkMoney = true,
+  }) {
     expect(viaClose.month, legacy.month);
-    expect(viaClose.cash, legacy.cash);
     expect(viaClose.salesUsed, legacy.salesUsed);
     expect(viaClose.engineerCount, legacy.engineerCount);
     expect(viaClose.engineersAssigned, legacy.engineersAssigned);
@@ -37,7 +47,10 @@ void main() {
       viaClose.engineerRuntimes.map((r) => r.toJson()).toList(),
       legacy.engineerRuntimes.map((r) => r.toJson()).toList(),
     );
-    expect(viaClose.pendingRevenue, legacy.pendingRevenue);
+    if (checkMoney) {
+      expect(viaClose.cash, legacy.cash);
+      expect(viaClose.pendingRevenue, legacy.pendingRevenue);
+    }
   }
 
   group('4->5 equivalence (April close)', () {
@@ -115,8 +128,13 @@ void main() {
       );
       expect(result.isClosed, isTrue);
       expect(result.closedMonth, 5);
-      expectStateEquivalent(legacy, result.state);
-      expect(result.state.pendingRevenue, 0);
+      expectStateEquivalent(legacy, result.state, checkMoney: false);
+      // REVENUE-4: mayState() carries engineersAssigned=1 from April's order
+      // into May, so this close's pre-transition snapshot books May's
+      // revenue (1 * 500,000) as the new pending balance. start.pendingRevenue
+      // was 0, so nothing is collectible into cash yet (30-day site).
+      expect(result.cashAfter, legacy.cash);
+      expect(result.state.pendingRevenue, 500000);
     });
 
     test('wrong month is a no-op on both paths', () {
@@ -161,8 +179,19 @@ void main() {
       );
       expect(result.isClosed, isTrue);
       expect(result.closedMonth, 6);
-      expectStateEquivalent(legacy, result.state);
-      expect(result.state.pendingRevenue, 0);
+      expectStateEquivalent(legacy, result.state, checkMoney: false);
+      // REVENUE-4 snapshot: juneState() carries engineersAssigned=2 into
+      // June (1 from April's order + 1 hired-with-order in May), so June's
+      // revenue books at 2 * 500,000 even though this same close overwrites
+      // engineersAssigned down to 1 for July via assignedInJuly. juneState()
+      // was built through the raw advanceToX chain (no Revenue involved),
+      // so start.pendingRevenue is still 0 here — nothing collectible into
+      // cash yet, matching the 30-day site.
+      expect(result.state.engineersAssigned, 1);
+      expect(start.engineersAssigned, 2);
+      expect(start.pendingRevenue, 0);
+      expect(result.cashAfter, legacy.cash);
+      expect(result.state.pendingRevenue, 1000000);
     });
 
     test('wrong month is a no-op on both paths', () {

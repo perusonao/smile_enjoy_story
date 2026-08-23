@@ -21,6 +21,17 @@ class PublicDemoInternalTrainingTransaction {
         PublicDemoInternalTrainingStatus.unknownEngineer,
       );
     }
+    // POST-12MONTH-1: once the fiscal year is closed out, Public Demo 0.1
+    // is a read-only terminal state — no training purchase may charge cash
+    // or select a training source. Checked before the cash guard below so
+    // cash is never deducted for a rejected purchase.
+    if (state.fiscalYearCompleted) {
+      return _failure(
+        state,
+        engineerId,
+        PublicDemoInternalTrainingStatus.fiscalYearCompleted,
+      );
+    }
     if (assignedEngineerIds.contains(engineerId)) {
       return _failure(
         state,
@@ -104,4 +115,5 @@ enum PublicDemoInternalTrainingStatus {
   assigned,
   alreadySelected,
   insufficientCash,
+  fiscalYearCompleted,
 }

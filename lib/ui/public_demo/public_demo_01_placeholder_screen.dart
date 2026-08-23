@@ -568,6 +568,7 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
         decisionMonth: s.month,
         week: s.month * 4,
         decision: decision,
+        fiscalYearCompleted: s.fiscalYearCompleted,
       );
       applicants = n;
     });
@@ -813,8 +814,14 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
             Text('会社への信頼：${PublicDemoEmployeeCondition.label(trust)}'),
             const SizedBox(height: 4),
             Text(reason, style: Theme.of(context).textTheme.bodySmall),
-            if (a.canRequestRaiseIn(s.month)) ...const [SizedBox(height: 8)],
-            if (a.canRequestRaiseIn(s.month))
+            if (a.canRequestRaiseIn(
+              s.month,
+              fiscalYearCompleted: s.fiscalYearCompleted,
+            )) ...const [SizedBox(height: 8)],
+            if (a.canRequestRaiseIn(
+              s.month,
+              fiscalYearCompleted: s.fiscalYearCompleted,
+            ))
               FilledButton(
                 key: Key('public-demo-raise-request-${a.id}'),
                 onPressed: () =>
@@ -854,7 +861,12 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
                 padding: EdgeInsets.only(top: 6),
                 child: Text('今月は社内研修'),
               )
-            else ...[
+            // POST-12MONTH-1: once the fiscal year is completed, Public
+            // Demo 0.1 is a read-only terminal state — the training action
+            // (and its cash preview) is hidden rather than shown disabled,
+            // since the "第1期終了" card elsewhere on this screen already
+            // makes the reason clear.
+            else if (!s.fiscalYearCompleted) ...[
               Text(
                 '研修後の現預金 ¥${s.cash - PublicDemoInternalTrainingTransaction.cost}',
               ),

@@ -47,8 +47,13 @@ class PublicDemoRaiseRequest {
 }
 
 extension PublicDemoRaiseApplicant on PublicDemoApplicant {
-  bool canRequestRaiseIn(int month) =>
-      hasJoined && month >= 6 && raiseDecision == null;
+  /// [fiscalYearCompleted] mirrors [PublicDemoState.fiscalYearCompleted]
+  /// (POST-12MONTH-1): once the fiscal year is closed out, Public Demo 0.1
+  /// is a read-only terminal state, so no further raise request may open —
+  /// defaults to false so every pre-existing caller keeps its prior
+  /// behavior unchanged.
+  bool canRequestRaiseIn(int month, {bool fiscalYearCompleted = false}) =>
+      !fiscalYearCompleted && hasJoined && month >= 6 && raiseDecision == null;
 
   int salaryForMonth(int month) {
     if (raiseEffectiveMonth != null && month >= raiseEffectiveMonth!) {
@@ -59,13 +64,20 @@ extension PublicDemoRaiseApplicant on PublicDemoApplicant {
 
   /// Applies both the decision and its relationship effect exactly once.
   /// A second tap is harmless: the already-decided immutable record is
-  /// returned unchanged.
+  /// returned unchanged. Once [fiscalYearCompleted] is true, this is a
+  /// no-op regardless of [decisionMonth] (POST-12MONTH-1).
   PublicDemoApplicant decideRaise({
     required int decisionMonth,
     required int week,
     required PublicDemoRaiseDecision decision,
+    bool fiscalYearCompleted = false,
   }) {
-    if (!canRequestRaiseIn(decisionMonth)) return this;
+    if (!canRequestRaiseIn(
+      decisionMonth,
+      fiscalYearCompleted: fiscalYearCompleted,
+    )) {
+      return this;
+    }
     final request = PublicDemoRaiseRequest.forApplicant(this);
     final event = EmployeeRelationshipEvent(
       week: week,

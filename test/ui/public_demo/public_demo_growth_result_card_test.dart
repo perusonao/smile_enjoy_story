@@ -26,19 +26,21 @@ void main() {
       tester.view.physicalSize = Size(width, 800);
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.resetPhysicalSize);
-      await tester.pumpWidget(MaterialApp(
-        home: Scaffold(
-          body: PublicDemoGrowthResultCard(
-            engineerName: '佐藤 健',
-            result: growth(
-              source: PublicDemoGrowthSource.assignment,
-              before: 78,
-              after: 80,
-              experienceDelta: 1,
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: PublicDemoGrowthResultCard(
+              engineerName: '佐藤 健',
+              result: growth(
+                source: PublicDemoGrowthSource.assignment,
+                before: 78,
+                after: 80,
+                experienceDelta: 1,
+              ),
             ),
           ),
         ),
-      ));
+      );
 
       expect(find.text('Java 78 → 80  (+2)'), findsOneWidget);
       expect(find.text('実務経験 +1か月'), findsOneWidget);
@@ -47,26 +49,51 @@ void main() {
     });
   }
 
-  testWidgets('waiting zero-delta result never claims practical experience',
-      (tester) async {
-    await tester.pumpWidget(MaterialApp(
-      home: Scaffold(
-        body: PublicDemoGrowthResultCard(
-          engineerName: '佐藤 健',
-          result: growth(
-            source: PublicDemoGrowthSource.waiting,
-            before: 78,
-            after: 78,
-            experienceDelta: 0,
+  testWidgets('waiting zero-delta result never claims practical experience', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: PublicDemoGrowthResultCard(
+            engineerName: '佐藤 健',
+            result: growth(
+              source: PublicDemoGrowthSource.waiting,
+              before: 78,
+              after: 78,
+              experienceDelta: 0,
+            ),
           ),
         ),
       ),
-    ));
+    );
 
     expect(find.text('Java 78 → 78  (+0)'), findsOneWidget);
     expect(find.text('待機中の自己学習'), findsOneWidget);
     expect(find.text('今月は大きな変化なし'), findsOneWidget);
     expect(find.textContaining('実務経験'), findsNothing);
     expect(find.textContaining('業界経験'), findsNothing);
+  });
+
+  testWidgets('internal training result identifies its training source', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: PublicDemoGrowthResultCard(
+            engineerName: '佐藤 健',
+            result: growth(
+              source: PublicDemoGrowthSource.internalTraining,
+              before: 78,
+              after: 80,
+              experienceDelta: 0,
+            ),
+          ),
+        ),
+      ),
+    );
+    expect(find.text('社内研修を通じて成長'), findsOneWidget);
+    expect(find.textContaining('実務経験'), findsNothing);
   });
 }

@@ -1,10 +1,7 @@
 import 'package:flutter/material.dart';
-import '../../domain/models/hidden_parameters.dart';
-import '../../domain/models/language_skill.dart';
-import '../../domain/models/programming_language.dart';
-import '../../domain/models/tech_skill_levels.dart';
 import '../../game/public_demo/public_demo_assignment.dart';
 import '../../game/public_demo/public_demo_interview.dart';
+import '../../game/public_demo/public_demo_internal_training_transaction.dart';
 import '../../game/public_demo/public_demo_recruitment.dart';
 import '../../game/public_demo/public_demo_recruitment_medium.dart';
 import '../../game/public_demo/public_demo_recruitment_transaction.dart';
@@ -85,7 +82,23 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
   }
 
   int capabilityFor(String engineerId) =>
-      s.runtimeFor(engineerId).actualCapability;
+      s.runtimeForOrNull(engineerId)?.actualCapability ?? 0;
+
+  bool readyForFieldSales(String engineerId) =>
+      s.runtimeForOrNull(engineerId)?.isReadyForFieldSales ?? false;
+
+  Set<String> get _assignedEngineerIds =>
+      assignments.map((assignment) => assignment.engineerId).toSet();
+
+  void _selectInternalTraining(String engineerId) {
+    final result = const PublicDemoInternalTrainingTransaction().execute(
+      state: s,
+      engineerId: engineerId,
+      assignedEngineerIds: _assignedEngineerIds,
+    );
+    if (!result.isSuccess) return;
+    setState(() => s = result.state);
+  }
 
   Map<String, int> get _moraleByEngineerId => {
     for (final engineer in engineers) engineer.id: engineer.motivation,
@@ -162,6 +175,7 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
         r = PublicDemoInterviewEvaluator.evaluate(
           type: t,
           profile: e.interviewProfile,
+          actualCapability: capabilityFor(e.id),
         );
     setState(() {
       if (t == PublicDemoInterviewType.partner) s = s.useSalesSlot();
@@ -354,7 +368,14 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
     final nextAssignments = [
       for (final e in engineers)
         if (e.stage == PublicDemoSalesStage.ordered)
-          publicDemoInitialAssignments.firstWhere((a) => a.engineerId == e.id),
+          publicDemoInitialAssignments
+                  .where((a) => a.engineerId == e.id)
+                  .firstOrNull ??
+              PublicDemoAssignment.forOrderedEngineer(
+                engineerId: e.id,
+                engineerName: e.name,
+                humanity: e.interviewProfile.humanity,
+              ),
       for (final a in applicants)
         if (a.stage == PublicDemoApplicantStage.juneOrdered)
           PublicDemoAssignment(
@@ -388,6 +409,15 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
           .map((a) => a.join(week: 9))
           .toList();
       applicants = joined;
+      engineers = [
+        ...engineers,
+        for (final applicant in joined.where(
+          (applicant) =>
+              applicant.hasJoined &&
+              !engineers.any((engineer) => engineer.id == applicant.id),
+        ))
+          PublicDemoEngineerSales.fromApplicant(applicant),
+      ];
       s =
           _closeGrowth(
                 engineers
@@ -411,26 +441,7 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
                 engineerRuntimes: [
                   ...s.engineerRuntimes,
                   for (final applicant in joined.where((a) => a.hasJoined))
-                    PublicDemoEngineerRuntime(
-                      engineerId: applicant.id,
-                      primaryLanguage: ProgrammingLanguage.java,
-                      languageSkills: {
-                        ProgrammingLanguage.java: LanguageSkill(
-                          language: ProgrammingLanguage.java,
-                          displayedExperienceMonths: 0,
-                          actualExperienceMonths: 0,
-                          actualSkill: applicant.salesSkillFit,
-                        ),
-                      },
-                      techSkills: const TechSkillLevels.zero(),
-                      hidden: const HiddenParameters(
-                        growthPotential: 3,
-                        stressTolerance: 3,
-                        retention: 3,
-                        projectInterviewSkill: 3,
-                        turnoverIntent: 50,
-                      ),
-                    ),
+                    PublicDemoEngineerRuntime.fromApplicant(applicant),
                 ],
               );
       assignments = nextAssignments;
@@ -762,6 +773,57 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
     );
   }
 
+  Widget internalTrainingCard({
+    required String engineerId,
+    required String engineerName,
+  }) {
+    final selected = s.trainingSelections.containsKey(engineerId);
+    final assigned = _assignedEngineerIds.contains(engineerId);
+    final affordable = s.cash >= PublicDemoInternalTrainingTransaction.cost;
+    if (assigned) return const SizedBox.shrink();
+    return Card(
+      key: Key('public-demo-internal-training-$engineerId'),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              '$engineerName（待機）',
+              style: const TextStyle(fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 4),
+            const Text('社内研修'),
+            const Text('¥30,000'),
+            if (selected)
+              const Padding(
+                padding: EdgeInsets.only(top: 6),
+                child: Text('今月は社内研修'),
+              )
+            else ...[
+              Text(
+                '研修後の現預金 ¥${s.cash - PublicDemoInternalTrainingTransaction.cost}',
+              ),
+              if (!affordable)
+                const Padding(
+                  padding: EdgeInsets.only(top: 4),
+                  child: Text('現預金が不足しています。', style: TextStyle(fontSize: 12)),
+                ),
+              const SizedBox(height: 8),
+              FilledButton(
+                key: Key('public-demo-internal-training-action-$engineerId'),
+                onPressed: affordable
+                    ? () => _selectInternalTraining(engineerId)
+                    : null,
+                child: const Text('研修する'),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget assignmentCard(int i) {
     final a = assignments[i];
     return Card(
@@ -869,14 +931,19 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
             ),
             const SizedBox(height: 4),
             Text(e.summary),
+            internalTrainingCard(engineerId: e.id, engineerName: e.name),
             PublicDemoSalesProgress(currentStep: engineerStep(e)),
             const SizedBox(height: 8),
-            if (e.stage == PublicDemoSalesStage.waiting)
+            if (e.stage == PublicDemoSalesStage.waiting &&
+                readyForFieldSales(e.id)) ...[
+              const Text('営業準備OK', style: TextStyle(fontSize: 12)),
               FilledButton(
                 onPressed: () => es(i, PublicDemoSalesStage.skillSheet),
                 child: const Text('SkillSheet確認'),
               ),
-            if (e.stage == PublicDemoSalesStage.skillSheet)
+            ],
+            if (e.stage == PublicDemoSalesStage.skillSheet &&
+                readyForFieldSales(e.id))
               FilledButton(
                 onPressed: () => es(i, PublicDemoSalesStage.selling),
                 child: const Text('営業開始'),
@@ -977,12 +1044,16 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
                 child: const Text('合格・給与提示'),
               ),
             ],
-            if (a.stage == PublicDemoApplicantStage.offerAccepted)
+            if (a.stage == PublicDemoApplicantStage.offerAccepted &&
+                a.canEnterPreJoinSales)
               FilledButton(
                 onPressed: () =>
                     as(i, PublicDemoApplicantStage.preEntrySkillSheet),
                 child: const Text('入社前SkillSheet'),
               ),
+            if (a.stage == PublicDemoApplicantStage.offerAccepted &&
+                !a.canEnterPreJoinSales)
+              const Text('入社後、研修で育成します'),
             if (a.stage == PublicDemoApplicantStage.preEntrySkillSheet)
               FilledButton(
                 onPressed: () =>
@@ -1070,13 +1141,19 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
               for (var i = 0; i < applicants.length; i++) ac(i),
               OutlinedButton(onPressed: may, child: const Text('5月終了→6月')),
             ],
-            if (s.month >= 6) ...[
+            if (s.month == 6)
               for (final a in applicants.where(
                 (a) => s.joinedApplicantIds.contains(a.id) && a.hasJoined,
               ))
                 employeeConditionCard(a),
-            ],
             if (s.month == 6) ...[
+              for (var i = 0; i < engineers.length; i++)
+                if (s.joinedApplicantIds.contains(engineers[i].id) &&
+                    engineers[i].stage != PublicDemoSalesStage.ordered &&
+                    !assignments.any(
+                      (assignment) => assignment.engineerId == engineers[i].id,
+                    ))
+                  ec(i),
               for (var i = 0; i < assignments.length; i++) assignmentCard(i),
               OutlinedButton(onPressed: june, child: const Text('6月終了→7月')),
             ],
@@ -1134,6 +1211,17 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
                     : '夏季賞与 ¥${s.summerBonusPaidAmount}',
               ),
             ],
+            if (s.month >= 7)
+              for (final a in applicants.where(
+                (a) => s.joinedApplicantIds.contains(a.id) && a.hasJoined,
+              ))
+                employeeConditionCard(a),
+            if (s.month >= 6)
+              for (final runtime in s.engineerRuntimes)
+                internalTrainingCard(
+                  engineerId: runtime.engineerId,
+                  engineerName: _engineerName(runtime.engineerId),
+                ),
           ],
         ),
       ),

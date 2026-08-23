@@ -62,26 +62,32 @@ class PublicDemoRecruitmentTransaction {
     );
   }
 
-  /// The Public Demo deliberately reuses its two established lightweight
-  /// applicant profiles rather than importing the main game's random generator.
+  /// Selects from media-specific lightweight profiles without importing the
+  /// main game's random generator. Keep the established engineer pool separate
+  /// so adding free-media templates cannot alter its existing month results.
   static List<PublicDemoApplicant> _generateApplicants({
     required int month,
     required PublicDemoRecruitmentMedium medium,
     required int count,
-  }) => List.generate(count, (index) {
-    final template =
-        publicDemoMayApplicants[(month + medium.index + index) %
-            publicDemoMayApplicants.length];
-    return PublicDemoApplicant(
-      id: 'recruitment-$month-${medium.name}-${index + 1}',
-      name: template.name,
-      resumeSummary: template.resumeSummary,
-      interviewScore: template.interviewScore,
-      acceptanceScore: template.acceptanceScore,
-      salesSkillFit: template.salesSkillFit,
-      requestedMonthlySalary: template.requestedMonthlySalary,
-    );
-  });
+  }) {
+    final pool = switch (medium) {
+      PublicDemoRecruitmentMedium.engineer => publicDemoMayApplicants,
+      PublicDemoRecruitmentMedium.free => publicDemoFreeApplicants,
+    };
+    return List.generate(count, (index) {
+      final template = pool[(month + medium.index + index) % pool.length];
+      return PublicDemoApplicant(
+        id: 'recruitment-$month-${medium.name}-${index + 1}',
+        name: template.name,
+        resumeSummary: template.resumeSummary,
+        interviewScore: template.interviewScore,
+        acceptanceScore: template.acceptanceScore,
+        salesSkillFit: template.salesSkillFit,
+        experienceMonths: template.experienceMonths,
+        requestedMonthlySalary: template.requestedMonthlySalary,
+      );
+    });
+  }
 }
 
 class PublicDemoRecruitmentTransactionResult {

@@ -27,16 +27,18 @@ class PublicDemoInterviewEvaluator {
   static PublicDemoInterviewResult evaluate({
     required PublicDemoInterviewType type,
     required PublicDemoInterviewProfile profile,
+    int? actualCapability,
   }) {
+    final skillFit = actualCapability ?? profile.skillFit;
     final score = switch (type) {
       PublicDemoInterviewType.partner =>
-        (profile.skillFit * 45 +
+        (skillFit * 45 +
                 profile.humanity * 25 +
                 profile.morale * 15 +
                 profile.clientTrust * 15) ~/
             100,
       PublicDemoInterviewType.client =>
-        (profile.skillFit * 50 +
+        (skillFit * 50 +
                 profile.humanity * 20 +
                 profile.morale * 10 +
                 profile.clientTrust * 20) ~/

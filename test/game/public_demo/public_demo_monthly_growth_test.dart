@@ -101,4 +101,51 @@ void main() {
     expect(old.latestGrowthResults, isEmpty);
     expect(old.growthAppliedMonths, isEmpty);
   });
+
+  test(
+    'selected training resolves after assignment and is consumed monthly',
+    () {
+      final before = state().copyWith(
+        trainingSelections: const {
+          'eng-01': PublicDemoGrowthSource.internalTraining,
+          'eng-02': PublicDemoGrowthSource.externalTraining,
+          'not-a-runtime': PublicDemoGrowthSource.internalTraining,
+        },
+      );
+      final closed = before.applyMonthlyGrowth(
+        assignedEngineerIds: const {'eng-01'},
+        moraleByEngineerId: const {'eng-01': 50, 'eng-02': 50},
+      );
+
+      expect(closed.latestGrowthResults.map((result) => result.source), [
+        PublicDemoGrowthSource.assignment,
+        PublicDemoGrowthSource.externalTraining,
+      ]);
+      expect(closed.trainingSelections, isEmpty);
+      expect(closed.cash, before.cash);
+      expect(closed.summerBonusSelection, before.summerBonusSelection);
+      expect(closed.summerBonusPaid, before.summerBonusPaid);
+      expect(
+        closed.recruitmentMediumUsedMonth,
+        before.recruitmentMediumUsedMonth,
+      );
+      expect(closed.latestGrowthResults[0].actualExperienceMonthsDelta, 1);
+      expect(closed.latestGrowthResults[1].actualExperienceMonthsDelta, 0);
+    },
+  );
+
+  test('internal and external selections both apply when not assigned', () {
+    final closed = state()
+        .selectInternalTraining('eng-01')
+        .selectExternalTraining('eng-02')
+        .applyMonthlyGrowth(
+          assignedEngineerIds: const {},
+          moraleByEngineerId: const {'eng-01': 50, 'eng-02': 50},
+        );
+
+    expect(closed.latestGrowthResults.map((result) => result.source), [
+      PublicDemoGrowthSource.internalTraining,
+      PublicDemoGrowthSource.externalTraining,
+    ]);
+  });
 }

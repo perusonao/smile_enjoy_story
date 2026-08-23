@@ -258,6 +258,30 @@ async function waitForTabBar(page: import('@playwright/test').Page, textOffender
   return isVisibleTab(tab);
 }
 
+/** Returns through the existing bounded tab-bar recovery, then confirms the
+ * recruitment root is foregrounded before a list-only candidate locator is
+ * allowed to run. A visible underlying tab is not enough: Flutter can retain
+ * that semantics node while ApplicantDetailScreen is still the active route. */
+async function returnToRecruitmentRoot(
+  page: import('@playwright/test').Page,
+  textOffenders: string[],
+): Promise<boolean> {
+  if (!await waitForTabBar(page, textOffenders, '採用')) return false;
+
+  const recruitmentTab = page.getByRole('tab', { name: '採用', exact: true });
+  if (await recruitmentTab.getAttribute('aria-selected').catch(() => null) !== 'true') {
+    await clickResilient(page, byTab(page, '採用'), '採用タブ');
+    await page.waitForTimeout(300);
+  }
+
+  const detailCta = page.getByRole('button', { name: /^(面接する|面接を再開する)$/ });
+  return (
+    await isVisibleTab(recruitmentTab) &&
+    await recruitmentTab.getAttribute('aria-selected').catch(() => null) === 'true' &&
+    !await detailCta.first().isVisible().catch(() => false)
+  );
+}
+
 // Total/per-attempt budget for `clickResilient`, matching
 // playwright.config.ts's own `actionTimeout` (15s) — the same "budget
 // unchanged, behavior changed" shape as `ses-player.ts`'s
@@ -504,9 +528,10 @@ for (const seed of parsedSeeds.seeds) {
     // responsibility-split comment) — every assertion below the loop is
     // about the *flow itself* staying operable, regardless of any
     // individual roll's outcome.
-    expect(await waitForTabBar(page, textOffenders, '採用'), '採用 tab never became visible before the first hire attempt').toBe(true);
-    await clickResilient(page, byTab(page, '採用'), '採用タブ');
-    await page.waitForTimeout(500);
+    expect(
+      await returnToRecruitmentRoot(page, textOffenders),
+      'Recruitment root never became visible and active before the first hire attempt',
+    ).toBe(true);
 
     // A handful of candidates in a row is enough to prove the interview ->
     // decision -> back-to-recruitment-tab cycle is genuinely repeatable
@@ -519,6 +544,10 @@ for (const seed of parsedSeeds.seeds) {
     // per the same investigation's "長時間E2Eの責務を縮小" follow-up.
     const HIRE_ATTEMPTS = 3;
     for (let attempt = 0; attempt < HIRE_ATTEMPTS; attempt++) {
+      expect(
+        await returnToRecruitmentRoot(page, textOffenders),
+        `Recruitment root was not stable before candidate query for attempt ${attempt} (seed=${seed})`,
+      ).toBe(true);
       const candidate = page.getByRole('button', { name: /未面接/ }).first();
       if ((await candidate.count()) === 0) break;
       // CI run 32040338628, HEAD f07fa30: this exact locator resolved, then
@@ -562,7 +591,10 @@ for (const seed of parsedSeeds.seeds) {
         // than patched further, since the fix here is recognizing
         // `waitForTabBar` already owns this recovery, not adding a second,
         // less careful copy of it.
-        expect(await waitForTabBar(page, textOffenders, '採用'), `採用 tab never became visible after skipping attempt ${attempt} (seed=${seed})`).toBe(true);
+        expect(
+          await returnToRecruitmentRoot(page, textOffenders),
+          `Recruitment root was not stable after skipping attempt ${attempt} (seed=${seed})`,
+        ).toBe(true);
         continue;
       }
       await clickResilient(page, byButton(page, interviewBtn.name), interviewBtn.name);
@@ -605,8 +637,8 @@ for (const seed of parsedSeeds.seeds) {
       // from the DOM, retrying" — a redundant click on an already-current,
       // still-settling tab, not a missing navigation.
       expect(
-        await waitForTabBar(page, textOffenders, '採用'),
-        `採用 tab never became visible after hire attempt ${attempt} (seed=${seed}) — see waitForTabBar`,
+        await returnToRecruitmentRoot(page, textOffenders),
+        `Recruitment root was not stable after hire attempt ${attempt} (seed=${seed})`,
       ).toBe(true);
     }
     await captureMilestone(page, testInfo, '03-applicants-interviewed');

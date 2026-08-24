@@ -8,18 +8,21 @@ import 'package:smile_enjoy_story/game/public_demo/public_demo_salary_offer.dart
 import 'test_support/public_demo_offer_test_helpers.dart';
 
 void main() {
-  // WORKFLOW-STATE-1AB FIX2 P1-1A: accept() now gates on the unforgeable
-  // interview record, not `stage` — markInterviewed() mints it, matching
-  // the real interview flow (public_demo_01_placeholder_screen.dart's
-  // recruit()).
-  final applicant = const PublicDemoApplicant(
-    id: 'condition-hire',
-    name: 'Condition Hire',
-    resumeSummary: 'Java 3年',
-    interviewScore: 70,
-    acceptanceScore: 70,
-    salesSkillFit: 70,
-  ).markInterviewed();
+  // WORKFLOW-STATE-1AB FIX2 P1-1A, FIX3 P1-1: accept() now gates on the
+  // unforgeable interview record, not `stage` — completeTestInterview()
+  // mints it via the real completeInterview() entry point, matching the
+  // real interview flow (public_demo_01_placeholder_screen.dart's
+  // recruit() / PublicDemoAggregate.completeInterview).
+  final applicant = completeTestInterview(
+    const PublicDemoApplicant(
+      id: 'condition-hire',
+      name: 'Condition Hire',
+      resumeSummary: 'Java 3年',
+      interviewScore: 70,
+      acceptanceScore: 70,
+      salesSkillFit: 70,
+    ),
+  );
   final fiscalCloseId = PublicDemoFiscalCloseId.forMonth(5);
 
   // Routes through the real PublicDemoOfferAcceptance.accept command (the

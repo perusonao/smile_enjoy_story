@@ -4,6 +4,7 @@ import 'package:smile_enjoy_story/game/public_demo/public_demo_monthly_close.dar
 import 'package:smile_enjoy_story/game/public_demo/public_demo_recruitment.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_state.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_summer_bonus_plan.dart';
+import 'package:smile_enjoy_story/game/public_demo/public_demo_workflow_state.dart';
 
 import 'test_support/public_demo_offer_test_helpers.dart';
 
@@ -136,12 +137,21 @@ void main() {
         hiredWithOrders: 1,
         joinedApplicants: [joinedHire],
       );
+      // WORKFLOW-STATE-1AB FIX3 P1-4: closeMay no longer accepts a
+      // `joinedApplicants` iterable at all — it derives the joined set from
+      // the whole authoritative `workflow` it is given (via
+      // `PublicDemoWorkflowState.joinedApplicants`), exactly the projection
+      // `.restore` reproduces here.
       final result = PublicDemoMonthlyClose.closeMay(
         state: start,
+        workflow: PublicDemoWorkflowState.restore(
+          applicants: [joinedHire],
+          engineers: const [],
+          assignments: const [],
+        ),
         monthlyExpenses: 800000,
         acceptedHires: 1,
         hiredWithOrders: 1,
-        joinedApplicants: [joinedHire],
       );
       expect(result.isClosed, isTrue);
       expect(result.closedMonth, 5);
@@ -163,6 +173,7 @@ void main() {
       );
       final result = PublicDemoMonthlyClose.closeMay(
         state: start,
+        workflow: PublicDemoWorkflowState.initial(),
         monthlyExpenses: 800000,
         acceptedHires: 1,
         hiredWithOrders: 1,
@@ -274,23 +285,24 @@ void main() {
         );
       });
 
-      test(
-        'the June/payroll path derives joined ids from the authoritative '
-        'applicant records passed in, not any separately maintained list',
-        () {
-          final start = mayState();
+      test('the June/payroll path derives joined ids from the authoritative '
+          'workflow passed in, not any caller-supplied list', () {
+        final start = mayState();
 
-          final result = PublicDemoMonthlyClose.closeMay(
-            state: start,
-            monthlyExpenses: 800000,
-            acceptedHires: 1,
-            hiredWithOrders: 1,
-            joinedApplicants: [joinedHire],
-          );
+        final result = PublicDemoMonthlyClose.closeMay(
+          state: start,
+          workflow: PublicDemoWorkflowState.restore(
+            applicants: [joinedHire],
+            engineers: const [],
+            assignments: const [],
+          ),
+          monthlyExpenses: 800000,
+          acceptedHires: 1,
+          hiredWithOrders: 1,
+        );
 
-          expect(result.state.joinedApplicantIds, ['close-hire-01']);
-        },
-      );
+        expect(result.state.joinedApplicantIds, ['close-hire-01']);
+      });
 
       test('joinedApplicantIds cannot diverge from the workflow: passing '
           'multiple applicants only the truly-joined ones are reflected', () {
@@ -313,6 +325,51 @@ void main() {
         );
 
         expect(result.joinedApplicantIds, ['close-hire-01']);
+      });
+
+      // WORKFLOW-STATE-1AB FIX3 P1-4: PublicDemoMonthlyClose.closeMay's
+      // production signature has no `joinedApplicants` parameter at all
+      // (removed in favor of `workflow:`, above) — so there is no argument
+      // through which a caller could omit a genuinely-joined applicant,
+      // pass an empty/subset iterable, or a stale snapshot. This is a
+      // structural (compile-time) guarantee: this whole test file only
+      // compiles against the new `workflow:`-based signature. The test
+      // below is the positive case — two genuinely-joined applicants in the
+      // workflow both survive the close; there is no way to ask for fewer.
+      test('two genuine joined applicants in the workflow both reach the '
+          'payroll projection — there is no parameter to omit either one', () {
+        const secondHire = PublicDemoApplicant(
+          id: 'close-hire-02',
+          name: 'Second Hire',
+          resumeSummary: 'Java 2年',
+          interviewScore: 65,
+          acceptanceScore: 65,
+          salesSkillFit: 65,
+          requestedMonthlySalary: 300000,
+        );
+        final secondJoined =
+            acceptTestOffer(secondHire, offeredMonthlySalary: 300000).join(
+              week: 9,
+              currentFiscalCloseId: PublicDemoFiscalCloseId.forMonth(5),
+            );
+        final start = mayState();
+
+        final result = PublicDemoMonthlyClose.closeMay(
+          state: start,
+          workflow: PublicDemoWorkflowState.restore(
+            applicants: [joinedHire, secondJoined],
+            engineers: const [],
+            assignments: const [],
+          ),
+          monthlyExpenses: 800000,
+          acceptedHires: 2,
+          hiredWithOrders: 1,
+        );
+
+        expect(result.state.joinedApplicantIds.toSet(), {
+          'close-hire-01',
+          'close-hire-02',
+        });
       });
     },
   );

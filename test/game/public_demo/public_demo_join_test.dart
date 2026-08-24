@@ -5,6 +5,8 @@ import 'package:smile_enjoy_story/game/public_demo/public_demo_join.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_recruitment.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_salary_offer.dart';
 
+import 'test_support/public_demo_offer_test_helpers.dart';
+
 /// WORKFLOW-STATE-1 §12/§29, WORKFLOW-STATE-1AB FIX1 P1-1C/D/E/F: join must
 /// be authoritative. The caller supplies only identity/intent
 /// (applicant/week/currentFiscalCloseId) — never a salary — and join
@@ -15,17 +17,20 @@ void main() {
   const transaction = PublicDemoJoinTransaction();
   final currentFiscalCloseId = PublicDemoFiscalCloseId.forMonth(5);
 
-  // WORKFLOW-STATE-1AB FIX2 P1-1A: accept() gates on the unforgeable
-  // interview record, not `stage` — markInterviewed() mints it.
-  final applicant = const PublicDemoApplicant(
-    id: 'app-01',
-    name: 'Test',
-    resumeSummary: 'Java 3年',
-    interviewScore: 70,
-    acceptanceScore: 70,
-    salesSkillFit: 70,
-    requestedMonthlySalary: 320000,
-  ).markInterviewed();
+  // WORKFLOW-STATE-1AB FIX2 P1-1A, FIX3 P1-1: accept() gates on the
+  // unforgeable interview record, not `stage` — completeTestInterview()
+  // mints it via the real completeInterview() entry point.
+  final applicant = completeTestInterview(
+    const PublicDemoApplicant(
+      id: 'app-01',
+      name: 'Test',
+      resumeSummary: 'Java 3年',
+      interviewScore: 70,
+      acceptanceScore: 70,
+      salesSkillFit: 70,
+      requestedMonthlySalary: 320000,
+    ),
+  );
 
   PublicDemoApplicant withBindingOffer(int salary, {int fiscalCloseMonth = 5}) {
     final offer = PublicDemoSalaryOffer(

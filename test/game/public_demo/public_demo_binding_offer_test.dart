@@ -4,21 +4,26 @@ import 'package:smile_enjoy_story/game/public_demo/public_demo_fiscal_close_id.d
 import 'package:smile_enjoy_story/game/public_demo/public_demo_recruitment.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_salary_offer.dart';
 
+import 'test_support/public_demo_offer_test_helpers.dart';
+
 /// WORKFLOW-STATE-1 §9/§11/§28: offer acceptance must be domain-authoritative
 /// and the caller/UI must not be able to fabricate a valid BindingOffer.
 void main() {
-  // WORKFLOW-STATE-1AB FIX2 P1-1A: accept() now gates on the unforgeable
-  // PublicDemoInterviewRecord (via hasBeenInterviewed), not `stage` —
-  // markInterviewed() mints it, matching the real interview flow.
-  final applicant = const PublicDemoApplicant(
-    id: 'app-01',
-    name: 'Test',
-    resumeSummary: 'Java 3年',
-    interviewScore: 70,
-    acceptanceScore: 70,
-    salesSkillFit: 70,
-    requestedMonthlySalary: 320000,
-  ).markInterviewed();
+  // WORKFLOW-STATE-1AB FIX2 P1-1A, FIX3 P1-1: accept() now gates on the
+  // unforgeable PublicDemoInterviewRecord (via hasBeenInterviewed), not
+  // `stage` — completeTestInterview() mints it via the real
+  // completeInterview() entry point, matching the real interview flow.
+  final applicant = completeTestInterview(
+    const PublicDemoApplicant(
+      id: 'app-01',
+      name: 'Test',
+      resumeSummary: 'Java 3年',
+      interviewScore: 70,
+      acceptanceScore: 70,
+      salesSkillFit: 70,
+      requestedMonthlySalary: 320000,
+    ),
+  );
 
   PublicDemoSalaryOffer offerAt(int salary) =>
       PublicDemoSalaryOfferEvaluator.evaluate(
@@ -87,7 +92,7 @@ void main() {
   group('interview record cannot be fabricated (P1-1A)', () {
     test(
       'a fake interviewed applicant: stage set via public copyWith without '
-      'ever going through markInterviewed does not pass accept authority',
+      'ever going through completeInterview does not pass accept authority',
       () {
         const neverInterviewed = PublicDemoApplicant(
           id: 'faker',
@@ -127,7 +132,7 @@ void main() {
       'a genuine interview record reused on a different applicant via '
       'copyWith is rejected by identity, mirroring BindingOffer reuse (P1-1D)',
       () {
-        final interviewed = applicant.markInterviewed();
+        final interviewed = completeTestInterview(applicant);
         const differentApplicant = PublicDemoApplicant(
           id: 'different-applicant',
           name: 'Different',

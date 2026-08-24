@@ -73,7 +73,9 @@ class PublicDemoOfferAcceptance {
     // so a caller could fabricate the stage without ever being interviewed
     // and still mint a valid BindingOffer. `hasBeenInterviewed` instead
     // checks the unforgeable, identity-bound [PublicDemoInterviewRecord]
-    // that only [PublicDemoApplicant.markInterviewed] can mint — a
+    // that only [PublicDemoApplicant.completeInterview] can mint (FIX3
+    // P1-1: requiring an unforgeable sales-slot-consumption proof only
+    // [PublicDemoState.useSalesSlotForInterview] can produce) — a
     // caller-provided applicant's `stage` field is never trusted as
     // authority here, closing that fabrication path even when this command
     // is (as documented below) called directly instead of through

@@ -14,23 +14,33 @@ import 'public_demo_salary_offer.dart';
 /// three lists as mutable `State` fields and mutated them directly by list
 /// index. That made the widget itself the workflow SSOT, with no
 /// invariant enforcement beyond whatever the UI happened to check before
-/// calling `setState`. This class now owns that data; the widget holds one
-/// instance of it and only ever replaces it wholesale via `setState(() =>
-/// workflow = ...)`, using the domain methods below (or the dedicated
-/// commands in public_demo_binding_offer.dart / public_demo_join.dart /
-/// public_demo_recruitment_workflow_transaction.dart) to compute the next
-/// value. UI-only concerns (selected tab, dialog visibility, scroll
-/// position, the in-progress July summer-bonus confirmation flag) remain
-/// widget-local `State` fields — they are not workflow facts.
+/// calling `setState`. This class now owns that data; since
+/// WORKFLOW-STATE-1AB FIX3, the widget holds exactly one
+/// `PublicDemoAggregate` field (public_demo_aggregate.dart) that atomically
+/// contains this workflow together with the finance side
+/// ([PublicDemoState]), and only ever replaces it wholesale — using the
+/// domain methods below (or the dedicated commands in
+/// public_demo_binding_offer.dart / public_demo_join.dart /
+/// public_demo_aggregate.dart) to compute the next value. UI-only concerns
+/// (selected tab, dialog visibility, scroll position, the in-progress July
+/// summer-bonus confirmation flag) remain widget-local `State` fields —
+/// they are not workflow facts.
 class PublicDemoWorkflowState {
+  /// Safe production construction (WORKFLOW-STATE-1AB FIX3 P1-3):
+  /// deliberately has no `assignments` parameter — an arbitrary assignment
+  /// roster must never be accepted while constructing an authoritative
+  /// workflow root, only produced by [assignOrderedForMay] below, which
+  /// computes it from this workflow's own authoritative engineer/applicant
+  /// stage facts. Removing `copyWith(assignments:)` alone (FIX1) was
+  /// insufficient while this public factory still accepted one directly
+  /// (FIX2's residual gap) — it no longer does.
   factory PublicDemoWorkflowState({
     required List<PublicDemoApplicant> applicants,
     required List<PublicDemoEngineerSales> engineers,
-    required List<PublicDemoAssignment> assignments,
   }) => PublicDemoWorkflowState._(
     applicants: List.unmodifiable(applicants),
     engineers: List.unmodifiable(engineers),
-    assignments: List.unmodifiable(assignments),
+    assignments: const [],
   );
 
   const PublicDemoWorkflowState._({
@@ -46,7 +56,22 @@ class PublicDemoWorkflowState {
   factory PublicDemoWorkflowState.initial() => PublicDemoWorkflowState(
     applicants: publicDemoMayApplicants,
     engineers: publicDemoInitialEngineers,
-    assignments: const [],
+  );
+
+  /// Restore-only reconstruction boundary (WORKFLOW-STATE-1AB FIX3 P1-3):
+  /// for test fixtures and any future save/load deserialization, never for
+  /// a live gameplay transition. Unlike the safe production factory above,
+  /// this DOES accept an arbitrary `assignments` roster — the production
+  /// command surface ([PublicDemoAggregate], [assignOrderedForMay]) never
+  /// calls this, so it is never reachable from the shipped UI.
+  factory PublicDemoWorkflowState.restore({
+    required List<PublicDemoApplicant> applicants,
+    required List<PublicDemoEngineerSales> engineers,
+    required List<PublicDemoAssignment> assignments,
+  }) => PublicDemoWorkflowState._(
+    applicants: List.unmodifiable(applicants),
+    engineers: List.unmodifiable(engineers),
+    assignments: List.unmodifiable(assignments),
   );
 
   final List<PublicDemoApplicant> applicants;
@@ -67,10 +92,10 @@ class PublicDemoWorkflowState {
     List<PublicDemoApplicant>? applicants,
     List<PublicDemoEngineerSales>? engineers,
     List<PublicDemoAssignment>? assignments,
-  }) => PublicDemoWorkflowState(
-    applicants: applicants ?? this.applicants,
-    engineers: engineers ?? this.engineers,
-    assignments: assignments ?? this.assignments,
+  }) => PublicDemoWorkflowState._(
+    applicants: List.unmodifiable(applicants ?? this.applicants),
+    engineers: List.unmodifiable(engineers ?? this.engineers),
+    assignments: List.unmodifiable(assignments ?? this.assignments),
   );
 
   // ---------------------------------------------------------------------
@@ -97,8 +122,8 @@ class PublicDemoWorkflowState {
   ) {
     assert(
       stage != PublicDemoApplicantStage.interviewed,
-      'interviewed is workflow-significant (WORKFLOW-STATE-1AB FIX2 P1-1A) '
-      '— use markApplicantInterviewed instead',
+      'interviewed is workflow-significant (WORKFLOW-STATE-1AB FIX3 P1-1) '
+      '— use PublicDemoAggregate.completeInterview instead',
     );
     return withApplicant(
       applicantId,
@@ -106,19 +131,10 @@ class PublicDemoWorkflowState {
     );
   }
 
-  /// The single sanctioned way to transition an applicant into the
-  /// interviewed stage (WORKFLOW-STATE-1AB FIX2 P1-1A) — the prerequisite
-  /// [PublicDemoOfferAcceptance.accept] actually checks (via
-  /// [PublicDemoApplicant.hasBeenInterviewed]) before it will mint a
-  /// [PublicDemoBindingOffer]. [withApplicantStage] intentionally refuses
-  /// this specific stage: it is workflow-significant and must not be
-  /// reachable through the generic setter.
-  PublicDemoWorkflowState markApplicantInterviewed(String applicantId) =>
-      withApplicant(applicantId, (applicant) => applicant.markInterviewed());
-
   /// Appends newly generated applicants (JOB-2/3, now atomic via
-  /// public_demo_recruitment_workflow_transaction.dart), skipping any id
-  /// already present — mirrors the dedup the widget used to do inline.
+  /// `PublicDemoAggregate.recruit` in public_demo_aggregate.dart), skipping
+  /// any id already present — mirrors the dedup the widget used to do
+  /// inline.
   PublicDemoWorkflowState withGeneratedApplicants(
     List<PublicDemoApplicant> generated,
   ) {
@@ -226,14 +242,38 @@ class PublicDemoWorkflowState {
   // Assignments
   // ---------------------------------------------------------------------
 
-  PublicDemoWorkflowState withAssignment(
-    String engineerId,
-    PublicDemoAssignment Function(PublicDemoAssignment assignment) update,
-  ) => _copyWith(
+  /// Updates only the mutable per-month decision fields of the assignment
+  /// matching [engineerId] — [PublicDemoAssignment.copyWith]'s own three
+  /// parameters — leaving every other assignment, and every other field of
+  /// this one (identity, project, and economic fields:
+  /// `engineerId`/`engineerName`/`projectName`/`deliveryPressure`/
+  /// `budgetHealth`/`humanity`), untouched.
+  ///
+  /// WORKFLOW-STATE-1AB FIX3 P1-3: FIX2's `withAssignment` took an update
+  /// *function* (`PublicDemoAssignment Function(PublicDemoAssignment)`) —
+  /// since a caller-supplied function can simply ignore the real assignment
+  /// it is given and return an entirely fabricated
+  /// `PublicDemoAssignment(...)` instead (that constructor remains public,
+  /// as a value object — see [PublicDemoAssignment]'s own doc), that shape
+  /// let a caller substitute a fully fake assignment — including its
+  /// economic fields — for a real one already on the authoritative roster,
+  /// bypassing [assignOrderedForMay] entirely. Named parameters instead of
+  /// a function make that structurally impossible: there is no argument
+  /// through which a whole fabricated [PublicDemoAssignment] could pass.
+  PublicDemoWorkflowState withAssignmentUpdate(
+    String engineerId, {
+    PublicDemoNextOrderStatus? nextOrderStatus,
+    PublicDemoReplacementStage? replacementStage,
+    int? fieldEvaluation,
+  }) => _copyWith(
     assignments: [
       for (final assignment in assignments)
         if (assignment.engineerId == engineerId)
-          update(assignment)
+          assignment.copyWith(
+            nextOrderStatus: nextOrderStatus,
+            replacementStage: replacementStage,
+            fieldEvaluation: fieldEvaluation,
+          )
         else
           assignment,
     ],

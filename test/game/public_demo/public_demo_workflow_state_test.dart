@@ -8,6 +8,8 @@ import 'package:smile_enjoy_story/game/public_demo/public_demo_sales.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_salary_offer.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_workflow_state.dart';
 
+import 'test_support/public_demo_offer_test_helpers.dart';
+
 /// WORKFLOW-STATE-1 §35: proves the domain (PublicDemoWorkflowState) is now
 /// authoritative for applicants/engineers/assignments — directly, without
 /// going through the widget — and that its mutation methods reproduce the
@@ -48,14 +50,19 @@ void main() {
       );
     });
 
-    // WORKFLOW-STATE-1AB FIX2 P1-1A: interviewed is workflow-significant —
-    // withApplicantStage refuses it, both by assertion (debug/test builds)
-    // and, more importantly, because PublicDemoOfferAcceptance.accept no
-    // longer trusts `stage` as authority at all (see
-    // public_demo_binding_offer_test.dart's adversarial group).
+    // WORKFLOW-STATE-1AB FIX2 P1-1A, FIX3 P1-1: interviewed is
+    // workflow-significant — withApplicantStage refuses it, both by
+    // assertion (debug/test builds) and, more importantly, because
+    // PublicDemoOfferAcceptance.accept no longer trusts `stage` as
+    // authority at all (see public_demo_binding_offer_test.dart's
+    // adversarial group). The sanctioned transition
+    // (PublicDemoAggregate.completeInterview) is covered in
+    // public_demo_aggregate_test.dart — it requires a genuine sales-slot
+    // proof this workflow-only class cannot supply on its own.
     test(
       'withApplicantStage refuses to set the workflow-significant interviewed '
-      'stage — markApplicantInterviewed is the only sanctioned way',
+      'stage — PublicDemoAggregate.completeInterview is the only sanctioned '
+      'way',
       () {
         final workflow = PublicDemoWorkflowState.initial();
         final id = workflow.applicants.first.id;
@@ -69,16 +76,6 @@ void main() {
       },
     );
 
-    test('markApplicantInterviewed is the sanctioned interview transition', () {
-      final workflow = PublicDemoWorkflowState.initial();
-      final id = workflow.applicants.first.id;
-      final next = workflow.markApplicantInterviewed(id);
-      final interviewed = next.applicants.firstWhere((a) => a.id == id);
-
-      expect(interviewed.stage, PublicDemoApplicantStage.interviewed);
-      expect(interviewed.hasBeenInterviewed, isTrue);
-    });
-
     test('withEngineerStage updates only the targeted engineer', () {
       final workflow = PublicDemoWorkflowState.initial();
       final id = workflow.engineers.first.id;
@@ -90,7 +87,7 @@ void main() {
       );
     });
 
-    test('withAssignment updates only the targeted assignment', () {
+    test('withAssignmentUpdate updates only the targeted assignment', () {
       const assignment = PublicDemoAssignment(
         engineerId: 'eng-01',
         engineerName: 'Test',
@@ -99,20 +96,81 @@ void main() {
         budgetHealth: 70,
         humanity: 70,
       );
-      final workflow = PublicDemoWorkflowState(
+      final workflow = PublicDemoWorkflowState.restore(
         applicants: const [],
         engineers: const [],
         assignments: [assignment],
       );
-      final next = workflow.withAssignment(
+      final next = workflow.withAssignmentUpdate(
         'eng-01',
-        (a) => a.copyWith(nextOrderStatus: PublicDemoNextOrderStatus.accepted),
+        nextOrderStatus: PublicDemoNextOrderStatus.accepted,
       );
 
       expect(
         next.assignments.single.nextOrderStatus,
         PublicDemoNextOrderStatus.accepted,
       );
+    });
+
+    // WORKFLOW-STATE-1AB FIX3 P1-3: FIX2's `withAssignment` took an update
+    // *function*, so a caller-supplied function could ignore the real
+    // assignment it was given and return a wholly fabricated
+    // `PublicDemoAssignment(...)` instead — substituting fake economic
+    // fields (deliveryPressure/budgetHealth/humanity/projectName/
+    // engineerName) for a real assignment already on the authoritative
+    // roster. `withAssignmentUpdate` takes named parameters instead: there
+    // is no argument through which a whole fabricated assignment could
+    // pass, so this is a structural (compile-time), not merely behavioral,
+    // guarantee.
+    test('fake assignment cannot be injected via withAssignmentUpdate: only '
+        'nextOrderStatus/replacementStage/fieldEvaluation can ever change', () {
+      const assignment = PublicDemoAssignment(
+        engineerId: 'eng-01',
+        engineerName: 'Real Engineer',
+        projectName: 'Real Project',
+        deliveryPressure: 40,
+        budgetHealth: 60,
+        humanity: 55,
+      );
+      final workflow = PublicDemoWorkflowState.restore(
+        applicants: const [],
+        engineers: const [],
+        assignments: [assignment],
+      );
+
+      final next = workflow.withAssignmentUpdate(
+        'eng-01',
+        nextOrderStatus: PublicDemoNextOrderStatus.accepted,
+        replacementStage: PublicDemoReplacementStage.ordered,
+        fieldEvaluation: 99,
+      );
+      final updated = next.assignments.single;
+
+      expect(updated.engineerId, assignment.engineerId);
+      expect(updated.engineerName, assignment.engineerName);
+      expect(updated.projectName, assignment.projectName);
+      expect(updated.deliveryPressure, assignment.deliveryPressure);
+      expect(updated.budgetHealth, assignment.budgetHealth);
+      expect(updated.humanity, assignment.humanity);
+      expect(updated.nextOrderStatus, PublicDemoNextOrderStatus.accepted);
+      expect(updated.replacementStage, PublicDemoReplacementStage.ordered);
+      expect(updated.fieldEvaluation, 99);
+    });
+
+    test('withAssignmentUpdate for an unknown engineerId is a no-op: it cannot '
+        'be used to append a new (fabricated) assignment to the roster', () {
+      final workflow = PublicDemoWorkflowState.restore(
+        applicants: const [],
+        engineers: const [],
+        assignments: const [],
+      );
+
+      final next = workflow.withAssignmentUpdate(
+        'intruder',
+        nextOrderStatus: PublicDemoNextOrderStatus.accepted,
+      );
+
+      expect(next.assignments, isEmpty);
     });
 
     test(
@@ -163,7 +221,7 @@ void main() {
           nextOrderStatus: PublicDemoNextOrderStatus.notOffered,
         ),
       ];
-      final workflow = PublicDemoWorkflowState(
+      final workflow = PublicDemoWorkflowState.restore(
         applicants: const [],
         engineers: const [],
         assignments: assignments,
@@ -205,7 +263,7 @@ void main() {
             nextOrderStatus: PublicDemoNextOrderStatus.notOffered,
           ),
         ];
-        final workflow = PublicDemoWorkflowState(
+        final workflow = PublicDemoWorkflowState.restore(
           applicants: const [],
           engineers: const [],
           assignments: assignments,
@@ -221,15 +279,17 @@ void main() {
     'joinAndKeepOnly reproduces the pre-cutover May join+roster-replace behavior',
     () {
       PublicDemoApplicant accepted(String id, int salary) {
-        final template = PublicDemoApplicant(
-          id: id,
-          name: 'Hire $id',
-          resumeSummary: 'Java 3年',
-          interviewScore: 70,
-          acceptanceScore: 70,
-          salesSkillFit: 70,
-          requestedMonthlySalary: 320000,
-        ).markInterviewed();
+        final template = completeTestInterview(
+          PublicDemoApplicant(
+            id: id,
+            name: 'Hire $id',
+            resumeSummary: 'Java 3年',
+            interviewScore: 70,
+            acceptanceScore: 70,
+            salesSkillFit: 70,
+            requestedMonthlySalary: 320000,
+          ),
+        );
         final offer = PublicDemoSalaryOffer(
           requestedMonthlySalary: template.requestedMonthlySalary,
           offeredMonthlySalary: salary,
@@ -253,7 +313,7 @@ void main() {
           acceptanceScore: 40,
           salesSkillFit: 40,
         );
-        final workflow = PublicDemoWorkflowState(
+        final workflow = PublicDemoWorkflowState.restore(
           applicants: [accepted('joins', 320000), rejected],
           engineers: const [],
           assignments: const [],
@@ -273,7 +333,7 @@ void main() {
       test(
         'withJoinedEngineers adds newly joined applicants as engineers once',
         () {
-          final workflow = PublicDemoWorkflowState(
+          final workflow = PublicDemoWorkflowState.restore(
             applicants: [accepted('joins', 320000)],
             engineers: const [],
             assignments: const [],
@@ -344,7 +404,7 @@ void main() {
 
     test('valid assignment path: only ordered engineers/applicants become '
         'an assignment', () {
-      final workflow = PublicDemoWorkflowState(
+      final workflow = PublicDemoWorkflowState.restore(
         applicants: const [orderedApplicant, notOrderedApplicant],
         engineers: const [orderedEngineer, waitingEngineer],
         assignments: const [],
@@ -360,7 +420,7 @@ void main() {
 
     test('an engineer that never reached the ordered stage is rejected: it '
         'never gets an assignment, however the roster is computed', () {
-      final workflow = PublicDemoWorkflowState(
+      final workflow = PublicDemoWorkflowState.restore(
         applicants: const [],
         engineers: const [waitingEngineer],
         assignments: const [],
@@ -374,7 +434,7 @@ void main() {
     test('calling assignOrderedForMay again never duplicates an assignment: '
         'the roster is always replaced wholesale from current stage facts, '
         'never appended to', () {
-      final workflow = PublicDemoWorkflowState(
+      final workflow = PublicDemoWorkflowState.restore(
         applicants: const [orderedApplicant],
         engineers: const [orderedEngineer],
         assignments: const [],
@@ -390,55 +450,62 @@ void main() {
       );
     });
 
-    test(
-      'the caller cannot fabricate an arbitrary roster: '
-      'PublicDemoWorkflowState exposes no public way to replace assignments '
-      'except by deriving them from its own engineer/applicant stage facts',
-      () {
-        // This is a compile-time guarantee, in two layers (WORKFLOW-STATE-1AB
-        // FIX1 P1-3 + FIX2 P1-3):
-        // 1. `_withAssignments` (the former wholesale-replace method) is
-        //    private to public_demo_workflow_state.dart.
-        // 2. The public `copyWith` no longer even accepts an `assignments`
-        //    parameter at all — `workflow.copyWith(assignments: [fake])`
-        //    does not compile — so a caller holding a reference to an
-        //    existing, authoritative PublicDemoWorkflowState cannot inject
-        //    an arbitrary fabricated PublicDemoAssignment into it either.
-        //    (PublicDemoAssignment itself remains freely publicly
-        //    constructible — WORKFLOW-STATE-1AB §6 design rule — that alone
-        //    is harmless since it can never reach an existing workflow's
-        //    `assignments` this way.)
-        // The only way to change the assignment roster on an existing
-        // workflow from outside this file is through assignOrderedForMay,
-        // which reads only this workflow's own authoritative stage facts.
-        final workflow = PublicDemoWorkflowState(
-          applicants: const [orderedApplicant],
-          engineers: const [orderedEngineer],
-          assignments: const [],
-        );
-        final next = workflow.assignOrderedForMay();
-        expect(next.assignments, isNotEmpty);
+    test('the caller cannot fabricate an arbitrary roster: '
+        'PublicDemoWorkflowState exposes no production way to replace '
+        'assignments except by deriving them from its own engineer/applicant '
+        'stage facts', () {
+      // This is a compile-time guarantee, in three layers (WORKFLOW-STATE-
+      // 1AB FIX1 P1-3, FIX2 P1-3, FIX3 P1-3):
+      // 1. `_withAssignments` (the former wholesale-replace method) is
+      //    private to public_demo_workflow_state.dart.
+      // 2. The public `copyWith` does not accept an `assignments`
+      //    parameter at all — `workflow.copyWith(assignments: [fake])`
+      //    does not compile.
+      // 3. FIX3: the general-purpose public factory constructor
+      //    (`PublicDemoWorkflowState(applicants:, engineers:)`) no longer
+      //    accepts an `assignments` parameter either — only `.restore(...)`
+      //    (used above, and explicitly documented as a test-fixture/
+      //    future-deserialization-only reconstruction boundary the
+      //    production command surface never calls) does. A caller holding
+      //    a reference to an existing, authoritative
+      //    PublicDemoWorkflowState cannot inject an arbitrary fabricated
+      //    PublicDemoAssignment into it through any of these.
+      //    (PublicDemoAssignment itself remains freely publicly
+      //    constructible — WORKFLOW-STATE-1AB §6 design rule — that alone
+      //    is harmless since it can never reach an existing workflow's
+      //    `assignments` this way.)
+      // The only way to change the assignment roster on an existing
+      // workflow from outside this file is through assignOrderedForMay,
+      // which reads only this workflow's own authoritative stage facts.
+      final workflow = PublicDemoWorkflowState.restore(
+        applicants: const [orderedApplicant],
+        engineers: const [orderedEngineer],
+        assignments: const [],
+      );
+      final next = workflow.assignOrderedForMay();
+      expect(next.assignments, isNotEmpty);
 
-        // A caller CAN construct a PublicDemoAssignment value in isolation —
-        // that alone is not the vulnerability (see comment above) — but
-        // there is no `workflow.copyWith(assignments: ...)` overload to
-        // hand it to; only workflow.assignments (read) and
-        // workflow.withAssignment(id, update) (update an existing entry's
-        // fields, never add a new one) are reachable.
-        const fabricated = PublicDemoAssignment(
-          engineerId: 'intruder',
-          engineerName: 'Fabricated',
-          projectName: 'Fabricated Project',
-          deliveryPressure: 0,
-          budgetHealth: 100,
-          humanity: 100,
-        );
-        expect(
-          next.assignments.any((a) => a.engineerId == fabricated.engineerId),
-          isFalse,
-        );
-      },
-    );
+      // A caller CAN construct a PublicDemoAssignment value in isolation —
+      // that alone is not the vulnerability (see comment above) — but
+      // there is no `workflow.copyWith(assignments: ...)` overload to
+      // hand it to; only workflow.assignments (read) and
+      // workflow.withAssignmentUpdate(id, {nextOrderStatus,
+      // replacementStage, fieldEvaluation}) (update an existing entry's
+      // three mutable decision fields, never add a new entry or change
+      // its identity/economic fields) are reachable.
+      const fabricated = PublicDemoAssignment(
+        engineerId: 'intruder',
+        engineerName: 'Fabricated',
+        projectName: 'Fabricated Project',
+        deliveryPressure: 0,
+        budgetHealth: 100,
+        humanity: 100,
+      );
+      expect(
+        next.assignments.any((a) => a.engineerId == fabricated.engineerId),
+        isFalse,
+      );
+    });
   });
 
   test(
@@ -455,15 +522,17 @@ void main() {
           clientTrust: 60,
         ),
       );
-      final template = const PublicDemoApplicant(
-        id: 'hire-01',
-        name: 'Hire',
-        resumeSummary: 'Java 3年',
-        interviewScore: 70,
-        acceptanceScore: 70,
-        salesSkillFit: 70,
-        requestedMonthlySalary: 320000,
-      ).markInterviewed();
+      final template = completeTestInterview(
+        const PublicDemoApplicant(
+          id: 'hire-01',
+          name: 'Hire',
+          resumeSummary: 'Java 3年',
+          interviewScore: 70,
+          acceptanceScore: 70,
+          salesSkillFit: 70,
+          requestedMonthlySalary: 320000,
+        ),
+      );
       final offer = PublicDemoSalaryOffer(
         requestedMonthlySalary: template.requestedMonthlySalary,
         offeredMonthlySalary: 320000,
@@ -481,7 +550,7 @@ void main() {
         currentFiscalCloseId: PublicDemoFiscalCloseId.forMonth(5),
       );
 
-      final workflow = PublicDemoWorkflowState(
+      final workflow = PublicDemoWorkflowState.restore(
         applicants: [joined],
         engineers: const [engineer],
         assignments: const [],

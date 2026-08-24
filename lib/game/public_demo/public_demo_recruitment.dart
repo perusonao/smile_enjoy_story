@@ -2,21 +2,36 @@ import '../../domain/models/employee_relationship_event.dart';
 import '../../domain/models/engineer.dart';
 import 'public_demo_binding_offer.dart';
 import 'public_demo_fiscal_close_id.dart';
+import 'public_demo_state.dart';
 
 enum PublicDemoRaiseDecision { hold, smallRaise, requestedRaise }
 
 /// Authoritative, unforgeable proof that a specific applicant actually
 /// completed Public Demo 0.1's interview step.
 ///
-/// Constructor private to this file: only [PublicDemoApplicant.markInterviewed]
-/// (called exclusively by [PublicDemoWorkflowState.markApplicantInterviewed]
-/// — the sales-slot-consuming interview flow) can mint one, bound to that
-/// applicant's own id. `stage == PublicDemoApplicantStage.interviewed` alone
-/// is NOT proof: a caller can still set that field via the public [
-/// PublicDemoApplicant.copyWith], but doing so does not also produce a
-/// genuine [PublicDemoInterviewRecord] — [PublicDemoOfferAcceptance.accept]
-/// gates on this record, not the stage field, closing that fabrication path
-/// (WORKFLOW-STATE-1AB FIX2 P1-1A/B).
+/// Constructor private to this file: only [PublicDemoApplicant.completeInterview]
+/// (called exclusively by [PublicDemoAggregate.completeInterview] in
+/// public_demo_aggregate.dart — the sales-slot-consuming interview flow) can
+/// mint one, bound to that applicant's own id. `stage ==
+/// PublicDemoApplicantStage.interviewed` alone is NOT proof: a caller can
+/// still set that field via the public [PublicDemoApplicant.copyWith], but
+/// doing so does not also produce a genuine [PublicDemoInterviewRecord] —
+/// [PublicDemoOfferAcceptance.accept] gates on this record, not the stage
+/// field, closing that fabrication path (WORKFLOW-STATE-1AB FIX2 P1-1A/B).
+///
+/// WORKFLOW-STATE-1AB FIX3 P1-1: FIX2's `PublicDemoApplicant.markInterviewed()`
+/// was itself a public, zero-argument, unconditional mint — reachable via
+/// `workflow.withApplicant(id, (a) => a.markInterviewed())` on ANY
+/// applicant already in the authoritative workflow (including one a caller
+/// substituted in via that same `withApplicant` update function), entirely
+/// bypassing the real prerequisite: an actually-consumed sales slot on the
+/// finance side of the aggregate. `PublicDemoApplicant` alone can never
+/// validate that prerequisite (it does not carry [PublicDemoState]), so
+/// [PublicDemoApplicant.completeInterview] now requires an unforgeable
+/// [PublicDemoSalesSlotConsumptionProof] — mintable only by
+/// [PublicDemoState.useSalesSlotForInterview] when it genuinely consumed a
+/// slot — as a parameter. There is no longer any zero-argument way to mint
+/// this record.
 class PublicDemoInterviewRecord {
   const PublicDemoInterviewRecord._({required this.applicantId});
 
@@ -182,12 +197,23 @@ class PublicDemoApplicant {
   bool get hasBeenInterviewed => interviewRecord?.applicantId == id;
 
   /// The single sanctioned way to record that this applicant actually went
-  /// through Public Demo 0.1's interview step (WORKFLOW-STATE-1AB FIX2
-  /// P1-1A), called only by [PublicDemoWorkflowState.markApplicantInterviewed].
-  /// Idempotent. [PublicDemoOfferAcceptance.accept] requires the resulting
+  /// through Public Demo 0.1's interview step (WORKFLOW-STATE-1AB FIX3
+  /// P1-1), called only by [PublicDemoAggregate.completeInterview]
+  /// (public_demo_aggregate.dart). Idempotent.
+  /// [PublicDemoOfferAcceptance.accept] requires the resulting
   /// [PublicDemoInterviewRecord] — not the separately, publicly settable
   /// [stage] field — before it will mint a [PublicDemoBindingOffer].
-  PublicDemoApplicant markInterviewed() => hasBeenInterviewed
+  ///
+  /// Requires [proof] that a real sales slot was actually consumed on this
+  /// exact transition — see [PublicDemoInterviewRecord]'s class doc for why
+  /// this replaced FIX2's zero-argument `markInterviewed()`. This applicant
+  /// cannot verify that prerequisite itself, so it is required as an
+  /// unforgeable parameter instead: only
+  /// [PublicDemoState.useSalesSlotForInterview] can mint one, and only when
+  /// it actually consumed a slot.
+  PublicDemoApplicant completeInterview(
+    PublicDemoSalesSlotConsumptionProof proof,
+  ) => hasBeenInterviewed
       ? this
       : copyWith(
           stage: PublicDemoApplicantStage.interviewed,

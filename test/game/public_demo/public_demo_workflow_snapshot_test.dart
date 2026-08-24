@@ -8,6 +8,8 @@ import 'package:smile_enjoy_story/game/public_demo/public_demo_salary_offer.dart
 import 'package:smile_enjoy_story/game/public_demo/public_demo_workflow_snapshot.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_workflow_state.dart';
 
+import 'test_support/public_demo_offer_test_helpers.dart';
+
 /// WORKFLOW-STATE-1 §21/§32: the snapshot must be genuinely immutable —
 /// mutating the source workflow (or attempting to mutate an exposed
 /// collection) afterward must never change an already-captured snapshot.
@@ -30,15 +32,17 @@ void main() {
       trustDelta: 0,
     );
     final accepted = PublicDemoOfferAcceptance.accept(
-      applicant: PublicDemoApplicant(
-        id: id,
-        name: template.name,
-        resumeSummary: template.resumeSummary,
-        interviewScore: template.interviewScore,
-        acceptanceScore: template.acceptanceScore,
-        salesSkillFit: template.salesSkillFit,
-        requestedMonthlySalary: template.requestedMonthlySalary,
-      ).markInterviewed(),
+      applicant: completeTestInterview(
+        PublicDemoApplicant(
+          id: id,
+          name: template.name,
+          resumeSummary: template.resumeSummary,
+          interviewScore: template.interviewScore,
+          acceptanceScore: template.acceptanceScore,
+          salesSkillFit: template.salesSkillFit,
+          requestedMonthlySalary: template.requestedMonthlySalary,
+        ),
+      ),
       offer: offer,
       fiscalCloseId: PublicDemoFiscalCloseId.forMonth(5),
     ).applicant;
@@ -52,7 +56,7 @@ void main() {
   }
 
   PublicDemoWorkflowState workflowWithOneJoinedHire() =>
-      PublicDemoWorkflowState(
+      PublicDemoWorkflowState.restore(
         applicants: [joinedApplicant('hire-01', 320000)],
         engineers: const [],
         assignments: const [
@@ -96,7 +100,7 @@ void main() {
 
       // Build an entirely different workflow (as production code would via
       // setState) and confirm the already-captured snapshot is unaffected.
-      final mutated = PublicDemoWorkflowState(
+      final mutated = PublicDemoWorkflowState.restore(
         applicants: workflow.applicants,
         engineers: workflow.engineers,
         assignments: const [],
@@ -140,7 +144,7 @@ void main() {
   test(
     'an applicant with no BindingOffer is simply absent from provenance',
     () {
-      final workflow = PublicDemoWorkflowState(
+      final workflow = PublicDemoWorkflowState.restore(
         applicants: const [
           PublicDemoApplicant(
             id: 'no-offer',

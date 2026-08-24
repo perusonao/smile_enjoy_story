@@ -4,6 +4,7 @@ import 'public_demo_revenue_payment.dart';
 import 'public_demo_salary.dart';
 import 'public_demo_state.dart';
 import 'public_demo_summer_bonus_payment.dart';
+import 'public_demo_workflow_state.dart';
 
 /// Common entry point for Public Demo 0.1's month-end transitions.
 ///
@@ -92,12 +93,25 @@ class PublicDemoMonthlyClose {
   }
 
   /// Closes May, delegating to [PublicDemoState.advanceToJune].
+  ///
+  /// WORKFLOW-STATE-1AB FIX3 P1-4: takes the whole authoritative [workflow]
+  /// rather than a caller-supplied `joinedApplicants` iterable. FIX2 still
+  /// accepted that iterable directly — even though each element had to be
+  /// genuinely joined (an unforgeable [PublicDemoJoinRecord], see
+  /// [PublicDemoApplicant.hasJoined]), the caller still chose *which
+  /// subset* of genuinely-joined applicants to pass, so omitting one,
+  /// passing none, or passing a stale snapshot could all still make the
+  /// payroll/bonus projection diverge from who actually joined. Deriving
+  /// [PublicDemoWorkflowState.joinedApplicants] internally, from the
+  /// complete authoritative roster, closes that: there is no longer any
+  /// parameter through which a caller could shrink, empty, or stale-date
+  /// the set.
   static PublicDemoMonthlyCloseResult closeMay({
     required PublicDemoState state,
+    required PublicDemoWorkflowState workflow,
     required int monthlyExpenses,
     required int acceptedHires,
     required int hiredWithOrders,
-    Iterable<PublicDemoApplicant> joinedApplicants = const [],
   }) {
     final closedMonth = state.month;
     final isMay = closedMonth == 5;
@@ -109,7 +123,7 @@ class PublicDemoMonthlyClose {
       monthlyExpenses: monthlyExpenses,
       acceptedHires: acceptedHires,
       hiredWithOrders: hiredWithOrders,
-      joinedApplicants: joinedApplicants,
+      joinedApplicants: workflow.joinedApplicants,
     );
     if (isMay) {
       next = next.recordMonthlyCashFlow(

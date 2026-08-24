@@ -1,9 +1,9 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:smile_enjoy_story/game/public_demo/public_demo_aggregate.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_internal_training_transaction.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_monthly_cash_flow.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_monthly_close.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_recruitment_medium.dart';
-import 'package:smile_enjoy_story/game/public_demo/public_demo_recruitment_workflow_transaction.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_salary.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_state.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_summer_bonus_plan.dart';
@@ -135,6 +135,7 @@ void main() {
       );
       final result = PublicDemoMonthlyClose.closeMay(
         state: start,
+        workflow: PublicDemoWorkflowState.initial(),
         monthlyExpenses: 800000,
         acceptedHires: 0,
         hiredWithOrders: 0,
@@ -276,16 +277,12 @@ void main() {
       expect(trainingResult.isSuccess, isTrue);
       state = trainingResult.state;
 
-      PublicDemoState? committedState;
-      final recruitmentResult = PublicDemoRecruitmentWorkflowTransaction()
-          .execute(
-            state: state,
-            workflow: PublicDemoWorkflowState.initial(),
-            medium: PublicDemoRecruitmentMedium.engineer,
-            onCommitted: (nextState, _) => committedState = nextState,
-          );
+      final recruitmentResult = PublicDemoAggregate.restore(
+        state: state,
+        workflow: PublicDemoWorkflowState.initial(),
+      ).recruit(PublicDemoRecruitmentMedium.engineer);
       expect(recruitmentResult.isSuccess, isTrue);
-      state = committedState!;
+      state = recruitmentResult.aggregate!.state;
 
       final result = PublicDemoMonthlyClose.closeOrdinaryMonth(
         state: state,

@@ -1,21 +1,18 @@
 import 'package:flutter/material.dart';
+import '../../game/public_demo/public_demo_aggregate.dart';
 import '../../game/public_demo/public_demo_assignment.dart';
 import '../../game/public_demo/public_demo_fiscal_close_id.dart';
 import '../../game/public_demo/public_demo_interview.dart';
 import '../../game/public_demo/public_demo_internal_training_transaction.dart';
-import '../../game/public_demo/public_demo_monthly_close.dart';
 import '../../game/public_demo/public_demo_month_label.dart';
 import '../../game/public_demo/public_demo_recruitment.dart';
 import '../../game/public_demo/public_demo_recruitment_medium.dart';
-import '../../game/public_demo/public_demo_recruitment_workflow_transaction.dart';
 import '../../game/public_demo/public_demo_sales.dart';
 import '../../game/public_demo/public_demo_salary_finance.dart';
 import '../../game/public_demo/public_demo_salary.dart';
 import '../../game/public_demo/public_demo_state.dart';
 import '../../game/public_demo/public_demo_employee_condition.dart';
-import '../../game/public_demo/public_demo_engineer_runtime.dart';
 import '../../game/public_demo/public_demo_raise.dart';
-import '../../game/public_demo/public_demo_raise_transaction.dart';
 import '../../game/public_demo/public_demo_summer_bonus_plan.dart';
 import '../../game/public_demo/public_demo_workflow_state.dart';
 import '../asset_paths.dart';
@@ -37,16 +34,27 @@ class PublicDemo01PlaceholderScreen extends StatefulWidget {
 class _S extends State<PublicDemo01PlaceholderScreen> {
   static final expense = PublicDemoSalary.baselineMonthlyExpenses;
   final _scrollController = ScrollController();
-  PublicDemoState s = PublicDemoState.aprilStart();
 
-  /// The single authoritative source for applicants, engineer sales-pipeline
-  /// state, and assignments (WORKFLOW-STATE-1). This widget only ever
-  /// replaces it wholesale via `setState(() => workflow = ...)`, computed by
-  /// the domain methods on [PublicDemoWorkflowState] or the dedicated
-  /// commands in public_demo_binding_offer.dart / public_demo_join.dart /
-  /// public_demo_recruitment_workflow_transaction.dart — this class no
-  /// longer mutates applicant/engineer/assignment data by list index itself.
-  PublicDemoWorkflowState workflow = PublicDemoWorkflowState.initial();
+  /// The single authoritative Public Demo 0.1 root (WORKFLOW-STATE-1AB
+  /// FIX3): atomically owns both finance/monthly-close facts ([s]) and
+  /// workflow facts ([workflow]). This is the ONLY state field this widget
+  /// holds — it is replaced wholesale, via `setState(() => _game =
+  /// _game.someCommand(...))`, using the domain commands on
+  /// [PublicDemoAggregate] (or the dedicated commands in
+  /// public_demo_binding_offer.dart / public_demo_join.dart) to compute the
+  /// next value. There is no way for this widget to commit a finance change
+  /// without the paired workflow change, or vice versa, for any command
+  /// that requires both — see [PublicDemoAggregate]'s own class doc.
+  PublicDemoAggregate _game = PublicDemoAggregate.initial();
+
+  /// Read-only view of [_game]'s finance side. Never assigned directly —
+  /// see [_game].
+  PublicDemoState get s => _game.state;
+
+  /// Read-only view of [_game]'s workflow side. Never assigned directly —
+  /// see [_game].
+  PublicDemoWorkflowState get workflow => _game.workflow;
+
   bool _summerBonusDecisionConfirmed = false;
 
   Future<void> _openRecruitmentMedia() async {
@@ -57,24 +65,13 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
     );
     if (!mounted || selected == null) return;
 
-    // WORKFLOW-STATE-1 §14/§15, WORKFLOW-STATE-1AB FIX2 P1-2: cash
-    // (PublicDemoState) and the generated applicants (PublicDemoWorkflowState)
-    // commit together as one atomic result — "cash spent, applicants
-    // missing" and "applicants created, cash not spent" are both impossible
-    // outcomes of this call. `onCommitted` is the only way to obtain either;
-    // there is no result field exposing the committed state on its own that
-    // this method could apply while forgetting `workflow`.
-    PublicDemoState? committedState;
-    PublicDemoWorkflowState? committedWorkflow;
-    final result = PublicDemoRecruitmentWorkflowTransaction().execute(
-      state: s,
-      workflow: workflow,
-      medium: selected,
-      onCommitted: (nextState, nextWorkflow) {
-        committedState = nextState;
-        committedWorkflow = nextWorkflow;
-      },
-    );
+    // WORKFLOW-STATE-1 §14/§15, WORKFLOW-STATE-1AB FIX3 P1-2: cash and the
+    // generated applicants commit together as one atomic aggregate — "cash
+    // spent, applicants missing" and "applicants created, cash not spent"
+    // are both impossible outcomes of this call. `result.aggregate` is the
+    // only way to obtain the committed outcome, and it is one root, not a
+    // separately-committable state/workflow pair.
+    final result = _game.recruit(selected);
     if (!result.isSuccess) {
       final message = switch (result.status) {
         PublicDemoRecruitmentTransactionStatus.insufficientCash =>
@@ -90,10 +87,7 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
       ).showSnackBar(SnackBar(content: Text(message)));
       return;
     }
-    setState(() {
-      s = committedState!;
-      workflow = committedWorkflow!;
-    });
+    setState(() => _game = result.aggregate!);
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text('応募者${result.generatedApplicants.length}名を追加しました。'),
@@ -122,17 +116,8 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
       assignedEngineerIds: _currentlyAssignedEngineerIds,
     );
     if (!result.isSuccess) return;
-    setState(() => s = result.state);
+    setState(() => _game = _game.withState(result.state));
   }
-
-  /// This is called only by the month-end command, after all current-month
-  /// work/contract decisions and before the next month transition. It never
-  /// runs from build or dialog lifecycle code.
-  PublicDemoState _closeGrowth(Set<String> assignedEngineerIds) =>
-      s.applyMonthlyGrowth(
-        assignedEngineerIds: assignedEngineerIds,
-        moraleByEngineerId: workflow.moraleByEngineerId,
-      );
 
   @override
   void dispose() {
@@ -147,15 +132,15 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
   }
 
   void es(int i, PublicDemoSalesStage x) => setState(() {
-    workflow = workflow.withEngineerStage(workflow.engineers[i].id, x);
+    _game = _game.withEngineerStage(workflow.engineers[i].id, x);
   });
   void as(int i, PublicDemoApplicantStage x) => setState(() {
-    workflow = workflow.withApplicantStage(workflow.applicants[i].id, x);
+    _game = _game.withApplicantStage(workflow.applicants[i].id, x);
   });
   void ars(int i, PublicDemoReplacementStage x) => setState(() {
-    workflow = workflow.withAssignment(
+    _game = _game.withAssignmentUpdate(
       workflow.assignments[i].engineerId,
-      (assignment) => assignment.copyWith(replacementStage: x),
+      replacementStage: x,
     );
   });
   // Best-effort decode of an event-modal image before its dialog opens, so
@@ -194,22 +179,20 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
           actualCapability: capabilityFor(e.id),
         );
     setState(() {
-      if (t == PublicDemoInterviewType.partner) s = s.useSalesSlot();
-      workflow = workflow.withEngineer(
-        e.id,
-        (engineer) => engineer.copyWith(
-          stage: switch ((t, r.passed)) {
-            (PublicDemoInterviewType.partner, true) =>
-              PublicDemoSalesStage.partnerInterviewPassed,
-            (PublicDemoInterviewType.partner, false) =>
-              PublicDemoSalesStage.partnerInterviewFailed,
-            (PublicDemoInterviewType.client, true) =>
-              PublicDemoSalesStage.clientInterviewPassed,
-            (PublicDemoInterviewType.client, false) =>
-              PublicDemoSalesStage.clientInterviewFailed,
-          },
-          lastInterviewScore: r.score,
-        ),
+      _game = _game.applyEngineerInterviewResult(
+        engineerId: e.id,
+        type: t,
+        stage: switch ((t, r.passed)) {
+          (PublicDemoInterviewType.partner, true) =>
+            PublicDemoSalesStage.partnerInterviewPassed,
+          (PublicDemoInterviewType.partner, false) =>
+            PublicDemoSalesStage.partnerInterviewFailed,
+          (PublicDemoInterviewType.client, true) =>
+            PublicDemoSalesStage.clientInterviewPassed,
+          (PublicDemoInterviewType.client, false) =>
+            PublicDemoSalesStage.clientInterviewFailed,
+        },
+        score: r.score,
       );
     });
     if (!mounted) return;
@@ -244,15 +227,13 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
   // (and any state it gates, e.g. `assignments`) is only committed via
   // setState *after* `await showDialog(...)` returns, i.e. after the user
   // has taken the confirm action and the dialog has fully closed — the
-  // background never repaints while a dialog transition is in flight. Values
-  // captured before the dialog (`o`, `hires`, `ordered`, `nextAssignments`)
-  // are pure snapshots of already-settled state, so this only changes when
+  // background never repaints while a dialog transition is in flight.
+  // `workflow` never changes during the (non-interactive) awaited dialog, so
+  // `_game.closeApril` computing `orderedEngineers` from it at commit time
+  // (below) is identical to a pre-dialog snapshot — this only changes when
   // the transition is committed, not what is computed or in what order
   // events fire.
   Future<void> april() async {
-    final o = workflow.engineers
-        .where((e) => e.stage == PublicDemoSalesStage.ordered)
-        .length;
     await _precacheEventImage(AssetPaths.eventRecruitmentApplication);
     if (!mounted) return;
     await showDialog<void>(
@@ -266,26 +247,19 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
       ),
     );
     if (!mounted) return;
-    setState(
-      () => s = PublicDemoMonthlyClose.closeApril(
-        state: _closeGrowth(const {}),
-        monthlyExpenses: expense,
-        orderedEngineers: o,
-      ).state,
-    );
+    setState(() => _game = _game.closeApril(monthlyExpenses: expense));
     _resetMonthScroll();
   }
 
   void recruit(int i) {
-    if (s.salesRemaining <= 0) return;
-    setState(() {
-      s = s.useSalesSlot();
-      // WORKFLOW-STATE-1AB FIX2 P1-1A: interviewed is workflow-significant
-      // (it gates BindingOffer authority) — mint the applicant's genuine
-      // interview record here instead of setting the stage via the generic
-      // `as()`/withApplicantStage setter.
-      workflow = workflow.markApplicantInterviewed(workflow.applicants[i].id);
-    });
+    // WORKFLOW-STATE-1AB FIX3 P1-1: completeInterview validates and
+    // consumes the real sales-slot prerequisite and mints the applicant's
+    // genuine interview record atomically — there is no longer a
+    // zero-argument `markInterviewed`/`markApplicantInterviewed` a caller
+    // could reach independently of that check.
+    final result = _game.completeInterview(workflow.applicants[i].id);
+    if (!result.isCompleted) return;
+    setState(() => _game = result.aggregate);
   }
 
   Future<void> offer(int i) async {
@@ -300,7 +274,7 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
     // it becomes authoritative — and whether a BindingOffer is minted at
     // all — is decided entirely inside PublicDemoOfferAcceptance.accept.
     setState(() {
-      workflow = workflow.acceptOffer(
+      _game = _game.acceptOffer(
         applicantId: a.id,
         offer: result,
         fiscalCloseId: PublicDemoFiscalCloseId.forMonth(s.month),
@@ -314,8 +288,7 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
     final score = a.salesSkillFit;
     final passed = score >= 60;
     setState(() {
-      s = s.useSalesSlot();
-      workflow = workflow.withApplicantStage(
+      _game = _game.consumeSlotAndSetApplicantStage(
         a.id,
         passed
             ? PublicDemoApplicantStage.preEntryPartnerPassed
@@ -382,10 +355,6 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
     PublicDemoApplicantStage.juneOrdered,
   }.contains(a.stage);
   Future<void> may() async {
-    final hires = workflow.applicants.where(accepted).length,
-        ordered = workflow.applicants
-            .where((a) => a.stage == PublicDemoApplicantStage.juneOrdered)
-            .length;
     final first = workflow.applicants
         .where((a) => a.stage == PublicDemoApplicantStage.juneOrdered)
         .toList();
@@ -405,84 +374,33 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
       );
       if (!mounted) return;
     }
-    setState(() {
-      // WORKFLOW-STATE-1 §12, WORKFLOW-STATE-1AB FIX1 P1-1: join is
-      // authoritative — each id must carry a domain-issued BindingOffer
-      // (minted only by offer(), above), matching applicant identity, and
-      // still valid at this fiscal close, before it can join; there is no
-      // salary parameter to supply here at all. This reproduces the
-      // pre-cutover behavior of replacing the applicant roster with exactly
-      // this (now-joined-where-eligible) subset.
-      final joinIds = workflow.applicants
-          .where(accepted)
-          .map((a) => a.id)
-          .toList();
-      var nextWorkflow = workflow.joinAndKeepOnly(
-        applicantIds: joinIds,
-        week: 9,
-        currentFiscalCloseId: PublicDemoFiscalCloseId.forMonth(s.month),
-      );
-      final joinedNow = nextWorkflow.applicants
-          .where((a) => a.hasJoined)
-          .toList();
-      // P1-3: the assignment roster is computed by the domain itself, from
-      // its own authoritative engineer/applicant stage facts — the widget
-      // supplies no roster and constructs no PublicDemoAssignment directly.
-      nextWorkflow = nextWorkflow
-          .withJoinedEngineers(joinedNow)
-          .assignOrderedForMay();
-      s =
-          PublicDemoMonthlyClose.closeMay(
-            state: _closeGrowth(
-              nextWorkflow.engineers
-                  .where(
-                    (engineer) =>
-                        engineer.stage == PublicDemoSalesStage.ordered,
-                  )
-                  .map((engineer) => engineer.id)
-                  .toSet(),
-            ),
-            monthlyExpenses: expense,
-            acceptedHires: hires,
-            hiredWithOrders: ordered,
-            // P1-4: joinedApplicantIds is a derived projection — the domain
-            // derives it from these authoritative (now-joined) applicant
-            // records itself; the widget no longer passes a separately
-            // maintained id list.
-            joinedApplicants: joinedNow,
-          ).state.copyWith(
-            engineerRuntimes: [
-              ...s.engineerRuntimes,
-              for (final applicant in joinedNow)
-                PublicDemoEngineerRuntime.fromApplicant(applicant),
-            ],
-          );
-      workflow = nextWorkflow;
-    });
+    // WORKFLOW-STATE-1 §12, WORKFLOW-STATE-1AB FIX3 P1-3/P1-4: join,
+    // engineer creation, assignment-roster computation, growth, and the
+    // finance close all happen inside one atomic `closeMay` aggregate
+    // command — there is no `assignments`/`joinedApplicants` parameter for
+    // this widget to supply; both are derived entirely from the
+    // aggregate's own authoritative facts.
+    setState(() => _game = _game.closeMay(week: 9, monthlyExpenses: expense));
     _resetMonthScroll();
   }
 
   void decideOrder(int i) {
     final a = workflow.assignments[i];
     setState(() {
-      workflow = workflow.withAssignment(
+      _game = _game.withAssignmentUpdate(
         a.engineerId,
-        (assignment) => assignment.copyWith(
-          nextOrderStatus: a.willOfferNextMonthFor(capabilityFor(a.engineerId))
-              ? PublicDemoNextOrderStatus.offered
-              : PublicDemoNextOrderStatus.notOffered,
-        ),
+        nextOrderStatus: a.willOfferNextMonthFor(capabilityFor(a.engineerId))
+            ? PublicDemoNextOrderStatus.offered
+            : PublicDemoNextOrderStatus.notOffered,
       );
     });
   }
 
   void acceptOrder(int i) {
     setState(() {
-      workflow = workflow.withAssignment(
+      _game = _game.withAssignmentUpdate(
         workflow.assignments[i].engineerId,
-        (assignment) => assignment.copyWith(
-          nextOrderStatus: PublicDemoNextOrderStatus.accepted,
-        ),
+        nextOrderStatus: PublicDemoNextOrderStatus.accepted,
       );
     });
   }
@@ -491,15 +409,11 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
     if (s.salesRemaining <= 0) return;
     final a = workflow.assignments[i];
     setState(() {
-      s = s.useSalesSlot();
-      workflow = workflow.withAssignment(
+      _game = _game.consumeSlotAndSetReplacementStage(
         a.engineerId,
-        (assignment) => assignment.copyWith(
-          replacementStage:
-              a.replacementPartnerScoreFor(capabilityFor(a.engineerId)) >= 60
-              ? PublicDemoReplacementStage.partnerPassed
-              : PublicDemoReplacementStage.partnerFailed,
-        ),
+        a.replacementPartnerScoreFor(capabilityFor(a.engineerId)) >= 60
+            ? PublicDemoReplacementStage.partnerPassed
+            : PublicDemoReplacementStage.partnerFailed,
       );
     });
   }
@@ -524,18 +438,13 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
         .length;
     final joinedHires = workflow.applicants.where(accepted);
     setState(
-      () => s = PublicDemoMonthlyClose.closeJune(
-        state: _closeGrowth(
-          workflow.assignments
-              .map((assignment) => assignment.engineerId)
-              .toSet(),
-        ),
+      () => _game = _game.closeJune(
+        assignedInJuly: assigned,
         monthlyExpenses: PublicDemoSalaryFinance.monthlyExpenses(
           baselineExpenses: expense,
           hires: joinedHires,
         ),
-        assignedInJuly: assigned,
-      ).state,
+      ),
     );
     _resetMonthScroll();
   }
@@ -548,17 +457,11 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
     );
     if (!mounted || decision == null) return;
     setState(() {
-      workflow = workflow.withApplicant(
+      _game = _game.applyRaiseDecision(
         a.id,
-        (_) => const PublicDemoRaiseTransaction()
-            .execute(
-              state: s,
-              applicant: a,
-              decisionMonth: s.month,
-              week: s.month * 4,
-              decision: decision,
-            )
-            .applicant,
+        decisionMonth: s.month,
+        week: s.month * 4,
+        decision: decision,
       );
     });
   }
@@ -580,7 +483,7 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
     );
     if (!mounted || decision == null) return;
     setState(() {
-      s = s.selectSummerBonus(decision);
+      _game = _game.selectSummerBonus(decision);
       _summerBonusDecisionConfirmed = true;
     });
   }
@@ -590,24 +493,8 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
       await decideSummerBonus();
       return;
     }
-    final joined = workflow.joinedApplicants;
     setState(
-      () => s = PublicDemoMonthlyClose.closeJuly(
-        state: _closeGrowth(
-          workflow.assignments
-              .where(
-                (assignment) =>
-                    assignment.nextOrderStatus ==
-                        PublicDemoNextOrderStatus.accepted ||
-                    assignment.replacementStage ==
-                        PublicDemoReplacementStage.ordered,
-              )
-              .map((assignment) => assignment.engineerId)
-              .toSet(),
-        ),
-        monthlyExpenses: _julyMonthlyExpenses,
-        applicants: joined,
-      ).state,
+      () => _game = _game.closeJuly(monthlyExpenses: _julyMonthlyExpenses),
     );
     _resetMonthScroll();
   }
@@ -620,15 +507,14 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
 
   /// Closes any ordinary month from August through March (12MONTH-3). It
   /// mirrors [june]/[july]'s shape (grow, then close) but delegates to the
-  /// common [PublicDemoMonthlyClose.closeOrdinaryMonth] entry point instead
-  /// of a dedicated per-month handler, since September onward has no
+  /// common `PublicDemoAggregate.closeOrdinaryMonth` entry point instead of
+  /// a dedicated per-month handler, since September onward has no
   /// month-specific event the way July's bonus does.
   void closeOrdinaryMonth() {
     setState(
-      () => s = PublicDemoMonthlyClose.closeOrdinaryMonth(
-        state: _closeGrowth(_currentlyAssignedEngineerIds),
+      () => _game = _game.closeOrdinaryMonth(
         monthlyExpenses: _ordinaryMonthlyExpenses,
-      ).state,
+      ),
     );
     _resetMonthScroll();
   }

@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_monthly_close.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_state.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_summer_bonus_plan.dart';
+import 'package:smile_enjoy_story/game/public_demo/public_demo_workflow_state.dart';
 
 /// REVENUE-4 (12MONTH-2): proves the 30-day-site Revenue transaction
 /// (REVENUE-1~3) is correctly wired into [PublicDemoMonthlyClose] — the
@@ -187,6 +188,7 @@ void main() {
       // assigned=2 books 1,000,000 as June's pending.
       final afterMay = PublicDemoMonthlyClose.closeMay(
         state: afterApril.state,
+        workflow: PublicDemoWorkflowState.initial(),
         monthlyExpenses: 800000,
         acceptedHires: 0,
         hiredWithOrders: 0,
@@ -207,6 +209,7 @@ void main() {
       );
       final result = PublicDemoMonthlyClose.closeMay(
         state: start,
+        workflow: PublicDemoWorkflowState.initial(),
         monthlyExpenses: 0,
         acceptedHires: 5,
         hiredWithOrders: 5,

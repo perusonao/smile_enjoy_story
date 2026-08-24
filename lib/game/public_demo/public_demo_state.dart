@@ -6,6 +6,31 @@ import 'public_demo_recruitment.dart';
 import 'public_demo_summer_bonus_plan.dart';
 import 'public_demo_summer_bonus_payment.dart';
 
+/// Authoritative, unforgeable proof that
+/// [PublicDemoState.useSalesSlotForInterview] actually consumed one sales
+/// slot on this exact call (WORKFLOW-STATE-1AB FIX3 P1-1) — not merely that
+/// the method was invoked (it is a no-op, minting nothing, once
+/// `salesRemaining` is exhausted or the fiscal year is already completed).
+///
+/// Constructor private to this file: the only place that can construct one
+/// is [PublicDemoState.useSalesSlotForInterview] itself. This is what closes
+/// WORKFLOW-STATE-1AB FIX2's residual P1-1 gap — `PublicDemoApplicant`
+/// alone can never validate its own interview prerequisite (an available
+/// sales slot lives on the finance side of the aggregate, not on the
+/// applicant) — by making that cross-aggregate fact a locally-checkable,
+/// unforgeable parameter instead:
+/// [PublicDemoApplicant.completeInterview] (public_demo_recruitment.dart)
+/// requires one, so interview authority can never be minted without a real,
+/// same-transaction sales-slot consumption. Only the TYPE (not the private
+/// constructor) needs to cross that file boundary, which Dart's ordinary
+/// cross-file type references allow — `completeInterview` never constructs
+/// one itself, only accepts a genuine instance as a parameter.
+/// [PublicDemoAggregate.completeInterview] (public_demo_aggregate.dart) is
+/// the only production caller of either method.
+class PublicDemoSalesSlotConsumptionProof {
+  const PublicDemoSalesSlotConsumptionProof._();
+}
+
 /// Minimal state for Public Demo 0.1 MVP-A.
 class PublicDemoState {
   factory PublicDemoState({
@@ -308,6 +333,23 @@ class PublicDemoState {
     return copyWith(salesUsed: salesUsed + 1);
   }
 
+  /// Same slot-budget rule as [useSalesSlot], but also returns unforgeable
+  /// proof of genuine consumption when it actually happens
+  /// (WORKFLOW-STATE-1AB FIX3 P1-1). [PublicDemoAggregate.completeInterview]
+  /// is the only production caller: it passes the proof to
+  /// [PublicDemoApplicant.completeInterview], the sole way to mint an
+  /// interview record, so that authority can never be minted without a real,
+  /// same-transaction sales-slot consumption.
+  PublicDemoSalesSlotConsumptionResult useSalesSlotForInterview() {
+    if (fiscalYearCompleted || salesRemaining <= 0) {
+      return PublicDemoSalesSlotConsumptionResult._(state: this, proof: null);
+    }
+    return PublicDemoSalesSlotConsumptionResult._(
+      state: copyWith(salesUsed: salesUsed + 1),
+      proof: const PublicDemoSalesSlotConsumptionProof._(),
+    );
+  }
+
   PublicDemoState advanceToMay({
     required int monthlyExpenses,
     required int orderedEngineers,
@@ -327,6 +369,14 @@ class PublicDemoState {
     );
   }
 
+  /// FIX3 P1-4: [joinedApplicants] is no longer a parameter any outward
+  /// caller controls — [PublicDemoMonthlyClose.closeMay] is now the only
+  /// production caller, and it always passes the complete, authoritative
+  /// `PublicDemoWorkflowState.joinedApplicants` for the workflow it was
+  /// given, never a caller-chosen subset. This method's own contract
+  /// (below) is unchanged: it still trusts nothing beyond each applicant's
+  /// own [PublicDemoApplicant.hasJoined] fact.
+  ///
   /// WORKFLOW-STATE-1AB FIX1 P1-4: [joinedApplicants] carries the
   /// authoritative applicant records themselves (the same ones
   /// [PublicDemoWorkflowState.joinAndKeepOnly] just joined), not a
@@ -723,4 +773,20 @@ class PublicDemoState {
     }
     return selections;
   }
+}
+
+/// Result of [PublicDemoState.useSalesSlotForInterview]: the resulting
+/// [state] always reflects whatever actually happened (unchanged when no
+/// slot was consumed), and [proof] is non-null exactly when a slot really
+/// was consumed on this call (WORKFLOW-STATE-1AB FIX3 P1-1).
+class PublicDemoSalesSlotConsumptionResult {
+  const PublicDemoSalesSlotConsumptionResult._({
+    required this.state,
+    required this.proof,
+  });
+
+  final PublicDemoState state;
+  final PublicDemoSalesSlotConsumptionProof? proof;
+
+  bool get consumed => proof != null;
 }

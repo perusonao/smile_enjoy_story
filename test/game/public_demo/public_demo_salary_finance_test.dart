@@ -6,18 +6,23 @@ import 'package:smile_enjoy_story/game/public_demo/public_demo_salary.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_salary_finance.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_salary_offer.dart';
 
+import 'test_support/public_demo_offer_test_helpers.dart';
+
 void main() {
-  // WORKFLOW-STATE-1AB FIX2 P1-1A: accept() gates on the unforgeable
-  // interview record, not `stage` — markInterviewed() mints it.
-  final applicant = const PublicDemoApplicant(
-    id: 'test',
-    name: 'Test',
-    resumeSummary: 'Java 3年',
-    interviewScore: 70,
-    acceptanceScore: 70,
-    salesSkillFit: 70,
-    requestedMonthlySalary: 320000,
-  ).markInterviewed();
+  // WORKFLOW-STATE-1AB FIX2 P1-1A, FIX3 P1-1: accept() gates on the
+  // unforgeable interview record, not `stage` — completeTestInterview()
+  // mints it via the real completeInterview() entry point.
+  final applicant = completeTestInterview(
+    const PublicDemoApplicant(
+      id: 'test',
+      name: 'Test',
+      resumeSummary: 'Java 3年',
+      interviewScore: 70,
+      acceptanceScore: 70,
+      salesSkillFit: 70,
+      requestedMonthlySalary: 320000,
+    ),
+  );
 
   // WORKFLOW-STATE-1: joining now requires a domain-issued BindingOffer
   // (PublicDemoApplicant.join no longer accepts a bare

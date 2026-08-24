@@ -3,15 +3,20 @@ import 'package:smile_enjoy_story/game/public_demo/public_demo_raise.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_recruitment.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_salary_finance.dart';
 
+import 'test_support/public_demo_offer_test_helpers.dart';
+
 void main() {
-  final joined = const PublicDemoApplicant(
-    id: 'raise-hire',
-    name: 'Raise Hire',
-    resumeSummary: 'Java 3年',
-    interviewScore: 70,
-    acceptanceScore: 70,
-    salesSkillFit: 70,
-    acceptedMonthlySalary: 320000,
+  final joined = acceptTestOffer(
+    const PublicDemoApplicant(
+      id: 'raise-hire',
+      name: 'Raise Hire',
+      resumeSummary: 'Java 3年',
+      interviewScore: 70,
+      acceptanceScore: 70,
+      salesSkillFit: 70,
+      requestedMonthlySalary: 320000,
+    ),
+    offeredMonthlySalary: 320000,
   ).join(week: 9);
 
   test(

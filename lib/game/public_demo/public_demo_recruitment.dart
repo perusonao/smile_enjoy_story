@@ -1,5 +1,6 @@
 import '../../domain/models/employee_relationship_event.dart';
 import '../../domain/models/engineer.dart';
+import 'public_demo_binding_offer.dart';
 
 enum PublicDemoRaiseDecision { hold, smallRaise, requestedRaise }
 
@@ -41,6 +42,7 @@ class PublicDemoApplicant {
     this.raisedMonthlySalary,
     this.raiseEffectiveMonth,
     this.stage = PublicDemoApplicantStage.applied,
+    this.bindingOffer,
   }) : assert(experienceMonths >= 0, 'experienceMonths must not be negative');
 
   final String id;
@@ -69,6 +71,12 @@ class PublicDemoApplicant {
   final int? raiseEffectiveMonth;
   final PublicDemoApplicantStage stage;
 
+  /// Authoritative provenance for this applicant's accepted salary, minted
+  /// only by [PublicDemoOfferAcceptance.accept] (WORKFLOW-STATE-1 §9). Once
+  /// set it is never cleared or replaced — [copyWith] intentionally has no
+  /// way to null it back out.
+  final PublicDemoBindingOffer? bindingOffer;
+
   PublicDemoApplicant copyWith({
     PublicDemoApplicantStage? stage,
     int? acceptedMonthlySalary,
@@ -81,6 +89,7 @@ class PublicDemoApplicant {
     PublicDemoRaiseDecision? raiseDecision,
     int? raisedMonthlySalary,
     int? raiseEffectiveMonth,
+    PublicDemoBindingOffer? bindingOffer,
   }) => PublicDemoApplicant(
     id: id,
     name: name,
@@ -102,7 +111,13 @@ class PublicDemoApplicant {
     raisedMonthlySalary: raisedMonthlySalary ?? this.raisedMonthlySalary,
     raiseEffectiveMonth: raiseEffectiveMonth ?? this.raiseEffectiveMonth,
     stage: stage ?? this.stage,
+    bindingOffer: bindingOffer ?? this.bindingOffer,
   );
+
+  /// Whether this applicant has authoritative, domain-issued provenance for
+  /// their accepted salary. [PublicDemoJoinTransaction] requires this before
+  /// it will join them (WORKFLOW-STATE-1 §12A).
+  bool get hasBindingOffer => bindingOffer != null;
 
   bool get hasJoined => employeeMorale != null && employeeCompanyTrust != null;
 
@@ -115,10 +130,16 @@ class PublicDemoApplicant {
 
   /// Applies the accepted salary condition once, at actual entry rather than
   /// at offer time. Public Demo does not yet own an Engineer runtime.
+  ///
+  /// This intentionally also requires [bindingOffer]: join without a
+  /// domain-issued [PublicDemoBindingOffer] is structurally impossible, at
+  /// both this model level and [PublicDemoJoinTransaction] (the sanctioned
+  /// entry point every caller should use instead of this method directly).
   PublicDemoApplicant join({required int week}) {
     if (hasJoined ||
         stage == PublicDemoApplicantStage.offerDeclined ||
-        acceptedMonthlySalary == null) {
+        acceptedMonthlySalary == null ||
+        bindingOffer == null) {
       return this;
     }
     final event = EmployeeRelationshipEvent(

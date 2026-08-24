@@ -129,6 +129,15 @@ class PublicDemoState {
       salesUsed,
       engineersWaiting,
       engineersAssigned;
+
+  /// A DERIVED PROJECTION (WORKFLOW-STATE-1 §24), kept here only for the
+  /// finance/monthly-close callers already reading it as a plain
+  /// `List<String>`. SOURCE OF TRUTH: [PublicDemoWorkflowState.applicants]
+  /// (specifically each applicant's `hasJoined`), surfaced as
+  /// `PublicDemoWorkflowState.joinedApplicantIds`. This field is only ever
+  /// written by passing that already-computed projection in at month-close
+  /// time (see `PublicDemoMonthlyClose.closeMay`'s `joinedApplicantIds`
+  /// parameter) — nothing here writes back through to the workflow.
   final List<String> joinedApplicantIds;
 
   /// Actual employee capabilities. Assignments only own project conditions.

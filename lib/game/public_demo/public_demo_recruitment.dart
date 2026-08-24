@@ -135,11 +135,20 @@ class PublicDemoApplicant {
   /// domain-issued [PublicDemoBindingOffer] is structurally impossible, at
   /// both this model level and [PublicDemoJoinTransaction] (the sanctioned
   /// entry point every caller should use instead of this method directly).
+  ///
+  /// WORKFLOW-STATE-1AB FIX1 P1-1D/F: also requires the offer's own
+  /// [PublicDemoBindingOffer.applicantId] to match [id] — a caller cannot
+  /// join by reusing another applicant's genuine offer via
+  /// `copyWith(bindingOffer: ...)`, since that offer's identity would not
+  /// match. The authoritative salary always comes from the offer itself
+  /// (never the separately mutable [acceptedMonthlySalary] field a caller
+  /// could otherwise tamper with via `copyWith` before joining).
   PublicDemoApplicant join({required int week}) {
+    final offer = bindingOffer;
     if (hasJoined ||
         stage == PublicDemoApplicantStage.offerDeclined ||
-        acceptedMonthlySalary == null ||
-        bindingOffer == null) {
+        offer == null ||
+        offer.applicantId != id) {
       return this;
     }
     final event = EmployeeRelationshipEvent(
@@ -149,6 +158,7 @@ class PublicDemoApplicant {
       trustDelta: salaryTrustDelta,
     );
     return copyWith(
+      acceptedMonthlySalary: offer.acceptedMonthlySalary,
       employeeMorale: (defaultEmployeeMorale + event.moraleDelta).clamp(0, 100),
       employeeCompanyTrust: (defaultEmployeeCompanyTrust + event.trustDelta)
           .clamp(0, 100),

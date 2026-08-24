@@ -327,16 +327,27 @@ class PublicDemoState {
     );
   }
 
+  /// WORKFLOW-STATE-1AB FIX1 P1-4: [joinedApplicants] carries the
+  /// authoritative applicant records themselves (the same ones
+  /// [PublicDemoWorkflowState.joinAndKeepOnly] just joined), not a
+  /// caller-supplied id list — [joinedApplicantIds] is derived here from
+  /// each applicant's own [PublicDemoApplicant.hasJoined] fact, so a caller
+  /// cannot make this projection diverge from actual join state by passing
+  /// an id with no correspondingly-joined applicant behind it.
   PublicDemoState advanceToJune({
     required int monthlyExpenses,
     required int acceptedHires,
     required int hiredWithOrders,
-    List<String> joinedApplicantIds = const [],
+    Iterable<PublicDemoApplicant> joinedApplicants = const [],
   }) {
     if (month != 5) return this;
     final hires = acceptedHires < 0 ? 0 : acceptedHires;
     final ordered = hiredWithOrders.clamp(0, hires);
     final nextCash = cash - monthlyExpenses;
+    final newlyJoinedIds = [
+      for (final applicant in joinedApplicants)
+        if (applicant.hasJoined) applicant.id,
+    ];
     return copyWith(
       month: 6,
       cash: nextCash,
@@ -345,10 +356,8 @@ class PublicDemoState {
       engineersAssigned: engineersAssigned + ordered,
       engineersWaiting: engineersWaiting + (hires - ordered),
       joinedApplicantIds: [
-        ...this.joinedApplicantIds,
-        ...joinedApplicantIds.where(
-          (id) => !this.joinedApplicantIds.contains(id),
-        ),
+        ...joinedApplicantIds,
+        ...newlyJoinedIds.where((id) => !joinedApplicantIds.contains(id)),
       ],
       monthOpeningCash: nextCash,
       monthTrainingSpent: 0,
@@ -439,7 +448,8 @@ class PublicDemoState {
       copyWith(monthTrainingSpent: monthTrainingSpent + amount);
 
   /// Records a recruitment-media charge already computed and applied by
-  /// [PublicDemoRecruitmentTransaction], mirroring [recordTrainingSpend].
+  /// PublicDemoRecruitmentWorkflowTransaction, mirroring
+  /// [recordTrainingSpend].
   PublicDemoState recordRecruitmentSpend(int amount) =>
       copyWith(monthRecruitmentSpent: monthRecruitmentSpent + amount);
 

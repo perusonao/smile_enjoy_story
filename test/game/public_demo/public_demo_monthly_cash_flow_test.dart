@@ -3,10 +3,11 @@ import 'package:smile_enjoy_story/game/public_demo/public_demo_internal_training
 import 'package:smile_enjoy_story/game/public_demo/public_demo_monthly_cash_flow.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_monthly_close.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_recruitment_medium.dart';
-import 'package:smile_enjoy_story/game/public_demo/public_demo_recruitment_transaction.dart';
+import 'package:smile_enjoy_story/game/public_demo/public_demo_recruitment_workflow_transaction.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_salary.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_state.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_summer_bonus_plan.dart';
+import 'package:smile_enjoy_story/game/public_demo/public_demo_workflow_state.dart';
 
 /// FINANCE-UX-1: proves [PublicDemoMonthlyClose] records an accurate,
 /// non-recomputed [PublicDemoMonthlyCashFlow] on [PublicDemoState] for every
@@ -275,8 +276,12 @@ void main() {
       expect(trainingResult.isSuccess, isTrue);
       state = trainingResult.state;
 
-      final recruitmentResult = const PublicDemoRecruitmentTransaction()
-          .execute(state: state, medium: PublicDemoRecruitmentMedium.engineer);
+      final recruitmentResult = PublicDemoRecruitmentWorkflowTransaction()
+          .execute(
+            state: state,
+            workflow: PublicDemoWorkflowState.initial(),
+            medium: PublicDemoRecruitmentMedium.engineer,
+          );
       expect(recruitmentResult.isSuccess, isTrue);
       state = recruitmentResult.state;
 

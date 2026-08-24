@@ -15,6 +15,7 @@ void main() {
     acceptanceScore: 70,
     salesSkillFit: 70,
     requestedMonthlySalary: 320000,
+    stage: PublicDemoApplicantStage.interviewed,
   );
 
   PublicDemoSalaryOffer offerAt(int salary) =>
@@ -52,6 +53,33 @@ void main() {
 
     expect(result.applicant.acceptedMonthlySalary, 360000);
     expect(result.bindingOffer!.acceptedMonthlySalary, 360000);
+  });
+
+  test('accepting an offer before the applicant reached the interviewed stage '
+      'is rejected (P1-1B)', () {
+    const notYetInterviewed = PublicDemoApplicant(
+      id: 'app-02',
+      name: 'Not Interviewed',
+      resumeSummary: 'Java 1年',
+      interviewScore: 70,
+      acceptanceScore: 70,
+      salesSkillFit: 70,
+      requestedMonthlySalary: 320000,
+    );
+    final result = PublicDemoOfferAcceptance.accept(
+      applicant: notYetInterviewed,
+      offer: PublicDemoSalaryOfferEvaluator.evaluate(
+        applicant: notYetInterviewed,
+        offeredMonthlySalary: 320000,
+      ),
+      fiscalCloseId: PublicDemoFiscalCloseId.forMonth(5),
+    );
+
+    expect(result.isAccepted, isFalse);
+    expect(result.status, PublicDemoOfferAcceptanceStatus.invalidStage);
+    expect(result.bindingOffer, isNull);
+    expect(result.applicant, same(notYetInterviewed));
+    expect(result.applicant.hasBindingOffer, isFalse);
   });
 
   test('a declined offer never mints a BindingOffer', () {

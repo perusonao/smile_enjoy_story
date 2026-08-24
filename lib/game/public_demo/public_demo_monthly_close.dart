@@ -97,7 +97,7 @@ class PublicDemoMonthlyClose {
     required int monthlyExpenses,
     required int acceptedHires,
     required int hiredWithOrders,
-    List<String> joinedApplicantIds = const [],
+    Iterable<PublicDemoApplicant> joinedApplicants = const [],
   }) {
     final closedMonth = state.month;
     final isMay = closedMonth == 5;
@@ -109,7 +109,7 @@ class PublicDemoMonthlyClose {
       monthlyExpenses: monthlyExpenses,
       acceptedHires: acceptedHires,
       hiredWithOrders: hiredWithOrders,
-      joinedApplicantIds: joinedApplicantIds,
+      joinedApplicants: joinedApplicants,
     );
     if (isMay) {
       next = next.recordMonthlyCashFlow(

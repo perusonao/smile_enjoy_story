@@ -1,8 +1,9 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_recruitment.dart';
-import 'package:smile_enjoy_story/game/public_demo/public_demo_recruitment_transaction.dart';
+import 'package:smile_enjoy_story/game/public_demo/public_demo_recruitment_workflow_transaction.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_recruitment_medium.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_state.dart';
+import 'package:smile_enjoy_story/game/public_demo/public_demo_workflow_state.dart';
 
 void main() {
   const experiencedApplicant = PublicDemoApplicant(
@@ -87,15 +88,18 @@ void main() {
   });
 
   test('recruitment media preserves template experience', () {
-    const transaction = PublicDemoRecruitmentTransaction();
+    final transaction = PublicDemoRecruitmentWorkflowTransaction();
     final result = transaction.execute(
       state: PublicDemoState.aprilStart(),
+      workflow: PublicDemoWorkflowState.initial(),
       medium: PublicDemoRecruitmentMedium.engineer,
     );
 
     expect(result.isSuccess, isTrue);
     expect(
-      result.generatedApplicants.map((applicant) => applicant.experienceMonths),
+      result.transactionResult.generatedApplicants.map(
+        (applicant) => applicant.experienceMonths,
+      ),
       everyElement(greaterThan(0)),
     );
   });

@@ -15,6 +15,7 @@ void main() {
     interviewScore: 70,
     acceptanceScore: 70,
     salesSkillFit: 70,
+    stage: PublicDemoApplicantStage.interviewed,
   );
 
   // Routes through the real PublicDemoOfferAcceptance.accept command (the

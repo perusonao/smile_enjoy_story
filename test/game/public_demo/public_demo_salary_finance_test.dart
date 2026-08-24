@@ -15,6 +15,7 @@ void main() {
     acceptanceScore: 70,
     salesSkillFit: 70,
     requestedMonthlySalary: 320000,
+    stage: PublicDemoApplicantStage.interviewed,
   );
 
   // WORKFLOW-STATE-1: joining now requires a domain-issued BindingOffer

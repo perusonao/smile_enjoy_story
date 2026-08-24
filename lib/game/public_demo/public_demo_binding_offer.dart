@@ -66,6 +66,21 @@ class PublicDemoOfferAcceptance {
       );
     }
 
+    // WORKFLOW-STATE-1AB FIX1 P1-1B: an offer can only be minted for an
+    // applicant who has actually reached the post-interview selection
+    // stage. Without this, a caller could invoke this command on an
+    // applicant still at `applied`/`resumeReviewed` (or any other stage)
+    // and mint a valid BindingOffer for someone who was never evaluated —
+    // an authority bypass around the interview gate the UI otherwise
+    // enforces only cosmetically.
+    if (applicant.stage != PublicDemoApplicantStage.interviewed) {
+      return PublicDemoOfferAcceptanceResult._(
+        applicant: applicant,
+        bindingOffer: null,
+        status: PublicDemoOfferAcceptanceStatus.invalidStage,
+      );
+    }
+
     final decided = offer
         .applyTo(applicant)
         .copyWith(
@@ -109,4 +124,9 @@ class PublicDemoOfferAcceptanceResult {
   bool get isAccepted => status == PublicDemoOfferAcceptanceStatus.accepted;
 }
 
-enum PublicDemoOfferAcceptanceStatus { accepted, declined, alreadyDecided }
+enum PublicDemoOfferAcceptanceStatus {
+  accepted,
+  declined,
+  alreadyDecided,
+  invalidStage,
+}

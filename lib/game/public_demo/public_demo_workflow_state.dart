@@ -133,13 +133,20 @@ class PublicDemoWorkflowState {
   PublicDemoWorkflowState joinAndKeepOnly({
     required List<String> applicantIds,
     required int week,
+    required PublicDemoFiscalCloseId currentFiscalCloseId,
   }) {
     final byId = {for (final applicant in applicants) applicant.id: applicant};
     const transaction = PublicDemoJoinTransaction();
     final kept = <PublicDemoApplicant>[
       for (final id in applicantIds)
         if (byId[id] case final applicant?)
-          transaction.join(applicant: applicant, week: week).applicant,
+          transaction
+              .join(
+                applicant: applicant,
+                week: week,
+                currentFiscalCloseId: currentFiscalCloseId,
+              )
+              .applicant,
     ];
     return copyWith(applicants: kept);
   }
@@ -205,13 +212,49 @@ class PublicDemoWorkflowState {
     ],
   );
 
-  /// Replaces the assignment roster wholesale — used only at the May/June
-  /// transitions, which already compute the next month's full roster as one
-  /// value (matches the pre-cutover `assignments = nextAssignments`
-  /// reassignment).
-  PublicDemoWorkflowState withAssignments(
+  /// Replaces the assignment roster wholesale. Private to this file
+  /// (WORKFLOW-STATE-1AB FIX1 P1-3): arbitrary roster replacement is not a
+  /// production-sanctioned capability — only [assignOrderedForMay] below,
+  /// which computes the replacement roster itself from this workflow's own
+  /// authoritative engineer/applicant stage facts, may call it. No UI or
+  /// other caller can supply its own roster.
+  PublicDemoWorkflowState _withAssignments(
     List<PublicDemoAssignment> assignments,
   ) => copyWith(assignments: assignments);
+
+  /// The single domain-owned way to build May's assignment roster
+  /// (WORKFLOW-STATE-1AB FIX1 P1-3). Only engineers whose sales pipeline
+  /// reached [PublicDemoSalesStage.ordered] and only applicants whose
+  /// recruitment pipeline reached [PublicDemoApplicantStage.juneOrdered]
+  /// become an assignment — this reads only the authoritative engineer/
+  /// applicant stage facts already on this workflow, so the caller (the
+  /// widget) supplies no roster of its own and cannot fabricate one.
+  /// Reproduces exactly the roster the pre-cutover widget computed inline.
+  PublicDemoWorkflowState assignOrderedForMay() {
+    final nextAssignments = [
+      for (final engineer in engineers)
+        if (engineer.stage == PublicDemoSalesStage.ordered)
+          publicDemoInitialAssignments
+                  .where((assignment) => assignment.engineerId == engineer.id)
+                  .firstOrNull ??
+              PublicDemoAssignment.forOrderedEngineer(
+                engineerId: engineer.id,
+                engineerName: engineer.name,
+                humanity: engineer.interviewProfile.humanity,
+              ),
+      for (final applicant in applicants)
+        if (applicant.stage == PublicDemoApplicantStage.juneOrdered)
+          PublicDemoAssignment(
+            engineerId: applicant.id,
+            engineerName: applicant.name,
+            projectName: '新規開発支援',
+            deliveryPressure: 50,
+            budgetHealth: 70,
+            humanity: 70,
+          ),
+    ];
+    return _withAssignments(nextAssignments);
+  }
 
   // ---------------------------------------------------------------------
   // Cross-cutting projections consumed by monthly close / Growth / Revenue

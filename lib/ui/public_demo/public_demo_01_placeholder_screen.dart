@@ -7,7 +7,6 @@ import '../../game/public_demo/public_demo_monthly_close.dart';
 import '../../game/public_demo/public_demo_month_label.dart';
 import '../../game/public_demo/public_demo_recruitment.dart';
 import '../../game/public_demo/public_demo_recruitment_medium.dart';
-import '../../game/public_demo/public_demo_recruitment_transaction.dart';
 import '../../game/public_demo/public_demo_recruitment_workflow_transaction.dart';
 import '../../game/public_demo/public_demo_sales.dart';
 import '../../game/public_demo/public_demo_salary_finance.dart';
@@ -62,7 +61,7 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
     // applicants (PublicDemoWorkflowState) commit together as one atomic
     // result — "cash spent, applicants missing" and "applicants created,
     // cash not spent" are both impossible outcomes of this call.
-    final result = const PublicDemoRecruitmentWorkflowTransaction().execute(
+    final result = PublicDemoRecruitmentWorkflowTransaction().execute(
       state: s,
       workflow: workflow,
       medium: selected,
@@ -377,28 +376,6 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
     final first = workflow.applicants
         .where((a) => a.stage == PublicDemoApplicantStage.juneOrdered)
         .toList();
-    final nextAssignments = [
-      for (final e in workflow.engineers)
-        if (e.stage == PublicDemoSalesStage.ordered)
-          publicDemoInitialAssignments
-                  .where((a) => a.engineerId == e.id)
-                  .firstOrNull ??
-              PublicDemoAssignment.forOrderedEngineer(
-                engineerId: e.id,
-                engineerName: e.name,
-                humanity: e.interviewProfile.humanity,
-              ),
-      for (final a in workflow.applicants)
-        if (a.stage == PublicDemoApplicantStage.juneOrdered)
-          PublicDemoAssignment(
-            engineerId: a.id,
-            engineerName: a.name,
-            projectName: '新規開発支援',
-            deliveryPressure: 50,
-            budgetHealth: 70,
-            humanity: 70,
-          ),
-    ];
     if (!mounted) return;
     if (first.isNotEmpty) {
       await _precacheEventImage(AssetPaths.eventFirstAssignment);
@@ -416,11 +393,13 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
       if (!mounted) return;
     }
     setState(() {
-      // WORKFLOW-STATE-1 §12: join is authoritative — each id must carry a
-      // domain-issued BindingOffer (minted only by offer(), above) before it
-      // can join; there is no salary parameter to supply here at all. This
-      // reproduces the pre-cutover behavior of replacing the applicant
-      // roster with exactly this (now-joined-where-eligible) subset.
+      // WORKFLOW-STATE-1 §12, WORKFLOW-STATE-1AB FIX1 P1-1: join is
+      // authoritative — each id must carry a domain-issued BindingOffer
+      // (minted only by offer(), above), matching applicant identity, and
+      // still valid at this fiscal close, before it can join; there is no
+      // salary parameter to supply here at all. This reproduces the
+      // pre-cutover behavior of replacing the applicant roster with exactly
+      // this (now-joined-where-eligible) subset.
       final joinIds = workflow.applicants
           .where(accepted)
           .map((a) => a.id)
@@ -428,11 +407,17 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
       var nextWorkflow = workflow.joinAndKeepOnly(
         applicantIds: joinIds,
         week: 9,
+        currentFiscalCloseId: PublicDemoFiscalCloseId.forMonth(s.month),
       );
       final joinedNow = nextWorkflow.applicants
           .where((a) => a.hasJoined)
           .toList();
-      nextWorkflow = nextWorkflow.withJoinedEngineers(joinedNow);
+      // P1-3: the assignment roster is computed by the domain itself, from
+      // its own authoritative engineer/applicant stage facts — the widget
+      // supplies no roster and constructs no PublicDemoAssignment directly.
+      nextWorkflow = nextWorkflow
+          .withJoinedEngineers(joinedNow)
+          .assignOrderedForMay();
       s =
           PublicDemoMonthlyClose.closeMay(
             state: _closeGrowth(
@@ -447,7 +432,11 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
             monthlyExpenses: expense,
             acceptedHires: hires,
             hiredWithOrders: ordered,
-            joinedApplicantIds: joinedNow.map((a) => a.id).toList(),
+            // P1-4: joinedApplicantIds is a derived projection — the domain
+            // derives it from these authoritative (now-joined) applicant
+            // records itself; the widget no longer passes a separately
+            // maintained id list.
+            joinedApplicants: joinedNow,
           ).state.copyWith(
             engineerRuntimes: [
               ...s.engineerRuntimes,
@@ -455,7 +444,7 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
                 PublicDemoEngineerRuntime.fromApplicant(applicant),
             ],
           );
-      workflow = nextWorkflow.withAssignments(nextAssignments);
+      workflow = nextWorkflow;
     });
     _resetMonthScroll();
   }

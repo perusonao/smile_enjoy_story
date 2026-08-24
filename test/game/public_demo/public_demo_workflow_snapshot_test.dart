@@ -38,12 +38,17 @@ void main() {
         acceptanceScore: template.acceptanceScore,
         salesSkillFit: template.salesSkillFit,
         requestedMonthlySalary: template.requestedMonthlySalary,
+        stage: PublicDemoApplicantStage.interviewed,
       ),
       offer: offer,
       fiscalCloseId: PublicDemoFiscalCloseId.forMonth(5),
     ).applicant;
     return const PublicDemoJoinTransaction()
-        .join(applicant: accepted, week: 9)
+        .join(
+          applicant: accepted,
+          week: 9,
+          currentFiscalCloseId: PublicDemoFiscalCloseId.forMonth(5),
+        )
         .applicant;
   }
 
@@ -92,7 +97,11 @@ void main() {
 
       // Build an entirely different workflow (as production code would via
       // setState) and confirm the already-captured snapshot is unaffected.
-      final mutated = workflow.withAssignments(const []);
+      final mutated = PublicDemoWorkflowState(
+        applicants: workflow.applicants,
+        engineers: workflow.engineers,
+        assignments: const [],
+      );
       expect(mutated.assignments, isEmpty);
       expect(snapshot.assignedEngineerIds, {'hire-01'});
       expect(snapshot.joinedPayrollIds, ['hire-01']);

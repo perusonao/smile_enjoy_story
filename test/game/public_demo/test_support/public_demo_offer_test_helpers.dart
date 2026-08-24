@@ -28,8 +28,17 @@ PublicDemoApplicant acceptTestOffer(
     motivationDelta: motivationDelta,
     trustDelta: trustDelta,
   );
+  // WORKFLOW-STATE-1AB FIX1 P1-1B: accept() now requires the applicant to
+  // be at the real pre-offer stage. Test fixtures across this suite
+  // construct applicants at the default `applied` stage since only salary/
+  // join math is under test here, not the interview gate itself — so this
+  // helper forces the realistic precondition rather than every call site
+  // repeating it.
+  final interviewed = applicant.stage == PublicDemoApplicantStage.interviewed
+      ? applicant
+      : applicant.copyWith(stage: PublicDemoApplicantStage.interviewed);
   return PublicDemoOfferAcceptance.accept(
-    applicant: applicant,
+    applicant: interviewed,
     offer: offer,
     fiscalCloseId: PublicDemoFiscalCloseId.forMonth(fiscalCloseMonth),
   ).applicant;

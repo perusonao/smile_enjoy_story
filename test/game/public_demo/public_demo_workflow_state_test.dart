@@ -198,6 +198,7 @@ void main() {
           acceptanceScore: 70,
           salesSkillFit: 70,
           requestedMonthlySalary: 320000,
+          stage: PublicDemoApplicantStage.interviewed,
         );
         final offer = PublicDemoSalaryOffer(
           requestedMonthlySalary: template.requestedMonthlySalary,
@@ -231,6 +232,7 @@ void main() {
         final next = workflow.joinAndKeepOnly(
           applicantIds: const ['joins'],
           week: 9,
+          currentFiscalCloseId: PublicDemoFiscalCloseId.forMonth(5),
         );
 
         expect(next.applicants, hasLength(1));
@@ -247,7 +249,11 @@ void main() {
             assignments: const [],
           );
           final joined = workflow
-              .joinAndKeepOnly(applicantIds: const ['joins'], week: 9)
+              .joinAndKeepOnly(
+                applicantIds: const ['joins'],
+                week: 9,
+                currentFiscalCloseId: PublicDemoFiscalCloseId.forMonth(5),
+              )
               .applicants;
 
           final next = workflow.withJoinedEngineers(joined);
@@ -262,6 +268,120 @@ void main() {
       );
     },
   );
+
+  group('assignOrderedForMay is the sole assignment authority (P1-3)', () {
+    const orderedEngineer = PublicDemoEngineerSales(
+      id: 'eng-01',
+      name: 'Ordered Engineer',
+      summary: 'summary',
+      stage: PublicDemoSalesStage.ordered,
+      interviewProfile: PublicDemoInterviewProfile(
+        skillFit: 70,
+        humanity: 70,
+        morale: 70,
+        clientTrust: 60,
+      ),
+    );
+    const waitingEngineer = PublicDemoEngineerSales(
+      id: 'eng-02',
+      name: 'Waiting Engineer',
+      summary: 'summary',
+      interviewProfile: PublicDemoInterviewProfile(
+        skillFit: 70,
+        humanity: 70,
+        morale: 70,
+        clientTrust: 60,
+      ),
+    );
+    const orderedApplicant = PublicDemoApplicant(
+      id: 'app-ordered',
+      name: 'Ordered Applicant',
+      resumeSummary: 'Java 1年',
+      interviewScore: 70,
+      acceptanceScore: 70,
+      salesSkillFit: 70,
+      stage: PublicDemoApplicantStage.juneOrdered,
+    );
+    const notOrderedApplicant = PublicDemoApplicant(
+      id: 'app-not-ordered',
+      name: 'Not Ordered Applicant',
+      resumeSummary: 'Java 1年',
+      interviewScore: 70,
+      acceptanceScore: 70,
+      salesSkillFit: 70,
+      stage: PublicDemoApplicantStage.preEntryClientPassed,
+    );
+
+    test('valid assignment path: only ordered engineers/applicants become '
+        'an assignment', () {
+      final workflow = PublicDemoWorkflowState(
+        applicants: const [orderedApplicant, notOrderedApplicant],
+        engineers: const [orderedEngineer, waitingEngineer],
+        assignments: const [],
+      );
+
+      final next = workflow.assignOrderedForMay();
+
+      expect(
+        next.assignments.map((a) => a.engineerId),
+        unorderedEquals(['eng-01', 'app-ordered']),
+      );
+    });
+
+    test('an engineer that never reached the ordered stage is rejected: it '
+        'never gets an assignment, however the roster is computed', () {
+      final workflow = PublicDemoWorkflowState(
+        applicants: const [],
+        engineers: const [waitingEngineer],
+        assignments: const [],
+      );
+
+      final next = workflow.assignOrderedForMay();
+
+      expect(next.assignments, isEmpty);
+    });
+
+    test('calling assignOrderedForMay again never duplicates an assignment: '
+        'the roster is always replaced wholesale from current stage facts, '
+        'never appended to', () {
+      final workflow = PublicDemoWorkflowState(
+        applicants: const [orderedApplicant],
+        engineers: const [orderedEngineer],
+        assignments: const [],
+      );
+
+      final once = workflow.assignOrderedForMay();
+      final twice = once.assignOrderedForMay();
+
+      expect(twice.assignments.length, once.assignments.length);
+      expect(
+        twice.assignments.map((a) => a.engineerId).toSet(),
+        once.assignments.map((a) => a.engineerId).toSet(),
+      );
+    });
+
+    test(
+      'the caller cannot fabricate an arbitrary roster: '
+      'PublicDemoWorkflowState exposes no public way to replace assignments '
+      'except by deriving them from its own engineer/applicant stage facts',
+      () {
+        // This is a compile-time guarantee: `withAssignments` (the former
+        // wholesale-replace method) is private to
+        // public_demo_workflow_state.dart, so no other file — including a
+        // widget or this test — can call it directly. The only way to
+        // change the assignment roster from outside this file is through
+        // assignOrderedForMay, which reads only this workflow's own
+        // authoritative stage facts.
+        final workflow = PublicDemoWorkflowState(
+          applicants: const [orderedApplicant],
+          engineers: const [orderedEngineer],
+          assignments: const [],
+        );
+        final next = workflow.assignOrderedForMay();
+        expect(next.assignments, isNotEmpty);
+      },
+    );
+  });
 
   test(
     'moraleByEngineerId combines engineer motivation and joined-applicant morale',
@@ -285,6 +405,7 @@ void main() {
         acceptanceScore: 70,
         salesSkillFit: 70,
         requestedMonthlySalary: 320000,
+        stage: PublicDemoApplicantStage.interviewed,
       );
       final offer = PublicDemoSalaryOffer(
         requestedMonthlySalary: template.requestedMonthlySalary,

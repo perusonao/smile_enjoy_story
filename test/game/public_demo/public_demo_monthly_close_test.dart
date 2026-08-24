@@ -19,6 +19,16 @@ void main() {
     requestedMonthlySalary: 320000,
   );
 
+  // WORKFLOW-STATE-1AB FIX1 P1-4: advanceToJune/closeMay now derive
+  // joinedApplicantIds from real applicant records (via `hasJoined`), not a
+  // caller-supplied id list — this fixture stands in for the authoritative,
+  // already-joined applicant [PublicDemoWorkflowState.joinAndKeepOnly] would
+  // hand these entry points in production.
+  final joinedHire = hire.copyWith(
+    employeeMorale: 70,
+    employeeCompanyTrust: 70,
+  );
+
   /// [checkMoney] gates `cash`/`pendingRevenue` equivalence: REVENUE-4 makes
   /// the common close intentionally diverge from the legacy per-month path
   /// on those two fields whenever Revenue actually settles (see the 5->6 and
@@ -117,14 +127,14 @@ void main() {
         monthlyExpenses: 800000,
         acceptedHires: 1,
         hiredWithOrders: 1,
-        joinedApplicantIds: const ['close-hire-01'],
+        joinedApplicants: [joinedHire],
       );
       final result = PublicDemoMonthlyClose.closeMay(
         state: start,
         monthlyExpenses: 800000,
         acceptedHires: 1,
         hiredWithOrders: 1,
-        joinedApplicantIds: const ['close-hire-01'],
+        joinedApplicants: [joinedHire],
       );
       expect(result.isClosed, isTrue);
       expect(result.closedMonth, 5);
@@ -156,6 +166,74 @@ void main() {
     });
   });
 
+  group(
+    'joinedApplicantIds is a derived projection, not caller authority (P1-4)',
+    () {
+      PublicDemoState mayState() => PublicDemoState.aprilStart().advanceToMay(
+        monthlyExpenses: 800000,
+        orderedEngineers: 1,
+      );
+
+      test('an id with no correspondingly-joined applicant behind it never '
+          'appears: only applicants whose hasJoined is actually true '
+          'contribute an id', () {
+        final notActuallyJoined =
+            hire; // hasJoined is false: no morale/trust set.
+        final start = mayState();
+
+        final result = start.advanceToJune(
+          monthlyExpenses: 800000,
+          acceptedHires: 1,
+          hiredWithOrders: 1,
+          joinedApplicants: [notActuallyJoined],
+        );
+
+        expect(result.joinedApplicantIds, isEmpty);
+      });
+
+      test(
+        'the June/payroll path derives joined ids from the authoritative '
+        'applicant records passed in, not any separately maintained list',
+        () {
+          final start = mayState();
+
+          final result = PublicDemoMonthlyClose.closeMay(
+            state: start,
+            monthlyExpenses: 800000,
+            acceptedHires: 1,
+            hiredWithOrders: 1,
+            joinedApplicants: [joinedHire],
+          );
+
+          expect(result.state.joinedApplicantIds, ['close-hire-01']);
+        },
+      );
+
+      test('joinedApplicantIds cannot diverge from the workflow: passing '
+          'multiple applicants only the truly-joined ones are reflected', () {
+        const secondHire = PublicDemoApplicant(
+          id: 'close-hire-02',
+          name: 'Second Hire',
+          resumeSummary: 'Java 2年',
+          interviewScore: 65,
+          acceptanceScore: 65,
+          salesSkillFit: 65,
+          requestedMonthlySalary: 300000,
+        );
+        final start = mayState();
+
+        final result = start.advanceToJune(
+          monthlyExpenses: 800000,
+          acceptedHires: 2,
+          hiredWithOrders: 1,
+          joinedApplicants: [joinedHire, secondHire],
+        );
+
+        expect(result.joinedApplicantIds, ['close-hire-01']);
+      });
+    },
+  );
+
   group('6->7 equivalence (June close)', () {
     PublicDemoState juneState() => PublicDemoState.aprilStart()
         .advanceToMay(monthlyExpenses: 800000, orderedEngineers: 1)
@@ -163,7 +241,7 @@ void main() {
           monthlyExpenses: 800000,
           acceptedHires: 1,
           hiredWithOrders: 1,
-          joinedApplicantIds: const ['close-hire-01'],
+          joinedApplicants: [joinedHire],
         );
 
     test('only one engineer keeps a July assignment', () {

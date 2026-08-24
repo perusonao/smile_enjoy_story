@@ -276,14 +276,16 @@ void main() {
       expect(trainingResult.isSuccess, isTrue);
       state = trainingResult.state;
 
+      PublicDemoState? committedState;
       final recruitmentResult = PublicDemoRecruitmentWorkflowTransaction()
           .execute(
             state: state,
             workflow: PublicDemoWorkflowState.initial(),
             medium: PublicDemoRecruitmentMedium.engineer,
+            onCommitted: (nextState, _) => committedState = nextState,
           );
       expect(recruitmentResult.isSuccess, isTrue);
-      state = recruitmentResult.state;
+      state = committedState!;
 
       final result = PublicDemoMonthlyClose.closeOrdinaryMonth(
         state: state,

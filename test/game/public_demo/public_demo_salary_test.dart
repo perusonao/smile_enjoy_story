@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:smile_enjoy_story/game/public_demo/public_demo_fiscal_close_id.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_raise.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_recruitment.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_salary.dart';
@@ -60,10 +61,11 @@ void main() {
         550000,
       );
 
-      final joined = acceptTestOffer(
-        applicant,
-        offeredMonthlySalary: 320000,
-      ).join(week: 9);
+      final joined = acceptTestOffer(applicant, offeredMonthlySalary: 320000)
+          .join(
+            week: 9,
+            currentFiscalCloseId: PublicDemoFiscalCloseId.forMonth(5),
+          );
       expect(
         PublicDemoSalary.currentMonthlySalaryFor(
           joined.id,
@@ -82,7 +84,10 @@ void main() {
     'a raise is visible through the same lookup from its effective month',
     () {
       final raised = acceptTestOffer(applicant, offeredMonthlySalary: 320000)
-          .join(week: 9)
+          .join(
+            week: 9,
+            currentFiscalCloseId: PublicDemoFiscalCloseId.forMonth(5),
+          )
           .decideRaise(
             decisionMonth: 6,
             week: 24,

@@ -66,14 +66,19 @@ class PublicDemoOfferAcceptance {
       );
     }
 
-    // WORKFLOW-STATE-1AB FIX1 P1-1B: an offer can only be minted for an
-    // applicant who has actually reached the post-interview selection
-    // stage. Without this, a caller could invoke this command on an
-    // applicant still at `applied`/`resumeReviewed` (or any other stage)
-    // and mint a valid BindingOffer for someone who was never evaluated —
-    // an authority bypass around the interview gate the UI otherwise
-    // enforces only cosmetically.
-    if (applicant.stage != PublicDemoApplicantStage.interviewed) {
+    // WORKFLOW-STATE-1AB FIX1 P1-1B, FIX2 P1-1A: an offer can only be
+    // minted for an applicant who genuinely completed the interview step.
+    // Gating on `applicant.stage == interviewed` alone was insufficient —
+    // that field is publicly settable via `copyWith`/`withApplicantStage`,
+    // so a caller could fabricate the stage without ever being interviewed
+    // and still mint a valid BindingOffer. `hasBeenInterviewed` instead
+    // checks the unforgeable, identity-bound [PublicDemoInterviewRecord]
+    // that only [PublicDemoApplicant.markInterviewed] can mint — a
+    // caller-provided applicant's `stage` field is never trusted as
+    // authority here, closing that fabrication path even when this command
+    // is (as documented below) called directly instead of through
+    // [PublicDemoWorkflowState.acceptOffer].
+    if (!applicant.hasBeenInterviewed) {
       return PublicDemoOfferAcceptanceResult._(
         applicant: applicant,
         bindingOffer: null,

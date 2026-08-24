@@ -7,7 +7,10 @@ import 'package:smile_enjoy_story/game/public_demo/public_demo_salary_offer.dart
 /// WORKFLOW-STATE-1 §9/§11/§28: offer acceptance must be domain-authoritative
 /// and the caller/UI must not be able to fabricate a valid BindingOffer.
 void main() {
-  const applicant = PublicDemoApplicant(
+  // WORKFLOW-STATE-1AB FIX2 P1-1A: accept() now gates on the unforgeable
+  // PublicDemoInterviewRecord (via hasBeenInterviewed), not `stage` —
+  // markInterviewed() mints it, matching the real interview flow.
+  final applicant = const PublicDemoApplicant(
     id: 'app-01',
     name: 'Test',
     resumeSummary: 'Java 3年',
@@ -15,8 +18,7 @@ void main() {
     acceptanceScore: 70,
     salesSkillFit: 70,
     requestedMonthlySalary: 320000,
-    stage: PublicDemoApplicantStage.interviewed,
-  );
+  ).markInterviewed();
 
   PublicDemoSalaryOffer offerAt(int salary) =>
       PublicDemoSalaryOfferEvaluator.evaluate(
@@ -80,6 +82,80 @@ void main() {
     expect(result.bindingOffer, isNull);
     expect(result.applicant, same(notYetInterviewed));
     expect(result.applicant.hasBindingOffer, isFalse);
+  });
+
+  group('interview record cannot be fabricated (P1-1A)', () {
+    test(
+      'a fake interviewed applicant: stage set via public copyWith without '
+      'ever going through markInterviewed does not pass accept authority',
+      () {
+        const neverInterviewed = PublicDemoApplicant(
+          id: 'faker',
+          name: 'Faker',
+          resumeSummary: 'Java 1年',
+          interviewScore: 70,
+          acceptanceScore: 70,
+          salesSkillFit: 70,
+          requestedMonthlySalary: 320000,
+        );
+        // The caller CAN set `stage` to `interviewed` via the public
+        // copyWith — that alone is harmless (WORKFLOW-STATE-1AB §6 design
+        // rule): it produces no PublicDemoInterviewRecord, so it cannot
+        // authorize an offer.
+        final fabricated = neverInterviewed.copyWith(
+          stage: PublicDemoApplicantStage.interviewed,
+        );
+        expect(fabricated.stage, PublicDemoApplicantStage.interviewed);
+        expect(fabricated.hasBeenInterviewed, isFalse);
+
+        final result = PublicDemoOfferAcceptance.accept(
+          applicant: fabricated,
+          offer: PublicDemoSalaryOfferEvaluator.evaluate(
+            applicant: fabricated,
+            offeredMonthlySalary: 320000,
+          ),
+          fiscalCloseId: PublicDemoFiscalCloseId.forMonth(5),
+        );
+
+        expect(result.isAccepted, isFalse);
+        expect(result.status, PublicDemoOfferAcceptanceStatus.invalidStage);
+        expect(result.bindingOffer, isNull);
+      },
+    );
+
+    test(
+      'a genuine interview record reused on a different applicant via '
+      'copyWith is rejected by identity, mirroring BindingOffer reuse (P1-1D)',
+      () {
+        final interviewed = applicant.markInterviewed();
+        const differentApplicant = PublicDemoApplicant(
+          id: 'different-applicant',
+          name: 'Different',
+          resumeSummary: 'Java 1年',
+          interviewScore: 70,
+          acceptanceScore: 70,
+          salesSkillFit: 70,
+          requestedMonthlySalary: 320000,
+        );
+        final reused = differentApplicant.copyWith(
+          interviewRecord: interviewed.interviewRecord,
+        );
+
+        expect(reused.hasBeenInterviewed, isFalse);
+
+        final result = PublicDemoOfferAcceptance.accept(
+          applicant: reused,
+          offer: PublicDemoSalaryOfferEvaluator.evaluate(
+            applicant: reused,
+            offeredMonthlySalary: 320000,
+          ),
+          fiscalCloseId: PublicDemoFiscalCloseId.forMonth(5),
+        );
+
+        expect(result.isAccepted, isFalse);
+        expect(result.status, PublicDemoOfferAcceptanceStatus.invalidStage);
+      },
+    );
   });
 
   test('a declined offer never mints a BindingOffer', () {

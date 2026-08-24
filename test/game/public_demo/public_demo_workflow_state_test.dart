@@ -31,12 +31,12 @@ void main() {
       final id = workflow.applicants.first.id;
       final next = workflow.withApplicantStage(
         id,
-        PublicDemoApplicantStage.interviewed,
+        PublicDemoApplicantStage.resumeReviewed,
       );
 
       expect(
         next.applicants.firstWhere((a) => a.id == id).stage,
-        PublicDemoApplicantStage.interviewed,
+        PublicDemoApplicantStage.resumeReviewed,
       );
       expect(
         next.applicants.where((a) => a.id != id),
@@ -46,6 +46,37 @@ void main() {
           ),
         ),
       );
+    });
+
+    // WORKFLOW-STATE-1AB FIX2 P1-1A: interviewed is workflow-significant —
+    // withApplicantStage refuses it, both by assertion (debug/test builds)
+    // and, more importantly, because PublicDemoOfferAcceptance.accept no
+    // longer trusts `stage` as authority at all (see
+    // public_demo_binding_offer_test.dart's adversarial group).
+    test(
+      'withApplicantStage refuses to set the workflow-significant interviewed '
+      'stage — markApplicantInterviewed is the only sanctioned way',
+      () {
+        final workflow = PublicDemoWorkflowState.initial();
+        final id = workflow.applicants.first.id;
+        expect(
+          () => workflow.withApplicantStage(
+            id,
+            PublicDemoApplicantStage.interviewed,
+          ),
+          throwsA(isA<AssertionError>()),
+        );
+      },
+    );
+
+    test('markApplicantInterviewed is the sanctioned interview transition', () {
+      final workflow = PublicDemoWorkflowState.initial();
+      final id = workflow.applicants.first.id;
+      final next = workflow.markApplicantInterviewed(id);
+      final interviewed = next.applicants.firstWhere((a) => a.id == id);
+
+      expect(interviewed.stage, PublicDemoApplicantStage.interviewed);
+      expect(interviewed.hasBeenInterviewed, isTrue);
     });
 
     test('withEngineerStage updates only the targeted engineer', () {
@@ -198,8 +229,7 @@ void main() {
           acceptanceScore: 70,
           salesSkillFit: 70,
           requestedMonthlySalary: 320000,
-          stage: PublicDemoApplicantStage.interviewed,
-        );
+        ).markInterviewed();
         final offer = PublicDemoSalaryOffer(
           requestedMonthlySalary: template.requestedMonthlySalary,
           offeredMonthlySalary: salary,
@@ -365,13 +395,22 @@ void main() {
       'PublicDemoWorkflowState exposes no public way to replace assignments '
       'except by deriving them from its own engineer/applicant stage facts',
       () {
-        // This is a compile-time guarantee: `withAssignments` (the former
-        // wholesale-replace method) is private to
-        // public_demo_workflow_state.dart, so no other file — including a
-        // widget or this test — can call it directly. The only way to
-        // change the assignment roster from outside this file is through
-        // assignOrderedForMay, which reads only this workflow's own
-        // authoritative stage facts.
+        // This is a compile-time guarantee, in two layers (WORKFLOW-STATE-1AB
+        // FIX1 P1-3 + FIX2 P1-3):
+        // 1. `_withAssignments` (the former wholesale-replace method) is
+        //    private to public_demo_workflow_state.dart.
+        // 2. The public `copyWith` no longer even accepts an `assignments`
+        //    parameter at all — `workflow.copyWith(assignments: [fake])`
+        //    does not compile — so a caller holding a reference to an
+        //    existing, authoritative PublicDemoWorkflowState cannot inject
+        //    an arbitrary fabricated PublicDemoAssignment into it either.
+        //    (PublicDemoAssignment itself remains freely publicly
+        //    constructible — WORKFLOW-STATE-1AB §6 design rule — that alone
+        //    is harmless since it can never reach an existing workflow's
+        //    `assignments` this way.)
+        // The only way to change the assignment roster on an existing
+        // workflow from outside this file is through assignOrderedForMay,
+        // which reads only this workflow's own authoritative stage facts.
         final workflow = PublicDemoWorkflowState(
           applicants: const [orderedApplicant],
           engineers: const [orderedEngineer],
@@ -379,6 +418,25 @@ void main() {
         );
         final next = workflow.assignOrderedForMay();
         expect(next.assignments, isNotEmpty);
+
+        // A caller CAN construct a PublicDemoAssignment value in isolation —
+        // that alone is not the vulnerability (see comment above) — but
+        // there is no `workflow.copyWith(assignments: ...)` overload to
+        // hand it to; only workflow.assignments (read) and
+        // workflow.withAssignment(id, update) (update an existing entry's
+        // fields, never add a new one) are reachable.
+        const fabricated = PublicDemoAssignment(
+          engineerId: 'intruder',
+          engineerName: 'Fabricated',
+          projectName: 'Fabricated Project',
+          deliveryPressure: 0,
+          budgetHealth: 100,
+          humanity: 100,
+        );
+        expect(
+          next.assignments.any((a) => a.engineerId == fabricated.engineerId),
+          isFalse,
+        );
       },
     );
   });
@@ -405,8 +463,7 @@ void main() {
         acceptanceScore: 70,
         salesSkillFit: 70,
         requestedMonthlySalary: 320000,
-        stage: PublicDemoApplicantStage.interviewed,
-      );
+      ).markInterviewed();
       final offer = PublicDemoSalaryOffer(
         requestedMonthlySalary: template.requestedMonthlySalary,
         offeredMonthlySalary: 320000,
@@ -419,7 +476,10 @@ void main() {
         offer: offer,
         fiscalCloseId: PublicDemoFiscalCloseId.forMonth(5),
       ).applicant;
-      final joined = accepted.join(week: 9);
+      final joined = accepted.join(
+        week: 9,
+        currentFiscalCloseId: PublicDemoFiscalCloseId.forMonth(5),
+      );
 
       final workflow = PublicDemoWorkflowState(
         applicants: [joined],

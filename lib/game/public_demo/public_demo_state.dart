@@ -334,6 +334,16 @@ class PublicDemoState {
   /// each applicant's own [PublicDemoApplicant.hasJoined] fact, so a caller
   /// cannot make this projection diverge from actual join state by passing
   /// an id with no correspondingly-joined applicant behind it.
+  ///
+  /// FIX2 P1-4: [PublicDemoApplicant.hasJoined] itself is now backed by an
+  /// unforgeable, identity-bound [PublicDemoJoinRecord] that only
+  /// [PublicDemoApplicant.join] can mint — a caller can no longer fabricate
+  /// a "joined" applicant by constructing one (or calling `copyWith`) with
+  /// `employeeMorale`/`employeeCompanyTrust` set directly, so this method
+  /// never has to trust a caller-provided applicant's join status on faith.
+  /// Duplicate ids within a single [joinedApplicants] batch are also
+  /// deduped before being appended, so passing the same joined applicant
+  /// twice cannot duplicate their payroll membership.
   PublicDemoState advanceToJune({
     required int monthlyExpenses,
     required int acceptedHires,
@@ -344,10 +354,14 @@ class PublicDemoState {
     final hires = acceptedHires < 0 ? 0 : acceptedHires;
     final ordered = hiredWithOrders.clamp(0, hires);
     final nextCash = cash - monthlyExpenses;
-    final newlyJoinedIds = [
+    // WORKFLOW-STATE-1AB FIX2 P1-4: dedupe within this batch itself, not
+    // just against the already-accumulated `joinedApplicantIds` — passing
+    // the same genuinely-joined applicant twice in [joinedApplicants] must
+    // not add their id to the payroll projection twice.
+    final newlyJoinedIds = <String>{
       for (final applicant in joinedApplicants)
         if (applicant.hasJoined) applicant.id,
-    ];
+    };
     return copyWith(
       month: 6,
       cash: nextCash,

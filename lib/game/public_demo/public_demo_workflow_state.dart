@@ -53,7 +53,17 @@ class PublicDemoWorkflowState {
   final List<PublicDemoEngineerSales> engineers;
   final List<PublicDemoAssignment> assignments;
 
+  /// Deliberately has no `assignments` parameter (WORKFLOW-STATE-1AB FIX2
+  /// P1-3): a caller holding a reference to an existing, authoritative
+  /// [PublicDemoWorkflowState] cannot inject an arbitrary assignment roster
+  /// into it via this public surface. [_copyWith] (below) is the full-field
+  /// internal version [_withAssignments] uses instead.
   PublicDemoWorkflowState copyWith({
+    List<PublicDemoApplicant>? applicants,
+    List<PublicDemoEngineerSales>? engineers,
+  }) => _copyWith(applicants: applicants, engineers: engineers);
+
+  PublicDemoWorkflowState _copyWith({
     List<PublicDemoApplicant>? applicants,
     List<PublicDemoEngineerSales>? engineers,
     List<PublicDemoAssignment>? assignments,
@@ -84,10 +94,27 @@ class PublicDemoWorkflowState {
   PublicDemoWorkflowState withApplicantStage(
     String applicantId,
     PublicDemoApplicantStage stage,
-  ) => withApplicant(
-    applicantId,
-    (applicant) => applicant.copyWith(stage: stage),
-  );
+  ) {
+    assert(
+      stage != PublicDemoApplicantStage.interviewed,
+      'interviewed is workflow-significant (WORKFLOW-STATE-1AB FIX2 P1-1A) '
+      '— use markApplicantInterviewed instead',
+    );
+    return withApplicant(
+      applicantId,
+      (applicant) => applicant.copyWith(stage: stage),
+    );
+  }
+
+  /// The single sanctioned way to transition an applicant into the
+  /// interviewed stage (WORKFLOW-STATE-1AB FIX2 P1-1A) — the prerequisite
+  /// [PublicDemoOfferAcceptance.accept] actually checks (via
+  /// [PublicDemoApplicant.hasBeenInterviewed]) before it will mint a
+  /// [PublicDemoBindingOffer]. [withApplicantStage] intentionally refuses
+  /// this specific stage: it is workflow-significant and must not be
+  /// reachable through the generic setter.
+  PublicDemoWorkflowState markApplicantInterviewed(String applicantId) =>
+      withApplicant(applicantId, (applicant) => applicant.markInterviewed());
 
   /// Appends newly generated applicants (JOB-2/3, now atomic via
   /// public_demo_recruitment_workflow_transaction.dart), skipping any id
@@ -202,7 +229,7 @@ class PublicDemoWorkflowState {
   PublicDemoWorkflowState withAssignment(
     String engineerId,
     PublicDemoAssignment Function(PublicDemoAssignment assignment) update,
-  ) => copyWith(
+  ) => _copyWith(
     assignments: [
       for (final assignment in assignments)
         if (assignment.engineerId == engineerId)
@@ -220,7 +247,7 @@ class PublicDemoWorkflowState {
   /// other caller can supply its own roster.
   PublicDemoWorkflowState _withAssignments(
     List<PublicDemoAssignment> assignments,
-  ) => copyWith(assignments: assignments);
+  ) => _copyWith(assignments: assignments);
 
   /// The single domain-owned way to build May's assignment roster
   /// (WORKFLOW-STATE-1AB FIX1 P1-3). Only engineers whose sales pipeline

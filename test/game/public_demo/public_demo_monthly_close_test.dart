@@ -1,8 +1,11 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:smile_enjoy_story/game/public_demo/public_demo_fiscal_close_id.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_monthly_close.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_recruitment.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_state.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_summer_bonus_plan.dart';
+
+import 'test_support/public_demo_offer_test_helpers.dart';
 
 /// 12MONTH-1: proves the common Monthly Close facade produces state that is
 /// identical, field for field, to the pre-existing advanceToX/closeJuly
@@ -23,11 +26,15 @@ void main() {
   // joinedApplicantIds from real applicant records (via `hasJoined`), not a
   // caller-supplied id list — this fixture stands in for the authoritative,
   // already-joined applicant [PublicDemoWorkflowState.joinAndKeepOnly] would
-  // hand these entry points in production.
-  final joinedHire = hire.copyWith(
-    employeeMorale: 70,
-    employeeCompanyTrust: 70,
-  );
+  // hand these entry points in production. FIX2 P1-4: `hasJoined` is now
+  // backed by an unforgeable [PublicDemoJoinRecord] that only the real
+  // [PublicDemoApplicant.join] can mint — copyWith(employeeMorale: ...,
+  // employeeCompanyTrust: ...) alone no longer counts as joined, so this
+  // fixture goes through the real accept+join path instead.
+  final joinedHire = acceptTestOffer(
+    hire,
+    offeredMonthlySalary: 320000,
+  ).join(week: 9, currentFiscalCloseId: PublicDemoFiscalCloseId.forMonth(5));
 
   /// [checkMoney] gates `cash`/`pendingRevenue` equivalence: REVENUE-4 makes
   /// the common close intentionally diverge from the legacy per-month path
@@ -191,6 +198,82 @@ void main() {
         expect(result.joinedApplicantIds, isEmpty);
       });
 
+      // WORKFLOW-STATE-1AB FIX2 P1-4: hasJoined is now backed by an
+      // unforgeable PublicDemoJoinRecord (only PublicDemoApplicant.join can
+      // mint one) instead of the presence of employeeMorale/
+      // employeeCompanyTrust — a caller setting those two fields directly
+      // via copyWith no longer counts as "joined" at all.
+      test(
+        'a fabricated hasJoined applicant (employeeMorale/employeeCompanyTrust '
+        'set directly via copyWith, never through join) cannot enter the '
+        'joined projection or payroll',
+        () {
+          final fabricated = hire.copyWith(
+            employeeMorale: 80,
+            employeeCompanyTrust: 80,
+          );
+          expect(
+            fabricated.hasJoined,
+            isFalse,
+            reason: 'copyWith alone must not confer joined authority',
+          );
+          final start = mayState();
+
+          final result = start.advanceToJune(
+            monthlyExpenses: 800000,
+            acceptedHires: 1,
+            hiredWithOrders: 1,
+            joinedApplicants: [fabricated],
+          );
+
+          expect(result.joinedApplicantIds, isEmpty);
+          expect(result.joinedApplicantIds, isNot(contains(fabricated.id)));
+        },
+      );
+
+      test('duplicate applicant entries in one batch cannot duplicate payroll '
+          'membership', () {
+        final start = mayState();
+
+        final result = start.advanceToJune(
+          monthlyExpenses: 800000,
+          acceptedHires: 1,
+          hiredWithOrders: 1,
+          joinedApplicants: [joinedHire, joinedHire],
+        );
+
+        expect(result.joinedApplicantIds, ['close-hire-01']);
+      });
+
+      test('the joined projection exactly equals the authoritative applicants '
+          'that genuinely joined — no more, no less', () {
+        const secondHire = PublicDemoApplicant(
+          id: 'close-hire-02',
+          name: 'Second Hire',
+          resumeSummary: 'Java 2年',
+          interviewScore: 65,
+          acceptanceScore: 65,
+          salesSkillFit: 65,
+          requestedMonthlySalary: 300000,
+        );
+        final start = mayState();
+
+        final result = start.advanceToJune(
+          monthlyExpenses: 800000,
+          acceptedHires: 2,
+          hiredWithOrders: 1,
+          joinedApplicants: [joinedHire, secondHire],
+        );
+
+        expect(
+          result.joinedApplicantIds.toSet(),
+          {joinedHire.id},
+          reason:
+              'secondHire never joined (no BindingOffer/join), so the '
+              'projection must equal exactly the genuinely-joined subset',
+        );
+      });
+
       test(
         'the June/payroll path derives joined ids from the authoritative '
         'applicant records passed in, not any separately maintained list',
@@ -299,7 +382,12 @@ void main() {
 
     test('bonus and monthly expenses settle atomically', () {
       final start = julyState();
-      final joined = [hire.join(week: 9)];
+      final joined = [
+        hire.join(
+          week: 9,
+          currentFiscalCloseId: PublicDemoFiscalCloseId.forMonth(5),
+        ),
+      ];
       final legacy = start.advanceToAugust(
         monthlyExpenses: 800000,
         applicants: joined,

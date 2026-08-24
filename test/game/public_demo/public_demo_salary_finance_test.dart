@@ -7,7 +7,9 @@ import 'package:smile_enjoy_story/game/public_demo/public_demo_salary_finance.da
 import 'package:smile_enjoy_story/game/public_demo/public_demo_salary_offer.dart';
 
 void main() {
-  const applicant = PublicDemoApplicant(
+  // WORKFLOW-STATE-1AB FIX2 P1-1A: accept() gates on the unforgeable
+  // interview record, not `stage` — markInterviewed() mints it.
+  final applicant = const PublicDemoApplicant(
     id: 'test',
     name: 'Test',
     resumeSummary: 'Java 3年',
@@ -15,8 +17,7 @@ void main() {
     acceptanceScore: 70,
     salesSkillFit: 70,
     requestedMonthlySalary: 320000,
-    stage: PublicDemoApplicantStage.interviewed,
-  );
+  ).markInterviewed();
 
   // WORKFLOW-STATE-1: joining now requires a domain-issued BindingOffer
   // (PublicDemoApplicant.join no longer accepts a bare
@@ -39,7 +40,10 @@ void main() {
       offer: offer,
       fiscalCloseId: PublicDemoFiscalCloseId.forMonth(5),
     ).applicant;
-    return accepted.join(week: 9);
+    return accepted.join(
+      week: 9,
+      currentFiscalCloseId: PublicDemoFiscalCloseId.forMonth(5),
+    );
   }
 
   test('joined requested salary adds its full monthly cost', () {

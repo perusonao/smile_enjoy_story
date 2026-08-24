@@ -20,13 +20,26 @@ typedef PublicDemoRecruitmentCandidateGenerator =
 /// directly and then choose to commit only `result.state` (cash) while
 /// discarding `result.generatedApplicants` — a structural "cash spent,
 /// applicants missing" bypass around the atomic contract this file exists
-/// to enforce. It is now private to this file, so [_PublicDemoRecruitmentTransaction.execute]
-/// can only ever be reached through [PublicDemoRecruitmentWorkflowTransaction.execute]
-/// below, which always commits cash and applicants together or neither at
-/// all: either [PublicDemoRecruitmentTransactionResult.isSuccess] is true
-/// and this returns a result with both [PublicDemoRecruitmentWorkflowResult.state]
-/// and [PublicDemoRecruitmentWorkflowResult.workflow] updated together, or
-/// it is false and this returns both completely unchanged.
+/// to enforce. It is now private to this file, so
+/// [_PublicDemoRecruitmentTransaction.execute] can only ever be reached
+/// through [PublicDemoRecruitmentWorkflowTransaction.execute] below.
+///
+/// FIX2 P1-2: FIX1's own [execute] still returned a result object exposing
+/// the committed [PublicDemoState] and [PublicDemoWorkflowState] as two
+/// separate public fields (`result.state` / `result.workflow`) — computed
+/// atomically together, but nothing stopped a caller from applying only one
+/// of them (e.g. `s = result.state;` and never `workflow = result.workflow;`),
+/// a "cash spent, applicants missing" bypass at the *caller* rather than the
+/// *calculation*. [execute] no longer returns the committed
+/// [PublicDemoState] (the value that carries the cash charge) as a directly
+/// readable field of anything it returns at all: the only way to obtain it
+/// — and it is always paired with the committed [PublicDemoWorkflowState] —
+/// is [onCommitted], invoked exactly once, synchronously, and only when the
+/// purchase succeeds. [execute]'s own return value
+/// ([PublicDemoRecruitmentTransactionResult]) carries only read-only facts
+/// (status, medium, charged amount, the generated applicants — data about
+/// what happened, not the authoritative cash-bearing state itself), so
+/// inspecting it can never substitute for going through [onCommitted].
 class PublicDemoRecruitmentWorkflowTransaction {
   PublicDemoRecruitmentWorkflowTransaction({
     PublicDemoRecruitmentCandidateGenerator? candidateGenerator,
@@ -36,35 +49,36 @@ class PublicDemoRecruitmentWorkflowTransaction {
 
   final _PublicDemoRecruitmentTransaction _transaction;
 
-  PublicDemoRecruitmentWorkflowResult execute({
+  /// Runs the purchase against [state]/[workflow] and, only on success,
+  /// invokes [onCommitted] once with the committed state and the committed
+  /// workflow (already carrying the generated applicants) together. Always
+  /// returns the read-only [PublicDemoRecruitmentTransactionResult]
+  /// describing what happened — callers that only need the failure message
+  /// never have to supply [onCommitted].
+  PublicDemoRecruitmentTransactionResult execute({
     required PublicDemoState state,
     required PublicDemoWorkflowState workflow,
     required PublicDemoRecruitmentMedium medium,
+    void Function(
+      PublicDemoState committedState,
+      PublicDemoWorkflowState committedWorkflow,
+    )?
+    onCommitted,
   }) {
     final result = _transaction.execute(state: state, medium: medium);
-    return PublicDemoRecruitmentWorkflowResult._(
-      state: result.state,
-      workflow: result.isSuccess
-          ? workflow.withGeneratedApplicants(result.generatedApplicants)
-          : workflow,
-      transactionResult: result,
+    if (result.isSuccess) {
+      onCommitted?.call(
+        result.state,
+        workflow.withGeneratedApplicants(result.generatedApplicants),
+      );
+    }
+    return PublicDemoRecruitmentTransactionResult._(
+      medium: result.medium,
+      chargedAmount: result.chargedAmount,
+      generatedApplicants: result.generatedApplicants,
+      status: result.status,
     );
   }
-}
-
-class PublicDemoRecruitmentWorkflowResult {
-  const PublicDemoRecruitmentWorkflowResult._({
-    required this.state,
-    required this.workflow,
-    required this.transactionResult,
-  });
-
-  final PublicDemoState state;
-  final PublicDemoWorkflowState workflow;
-  final PublicDemoRecruitmentTransactionResult transactionResult;
-
-  bool get isSuccess => transactionResult.isSuccess;
-  PublicDemoRecruitmentTransactionStatus get status => transactionResult.status;
 }
 
 /// Pure, all-or-nothing recruitment-media purchase for Public Demo 0.1.
@@ -80,19 +94,19 @@ class _PublicDemoRecruitmentTransaction {
 
   final PublicDemoRecruitmentCandidateGenerator _candidateGenerator;
 
-  PublicDemoRecruitmentTransactionResult execute({
+  _PublicDemoRecruitmentCalculationResult execute({
     required PublicDemoState state,
     required PublicDemoRecruitmentMedium medium,
   }) {
     if (!state.canUseRecruitmentMediaInMonth(state.month)) {
-      return PublicDemoRecruitmentTransactionResult.failure(
+      return _PublicDemoRecruitmentCalculationResult.failure(
         state: state,
         medium: medium,
         status: PublicDemoRecruitmentTransactionStatus.alreadyUsedThisMonth,
       );
     }
     if (state.cash < medium.cost) {
-      return PublicDemoRecruitmentTransactionResult.failure(
+      return _PublicDemoRecruitmentCalculationResult.failure(
         state: state,
         medium: medium,
         status: PublicDemoRecruitmentTransactionStatus.insufficientCash,
@@ -105,7 +119,7 @@ class _PublicDemoRecruitmentTransaction {
       count: medium.applicantCount,
     );
     if (applicants.length != medium.applicantCount) {
-      return PublicDemoRecruitmentTransactionResult.failure(
+      return _PublicDemoRecruitmentCalculationResult.failure(
         state: state,
         medium: medium,
         status: PublicDemoRecruitmentTransactionStatus.generationFailed,
@@ -116,7 +130,7 @@ class _PublicDemoRecruitmentTransaction {
         .copyWith(cash: state.cash - medium.cost)
         .recordRecruitmentSpend(medium.cost)
         .markRecruitmentMediaUsed(state.month);
-    return PublicDemoRecruitmentTransactionResult.success(
+    return _PublicDemoRecruitmentCalculationResult.success(
       state: committed,
       medium: medium,
       generatedApplicants: applicants,
@@ -151,8 +165,15 @@ class _PublicDemoRecruitmentTransaction {
   }
 }
 
-class PublicDemoRecruitmentTransactionResult {
-  const PublicDemoRecruitmentTransactionResult._({
+/// Internal-only calculation output — carries the committed
+/// [PublicDemoState] (the cash charge). Private to this file: unlike the
+/// public [PublicDemoRecruitmentTransactionResult] below, nothing outside
+/// this file can read [state] directly, so nothing outside this file can
+/// obtain the committed cash-bearing state without going through
+/// [PublicDemoRecruitmentWorkflowTransaction.execute]'s `onCommitted`
+/// (WORKFLOW-STATE-1AB FIX2 P1-2).
+class _PublicDemoRecruitmentCalculationResult {
+  const _PublicDemoRecruitmentCalculationResult._({
     required this.state,
     required this.medium,
     required this.chargedAmount,
@@ -160,11 +181,11 @@ class PublicDemoRecruitmentTransactionResult {
     required this.status,
   });
 
-  factory PublicDemoRecruitmentTransactionResult.success({
+  factory _PublicDemoRecruitmentCalculationResult.success({
     required PublicDemoState state,
     required PublicDemoRecruitmentMedium medium,
     required List<PublicDemoApplicant> generatedApplicants,
-  }) => PublicDemoRecruitmentTransactionResult._(
+  }) => _PublicDemoRecruitmentCalculationResult._(
     state: state,
     medium: medium,
     chargedAmount: medium.cost,
@@ -172,11 +193,11 @@ class PublicDemoRecruitmentTransactionResult {
     status: PublicDemoRecruitmentTransactionStatus.success,
   );
 
-  factory PublicDemoRecruitmentTransactionResult.failure({
+  factory _PublicDemoRecruitmentCalculationResult.failure({
     required PublicDemoState state,
     required PublicDemoRecruitmentMedium medium,
     required PublicDemoRecruitmentTransactionStatus status,
-  }) => PublicDemoRecruitmentTransactionResult._(
+  }) => _PublicDemoRecruitmentCalculationResult._(
     state: state,
     medium: medium,
     chargedAmount: 0,
@@ -185,6 +206,28 @@ class PublicDemoRecruitmentTransactionResult {
   );
 
   final PublicDemoState state;
+  final PublicDemoRecruitmentMedium medium;
+  final int chargedAmount;
+  final List<PublicDemoApplicant> generatedApplicants;
+  final PublicDemoRecruitmentTransactionStatus status;
+
+  bool get isSuccess =>
+      status == PublicDemoRecruitmentTransactionStatus.success;
+}
+
+/// Read-only facts about a recruitment-media purchase attempt
+/// (WORKFLOW-STATE-1AB FIX2 P1-2). Deliberately does NOT carry the
+/// committed [PublicDemoState] or [PublicDemoWorkflowState] — see the class
+/// doc on [PublicDemoRecruitmentWorkflowTransaction] for why. Use this for
+/// status/messaging only; use `onCommitted` to actually apply the purchase.
+class PublicDemoRecruitmentTransactionResult {
+  const PublicDemoRecruitmentTransactionResult._({
+    required this.medium,
+    required this.chargedAmount,
+    required this.generatedApplicants,
+    required this.status,
+  });
+
   final PublicDemoRecruitmentMedium medium;
   final int chargedAmount;
   final List<PublicDemoApplicant> generatedApplicants;

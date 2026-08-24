@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:smile_enjoy_story/game/public_demo/public_demo_fiscal_close_id.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_raise.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_recruitment.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_salary.dart';
@@ -21,6 +22,7 @@ void main() {
   );
   PublicDemoApplicant hired() =>
       acceptTestOffer(applicant, offeredMonthlySalary: 320000);
+  final joinFiscalCloseId = PublicDemoFiscalCloseId.forMonth(5);
 
   PublicDemoState july({
     int cash = 3000000,
@@ -66,7 +68,10 @@ void main() {
   test(
     'joined engineer is included, while pending applicant and admin are excluded',
     () {
-      final joined = hired().join(week: 9);
+      final joined = hired().join(
+        week: 9,
+        currentFiscalCloseId: joinFiscalCloseId,
+      );
       expect(
         PublicDemoSummerBonusPayment.calculateSummerBonus(
           plan: PublicDemoSummerBonusPlan.one,
@@ -89,7 +94,7 @@ void main() {
 
   test('July calculation uses raised current salary', () {
     final raised = hired()
-        .join(week: 9)
+        .join(week: 9, currentFiscalCloseId: joinFiscalCloseId)
         .decideRaise(
           decisionMonth: 6,
           week: 24,
@@ -162,7 +167,10 @@ void main() {
   test(
     'normal July monthly expense and bonus reconcile with salary finance',
     () {
-      final joined = hired().join(week: 9);
+      final joined = hired().join(
+        week: 9,
+        currentFiscalCloseId: joinFiscalCloseId,
+      );
       final expense = PublicDemoSalaryFinance.monthlyExpenses(
         baselineExpenses: PublicDemoSalary.baselineMonthlyExpenses,
         hires: [joined],

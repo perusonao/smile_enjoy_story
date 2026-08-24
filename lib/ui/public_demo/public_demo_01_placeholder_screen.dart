@@ -57,14 +57,23 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
     );
     if (!mounted || selected == null) return;
 
-    // WORKFLOW-STATE-1 §14/§15: cash (PublicDemoState) and the generated
-    // applicants (PublicDemoWorkflowState) commit together as one atomic
-    // result — "cash spent, applicants missing" and "applicants created,
-    // cash not spent" are both impossible outcomes of this call.
+    // WORKFLOW-STATE-1 §14/§15, WORKFLOW-STATE-1AB FIX2 P1-2: cash
+    // (PublicDemoState) and the generated applicants (PublicDemoWorkflowState)
+    // commit together as one atomic result — "cash spent, applicants
+    // missing" and "applicants created, cash not spent" are both impossible
+    // outcomes of this call. `onCommitted` is the only way to obtain either;
+    // there is no result field exposing the committed state on its own that
+    // this method could apply while forgetting `workflow`.
+    PublicDemoState? committedState;
+    PublicDemoWorkflowState? committedWorkflow;
     final result = PublicDemoRecruitmentWorkflowTransaction().execute(
       state: s,
       workflow: workflow,
       medium: selected,
+      onCommitted: (nextState, nextWorkflow) {
+        committedState = nextState;
+        committedWorkflow = nextWorkflow;
+      },
     );
     if (!result.isSuccess) {
       final message = switch (result.status) {
@@ -82,14 +91,12 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
       return;
     }
     setState(() {
-      s = result.state;
-      workflow = result.workflow;
+      s = committedState!;
+      workflow = committedWorkflow!;
     });
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(
-          '応募者${result.transactionResult.generatedApplicants.length}名を追加しました。',
-        ),
+        content: Text('応募者${result.generatedApplicants.length}名を追加しました。'),
       ),
     );
   }
@@ -271,8 +278,14 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
 
   void recruit(int i) {
     if (s.salesRemaining <= 0) return;
-    setState(() => s = s.useSalesSlot());
-    as(i, PublicDemoApplicantStage.interviewed);
+    setState(() {
+      s = s.useSalesSlot();
+      // WORKFLOW-STATE-1AB FIX2 P1-1A: interviewed is workflow-significant
+      // (it gates BindingOffer authority) — mint the applicant's genuine
+      // interview record here instead of setting the stage via the generic
+      // `as()`/withApplicantStage setter.
+      workflow = workflow.markApplicantInterviewed(workflow.applicants[i].id);
+    });
   }
 
   Future<void> offer(int i) async {

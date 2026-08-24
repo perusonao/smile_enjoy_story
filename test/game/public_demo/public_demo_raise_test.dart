@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:smile_enjoy_story/game/public_demo/public_demo_fiscal_close_id.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_raise.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_recruitment.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_salary_finance.dart';
@@ -17,7 +18,7 @@ void main() {
       requestedMonthlySalary: 320000,
     ),
     offeredMonthlySalary: 320000,
-  ).join(week: 9);
+  ).join(week: 9, currentFiscalCloseId: PublicDemoFiscalCloseId.forMonth(5));
 
   test(
     'a joined employee can request one raise from June and sees all three choices',

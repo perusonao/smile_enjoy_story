@@ -15,7 +15,9 @@ void main() {
   const transaction = PublicDemoJoinTransaction();
   final currentFiscalCloseId = PublicDemoFiscalCloseId.forMonth(5);
 
-  const applicant = PublicDemoApplicant(
+  // WORKFLOW-STATE-1AB FIX2 P1-1A: accept() gates on the unforgeable
+  // interview record, not `stage` — markInterviewed() mints it.
+  final applicant = const PublicDemoApplicant(
     id: 'app-01',
     name: 'Test',
     resumeSummary: 'Java 3年',
@@ -23,8 +25,7 @@ void main() {
     acceptanceScore: 70,
     salesSkillFit: 70,
     requestedMonthlySalary: 320000,
-    stage: PublicDemoApplicantStage.interviewed,
-  );
+  ).markInterviewed();
 
   PublicDemoApplicant withBindingOffer(int salary, {int fiscalCloseMonth = 5}) {
     final offer = PublicDemoSalaryOffer(
@@ -172,6 +173,57 @@ void main() {
     expect(again.isJoined, isFalse);
     expect(again.status, PublicDemoJoinStatus.alreadyJoined);
     expect(again.applicant, same(joined));
+  });
+
+  group('PublicDemoApplicant.join called directly (bypassing the transaction) '
+      'enforces the same checks (P1-1D)', () {
+    test('a stale genuine BindingOffer is rejected by direct join, not '
+        'just by the transaction', () {
+      final acceptedInMay = withBindingOffer(320000, fiscalCloseMonth: 5);
+
+      final result = acceptedInMay.join(
+        week: 9,
+        currentFiscalCloseId: PublicDemoFiscalCloseId.forMonth(8),
+      );
+
+      expect(result.hasJoined, isFalse);
+      expect(result, same(acceptedInMay));
+    });
+
+    test('a genuine BindingOffer reused from a different applicant is '
+        'rejected by direct join, not just by the transaction', () {
+      final offerFromSomeoneElse = withBindingOffer(320000).bindingOffer!;
+      const otherApplicant = PublicDemoApplicant(
+        id: 'app-02',
+        name: 'Someone Else',
+        resumeSummary: 'Java 1年',
+        interviewScore: 60,
+        acceptanceScore: 60,
+        salesSkillFit: 60,
+      );
+      final fabricated = otherApplicant.copyWith(
+        bindingOffer: offerFromSomeoneElse,
+      );
+
+      final result = fabricated.join(
+        week: 9,
+        currentFiscalCloseId: currentFiscalCloseId,
+      );
+
+      expect(result.hasJoined, isFalse);
+    });
+
+    test('duplicate direct join is a no-op, not a second joinRecord', () {
+      final once = withBindingOffer(
+        320000,
+      ).join(week: 9, currentFiscalCloseId: currentFiscalCloseId);
+      final twice = once.join(
+        week: 10,
+        currentFiscalCloseId: currentFiscalCloseId,
+      );
+
+      expect(twice, same(once));
+    });
   });
 
   test('joinAll processes each applicant independently by id', () {

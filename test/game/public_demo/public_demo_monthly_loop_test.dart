@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:smile_enjoy_story/game/public_demo/public_demo_fiscal_close_id.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_state.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_recruitment.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_salary_finance.dart';
@@ -56,10 +57,11 @@ void main() {
         );
 
     PublicDemoState throughJuly(int salary) {
-      final hire = acceptTestOffer(
-        applicant,
-        offeredMonthlySalary: salary,
-      ).join(week: 9);
+      final hire = acceptTestOffer(applicant, offeredMonthlySalary: salary)
+          .join(
+            week: 9,
+            currentFiscalCloseId: PublicDemoFiscalCloseId.forMonth(5),
+          );
       return throughJune(salary).advanceToJuly(
         monthlyExpenses: PublicDemoSalaryFinance.monthlyExpenses(
           baselineExpenses: 800000,

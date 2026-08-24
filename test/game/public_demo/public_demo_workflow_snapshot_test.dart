@@ -38,8 +38,7 @@ void main() {
         acceptanceScore: template.acceptanceScore,
         salesSkillFit: template.salesSkillFit,
         requestedMonthlySalary: template.requestedMonthlySalary,
-        stage: PublicDemoApplicantStage.interviewed,
-      ),
+      ).markInterviewed(),
       offer: offer,
       fiscalCloseId: PublicDemoFiscalCloseId.forMonth(5),
     ).applicant;

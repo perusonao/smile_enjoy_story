@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:smile_enjoy_story/game/public_demo/public_demo_fiscal_close_id.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_growth_engine.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_internal_training_transaction.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_raise.dart';
@@ -35,7 +36,7 @@ void main() {
       requestedMonthlySalary: 320000,
     ),
     offeredMonthlySalary: 320000,
-  ).join(week: 9);
+  ).join(week: 9, currentFiscalCloseId: PublicDemoFiscalCloseId.forMonth(5));
 
   group('A. Raise is locked after fiscal year completion', () {
     // POST-12MONTH-1-FIX1 P1-1: PublicDemoRaiseTransaction — not

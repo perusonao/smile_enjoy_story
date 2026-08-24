@@ -8,15 +8,19 @@ import 'package:smile_enjoy_story/game/public_demo/public_demo_salary_offer.dart
 import 'test_support/public_demo_offer_test_helpers.dart';
 
 void main() {
-  const applicant = PublicDemoApplicant(
+  // WORKFLOW-STATE-1AB FIX2 P1-1A: accept() now gates on the unforgeable
+  // interview record, not `stage` — markInterviewed() mints it, matching
+  // the real interview flow (public_demo_01_placeholder_screen.dart's
+  // recruit()).
+  final applicant = const PublicDemoApplicant(
     id: 'condition-hire',
     name: 'Condition Hire',
     resumeSummary: 'Java 3年',
     interviewScore: 70,
     acceptanceScore: 70,
     salesSkillFit: 70,
-    stage: PublicDemoApplicantStage.interviewed,
-  );
+  ).markInterviewed();
+  final fiscalCloseId = PublicDemoFiscalCloseId.forMonth(5);
 
   // Routes through the real PublicDemoOfferAcceptance.accept command (the
   // only place that can mint a PublicDemoBindingOffer — WORKFLOW-STATE-1
@@ -43,9 +47,15 @@ void main() {
       // join. The morale/trust deltas below are fixed by sign of the salary
       // difference, not magnitude, so this preserves the same low<base<high
       // comparison the wider values exercised.
-      final low = acceptedAt(300000).join(week: 9);
-      final base = acceptedAt(320000).join(week: 9);
-      final high = acceptedAt(340000).join(week: 9);
+      final low = acceptedAt(
+        300000,
+      ).join(week: 9, currentFiscalCloseId: fiscalCloseId);
+      final base = acceptedAt(
+        320000,
+      ).join(week: 9, currentFiscalCloseId: fiscalCloseId);
+      final high = acceptedAt(
+        340000,
+      ).join(week: 9, currentFiscalCloseId: fiscalCloseId);
 
       expect(low.employeeMorale, lessThan(base.employeeMorale!));
       expect(low.employeeCompanyTrust, lessThan(base.employeeCompanyTrust!));
@@ -56,14 +66,19 @@ void main() {
         high.employeeCompanyTrust,
         greaterThan(base.employeeCompanyTrust!),
       );
-      expect(low.join(week: 9).relationshipHistory, hasLength(1));
+      expect(
+        low
+            .join(week: 9, currentFiscalCloseId: fiscalCloseId)
+            .relationshipHistory,
+        hasLength(1),
+      );
     },
   );
 
   test('declined offer does not create an employee condition', () {
-    final declined = acceptedAt(
-      280000,
-    ).copyWith(stage: PublicDemoApplicantStage.offerDeclined).join(week: 9);
+    final declined = acceptedAt(280000)
+        .copyWith(stage: PublicDemoApplicantStage.offerDeclined)
+        .join(week: 9, currentFiscalCloseId: fiscalCloseId);
     expect(declined.hasJoined, isFalse);
     expect(declined.relationshipHistory, isEmpty);
   });
@@ -74,13 +89,13 @@ void main() {
       offeredMonthlySalary: 280000,
       motivationDelta: -100,
       trustDelta: -100,
-    ).join(week: 9);
+    ).join(week: 9, currentFiscalCloseId: fiscalCloseId);
     final high = acceptTestOffer(
       applicant,
       offeredMonthlySalary: 360000,
       motivationDelta: 100,
       trustDelta: 100,
-    ).join(week: 9);
+    ).join(week: 9, currentFiscalCloseId: fiscalCloseId);
     expect(low.employeeMorale, 0);
     expect(low.employeeCompanyTrust, 0);
     expect(high.employeeMorale, 100);

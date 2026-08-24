@@ -52,7 +52,9 @@ class PublicDemoJoinTransaction {
     }
     // P1-1E: an offer minted at one fiscal close is not valid to join
     // against a later one — join must happen within the same close the
-    // offer was accepted at.
+    // offer was accepted at. FIX2: this same check is now duplicated inside
+    // [PublicDemoApplicant.join] itself, so a caller bypassing this
+    // transaction and calling that method directly cannot skip it either.
     if (offer.fiscalCloseId != currentFiscalCloseId) {
       return PublicDemoJoinResult._(
         applicant: applicant,
@@ -60,7 +62,10 @@ class PublicDemoJoinTransaction {
       );
     }
     return PublicDemoJoinResult._(
-      applicant: applicant.join(week: week),
+      applicant: applicant.join(
+        week: week,
+        currentFiscalCloseId: currentFiscalCloseId,
+      ),
       status: PublicDemoJoinStatus.joined,
     );
   }

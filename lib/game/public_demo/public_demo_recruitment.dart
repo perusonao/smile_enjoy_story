@@ -1,8 +1,49 @@
 import '../../domain/models/employee_relationship_event.dart';
 import '../../domain/models/engineer.dart';
 import 'public_demo_binding_offer.dart';
+import 'public_demo_fiscal_close_id.dart';
 
 enum PublicDemoRaiseDecision { hold, smallRaise, requestedRaise }
+
+/// Authoritative, unforgeable proof that a specific applicant actually
+/// completed Public Demo 0.1's interview step.
+///
+/// Constructor private to this file: only [PublicDemoApplicant.markInterviewed]
+/// (called exclusively by [PublicDemoWorkflowState.markApplicantInterviewed]
+/// — the sales-slot-consuming interview flow) can mint one, bound to that
+/// applicant's own id. `stage == PublicDemoApplicantStage.interviewed` alone
+/// is NOT proof: a caller can still set that field via the public [
+/// PublicDemoApplicant.copyWith], but doing so does not also produce a
+/// genuine [PublicDemoInterviewRecord] — [PublicDemoOfferAcceptance.accept]
+/// gates on this record, not the stage field, closing that fabrication path
+/// (WORKFLOW-STATE-1AB FIX2 P1-1A/B).
+class PublicDemoInterviewRecord {
+  const PublicDemoInterviewRecord._({required this.applicantId});
+
+  /// The applicant this interview was actually conducted for. Checked for
+  /// identity match, not just presence — a genuine record reused across
+  /// applicants via `copyWith` is rejected the same way a reused
+  /// [PublicDemoBindingOffer] is (WORKFLOW-STATE-1AB FIX1 P1-1D).
+  final String applicantId;
+}
+
+/// Authoritative, unforgeable proof that a specific applicant actually
+/// joined through [PublicDemoApplicant.join] — the domain command that
+/// checks BindingOffer identity, validity, and fiscal-close freshness
+/// before minting one.
+///
+/// Constructor private to this file: no caller can fabricate one by
+/// constructing an applicant or calling `copyWith(employeeMorale: ...,
+/// employeeCompanyTrust: ...)` directly. [PublicDemoApplicant.hasJoined] —
+/// the fact [PublicDemoState.advanceToJune]/`closeMay`'s joined-projection
+/// derivation and payroll eligibility both trust — checks this record, not
+/// the (separately, publicly settable) morale/trust fields
+/// (WORKFLOW-STATE-1AB FIX2 P1-4).
+class PublicDemoJoinRecord {
+  const PublicDemoJoinRecord._({required this.applicantId});
+
+  final String applicantId;
+}
 
 enum PublicDemoApplicantStage {
   applied,
@@ -43,6 +84,8 @@ class PublicDemoApplicant {
     this.raiseEffectiveMonth,
     this.stage = PublicDemoApplicantStage.applied,
     this.bindingOffer,
+    this.interviewRecord,
+    this.joinRecord,
   }) : assert(experienceMonths >= 0, 'experienceMonths must not be negative');
 
   final String id;
@@ -77,6 +120,16 @@ class PublicDemoApplicant {
   /// way to null it back out.
   final PublicDemoBindingOffer? bindingOffer;
 
+  /// Authoritative, unforgeable proof this applicant was actually
+  /// interviewed — see [PublicDemoInterviewRecord] (WORKFLOW-STATE-1AB
+  /// FIX2 P1-1A).
+  final PublicDemoInterviewRecord? interviewRecord;
+
+  /// Authoritative, unforgeable proof this applicant actually joined
+  /// through [join] — see [PublicDemoJoinRecord] (WORKFLOW-STATE-1AB FIX2
+  /// P1-4).
+  final PublicDemoJoinRecord? joinRecord;
+
   PublicDemoApplicant copyWith({
     PublicDemoApplicantStage? stage,
     int? acceptedMonthlySalary,
@@ -90,6 +143,8 @@ class PublicDemoApplicant {
     int? raisedMonthlySalary,
     int? raiseEffectiveMonth,
     PublicDemoBindingOffer? bindingOffer,
+    PublicDemoInterviewRecord? interviewRecord,
+    PublicDemoJoinRecord? joinRecord,
   }) => PublicDemoApplicant(
     id: id,
     name: name,
@@ -112,6 +167,8 @@ class PublicDemoApplicant {
     raiseEffectiveMonth: raiseEffectiveMonth ?? this.raiseEffectiveMonth,
     stage: stage ?? this.stage,
     bindingOffer: bindingOffer ?? this.bindingOffer,
+    interviewRecord: interviewRecord ?? this.interviewRecord,
+    joinRecord: joinRecord ?? this.joinRecord,
   );
 
   /// Whether this applicant has authoritative, domain-issued provenance for
@@ -119,7 +176,31 @@ class PublicDemoApplicant {
   /// it will join them (WORKFLOW-STATE-1 §12A).
   bool get hasBindingOffer => bindingOffer != null;
 
-  bool get hasJoined => employeeMorale != null && employeeCompanyTrust != null;
+  /// Whether this applicant genuinely completed the interview step —
+  /// checked by identity, not just presence (WORKFLOW-STATE-1AB FIX2
+  /// P1-1A).
+  bool get hasBeenInterviewed => interviewRecord?.applicantId == id;
+
+  /// The single sanctioned way to record that this applicant actually went
+  /// through Public Demo 0.1's interview step (WORKFLOW-STATE-1AB FIX2
+  /// P1-1A), called only by [PublicDemoWorkflowState.markApplicantInterviewed].
+  /// Idempotent. [PublicDemoOfferAcceptance.accept] requires the resulting
+  /// [PublicDemoInterviewRecord] — not the separately, publicly settable
+  /// [stage] field — before it will mint a [PublicDemoBindingOffer].
+  PublicDemoApplicant markInterviewed() => hasBeenInterviewed
+      ? this
+      : copyWith(
+          stage: PublicDemoApplicantStage.interviewed,
+          interviewRecord: PublicDemoInterviewRecord._(applicantId: id),
+        );
+
+  /// Whether this applicant genuinely joined through [join] — checked by
+  /// identity, not just the presence of morale/trust values (WORKFLOW-
+  /// STATE-1AB FIX2 P1-4). [PublicDemoState.advanceToJune]/`closeMay`'s
+  /// joined-projection derivation and payroll eligibility both trust this,
+  /// not a caller-supplied applicant's `employeeMorale`/`employeeCompanyTrust`
+  /// alone.
+  bool get hasJoined => joinRecord?.applicantId == id;
 
   bool get isInexperienced => experienceMonths == 0;
 
@@ -143,12 +224,25 @@ class PublicDemoApplicant {
   /// match. The authoritative salary always comes from the offer itself
   /// (never the separately mutable [acceptedMonthlySalary] field a caller
   /// could otherwise tamper with via `copyWith` before joining).
-  PublicDemoApplicant join({required int week}) {
+  ///
+  /// WORKFLOW-STATE-1AB FIX2 P1-1E: also requires [currentFiscalCloseId] to
+  /// match the offer's own [PublicDemoBindingOffer.fiscalCloseId] — a stale
+  /// genuine offer cannot be joined against a later close, even when this
+  /// method is called directly instead of through
+  /// [PublicDemoJoinTransaction]. FIX2 P1-4: mints an unforgeable
+  /// [PublicDemoJoinRecord] bound to [id] — the sole fact
+  /// [hasJoined]/downstream payroll projection trust, never the separately,
+  /// publicly settable `employeeMorale`/`employeeCompanyTrust` fields alone.
+  PublicDemoApplicant join({
+    required int week,
+    required PublicDemoFiscalCloseId currentFiscalCloseId,
+  }) {
     final offer = bindingOffer;
     if (hasJoined ||
         stage == PublicDemoApplicantStage.offerDeclined ||
         offer == null ||
-        offer.applicantId != id) {
+        offer.applicantId != id ||
+        offer.fiscalCloseId != currentFiscalCloseId) {
       return this;
     }
     final event = EmployeeRelationshipEvent(
@@ -163,6 +257,7 @@ class PublicDemoApplicant {
       employeeCompanyTrust: (defaultEmployeeCompanyTrust + event.trustDelta)
           .clamp(0, 100),
       relationshipHistory: [...relationshipHistory, event],
+      joinRecord: PublicDemoJoinRecord._(applicantId: id),
     );
   }
 }

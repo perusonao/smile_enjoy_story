@@ -1,5 +1,65 @@
 # WORKFLOW-STATE-1A+B — Atomic Authority Cutover — Implementation Result
 
+## 0. This Session — Reuse of Existing Implementation + Independent Re-Validation
+
+A later task brief reported that an independent Codex review of
+`2a9aaca48e13a88aea47649f295eca9f131b997a` (`BASE == TARGET`, `DIFF ==
+0 files`) found the Atomic Authority Cutover absent from the branch it
+reviewed, and asked this session to search for an unreviewed
+implementation before writing new code.
+
+That search found this exact implementation already complete and pushed
+on `origin/claude/workflow-state-1ab-cutover-8aajsm` (single commit
+`4313a2b`, based on `origin/main` @ `2a9aaca`) — i.e. it existed but had
+not yet reached the branch the prior review actually looked at. This
+session's designated branch, `claude/workflow-state-1-atomic-cutover-y14m3g`,
+was itself pointing at the same stale `f4ca78f` scaffold ancestor
+described in §1 below (279 commits behind `origin/main`, zero unique
+commits) — not at `2a9aaca`, and not at this implementation.
+
+Rather than re-implementing from scratch, this session:
+
+1. Reset `claude/workflow-state-1-atomic-cutover-y14m3g` to the content of
+   `origin/claude/workflow-state-1ab-cutover-8aajsm` (`git checkout -B
+   claude/workflow-state-1-atomic-cutover-y14m3g
+   origin/claude/workflow-state-1ab-cutover-8aajsm`) — no work was lost,
+   since the designated branch carried no unique commits of its own.
+2. Independently re-ran every validation step from scratch in a freshly
+   provisioned environment (Flutter 3.44.9 stable installed fresh, matching
+   CI's `subosito/flutter-action` pin) rather than trusting the prior
+   session's report:
+   - `flutter test test/game/public_demo` → **285 passed**, 0 failed.
+   - `flutter test test/ui/public_demo` → **35 passed**, 0 failed.
+   - `flutter test` (full repo) → **852 passed**, 0 failed, 0 skipped.
+   - `flutter analyze` → **No issues found.**
+   - `flutter build web --release` → **✓ Built build/web**.
+   - Re-verified by direct grep, not by trusting the report text: no
+     `List<PublicDemoApplicant|PublicDemoEngineerSales|PublicDemoAssignment>`
+     `State` fields remain in
+     `lib/ui/public_demo/public_demo_01_placeholder_screen.dart`;
+     `PublicDemoBindingOffer`'s only constructor (`._`) is called from
+     exactly one call site, inside its own file
+     (`public_demo_binding_offer.dart`); `.applyTo(` (the only path that
+     writes `acceptedMonthlySalary`) has exactly one call site, inside
+     `PublicDemoOfferAcceptance.accept`; no `copyWith(acceptedMonthlySalary:`
+     bypass exists anywhere in `lib/`; `PublicDemoCompanySnapshot` (the one
+     pre-existing file still typed against bare `List<PublicDemoEngineerSales>`/
+     `List<PublicDemoAssignment>` parameters) is confirmed dead code — its
+     only caller, `PublicDemoMonthlyRecord`, has zero callers anywhere in
+     `lib/`.
+3. Pushed the identical, unmodified tree to
+   `origin/claude/workflow-state-1-atomic-cutover-y14m3g` (this session's
+   actual designated branch) and verified `git rev-parse HEAD ==
+   git rev-parse origin/claude/workflow-state-1-atomic-cutover-y14m3g`.
+
+No implementation defects were found, so no fix commits were needed on top
+of `4313a2b`. §1-§38 below are the prior session's original report,
+preserved verbatim as the record of what was built and why; branch-name
+references inside them to `claude/workflow-state-1ab-cutover-8aajsm`
+describe that original session's own branch and are left as written for
+that reason — this session's actual pushed branch and remote-HEAD
+verification are §2/§36 as amended, and summarized in §39 below.
+
 ## 1. Verified Baseline
 
 `git fetch origin` succeeded in this environment (the previous session's
@@ -29,8 +89,10 @@ confirmed:
 
 ## 2. Branch / HEAD
 
-- Branch: `claude/workflow-state-1ab-cutover-8aajsm`
+- Branch (original implementation session): `claude/workflow-state-1ab-cutover-8aajsm`
+- Branch (this session's actual push target, identical content): `claude/workflow-state-1-atomic-cutover-y14m3g`
 - Base: `origin/main` @ `2a9aaca48e13a88aea47649f295eca9f131b997a`
+- HEAD (both branches): `4313a2b9b040eb15e47001d1d357099ea91b8eb3`
 - All implementation work is new commits on top of that base.
 
 ## 3. Files Inspected
@@ -440,8 +502,10 @@ commit(s) created by this session.
 
 ## 36. Remote HEAD
 
-Pushed to `origin/claude/workflow-state-1ab-cutover-8aajsm` via `git push
--u origin claude/workflow-state-1ab-cutover-8aajsm`.
+Originally pushed to `origin/claude/workflow-state-1ab-cutover-8aajsm` via
+`git push -u origin claude/workflow-state-1ab-cutover-8aajsm`. This session
+additionally pushed the identical commit to
+`origin/claude/workflow-state-1-atomic-cutover-y14m3g` — see §39.
 
 ## 37. Verdict
 
@@ -450,3 +514,17 @@ Pushed to `origin/claude/workflow-state-1ab-cutover-8aajsm` via `git push
 ## 38. Next
 
 Codex — independent implementation review.
+
+## 39. This Session's Push (authoritative for review)
+
+- Branch reviewed should be: **`claude/workflow-state-1-atomic-cutover-y14m3g`**
+- Base SHA: `2a9aaca48e13a88aea47649f295eca9f131b997a`
+- Local HEAD after push: `4313a2b9b040eb15e47001d1d357099ea91b8eb3`
+- `origin/claude/workflow-state-1-atomic-cutover-y14m3g` HEAD: `4313a2b9b040eb15e47001d1d357099ea91b8eb3`
+- `git rev-parse HEAD == git rev-parse origin/claude/workflow-state-1-atomic-cutover-y14m3g`: **YES**
+- `git diff origin/main...HEAD --stat`: 23 files changed (22 implementation
+  files per §34, plus this result-report file), 0 unrelated files.
+- All validation in §0 re-run independently in this session's own
+  environment (fresh Flutter 3.44.9 install) with identical pass counts to
+  §23-§27: focused 285/285, Public Demo 320/320 (285+35), full suite
+  852/852, analyze clean, web build clean. No fix commits were required.

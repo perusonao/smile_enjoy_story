@@ -145,7 +145,8 @@ BASE:              2a9aaca48e13a88aea47649f295eca9f131b997a
 FIX1:              2547e4225097af5be1d8f4957e18a0bbe058f47a
 FIX2 BASE:         2547e4225097af5be1d8f4957e18a0bbe058f47a
 BRANCH:            claude/workflow-state-fix2-p1-ctaakf
-HEAD:              14d8de13bcc83d985414c8cf56d6c0838c8d570f
+HEAD:              14d8de13bcc83d985414c8cf56d6c0838c8d570f (implementation
+                   commit; this report is committed on top, see §17)
 REMOTE HEAD:       see §17 below (populated after push)
 DIFF:              25 files changed, 1041 insertions(+), 334 deletions(-)
                    (7 lib/, 18 test/, all within
@@ -235,12 +236,17 @@ P3: 0
 
 CHANGED FILES:       25
 COMMIT:              14d8de13bcc83d985414c8cf56d6c0838c8d570f
-REMOTE HEAD:         see §17 below
+REMOTE HEAD:         d186fea522983f6f9def395dfef6bec82955a291
 ```
 
 ## 17. Commit / Push
 
-Committed as FIX2 on `claude/workflow-state-fix2-p1-ctaakf` (branch fast-forwarded to the FIX1 target `2547e42` prior to implementation, per §1). Commit `14d8de13bcc83d985414c8cf56d6c0838c8d570f`. Pushed to `origin/claude/workflow-state-fix2-p1-ctaakf` with `git push -u origin claude/workflow-state-fix2-p1-ctaakf` (no force). No PR created, no merge performed.
+Committed as FIX2 on `claude/workflow-state-fix2-p1-ctaakf` (branch fast-forwarded to the FIX1 target `2547e42` prior to implementation, per §1):
+
+- `14d8de13bcc83d985414c8cf56d6c0838c8d570f` — the implementation commit (25 files, §16).
+- `d186fea522983f6f9def395dfef6bec82955a291` — this result report, committed on top.
+
+Pushed to `origin/claude/workflow-state-fix2-p1-ctaakf` with `git push -u origin claude/workflow-state-fix2-p1-ctaakf` (no force). Branch HEAD == remote HEAD == `d186fea522983f6f9def395dfef6bec82955a291`. No PR created, no merge performed.
 
 ## 18. Verdict
 

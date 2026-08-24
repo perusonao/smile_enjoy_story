@@ -203,12 +203,12 @@ Claude Code
 BASE:              2a9aaca48e13a88aea47649f295eca9f131b997a
 FIX1 BASE:         4313a2b9b040eb15e47001d1d357099ea91b8eb3
 BRANCH:            claude/workflow-state-1ab-fix1-1ilyt3
-HEAD:              (fast-forwarded to FIX1 BASE prior to implementation)
-REMOTE HEAD:       see §13 below (populated after push)
-DIFF:              22 files changed, 994 insertions(+), 570 deletions(-)
-                   (2 new/legacy files deleted, all within
-                   lib/game/public_demo, lib/ui/public_demo,
-                   test/game/public_demo)
+HEAD:              2547e4225097af5be1d8f4957e18a0bbe058f47a
+REMOTE HEAD:       2547e4225097af5be1d8f4957e18a0bbe058f47a (origin/claude/workflow-state-1ab-fix1-1ilyt3)
+DIFF:              23 files changed, 1279 insertions(+), 570 deletions(-)
+                   (2 legacy files deleted, 1 result doc added, all
+                   remaining changes within lib/game/public_demo,
+                   lib/ui/public_demo, test/game/public_demo)
 
 P1-1 BINDING OFFER:
   STAGE GUARD:       CLOSED — accept() requires stage == interviewed
@@ -251,9 +251,9 @@ P1: 0 (all four closed)
 P2: 0 open (snapshot live path explicitly deferred, not an open finding)
 P3: 0
 
-CHANGED FILES:       22 (see §9/diff stat)
-COMMIT:              see §13 below
-REMOTE HEAD:         see §13 below
+CHANGED FILES:       23 (see §9/diff stat)
+COMMIT:              2547e4225097af5be1d8f4957e18a0bbe058f47a
+REMOTE HEAD:         2547e4225097af5be1d8f4957e18a0bbe058f47a
 ```
 
 ## 12. Regression Confirmation
@@ -272,9 +272,10 @@ economics, restructured but same assertions), and
 ## 13. Commit / Push
 
 Committed as FIX1 on `claude/workflow-state-1ab-fix1-1ilyt3` (branch already
-fast-forwarded to the FIX1 base `4313a2b`, per §1). Pushed to
-`origin/claude/workflow-state-1ab-fix1-1ilyt3`. No PR created, no merge
-performed.
+fast-forwarded to the FIX1 base `4313a2b`, per §1) at commit
+`2547e4225097af5be1d8f4957e18a0bbe058f47a`. Pushed to
+`origin/claude/workflow-state-1ab-fix1-1ilyt3` (remote HEAD confirmed
+identical via `git ls-remote`). No PR created, no merge performed.
 
 ## 14. Verdict
 

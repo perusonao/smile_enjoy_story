@@ -1,10 +1,13 @@
 import 'public_demo_assignment.dart';
 import 'public_demo_binding_offer.dart';
 import 'public_demo_fiscal_close_id.dart';
+import 'public_demo_interview.dart';
 import 'public_demo_join.dart';
+import 'public_demo_raise_transaction.dart';
 import 'public_demo_recruitment.dart';
 import 'public_demo_sales.dart';
 import 'public_demo_salary_offer.dart';
+import 'public_demo_state.dart';
 
 /// The single authoritative source for Public Demo 0.1 workflow facts:
 /// applicants (and their recruitment/pre-entry stage, offer, binding offer,
@@ -73,11 +76,22 @@ class PublicDemoWorkflowState {
   // still let a caller wholesale-replace the applicant/engineer lists,
   // which is enough to omit/duplicate/reorder existing entries). Every
   // caller outside this file must now go through the named, field-specific
-  // methods below (`withApplicant`, `withGeneratedApplicants`,
-  // `joinAndKeepOnly`, `withEngineer`, `withJoinedEngineers`, the named
-  // engineer/applicant stage-transition methods (WORKFLOW-STATE-1AB FIX5
-  // P1 — see their own section docs), `withAssignmentUpdate`,
-  // `assignOrderedForMay`) — [_copyWith] is private, used only by them.
+  // methods below (`withGeneratedApplicants`, `joinAndKeepOnly`,
+  // `withJoinedEngineers`, the named engineer/applicant stage-transition
+  // methods (WORKFLOW-STATE-1AB FIX5/FIX6 P1 — see their own section
+  // docs), `withAssignmentUpdate`, `assignOrderedForMay`) — [_copyWith] is
+  // private, used only by them.
+  //
+  // WORKFLOW-STATE-1AB FIX6 P1: `withEngineer`/`withApplicant` themselves
+  // were PUBLIC generic callback mutators — `workflow.withEngineer(id, (e)
+  // => e.copyWith(stage: ordered, lastInterviewScore: 80))` (independent
+  // review's confirmed Attack A) could set any authoritative fact on any
+  // entity with no precondition check at all, entirely independent of
+  // which specific closures this file's own transitions happened to pass
+  // it. Both are now private (`_withEngineer`/`_withApplicant`) — every
+  // caller outside this file goes through the named transitions below
+  // instead, none of which accepts a caller-supplied closure or a whole
+  // caller-supplied entity value.
   // There is no test-fixture escape hatch here any more either: test
   // fixtures needing a specific workflow now build it by chaining these
   // same real methods, exactly as production code does.
@@ -99,7 +113,13 @@ class PublicDemoWorkflowState {
   /// A missing id is a no-op — every call site already has the applicant's
   /// current record in hand, so a missing id would indicate a caller bug
   /// rather than a real workflow event.
-  PublicDemoWorkflowState withApplicant(
+  ///
+  /// Private to this file (WORKFLOW-STATE-1AB FIX6 P1): a caller-supplied
+  /// [update] closure could set any authoritative fact — `stage`,
+  /// `lastInterviewScore`/`interviewRecord` on the engineer side — with no
+  /// precondition check at all. Every caller outside this file goes
+  /// through the named, precondition-gated transitions below instead.
+  PublicDemoWorkflowState _withApplicant(
     String applicantId,
     PublicDemoApplicant Function(PublicDemoApplicant applicant) update,
   ) => _copyWith(
@@ -136,7 +156,7 @@ class PublicDemoWorkflowState {
   /// pre-join sales at all (see [PublicDemoApplicant.canEnterPreJoinSales])
   /// — checked here, not just by the widget deciding which button to show.
   PublicDemoWorkflowState beginPreEntrySkillSheet(String applicantId) =>
-      withApplicant(
+      _withApplicant(
         applicantId,
         (applicant) =>
             applicant.stage == PublicDemoApplicantStage.offerAccepted &&
@@ -175,11 +195,110 @@ class PublicDemoWorkflowState {
     String applicantId, {
     required Set<PublicDemoApplicantStage> from,
     required PublicDemoApplicantStage to,
-  }) => withApplicant(
+  }) => _withApplicant(
     applicantId,
     (applicant) => from.contains(applicant.stage)
         ? applicant.copyWith(stage: to)
         : applicant,
+  );
+
+  /// Records a genuine interview completion for [applicantId]
+  /// (WORKFLOW-STATE-1AB FIX6 P1, moved out of
+  /// `PublicDemoAggregate.completeInterview` so that file no longer needs
+  /// the now-private [_withApplicant] directly). [proof] must come from
+  /// [PublicDemoState.useSalesSlotForInterview] actually consuming a slot
+  /// on this exact call — only [PublicDemoAggregate.completeInterview] can
+  /// supply one. Delegates to [PublicDemoApplicant.completeInterview],
+  /// which is itself idempotent.
+  PublicDemoWorkflowState recordInterviewCompletion(
+    String applicantId,
+    PublicDemoSalesSlotConsumptionProof proof,
+  ) => _withApplicant(
+    applicantId,
+    (applicant) => applicant.completeInterview(proof),
+  );
+
+  /// Records the pre-entry partner-interview outcome for one applicant
+  /// (WORKFLOW-STATE-1AB FIX6 P1, moved out of
+  /// `PublicDemoAggregate.recordPreEntryPartnerInterviewResult`). A no-op
+  /// unless the applicant is currently at `preEntryIntroduced`. Derives
+  /// pass/fail itself from the applicant's own
+  /// [PublicDemoApplicant.salesSkillFit] — never from a caller-supplied
+  /// stage. Sales-slot consumption is decided by the caller
+  /// (`PublicDemoAggregate`, which owns [PublicDemoState]); this method
+  /// only ever changes [applicants].
+  PublicDemoWorkflowState recordPreEntryPartnerInterviewResult(
+    String applicantId,
+  ) {
+    final applicant = applicants
+        .where((candidate) => candidate.id == applicantId)
+        .firstOrNull;
+    if (applicant == null ||
+        applicant.stage != PublicDemoApplicantStage.preEntryIntroduced) {
+      return this;
+    }
+    final nextStage = applicant.salesSkillFit >= 60
+        ? PublicDemoApplicantStage.preEntryPartnerPassed
+        : PublicDemoApplicantStage.preEntryPartnerFailed;
+    return _withApplicant(
+      applicantId,
+      (candidate) => candidate.copyWith(stage: nextStage),
+    );
+  }
+
+  /// Records the pre-entry client-interview outcome for one applicant
+  /// (WORKFLOW-STATE-1AB FIX6 P1, moved out of
+  /// `PublicDemoAggregate.recordPreEntryClientInterviewResult`). A no-op
+  /// unless the applicant is currently at `preEntryPartnerPassed`. Derives
+  /// pass/fail itself from the applicant's own
+  /// [PublicDemoApplicant.salesSkillFit] — never from a caller-supplied
+  /// stage. Matches the pre-cutover widget's own `ci()` handler: no sales
+  /// slot is consumed for this interview.
+  PublicDemoWorkflowState recordPreEntryClientInterviewResult(
+    String applicantId,
+  ) {
+    final applicant = applicants
+        .where((candidate) => candidate.id == applicantId)
+        .firstOrNull;
+    if (applicant == null ||
+        applicant.stage != PublicDemoApplicantStage.preEntryPartnerPassed) {
+      return this;
+    }
+    final nextStage = applicant.salesSkillFit >= 65
+        ? PublicDemoApplicantStage.preEntryClientPassed
+        : PublicDemoApplicantStage.preEntryClientFailed;
+    return _withApplicant(
+      applicantId,
+      (candidate) => candidate.copyWith(stage: nextStage),
+    );
+  }
+
+  /// The single sanctioned way to decide a raise for [applicantId]
+  /// (POST-12MONTH-1-FIX1 P1-1, moved out of
+  /// `PublicDemoAggregate.applyRaiseDecision`), via
+  /// [PublicDemoRaiseTransaction]. [state] is read-only context (the
+  /// fiscal-year-completion guard) — a value, not an identity, so passing
+  /// it does not let a caller fabricate applicant identity/facts; the
+  /// applicant transformed is always the genuine current one this
+  /// workflow already holds for [applicantId], read internally, never a
+  /// caller-supplied entity.
+  PublicDemoWorkflowState applyRaiseDecision(
+    String applicantId, {
+    required PublicDemoState state,
+    required int decisionMonth,
+    required int week,
+    required PublicDemoRaiseDecision decision,
+  }) => _withApplicant(
+    applicantId,
+    (applicant) => const PublicDemoRaiseTransaction()
+        .execute(
+          state: state,
+          applicant: applicant,
+          decisionMonth: decisionMonth,
+          week: week,
+          decision: decision,
+        )
+        .applicant,
   );
 
   /// Appends newly generated applicants (JOB-2/3, now atomic via
@@ -207,7 +326,7 @@ class PublicDemoWorkflowState {
     required String applicantId,
     required PublicDemoSalaryOffer offer,
     required PublicDemoFiscalCloseId fiscalCloseId,
-  }) => withApplicant(
+  }) => _withApplicant(
     applicantId,
     (applicant) => PublicDemoOfferAcceptance.accept(
       applicant: applicant,
@@ -269,7 +388,9 @@ class PublicDemoWorkflowState {
   // Engineers (sales pipeline)
   // ---------------------------------------------------------------------
 
-  PublicDemoWorkflowState withEngineer(
+  /// Private to this file (WORKFLOW-STATE-1AB FIX6 P1) for the same reason
+  /// [_withApplicant] is — see its doc.
+  PublicDemoWorkflowState _withEngineer(
     String engineerId,
     PublicDemoEngineerSales Function(PublicDemoEngineerSales engineer) update,
   ) => _copyWith(
@@ -334,11 +455,53 @@ class PublicDemoWorkflowState {
     String engineerId, {
     required Set<PublicDemoSalesStage> from,
     required PublicDemoSalesStage to,
-  }) => withEngineer(
+  }) => _withEngineer(
     engineerId,
     (engineer) =>
         from.contains(engineer.stage) ? engineer.copyWith(stage: to) : engineer,
   );
+
+  /// Records a partner/client interview outcome for [engineerId]
+  /// (WORKFLOW-STATE-1AB FIX6 P1, moved out of
+  /// `PublicDemoAggregate.recordEngineerInterviewResult` so that file no
+  /// longer needs the now-private [_withEngineer] directly). Requires the
+  /// engineer to already be at the stage [type] demands (`introduced` for
+  /// partner, `partnerInterviewPassed` for client); a no-op otherwise.
+  /// Derives the resulting stage and score itself, from the engineer's own
+  /// [PublicDemoEngineerSales.interviewProfile] and [actualCapability], via
+  /// [PublicDemoInterviewEvaluator] — never accepted as a parameter.
+  /// Delegates the actual mutation to
+  /// [PublicDemoEngineerSales.recordInterviewOutcome], which is what mints
+  /// the unforgeable [PublicDemoEngineerInterviewRecord] on a genuine
+  /// client-interview pass.
+  PublicDemoWorkflowState recordEngineerInterviewResult({
+    required String engineerId,
+    required PublicDemoInterviewType type,
+    required int actualCapability,
+  }) {
+    final engineer = engineers
+        .where((candidate) => candidate.id == engineerId)
+        .firstOrNull;
+    if (engineer == null) return this;
+    final requiredStage = type == PublicDemoInterviewType.partner
+        ? PublicDemoSalesStage.introduced
+        : PublicDemoSalesStage.partnerInterviewPassed;
+    if (engineer.stage != requiredStage) return this;
+
+    final result = PublicDemoInterviewEvaluator.evaluate(
+      type: type,
+      profile: engineer.interviewProfile,
+      actualCapability: actualCapability,
+    );
+    return _withEngineer(
+      engineerId,
+      (candidate) => candidate.recordInterviewOutcome(
+        type: type,
+        passed: result.passed,
+        score: result.score,
+      ),
+    );
+  }
 
   /// Adds newly joined applicants as engineers (May's join step), skipping
   /// anyone already present by id — mirrors the widget's former inline
@@ -411,27 +574,34 @@ class PublicDemoWorkflowState {
   /// applicant facts already on this workflow, so the caller (the widget)
   /// supplies no roster of its own and cannot fabricate one.
   ///
-  /// WORKFLOW-STATE-1AB FIX5 P1 (defense in depth): does not trust `stage`
-  /// alone, even though FIX5 also closed every production path that could
-  /// set it without going through a genuine transition —
+  /// WORKFLOW-STATE-1AB FIX5/FIX6 P1 (defense in depth): does not trust
+  /// `stage` alone, even though FIX5/FIX6 also closed every production path
+  /// that could set it without going through a genuine transition —
   /// [PublicDemoSalesStage.ordered]/[PublicDemoApplicantStage.juneOrdered]
   /// are corroborated against a second, independently-authoritative fact
-  /// each: an engineer additionally needs a genuine
-  /// [PublicDemoEngineerSales.lastInterviewScore] (set only by
-  /// [PublicDemoAggregate.recordEngineerInterviewResult] when it actually
-  /// evaluates a client interview), and an applicant additionally needs
+  /// each: an engineer additionally needs
+  /// [PublicDemoEngineerSales.hasGenuineInterviewRecord] — the unforgeable
+  /// [PublicDemoEngineerInterviewRecord] only a genuine client-interview
+  /// pass through [PublicDemoAggregate.recordEngineerInterviewResult] can
+  /// mint (WORKFLOW-STATE-1AB FIX6 P1: `lastInterviewScore != null` alone,
+  /// FIX5's original check, was insufficient — that field remains publicly
+  /// settable via [PublicDemoEngineerSales.copyWith] and proves nothing by
+  /// itself) — and an applicant additionally needs
   /// [PublicDemoApplicant.hasJoined] — the unforgeable [PublicDemoJoinRecord]
   /// only a genuine [PublicDemoJoinTransaction.join] can mint. This means a
   /// future bug that lets `stage` alone drift out of sync (e.g. a stage set
-  /// before join is attempted, or a join that fails) still cannot produce an
-  /// assignment for a non-eligible engineer or non-joined applicant — see
-  /// `joinAndKeepOnly`'s own doc for exactly this join-failure case.
+  /// before join is attempted, or a join that fails), or even a caller
+  /// constructing a whole fabricated engineer/applicant directly via the
+  /// public [PublicDemoWorkflowState] factory constructor, still cannot
+  /// produce an assignment for a non-eligible engineer or non-joined
+  /// applicant — see `joinAndKeepOnly`'s own doc for exactly the
+  /// join-failure case.
   /// Reproduces exactly the roster the pre-cutover widget computed inline.
   PublicDemoWorkflowState assignOrderedForMay() {
     final nextAssignments = [
       for (final engineer in engineers)
         if (engineer.stage == PublicDemoSalesStage.ordered &&
-            engineer.lastInterviewScore != null)
+            engineer.hasGenuineInterviewRecord)
           publicDemoInitialAssignments
                   .where((assignment) => assignment.engineerId == engineer.id)
                   .firstOrNull ??

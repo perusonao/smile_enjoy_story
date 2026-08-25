@@ -9,6 +9,7 @@ import 'package:smile_enjoy_story/game/public_demo/public_demo_salary_offer.dart
 import 'package:smile_enjoy_story/game/public_demo/public_demo_workflow_state.dart';
 
 import 'test_support/public_demo_offer_test_helpers.dart';
+import 'test_support/public_demo_sales_test_helpers.dart';
 
 /// WORKFLOW-STATE-1 §35: proves the domain (PublicDemoWorkflowState) is now
 /// authoritative for applicants/engineers/assignments — directly, without
@@ -122,29 +123,32 @@ void main() {
     // gone — build a genuine assignment through the real
     // assignOrderedForMay authoritative transition (an ordered engineer)
     // instead of fabricating a PublicDemoAssignment and injecting it
-    // directly. FIX5 P1: assignOrderedForMay also requires a genuine
-    // lastInterviewScore (set only by
-    // PublicDemoAggregate.recordEngineerInterviewResult in production) —
-    // set directly here since this group tests assignOrderedForMay's own
-    // eligibility logic in isolation, not the full aggregate-level
-    // authority chain (already covered in public_demo_aggregate_test.dart).
+    // directly. FIX5/FIX6 P1: assignOrderedForMay also requires a genuine
+    // PublicDemoEngineerInterviewRecord (set only by
+    // PublicDemoEngineerSales.recordInterviewOutcome — see
+    // recordTestClientInterviewPass — when it actually records a passed
+    // client interview) — minted here via that real entry point since this
+    // group tests assignOrderedForMay's own eligibility logic in isolation,
+    // not the full aggregate-level authority chain (already covered in
+    // public_demo_aggregate_test.dart).
     PublicDemoWorkflowState workflowWithGenuineAssignment(String engineerId) =>
         PublicDemoWorkflowState(
           applicants: const [],
           engineers: [
-            PublicDemoEngineerSales(
-              id: engineerId,
-              name: 'Test',
-              summary: 'summary',
-              stage: PublicDemoSalesStage.ordered,
-              lastInterviewScore: 80,
-              interviewProfile: const PublicDemoInterviewProfile(
-                skillFit: 70,
-                humanity: 70,
-                morale: 70,
-                clientTrust: 60,
+            recordTestClientInterviewPass(
+              PublicDemoEngineerSales(
+                id: engineerId,
+                name: 'Test',
+                summary: 'summary',
+                stage: PublicDemoSalesStage.clientInterviewPassed,
+                interviewProfile: const PublicDemoInterviewProfile(
+                  skillFit: 70,
+                  humanity: 70,
+                  morale: 70,
+                  clientTrust: 60,
+                ),
               ),
-            ),
+            ).copyWith(stage: PublicDemoSalesStage.ordered),
           ],
         ).assignOrderedForMay();
 
@@ -247,19 +251,19 @@ void main() {
           applicants: const [],
           engineers: [
             for (final id in ids)
-              PublicDemoEngineerSales(
-                id: id,
-                name: id,
-                summary: 'summary',
-                stage: PublicDemoSalesStage.ordered,
-                lastInterviewScore: 80,
-                interviewProfile: const PublicDemoInterviewProfile(
-                  skillFit: 70,
-                  humanity: 70,
-                  morale: 70,
-                  clientTrust: 60,
+              recordTestClientInterviewPass(
+                PublicDemoEngineerSales(
+                  id: id,
+                  name: id,
+                  summary: 'summary',
+                  interviewProfile: const PublicDemoInterviewProfile(
+                    skillFit: 70,
+                    humanity: 70,
+                    morale: 70,
+                    clientTrust: 60,
+                  ),
                 ),
-              ),
+              ).copyWith(stage: PublicDemoSalesStage.ordered),
           ],
         ).assignOrderedForMay();
 
@@ -381,19 +385,26 @@ void main() {
   );
 
   group('assignOrderedForMay is the sole assignment authority (P1-3)', () {
-    const orderedEngineer = PublicDemoEngineerSales(
-      id: 'eng-01',
-      name: 'Ordered Engineer',
-      summary: 'summary',
-      stage: PublicDemoSalesStage.ordered,
-      lastInterviewScore: 80,
-      interviewProfile: PublicDemoInterviewProfile(
-        skillFit: 70,
-        humanity: 70,
-        morale: 70,
-        clientTrust: 60,
+    // WORKFLOW-STATE-1AB FIX6 P1: `lastInterviewScore` alone is no longer
+    // sufficient (that field is publicly settable via `copyWith` and
+    // proves nothing by itself) — a genuine
+    // `PublicDemoEngineerInterviewRecord`, minted only by
+    // `PublicDemoEngineerSales.recordInterviewOutcome`, is required
+    // instead. Not `const` any more since minting one is a real method
+    // call, not a compile-time literal.
+    final orderedEngineer = recordTestClientInterviewPass(
+      const PublicDemoEngineerSales(
+        id: 'eng-01',
+        name: 'Ordered Engineer',
+        summary: 'summary',
+        interviewProfile: PublicDemoInterviewProfile(
+          skillFit: 70,
+          humanity: 70,
+          morale: 70,
+          clientTrust: 60,
+        ),
       ),
-    );
+    ).copyWith(stage: PublicDemoSalesStage.ordered);
     const waitingEngineer = PublicDemoEngineerSales(
       id: 'eng-02',
       name: 'Waiting Engineer',
@@ -469,7 +480,7 @@ void main() {
         'an assignment', () {
       final workflow = PublicDemoWorkflowState(
         applicants: [orderedApplicant, notOrderedApplicant],
-        engineers: const [orderedEngineer, waitingEngineer],
+        engineers: [orderedEngineer, waitingEngineer],
       );
 
       final next = workflow.assignOrderedForMay();
@@ -492,21 +503,26 @@ void main() {
       expect(next.assignments, isEmpty);
     });
 
-    // WORKFLOW-STATE-1AB FIX5 P1 (defense in depth, section 5): `stage`
-    // alone is never trusted. An engineer whose stage was somehow set to
-    // `ordered` without a genuine lastInterviewScore, and an applicant at
+    // WORKFLOW-STATE-1AB FIX5/FIX6 P1 (defense in depth, section 5):
+    // `stage` alone is never trusted. An engineer whose stage AND
+    // lastInterviewScore were both directly set (via the public
+    // constructor/copyWith — the exact shape of FIX5 review's confirmed
+    // Attack A: `stage: ordered, lastInterviewScore: 80`) but with no
+    // genuine PublicDemoEngineerInterviewRecord, and an applicant at
     // `juneOrdered` who never actually joined, must both be rejected —
     // exactly the shape of FIX4's Attack A / Attack B, now checked here
-    // too, not just by removing the generic stage setters that used to
-    // enable them.
-    test('stage alone is not proof: an ordered engineer with no genuine '
-        'interview record, and a juneOrdered applicant who never joined, are '
-        'both rejected', () {
+    // too, not just by removing the generic stage setters/mutators that
+    // used to enable them.
+    test('stage (and, for engineers, a fabricated lastInterviewScore) alone '
+        'is not proof: an ordered engineer with no genuine interview '
+        'record, and a juneOrdered applicant who never joined, are both '
+        'rejected', () {
       const unprovenEngineer = PublicDemoEngineerSales(
         id: 'eng-unproven',
         name: 'Unproven Engineer',
         summary: 'summary',
         stage: PublicDemoSalesStage.ordered,
+        lastInterviewScore: 80,
         interviewProfile: PublicDemoInterviewProfile(
           skillFit: 70,
           humanity: 70,
@@ -538,7 +554,7 @@ void main() {
         'never appended to', () {
       final workflow = PublicDemoWorkflowState(
         applicants: [orderedApplicant],
-        engineers: const [orderedEngineer],
+        engineers: [orderedEngineer],
       );
 
       final once = workflow.assignOrderedForMay();
@@ -580,7 +596,7 @@ void main() {
       // which reads only this workflow's own authoritative stage facts.
       final workflow = PublicDemoWorkflowState(
         applicants: [orderedApplicant],
-        engineers: const [orderedEngineer],
+        engineers: [orderedEngineer],
       );
       final next = workflow.assignOrderedForMay();
       expect(next.assignments, isNotEmpty);

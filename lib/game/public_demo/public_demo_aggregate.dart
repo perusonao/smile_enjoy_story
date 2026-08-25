@@ -126,10 +126,7 @@ class PublicDemoAggregate {
             : PublicDemoInterviewCompletionStatus.noSalesSlot,
       );
     }
-    final nextWorkflow = workflow.withApplicant(
-      applicantId,
-      (candidate) => candidate.completeInterview(proof),
-    );
+    final nextWorkflow = workflow.recordInterviewCompletion(applicantId, proof);
     return PublicDemoInterviewCompletionResult._(
       aggregate: _copyWith(state: slotResult.state, workflow: nextWorkflow),
       status: PublicDemoInterviewCompletionStatus.completed,
@@ -268,9 +265,13 @@ class PublicDemoAggregate {
 
   /// Records a partner or client interview outcome for an engineer's sales
   /// pipeline (WORKFLOW-STATE-1AB FIX5 P1, replacing
-  /// `applyEngineerInterviewResult`). [type] selects which real event
-  /// happened; the resulting stage and score are always derived here, from
-  /// the engineer's own [PublicDemoEngineerSales.interviewProfile] and
+  /// `applyEngineerInterviewResult`; FIX6 P1 moved the actual stage/record
+  /// derivation into [PublicDemoWorkflowState.recordEngineerInterviewResult]
+  /// so this file no longer needs the now-private `workflow._withEngineer`
+  /// directly). [type] selects which real event happened; the resulting
+  /// stage, score, and (on a genuine client-interview pass) unforgeable
+  /// [PublicDemoEngineerInterviewRecord] are always derived from the
+  /// engineer's own [PublicDemoEngineerSales.interviewProfile] and
   /// [PublicDemoEngineerRuntime.actualCapability] (via
   /// [PublicDemoInterviewEvaluator]) — never accepted as a parameter. A
   /// no-op unless [engineerId] is currently at the stage that interview
@@ -295,32 +296,15 @@ class PublicDemoAggregate {
       return this;
     }
 
-    final result = PublicDemoInterviewEvaluator.evaluate(
-      type: type,
-      profile: engineer.interviewProfile,
-      actualCapability:
-          state.runtimeForOrNull(engineerId)?.actualCapability ?? 0,
-    );
-    final nextStage = switch ((type, result.passed)) {
-      (PublicDemoInterviewType.partner, true) =>
-        PublicDemoSalesStage.partnerInterviewPassed,
-      (PublicDemoInterviewType.partner, false) =>
-        PublicDemoSalesStage.partnerInterviewFailed,
-      (PublicDemoInterviewType.client, true) =>
-        PublicDemoSalesStage.clientInterviewPassed,
-      (PublicDemoInterviewType.client, false) =>
-        PublicDemoSalesStage.clientInterviewFailed,
-    };
     return _copyWith(
       state: type == PublicDemoInterviewType.partner
           ? state.useSalesSlot()
           : state,
-      workflow: workflow.withEngineer(
-        engineerId,
-        (candidate) => candidate.copyWith(
-          stage: nextStage,
-          lastInterviewScore: result.score,
-        ),
+      workflow: workflow.recordEngineerInterviewResult(
+        engineerId: engineerId,
+        type: type,
+        actualCapability:
+            state.runtimeForOrNull(engineerId)?.actualCapability ?? 0,
       ),
     );
   }
@@ -331,7 +315,12 @@ class PublicDemoAggregate {
   /// past budget/fiscal completion) only when the applicant is genuinely
   /// eligible — currently at `preEntryIntroduced` — and derives pass/fail
   /// itself from the applicant's own [PublicDemoApplicant.salesSkillFit],
-  /// never from a caller-supplied stage.
+  /// never from a caller-supplied stage. FIX6 P1 moved the actual stage
+  /// derivation into
+  /// [PublicDemoWorkflowState.recordPreEntryPartnerInterviewResult] so this
+  /// file no longer needs the now-private `workflow._withApplicant`
+  /// directly; this method still owns deciding whether a sales slot is
+  /// genuinely available, since only it has [state].
   PublicDemoAggregate recordPreEntryPartnerInterviewResult(String applicantId) {
     final applicant = workflow.applicants
         .where((candidate) => candidate.id == applicantId)
@@ -342,15 +331,9 @@ class PublicDemoAggregate {
     }
     if (state.fiscalYearCompleted || state.salesRemaining <= 0) return this;
 
-    final nextStage = applicant.salesSkillFit >= 60
-        ? PublicDemoApplicantStage.preEntryPartnerPassed
-        : PublicDemoApplicantStage.preEntryPartnerFailed;
     return _copyWith(
       state: state.useSalesSlot(),
-      workflow: workflow.withApplicant(
-        applicantId,
-        (candidate) => candidate.copyWith(stage: nextStage),
-      ),
+      workflow: workflow.recordPreEntryPartnerInterviewResult(applicantId),
     );
   }
 
@@ -358,26 +341,13 @@ class PublicDemoAggregate {
   /// (WORKFLOW-STATE-1AB FIX5 P1) — mirrors
   /// [recordPreEntryPartnerInterviewResult] but, matching the pre-cutover
   /// widget's own `ci()` handler, consumes no sales slot. A no-op unless
-  /// the applicant is currently at `preEntryPartnerPassed`.
-  PublicDemoAggregate recordPreEntryClientInterviewResult(String applicantId) {
-    final applicant = workflow.applicants
-        .where((candidate) => candidate.id == applicantId)
-        .firstOrNull;
-    if (applicant == null) return this;
-    if (applicant.stage != PublicDemoApplicantStage.preEntryPartnerPassed) {
-      return this;
-    }
-
-    final nextStage = applicant.salesSkillFit >= 65
-        ? PublicDemoApplicantStage.preEntryClientPassed
-        : PublicDemoApplicantStage.preEntryClientFailed;
-    return _copyWith(
-      workflow: workflow.withApplicant(
-        applicantId,
-        (candidate) => candidate.copyWith(stage: nextStage),
-      ),
-    );
-  }
+  /// the applicant is currently at `preEntryPartnerPassed` — enforced by
+  /// [PublicDemoWorkflowState.recordPreEntryClientInterviewResult]
+  /// (FIX6 P1), which this is now a thin passthrough to.
+  PublicDemoAggregate recordPreEntryClientInterviewResult(String applicantId) =>
+      _copyWith(
+        workflow: workflow.recordPreEntryClientInterviewResult(applicantId),
+      );
 
   PublicDemoAggregate withAssignmentUpdate(
     String engineerId, {
@@ -410,23 +380,21 @@ class PublicDemoAggregate {
   /// The single sanctioned way to decide a raise for [applicantId]
   /// (POST-12MONTH-1-FIX1 P1-1), via [PublicDemoRaiseTransaction] — reads
   /// [state] for the fiscal-year-completion guard, mutates only [workflow].
+  /// FIX6 P1 moved the actual transaction call into
+  /// [PublicDemoWorkflowState.applyRaiseDecision] so this file no longer
+  /// needs the now-private `workflow._withApplicant` directly.
   PublicDemoAggregate applyRaiseDecision(
     String applicantId, {
     required int decisionMonth,
     required int week,
     required PublicDemoRaiseDecision decision,
   }) => _copyWith(
-    workflow: workflow.withApplicant(
+    workflow: workflow.applyRaiseDecision(
       applicantId,
-      (applicant) => const PublicDemoRaiseTransaction()
-          .execute(
-            state: state,
-            applicant: applicant,
-            decisionMonth: decisionMonth,
-            week: week,
-            decision: decision,
-          )
-          .applicant,
+      state: state,
+      decisionMonth: decisionMonth,
+      week: week,
+      decision: decision,
     ),
   );
 

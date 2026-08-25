@@ -7,6 +7,7 @@ import 'package:smile_enjoy_story/game/public_demo/public_demo_recruitment.dart'
 import 'package:smile_enjoy_story/game/public_demo/public_demo_recruitment_medium.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_sales.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_salary_offer.dart';
+import 'package:smile_enjoy_story/game/public_demo/public_demo_workflow_state.dart';
 
 /// WORKFLOW-STATE-1AB FIX3/FIX4: [PublicDemoAggregate] is the single
 /// authoritative Public Demo 0.1 root. These tests target the four P1
@@ -149,33 +150,38 @@ void main() {
     // `PublicDemoSalesSlotConsumptionProof` this test file cannot construct
     // (its constructor is private to public_demo_state.dart, and the only
     // place that mints one is `PublicDemoState.useSalesSlotForInterview`
-    // when it genuinely consumes a slot). This test proves the remaining,
-    // structurally-available surface — `withApplicant` combined with
-    // anything this file *can* construct — still cannot mint one.
-    test('withApplicant cannot fabricate interview completion: no lambda this '
-        'file can write mints a genuine PublicDemoInterviewRecord', () {
-      final workflow = PublicDemoAggregate.initial().workflow;
-      final applicantId = workflow.applicants.first.id;
+    // when it genuinely consumes a slot).
+    //
+    // WORKFLOW-STATE-1AB FIX6 P1: `PublicDemoWorkflowState.withApplicant`
+    // itself — the broadest fabrication tool this test used to demonstrate
+    // against — is gone too (private `_withApplicant` now, unreachable
+    // from this file: `workflow.withApplicant(...)` below would no longer
+    // compile). This test now proves the same conclusion through the
+    // remaining, structurally-available surface — directly constructing a
+    // `PublicDemoApplicant` (still publicly settable — WORKFLOW-STATE-1AB
+    // §6) — still cannot mint interview completion.
+    test(
+      'a directly-constructed applicant cannot fabricate interview '
+      'completion: `stage` alone mints no genuine PublicDemoInterviewRecord',
+      () {
+        const fabricated = PublicDemoApplicant(
+          id: 'intruder',
+          name: 'Intruder',
+          resumeSummary: 'Java 1年',
+          interviewScore: 90,
+          acceptanceScore: 90,
+          salesSkillFit: 90,
+          stage: PublicDemoApplicantStage.interviewed,
+        );
 
-      // The broadest fabrication attempt available: replace the real
-      // applicant with a freshly constructed one that sets `stage`
-      // directly (still publicly settable — WORKFLOW-STATE-1AB §6) but
-      // supplies no interviewRecord.
-      final attempted = workflow.withApplicant(
-        applicantId,
-        (a) => a.copyWith(stage: PublicDemoApplicantStage.interviewed),
-      );
-
-      final fabricated = attempted.applicants.firstWhere(
-        (a) => a.id == applicantId,
-      );
-      expect(fabricated.stage, PublicDemoApplicantStage.interviewed);
-      expect(
-        fabricated.hasBeenInterviewed,
-        isFalse,
-        reason: 'stage alone is not proof — see PublicDemoOfferAcceptance',
-      );
-    });
+        expect(fabricated.stage, PublicDemoApplicantStage.interviewed);
+        expect(
+          fabricated.hasBeenInterviewed,
+          isFalse,
+          reason: 'stage alone is not proof — see PublicDemoOfferAcceptance',
+        );
+      },
+    );
 
     test('genuine interview then offer acceptance succeeds end-to-end', () {
       final aggregate = PublicDemoAggregate.initial();
@@ -525,23 +531,20 @@ void main() {
       aggregate = aggregate.closeApril(monthlyExpenses: 800000);
       aggregate = hireApplicant(aggregate, applicant.id);
 
-      // Tamper with the field a caller could freely set on the workflow
-      // via the still-generic withApplicant — the join transition
-      // inside closeMay must resolve salary from the BindingOffer,
-      // never from this. This LOCAL value is never committed anywhere:
-      // there is no aggregate API left (no restore, no withWorkflow)
-      // that would let a caller substitute it for the real workflow
-      // before calling closeMay.
-      final tamperedWorkflow = aggregate.workflow.withApplicant(
-        applicant.id,
-        (a) => a.copyWith(acceptedMonthlySalary: 1),
-      );
-      expect(
-        tamperedWorkflow.applicants
-            .firstWhere((a) => a.id == applicant.id)
-            .acceptedMonthlySalary,
-        1,
-      );
+      // Tamper with the field a caller could freely set directly on an
+      // applicant value via the public `copyWith` (WORKFLOW-STATE-1AB
+      // FIX6 P1: `PublicDemoWorkflowState.withApplicant` — the generic
+      // callback mutator that used to let a caller re-commit a tampered
+      // applicant back onto the workflow itself — is gone entirely) — the
+      // join transition inside closeMay must resolve salary from the
+      // BindingOffer, never from this. This LOCAL value is never committed
+      // anywhere: there is no aggregate API left (no restore, no
+      // withWorkflow, no withApplicant) that would let a caller substitute
+      // it for the real workflow before calling closeMay.
+      final tampered = aggregate.workflow.applicants
+          .firstWhere((a) => a.id == applicant.id)
+          .copyWith(acceptedMonthlySalary: 1);
+      expect(tampered.acceptedMonthlySalary, 1);
 
       final result = aggregate.closeMay(week: 9, monthlyExpenses: 800000);
 
@@ -793,4 +796,157 @@ void main() {
       });
     },
   );
+
+  // WORKFLOW-STATE-1AB FIX6 P1: independent focused review of FIX5 found
+  // one more P1 — `PublicDemoWorkflowState.withEngineer`/`withApplicant`
+  // remained PUBLIC generic callback mutators (`workflow.withEngineer(id,
+  // (e) => e.copyWith(stage: ordered, lastInterviewScore: 80))` — the
+  // confirmed attack below), and FIX5's own `lastInterviewScore != null`
+  // corroboration was itself insufficient because `lastInterviewScore`
+  // remained caller-writable via that same public `copyWith`. Both
+  // `withEngineer`/`withApplicant` are now private
+  // (`_withEngineer`/`_withApplicant`) — every line below that used to call
+  // `workflow.withEngineer(...)`/`workflow.withApplicant(...)` directly no
+  // longer compiles from this file, which is itself part of the closure
+  // (a structural, compile-time guarantee, not just a behavioral one). A
+  // new unforgeable `PublicDemoEngineerInterviewRecord` (mirroring
+  // `PublicDemoInterviewRecord`/`PublicDemoJoinRecord`) replaces
+  // `lastInterviewScore` as the corroborating fact `assignOrderedForMay`
+  // actually checks.
+  group('WORKFLOW-STATE-1AB FIX6 P1: generic-mutator and '
+      'constructor-injection adversarial tests', () {
+    test('TEST A: the confirmed review attack — fabricating stage+score '
+        'directly, the way `workflow.withEngineer(id, (e) => '
+        'e.copyWith(stage: ordered, lastInterviewScore: 80))` used to — '
+        'cannot produce an assignment', () {
+      // `withEngineer` itself is gone (private `_withEngineer`); the line
+      // `PublicDemoWorkflowState.initial().withEngineer(id, (e) => ...)`
+      // the review used to confirm this attack would no longer compile
+      // from this file. The broadest remaining production-reachable
+      // surface for the identical fabrication (same fields, same
+      // values) is constructing a whole engineer directly via the public
+      // `PublicDemoEngineerSales` constructor, then handing it to the
+      // public `PublicDemoWorkflowState(applicants:, engineers:)`
+      // factory.
+      const fabricated = PublicDemoEngineerSales(
+        id: 'intruder',
+        name: 'Intruder',
+        summary: 'summary',
+        stage: PublicDemoSalesStage.ordered,
+        lastInterviewScore: 80,
+        interviewProfile: PublicDemoInterviewProfile(
+          skillFit: 99,
+          humanity: 99,
+          morale: 99,
+          clientTrust: 99,
+        ),
+      );
+
+      final assigned = PublicDemoWorkflowState(
+        applicants: const [],
+        engineers: const [fabricated],
+      ).assignOrderedForMay();
+
+      expect(assigned.assignments, isEmpty);
+      expect(fabricated.hasGenuineInterviewRecord, isFalse);
+    });
+
+    test('TEST I: the public PublicDemoWorkflowState factory constructor '
+        'cannot inject an authoritative fabricated roster — neither a '
+        'fabricated ordered engineer nor a fabricated juneOrdered/joined-'
+        'looking applicant becomes an assignment', () {
+      const fabricatedEngineer = PublicDemoEngineerSales(
+        id: 'intruder-eng',
+        name: 'Intruder Engineer',
+        summary: 'summary',
+        stage: PublicDemoSalesStage.ordered,
+        lastInterviewScore: 100,
+        interviewProfile: PublicDemoInterviewProfile(
+          skillFit: 99,
+          humanity: 99,
+          morale: 99,
+          clientTrust: 99,
+        ),
+      );
+      const fabricatedApplicant = PublicDemoApplicant(
+        id: 'intruder-app',
+        name: 'Intruder Applicant',
+        resumeSummary: 'Java 99年',
+        interviewScore: 99,
+        acceptanceScore: 99,
+        salesSkillFit: 99,
+        stage: PublicDemoApplicantStage.juneOrdered,
+      );
+
+      final assigned = PublicDemoWorkflowState(
+        applicants: const [fabricatedApplicant],
+        engineers: const [fabricatedEngineer],
+      ).assignOrderedForMay();
+
+      expect(assigned.assignments, isEmpty);
+    });
+
+    test('TEST B: the engineer sales pipeline still cannot be skipped through '
+        'the aggregate — recordOrder alone, with no genuine progression, '
+        'never reaches closeMay with an assignment', () {
+      final engineerId =
+          PublicDemoAggregate.initial().workflow.engineers.first.id;
+
+      final aggregate = PublicDemoAggregate.initial()
+          .recordOrder(engineerId)
+          .closeApril(monthlyExpenses: 800000)
+          .closeMay(week: 9, monthlyExpenses: 800000);
+
+      expect(
+        aggregate.workflow.assignments.any((a) => a.engineerId == engineerId),
+        isFalse,
+      );
+    });
+
+    test('TEST C: genuine engineer happy path still creates exactly one '
+        'assignment', () {
+      final engineerId =
+          PublicDemoAggregate.initial().workflow.engineers.first.id;
+      final aggregate = PublicDemoAggregate.initial()
+          .startSkillSheetReview(engineerId)
+          .beginSelling(engineerId)
+          .introduceProject(engineerId)
+          .recordEngineerInterviewResult(
+            engineerId: engineerId,
+            type: PublicDemoInterviewType.partner,
+          )
+          .recordEngineerInterviewResult(
+            engineerId: engineerId,
+            type: PublicDemoInterviewType.client,
+          )
+          .recordOrder(engineerId)
+          .closeApril(monthlyExpenses: 800000)
+          .closeMay(week: 9, monthlyExpenses: 800000);
+
+      expect(
+        aggregate.workflow.assignments
+            .where((a) => a.engineerId == engineerId)
+            .length,
+        1,
+      );
+      final orderedEngineer = aggregate.workflow.engineers.firstWhere(
+        (e) => e.id == engineerId,
+      );
+      expect(orderedEngineer.hasGenuineInterviewRecord, isTrue);
+    });
+
+    test('TEST H: no finance-only/workflow-only aggregate commit bypass is '
+        'reintroduced — recruit() still always commits cash and generated '
+        'applicants together, or neither', () {
+      final aggregate = PublicDemoAggregate.initial();
+      final result = aggregate.recruit(PublicDemoRecruitmentMedium.engineer);
+
+      expect(result.isSuccess, isTrue);
+      expect(result.aggregate!.state.cash, isNot(aggregate.state.cash));
+      expect(
+        result.aggregate!.workflow.applicants.length,
+        isNot(aggregate.workflow.applicants.length),
+      );
+    });
+  });
 }

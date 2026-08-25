@@ -213,15 +213,171 @@ class PublicDemoAggregate {
     ),
   );
 
-  PublicDemoAggregate withEngineerStage(
-    String engineerId,
-    PublicDemoSalesStage stage,
-  ) => _copyWith(workflow: workflow.withEngineerStage(engineerId, stage));
+  // ---------------------------------------------------------------------
+  // WORKFLOW-STATE-1AB FIX5 P1: `withEngineerStage(engineerId, stage)` and
+  // `withApplicantStage(applicantId, stage)` — a caller-chosen target
+  // stage, with no precondition check at all — used to live here as
+  // public passthroughs to the (also now-removed)
+  // PublicDemoWorkflowState methods of the same name. Independent review
+  // found both directly reachable: `withEngineerStage(id,
+  // PublicDemoSalesStage.ordered)` followed by `closeMay()` minted an
+  // assignment for an engineer whose sales pipeline never ran at all
+  // (Attack A), and `withApplicantStage(id,
+  // PublicDemoApplicantStage.juneOrdered)` did the same for an applicant
+  // with no BindingOffer/join eligibility (Attack B). Both are gone —
+  // along with `consumeSlotAndSetApplicantStage`/
+  // `applyEngineerInterviewResult`, which had the identical shape one
+  // level down (a caller-suppliable `stage`/`score` parameter, not
+  // gated on any precondition). Every command below instead names one
+  // real sales/pre-entry event; the domain derives the next stage (and,
+  // for interview outcomes, the score) itself from already-authoritative
+  // facts — this workflow's own current stage, the engineer's interview
+  // profile, and (for partner interviews) this aggregate's own sales-slot
+  // budget — and changes nothing when the required precondition isn't
+  // met. See PublicDemoWorkflowState's own "Engineer sales-pipeline
+  // transitions" / "Applicant pre-entry pipeline transitions" sections for
+  // the full precondition chain each of these sits on top of.
+  // ---------------------------------------------------------------------
 
-  PublicDemoAggregate withApplicantStage(
-    String applicantId,
-    PublicDemoApplicantStage stage,
-  ) => _copyWith(workflow: workflow.withApplicantStage(applicantId, stage));
+  PublicDemoAggregate startSkillSheetReview(String engineerId) =>
+      _copyWith(workflow: workflow.startSkillSheetReview(engineerId));
+
+  PublicDemoAggregate beginSelling(String engineerId) =>
+      _copyWith(workflow: workflow.beginSelling(engineerId));
+
+  PublicDemoAggregate introduceProject(String engineerId) =>
+      _copyWith(workflow: workflow.introduceProject(engineerId));
+
+  PublicDemoAggregate recordOrder(String engineerId) =>
+      _copyWith(workflow: workflow.recordOrder(engineerId));
+
+  PublicDemoAggregate reviewResume(String applicantId) =>
+      _copyWith(workflow: workflow.reviewResume(applicantId));
+
+  PublicDemoAggregate beginPreEntrySkillSheet(String applicantId) =>
+      _copyWith(workflow: workflow.beginPreEntrySkillSheet(applicantId));
+
+  PublicDemoAggregate beginPreEntrySelling(String applicantId) =>
+      _copyWith(workflow: workflow.beginPreEntrySelling(applicantId));
+
+  PublicDemoAggregate introducePreEntryProject(String applicantId) =>
+      _copyWith(workflow: workflow.introducePreEntryProject(applicantId));
+
+  PublicDemoAggregate recordJuneOrder(String applicantId) =>
+      _copyWith(workflow: workflow.recordJuneOrder(applicantId));
+
+  /// Records a partner or client interview outcome for an engineer's sales
+  /// pipeline (WORKFLOW-STATE-1AB FIX5 P1, replacing
+  /// `applyEngineerInterviewResult`). [type] selects which real event
+  /// happened; the resulting stage and score are always derived here, from
+  /// the engineer's own [PublicDemoEngineerSales.interviewProfile] and
+  /// [PublicDemoEngineerRuntime.actualCapability] (via
+  /// [PublicDemoInterviewEvaluator]) — never accepted as a parameter. A
+  /// no-op unless [engineerId] is currently at the stage that interview
+  /// type requires (`introduced` for partner, `partnerInterviewPassed` for
+  /// client) — and, for a partner interview, only if a real sales slot is
+  /// actually available (checked before it is consumed, so a rejected
+  /// attempt never partially consumes the budget).
+  PublicDemoAggregate recordEngineerInterviewResult({
+    required String engineerId,
+    required PublicDemoInterviewType type,
+  }) {
+    final engineer = workflow.engineers
+        .where((candidate) => candidate.id == engineerId)
+        .firstOrNull;
+    if (engineer == null) return this;
+    final requiredStage = type == PublicDemoInterviewType.partner
+        ? PublicDemoSalesStage.introduced
+        : PublicDemoSalesStage.partnerInterviewPassed;
+    if (engineer.stage != requiredStage) return this;
+    if (type == PublicDemoInterviewType.partner &&
+        (state.fiscalYearCompleted || state.salesRemaining <= 0)) {
+      return this;
+    }
+
+    final result = PublicDemoInterviewEvaluator.evaluate(
+      type: type,
+      profile: engineer.interviewProfile,
+      actualCapability:
+          state.runtimeForOrNull(engineerId)?.actualCapability ?? 0,
+    );
+    final nextStage = switch ((type, result.passed)) {
+      (PublicDemoInterviewType.partner, true) =>
+        PublicDemoSalesStage.partnerInterviewPassed,
+      (PublicDemoInterviewType.partner, false) =>
+        PublicDemoSalesStage.partnerInterviewFailed,
+      (PublicDemoInterviewType.client, true) =>
+        PublicDemoSalesStage.clientInterviewPassed,
+      (PublicDemoInterviewType.client, false) =>
+        PublicDemoSalesStage.clientInterviewFailed,
+    };
+    return _copyWith(
+      state: type == PublicDemoInterviewType.partner
+          ? state.useSalesSlot()
+          : state,
+      workflow: workflow.withEngineer(
+        engineerId,
+        (candidate) => candidate.copyWith(
+          stage: nextStage,
+          lastInterviewScore: result.score,
+        ),
+      ),
+    );
+  }
+
+  /// Records the pre-entry partner-interview outcome for one applicant
+  /// (WORKFLOW-STATE-1AB FIX5 P1, replacing
+  /// `consumeSlotAndSetApplicantStage`). Consumes one sales slot (a no-op
+  /// past budget/fiscal completion) only when the applicant is genuinely
+  /// eligible — currently at `preEntryIntroduced` — and derives pass/fail
+  /// itself from the applicant's own [PublicDemoApplicant.salesSkillFit],
+  /// never from a caller-supplied stage.
+  PublicDemoAggregate recordPreEntryPartnerInterviewResult(String applicantId) {
+    final applicant = workflow.applicants
+        .where((candidate) => candidate.id == applicantId)
+        .firstOrNull;
+    if (applicant == null) return this;
+    if (applicant.stage != PublicDemoApplicantStage.preEntryIntroduced) {
+      return this;
+    }
+    if (state.fiscalYearCompleted || state.salesRemaining <= 0) return this;
+
+    final nextStage = applicant.salesSkillFit >= 60
+        ? PublicDemoApplicantStage.preEntryPartnerPassed
+        : PublicDemoApplicantStage.preEntryPartnerFailed;
+    return _copyWith(
+      state: state.useSalesSlot(),
+      workflow: workflow.withApplicant(
+        applicantId,
+        (candidate) => candidate.copyWith(stage: nextStage),
+      ),
+    );
+  }
+
+  /// Records the pre-entry client-interview outcome for one applicant
+  /// (WORKFLOW-STATE-1AB FIX5 P1) — mirrors
+  /// [recordPreEntryPartnerInterviewResult] but, matching the pre-cutover
+  /// widget's own `ci()` handler, consumes no sales slot. A no-op unless
+  /// the applicant is currently at `preEntryPartnerPassed`.
+  PublicDemoAggregate recordPreEntryClientInterviewResult(String applicantId) {
+    final applicant = workflow.applicants
+        .where((candidate) => candidate.id == applicantId)
+        .firstOrNull;
+    if (applicant == null) return this;
+    if (applicant.stage != PublicDemoApplicantStage.preEntryPartnerPassed) {
+      return this;
+    }
+
+    final nextStage = applicant.salesSkillFit >= 65
+        ? PublicDemoApplicantStage.preEntryClientPassed
+        : PublicDemoApplicantStage.preEntryClientFailed;
+    return _copyWith(
+      workflow: workflow.withApplicant(
+        applicantId,
+        (candidate) => candidate.copyWith(stage: nextStage),
+      ),
+    );
+  }
 
   PublicDemoAggregate withAssignmentUpdate(
     String engineerId, {
@@ -234,37 +390,6 @@ class PublicDemoAggregate {
       nextOrderStatus: nextOrderStatus,
       replacementStage: replacementStage,
       fieldEvaluation: fieldEvaluation,
-    ),
-  );
-
-  /// Consumes one sales slot (a no-op past budget/fiscal completion, same
-  /// as [PublicDemoState.useSalesSlot]) and sets [applicantId]'s pre-entry
-  /// stage together — the shape the pre-entry partner-interview flow needs.
-  /// Not authority-significant: unlike interview completion (P1-1), no
-  /// downstream command gates on this stage transition alone.
-  PublicDemoAggregate consumeSlotAndSetApplicantStage(
-    String applicantId,
-    PublicDemoApplicantStage stage,
-  ) => _copyWith(
-    state: state.useSalesSlot(),
-    workflow: workflow.withApplicantStage(applicantId, stage),
-  );
-
-  /// Consumes one sales slot only for [PublicDemoInterviewType.partner]
-  /// (mirroring the pre-cutover widget's own `ei()` handler exactly) and
-  /// records the engineer sales-pipeline interview outcome together.
-  PublicDemoAggregate applyEngineerInterviewResult({
-    required String engineerId,
-    required PublicDemoInterviewType type,
-    required PublicDemoSalesStage stage,
-    required int score,
-  }) => _copyWith(
-    state: type == PublicDemoInterviewType.partner
-        ? state.useSalesSlot()
-        : state,
-    workflow: workflow.withEngineer(
-      engineerId,
-      (engineer) => engineer.copyWith(stage: stage, lastInterviewScore: score),
     ),
   );
 

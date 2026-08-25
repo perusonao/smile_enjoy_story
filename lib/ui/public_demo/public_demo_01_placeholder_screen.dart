@@ -125,12 +125,6 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
     });
   }
 
-  void es(int i, PublicDemoSalesStage x) => setState(() {
-    _game = _game.withEngineerStage(workflow.engineers[i].id, x);
-  });
-  void as(int i, PublicDemoApplicantStage x) => setState(() {
-    _game = _game.withApplicantStage(workflow.applicants[i].id, x);
-  });
   void ars(int i, PublicDemoReplacementStage x) => setState(() {
     _game = _game.withAssignmentUpdate(
       workflow.assignments[i].engineerId,
@@ -172,22 +166,13 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
           profile: e.interviewProfile,
           actualCapability: capabilityFor(e.id),
         );
+    // WORKFLOW-STATE-1AB FIX5 P1: the domain derives the resulting stage
+    // (and score) itself, from this engineer's own authoritative
+    // interview profile/capability — `r` above is computed identically,
+    // from the same (unchanged-in-between) `state`, purely for this
+    // dialog's own display text; it is never passed in as the outcome.
     setState(() {
-      _game = _game.applyEngineerInterviewResult(
-        engineerId: e.id,
-        type: t,
-        stage: switch ((t, r.passed)) {
-          (PublicDemoInterviewType.partner, true) =>
-            PublicDemoSalesStage.partnerInterviewPassed,
-          (PublicDemoInterviewType.partner, false) =>
-            PublicDemoSalesStage.partnerInterviewFailed,
-          (PublicDemoInterviewType.client, true) =>
-            PublicDemoSalesStage.clientInterviewPassed,
-          (PublicDemoInterviewType.client, false) =>
-            PublicDemoSalesStage.clientInterviewFailed,
-        },
-        score: r.score,
-      );
+      _game = _game.recordEngineerInterviewResult(engineerId: e.id, type: t);
     });
     if (!mounted) return;
     final partner = t == PublicDemoInterviewType.partner;
@@ -281,13 +266,11 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
     final a = workflow.applicants[i];
     final score = a.salesSkillFit;
     final passed = score >= 60;
+    // WORKFLOW-STATE-1AB FIX5 P1: the domain derives pass/fail itself from
+    // this applicant's own authoritative salesSkillFit — `passed` above is
+    // computed identically, purely for this dialog's own display text.
     setState(() {
-      _game = _game.consumeSlotAndSetApplicantStage(
-        a.id,
-        passed
-            ? PublicDemoApplicantStage.preEntryPartnerPassed
-            : PublicDemoApplicantStage.preEntryPartnerFailed,
-      );
+      _game = _game.recordPreEntryPartnerInterviewResult(a.id);
     });
     if (!mounted) return;
     await _precacheEventImage(AssetPaths.eventClientInterview);
@@ -312,12 +295,12 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
     final a = workflow.applicants[i];
     final score = a.salesSkillFit;
     final passed = score >= 65;
-    as(
-      i,
-      passed
-          ? PublicDemoApplicantStage.preEntryClientPassed
-          : PublicDemoApplicantStage.preEntryClientFailed,
-    );
+    // WORKFLOW-STATE-1AB FIX5 P1: the domain derives pass/fail itself from
+    // this applicant's own authoritative salesSkillFit — `passed` above is
+    // computed identically, purely for this dialog's own display text.
+    setState(() {
+      _game = _game.recordPreEntryClientInterviewResult(a.id);
+    });
     if (!mounted) return;
     await _precacheEventImage(AssetPaths.eventClientInterview);
     if (!mounted) return;
@@ -872,19 +855,22 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
                 readyForFieldSales(e.id)) ...[
               const Text('営業準備OK', style: TextStyle(fontSize: 12)),
               FilledButton(
-                onPressed: () => es(i, PublicDemoSalesStage.skillSheet),
+                onPressed: () =>
+                    setState(() => _game = _game.startSkillSheetReview(e.id)),
                 child: const Text('SkillSheet確認'),
               ),
             ],
             if (e.stage == PublicDemoSalesStage.skillSheet &&
                 readyForFieldSales(e.id))
               FilledButton(
-                onPressed: () => es(i, PublicDemoSalesStage.selling),
+                onPressed: () =>
+                    setState(() => _game = _game.beginSelling(e.id)),
                 child: const Text('営業開始'),
               ),
             if (e.stage == PublicDemoSalesStage.selling)
               FilledButton(
-                onPressed: () => es(i, PublicDemoSalesStage.introduced),
+                onPressed: () =>
+                    setState(() => _game = _game.introduceProject(e.id)),
                 child: const Text('案件紹介'),
               ),
             if (e.stage == PublicDemoSalesStage.introduced)
@@ -902,7 +888,7 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
             if (e.stage == PublicDemoSalesStage.clientInterviewPassed)
               FilledButton(
                 onPressed: () async {
-                  es(i, PublicDemoSalesStage.ordered);
+                  setState(() => _game = _game.recordOrder(e.id));
                   if (!mounted) return;
                   await _precacheEventImage(AssetPaths.eventOrderDecision);
                   if (!mounted) return;
@@ -922,7 +908,8 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
             if (e.stage == PublicDemoSalesStage.partnerInterviewFailed ||
                 e.stage == PublicDemoSalesStage.clientInterviewFailed)
               FilledButton(
-                onPressed: () => es(i, PublicDemoSalesStage.selling),
+                onPressed: () =>
+                    setState(() => _game = _game.beginSelling(e.id)),
                 child: const Text('再営業'),
               ),
           ],
@@ -962,7 +949,8 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
             const SizedBox(height: 8),
             if (a.stage == PublicDemoApplicantStage.applied)
               FilledButton(
-                onPressed: () => as(i, PublicDemoApplicantStage.resumeReviewed),
+                onPressed: () =>
+                    setState(() => _game = _game.reviewResume(a.id)),
                 child: const Text('経歴書確認'),
               ),
             if (a.stage == PublicDemoApplicantStage.resumeReviewed)
@@ -982,7 +970,7 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
                 a.canEnterPreJoinSales)
               FilledButton(
                 onPressed: () =>
-                    as(i, PublicDemoApplicantStage.preEntrySkillSheet),
+                    setState(() => _game = _game.beginPreEntrySkillSheet(a.id)),
                 child: const Text('入社前SkillSheet'),
               ),
             if (a.stage == PublicDemoApplicantStage.offerAccepted &&
@@ -991,13 +979,14 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
             if (a.stage == PublicDemoApplicantStage.preEntrySkillSheet)
               FilledButton(
                 onPressed: () =>
-                    as(i, PublicDemoApplicantStage.preEntrySelling),
+                    setState(() => _game = _game.beginPreEntrySelling(a.id)),
                 child: const Text('入社前営業'),
               ),
             if (a.stage == PublicDemoApplicantStage.preEntrySelling)
               FilledButton(
-                onPressed: () =>
-                    as(i, PublicDemoApplicantStage.preEntryIntroduced),
+                onPressed: () => setState(
+                  () => _game = _game.introducePreEntryProject(a.id),
+                ),
                 child: const Text('案件紹介'),
               ),
             if (a.stage == PublicDemoApplicantStage.preEntryIntroduced)
@@ -1010,7 +999,7 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
             if (a.stage == PublicDemoApplicantStage.preEntryClientPassed)
               FilledButton(
                 onPressed: () async {
-                  as(i, PublicDemoApplicantStage.juneOrdered);
+                  setState(() => _game = _game.recordJuneOrder(a.id));
                   if (!mounted) return;
                   await _precacheEventImage(AssetPaths.eventOrderDecision);
                   if (!mounted) return;

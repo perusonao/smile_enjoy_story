@@ -69,9 +69,11 @@ class PublicDemoOfferAcceptance {
     // WORKFLOW-STATE-1AB FIX1 P1-1B, FIX2 P1-1A: an offer can only be
     // minted for an applicant who genuinely completed the interview step.
     // Gating on `applicant.stage == interviewed` alone was insufficient —
-    // that field is publicly settable via `copyWith`/`withApplicantStage`,
-    // so a caller could fabricate the stage without ever being interviewed
-    // and still mint a valid BindingOffer. `hasBeenInterviewed` instead
+    // that field is publicly settable via `copyWith` (WORKFLOW-STATE-1AB
+    // FIX5 P1 removed the generic `withApplicantStage` setter, but `stage`
+    // itself was never the authority here, and still isn't), so a caller
+    // could fabricate the stage without ever being interviewed and still
+    // mint a valid BindingOffer. `hasBeenInterviewed` instead
     // checks the unforgeable, identity-bound [PublicDemoInterviewRecord]
     // that only [PublicDemoApplicant.completeInterview] can mint (FIX3
     // P1-1: requiring an unforgeable sales-slot-consumption proof only

@@ -28,13 +28,10 @@ void main() {
   });
 
   group('applicant/engineer/assignment authority', () {
-    test('withApplicantStage updates only the targeted applicant', () {
+    test('reviewResume updates only the targeted applicant', () {
       final workflow = PublicDemoWorkflowState.initial();
       final id = workflow.applicants.first.id;
-      final next = workflow.withApplicantStage(
-        id,
-        PublicDemoApplicantStage.resumeReviewed,
-      );
+      final next = workflow.reviewResume(id);
 
       expect(
         next.applicants.firstWhere((a) => a.id == id).stage,
@@ -50,36 +47,38 @@ void main() {
       );
     });
 
-    // WORKFLOW-STATE-1AB FIX2 P1-1A, FIX3 P1-1: interviewed is
-    // workflow-significant — withApplicantStage refuses it, both by
-    // assertion (debug/test builds) and, more importantly, because
-    // PublicDemoOfferAcceptance.accept no longer trusts `stage` as
-    // authority at all (see public_demo_binding_offer_test.dart's
-    // adversarial group). The sanctioned transition
-    // (PublicDemoAggregate.completeInterview) is covered in
-    // public_demo_aggregate_test.dart — it requires a genuine sales-slot
-    // proof this workflow-only class cannot supply on its own.
+    // WORKFLOW-STATE-1AB FIX5 P1: reviewResume (like every other named
+    // pre-entry transition) requires the applicant's CURRENT stage to
+    // match its own precondition — `applied` here — so calling it on an
+    // applicant not at that stage is a no-op, not a way to jump straight
+    // to `resumeReviewed` (or, chained, any later stage) regardless of
+    // where the applicant actually is. `interviewed` itself is reachable
+    // only via PublicDemoAggregate.completeInterview (workflow-significant,
+    // requires a genuine sales-slot proof this workflow-only class cannot
+    // supply on its own) — see public_demo_binding_offer_test.dart's
+    // adversarial group and public_demo_aggregate_test.dart.
     test(
-      'withApplicantStage refuses to set the workflow-significant interviewed '
-      'stage — PublicDemoAggregate.completeInterview is the only sanctioned '
-      'way',
+      'reviewResume is a no-op on an applicant not currently at applied',
       () {
         final workflow = PublicDemoWorkflowState.initial();
         final id = workflow.applicants.first.id;
+        final reviewed = workflow.reviewResume(id);
+
+        // Calling it again — the applicant is now `resumeReviewed`, not
+        // `applied` — must not advance it any further.
+        final again = reviewed.reviewResume(id);
+
         expect(
-          () => workflow.withApplicantStage(
-            id,
-            PublicDemoApplicantStage.interviewed,
-          ),
-          throwsA(isA<AssertionError>()),
+          again.applicants.firstWhere((a) => a.id == id).stage,
+          PublicDemoApplicantStage.resumeReviewed,
         );
       },
     );
 
-    test('withEngineerStage updates only the targeted engineer', () {
+    test('beginSelling updates only the targeted engineer', () {
       final workflow = PublicDemoWorkflowState.initial();
       final id = workflow.engineers.first.id;
-      final next = workflow.withEngineerStage(id, PublicDemoSalesStage.selling);
+      final next = workflow.startSkillSheetReview(id).beginSelling(id);
 
       expect(
         next.engineers.firstWhere((e) => e.id == id).stage,
@@ -87,11 +86,48 @@ void main() {
       );
     });
 
+    // WORKFLOW-STATE-1AB FIX5 P1: the sole production API for the engineer
+    // sales pipeline is this chain of precondition-gated named
+    // transitions — there is no method anywhere that accepts a caller-
+    // chosen target PublicDemoSalesStage directly. Calling a later-stage
+    // transition out of order (skipping intermediate real events) must be
+    // a no-op, not a shortcut to `ordered`.
+    test('the engineer sales pipeline cannot be skipped: recordOrder is a '
+        'no-op unless the engineer already genuinely reached '
+        'clientInterviewPassed', () {
+      final workflow = PublicDemoWorkflowState.initial();
+      final id = workflow.engineers.first.id;
+
+      final skippedAhead = workflow.recordOrder(id);
+      expect(
+        skippedAhead.engineers.firstWhere((e) => e.id == id).stage,
+        PublicDemoSalesStage.waiting,
+      );
+
+      final partiallyAdvanced = workflow
+          .startSkillSheetReview(id)
+          .beginSelling(id)
+          .introduceProject(id)
+          .recordOrder(id);
+      expect(
+        partiallyAdvanced.engineers.firstWhere((e) => e.id == id).stage,
+        PublicDemoSalesStage.introduced,
+        reason:
+            'recordOrder requires clientInterviewPassed — introduced is '
+            'not enough, however far the caller got',
+      );
+    });
+
     // WORKFLOW-STATE-1AB FIX4 P1-2: PublicDemoWorkflowState.restore is
     // gone — build a genuine assignment through the real
     // assignOrderedForMay authoritative transition (an ordered engineer)
     // instead of fabricating a PublicDemoAssignment and injecting it
-    // directly.
+    // directly. FIX5 P1: assignOrderedForMay also requires a genuine
+    // lastInterviewScore (set only by
+    // PublicDemoAggregate.recordEngineerInterviewResult in production) —
+    // set directly here since this group tests assignOrderedForMay's own
+    // eligibility logic in isolation, not the full aggregate-level
+    // authority chain (already covered in public_demo_aggregate_test.dart).
     PublicDemoWorkflowState workflowWithGenuineAssignment(String engineerId) =>
         PublicDemoWorkflowState(
           applicants: const [],
@@ -101,6 +137,7 @@ void main() {
               name: 'Test',
               summary: 'summary',
               stage: PublicDemoSalesStage.ordered,
+              lastInterviewScore: 80,
               interviewProfile: const PublicDemoInterviewProfile(
                 skillFit: 70,
                 humanity: 70,
@@ -215,6 +252,7 @@ void main() {
                 name: id,
                 summary: 'summary',
                 stage: PublicDemoSalesStage.ordered,
+                lastInterviewScore: 80,
                 interviewProfile: const PublicDemoInterviewProfile(
                   skillFit: 70,
                   humanity: 70,
@@ -348,6 +386,7 @@ void main() {
       name: 'Ordered Engineer',
       summary: 'summary',
       stage: PublicDemoSalesStage.ordered,
+      lastInterviewScore: 80,
       interviewProfile: PublicDemoInterviewProfile(
         skillFit: 70,
         humanity: 70,
@@ -366,14 +405,55 @@ void main() {
         clientTrust: 60,
       ),
     );
-    const orderedApplicant = PublicDemoApplicant(
-      id: 'app-ordered',
-      name: 'Ordered Applicant',
-      resumeSummary: 'Java 1年',
-      interviewScore: 70,
-      acceptanceScore: 70,
-      salesSkillFit: 70,
-      stage: PublicDemoApplicantStage.juneOrdered,
+
+    // WORKFLOW-STATE-1AB FIX5 P1: assignOrderedForMay no longer trusts
+    // `stage == juneOrdered` alone — it also requires `hasJoined`, which
+    // only a genuine PublicDemoJoinTransaction.join can set
+    // (PublicDemoJoinRecord's constructor is private to
+    // public_demo_recruitment.dart, so no test/caller outside that file can
+    // fabricate one via a raw literal). This builds a genuinely-joined
+    // applicant through the real interview/offer/join chain, then sets the
+    // final `juneOrdered` stage directly — legitimate here because this
+    // group tests assignOrderedForMay's own eligibility logic in isolation
+    // (the full aggregate-level chain that also validates every
+    // intermediate stage is covered in public_demo_aggregate_test.dart).
+    PublicDemoApplicant joinedApplicantAt(
+      String id,
+      PublicDemoApplicantStage stage,
+    ) {
+      final interviewed = completeTestInterview(
+        PublicDemoApplicant(
+          id: id,
+          name: 'Applicant $id',
+          resumeSummary: 'Java 3年',
+          interviewScore: 70,
+          acceptanceScore: 70,
+          salesSkillFit: 70,
+          requestedMonthlySalary: 320000,
+        ),
+      );
+      final offer = PublicDemoSalaryOffer(
+        requestedMonthlySalary: interviewed.requestedMonthlySalary,
+        offeredMonthlySalary: 320000,
+        acceptanceScore: 100,
+        motivationDelta: 0,
+        trustDelta: 0,
+      );
+      final accepted = PublicDemoOfferAcceptance.accept(
+        applicant: interviewed,
+        offer: offer,
+        fiscalCloseId: PublicDemoFiscalCloseId.forMonth(5),
+      ).applicant;
+      final joined = accepted.join(
+        week: 9,
+        currentFiscalCloseId: PublicDemoFiscalCloseId.forMonth(5),
+      );
+      return joined.copyWith(stage: stage);
+    }
+
+    final orderedApplicant = joinedApplicantAt(
+      'app-ordered',
+      PublicDemoApplicantStage.juneOrdered,
     );
     const notOrderedApplicant = PublicDemoApplicant(
       id: 'app-not-ordered',
@@ -388,7 +468,7 @@ void main() {
     test('valid assignment path: only ordered engineers/applicants become '
         'an assignment', () {
       final workflow = PublicDemoWorkflowState(
-        applicants: const [orderedApplicant, notOrderedApplicant],
+        applicants: [orderedApplicant, notOrderedApplicant],
         engineers: const [orderedEngineer, waitingEngineer],
       );
 
@@ -412,11 +492,52 @@ void main() {
       expect(next.assignments, isEmpty);
     });
 
+    // WORKFLOW-STATE-1AB FIX5 P1 (defense in depth, section 5): `stage`
+    // alone is never trusted. An engineer whose stage was somehow set to
+    // `ordered` without a genuine lastInterviewScore, and an applicant at
+    // `juneOrdered` who never actually joined, must both be rejected —
+    // exactly the shape of FIX4's Attack A / Attack B, now checked here
+    // too, not just by removing the generic stage setters that used to
+    // enable them.
+    test('stage alone is not proof: an ordered engineer with no genuine '
+        'interview record, and a juneOrdered applicant who never joined, are '
+        'both rejected', () {
+      const unprovenEngineer = PublicDemoEngineerSales(
+        id: 'eng-unproven',
+        name: 'Unproven Engineer',
+        summary: 'summary',
+        stage: PublicDemoSalesStage.ordered,
+        interviewProfile: PublicDemoInterviewProfile(
+          skillFit: 70,
+          humanity: 70,
+          morale: 70,
+          clientTrust: 60,
+        ),
+      );
+      const unjoinedApplicant = PublicDemoApplicant(
+        id: 'app-unjoined',
+        name: 'Unjoined Applicant',
+        resumeSummary: 'Java 1年',
+        interviewScore: 70,
+        acceptanceScore: 70,
+        salesSkillFit: 70,
+        stage: PublicDemoApplicantStage.juneOrdered,
+      );
+      final workflow = PublicDemoWorkflowState(
+        applicants: const [unjoinedApplicant],
+        engineers: const [unprovenEngineer],
+      );
+
+      final next = workflow.assignOrderedForMay();
+
+      expect(next.assignments, isEmpty);
+    });
+
     test('calling assignOrderedForMay again never duplicates an assignment: '
         'the roster is always replaced wholesale from current stage facts, '
         'never appended to', () {
       final workflow = PublicDemoWorkflowState(
-        applicants: const [orderedApplicant],
+        applicants: [orderedApplicant],
         engineers: const [orderedEngineer],
       );
 
@@ -458,7 +579,7 @@ void main() {
       // workflow from outside this file is through assignOrderedForMay,
       // which reads only this workflow's own authoritative stage facts.
       final workflow = PublicDemoWorkflowState(
-        applicants: const [orderedApplicant],
+        applicants: [orderedApplicant],
         engineers: const [orderedEngineer],
       );
       final next = workflow.assignOrderedForMay();

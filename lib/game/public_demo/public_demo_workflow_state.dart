@@ -74,8 +74,9 @@ class PublicDemoWorkflowState {
   // which is enough to omit/duplicate/reorder existing entries). Every
   // caller outside this file must now go through the named, field-specific
   // methods below (`withApplicant`, `withGeneratedApplicants`,
-  // `joinAndKeepOnly`, `withEngineer`, `withJoinedEngineers`,
-  // `withApplicantStage`, `withEngineerStage`, `withAssignmentUpdate`,
+  // `joinAndKeepOnly`, `withEngineer`, `withJoinedEngineers`, the named
+  // engineer/applicant stage-transition methods (WORKFLOW-STATE-1AB FIX5
+  // P1 — see their own section docs), `withAssignmentUpdate`,
   // `assignOrderedForMay`) — [_copyWith] is private, used only by them.
   // There is no test-fixture escape hatch here any more either: test
   // fixtures needing a specific workflow now build it by chaining these
@@ -108,20 +109,78 @@ class PublicDemoWorkflowState {
     ],
   );
 
-  PublicDemoWorkflowState withApplicantStage(
-    String applicantId,
-    PublicDemoApplicantStage stage,
-  ) {
-    assert(
-      stage != PublicDemoApplicantStage.interviewed,
-      'interviewed is workflow-significant (WORKFLOW-STATE-1AB FIX3 P1-1) '
-      '— use PublicDemoAggregate.completeInterview instead',
-    );
-    return withApplicant(
-      applicantId,
-      (applicant) => applicant.copyWith(stage: stage),
-    );
-  }
+  // ---------------------------------------------------------------------
+  // Applicant pre-entry pipeline transitions (WORKFLOW-STATE-1AB FIX5 P1):
+  // `withApplicantStage(applicantId, stage)` let the caller pick the
+  // resulting stage directly — including `juneOrdered`, the exact stage
+  // assignOrderedForMay reads to build an assignment. It is gone. Each
+  // method below is a specific, named pre-entry event with its own
+  // required current-stage precondition; an applicant not currently at
+  // that stage is unchanged. `juneOrdered` is reachable only via
+  // [recordJuneOrder], which requires `preEntryClientPassed` — itself
+  // reachable only through this same validated chain, starting from a
+  // genuine `offerAccepted` (minted only by [PublicDemoOfferAcceptance
+  // .accept], which itself requires the genuine [PublicDemoInterviewRecord]
+  // only [PublicDemoAggregate.completeInterview] can mint). There is no
+  // path from `applied` to `juneOrdered` that skips any of these.
+  // ---------------------------------------------------------------------
+
+  PublicDemoWorkflowState reviewResume(String applicantId) =>
+      _transitionApplicantStage(
+        applicantId,
+        from: const {PublicDemoApplicantStage.applied},
+        to: PublicDemoApplicantStage.resumeReviewed,
+      );
+
+  /// Inexperienced hires (`!canEnterPreJoinSales`) do not participate in
+  /// pre-join sales at all (see [PublicDemoApplicant.canEnterPreJoinSales])
+  /// — checked here, not just by the widget deciding which button to show.
+  PublicDemoWorkflowState beginPreEntrySkillSheet(String applicantId) =>
+      withApplicant(
+        applicantId,
+        (applicant) =>
+            applicant.stage == PublicDemoApplicantStage.offerAccepted &&
+                applicant.canEnterPreJoinSales
+            ? applicant.copyWith(
+                stage: PublicDemoApplicantStage.preEntrySkillSheet,
+              )
+            : applicant,
+      );
+
+  PublicDemoWorkflowState beginPreEntrySelling(String applicantId) =>
+      _transitionApplicantStage(
+        applicantId,
+        from: const {PublicDemoApplicantStage.preEntrySkillSheet},
+        to: PublicDemoApplicantStage.preEntrySelling,
+      );
+
+  PublicDemoWorkflowState introducePreEntryProject(String applicantId) =>
+      _transitionApplicantStage(
+        applicantId,
+        from: const {PublicDemoApplicantStage.preEntrySelling},
+        to: PublicDemoApplicantStage.preEntryIntroduced,
+      );
+
+  /// The only production way an applicant reaches `juneOrdered`. See this
+  /// section's class doc above for why that makes it unreachable without a
+  /// genuine offer/interview/pre-entry-interview chain.
+  PublicDemoWorkflowState recordJuneOrder(String applicantId) =>
+      _transitionApplicantStage(
+        applicantId,
+        from: const {PublicDemoApplicantStage.preEntryClientPassed},
+        to: PublicDemoApplicantStage.juneOrdered,
+      );
+
+  PublicDemoWorkflowState _transitionApplicantStage(
+    String applicantId, {
+    required Set<PublicDemoApplicantStage> from,
+    required PublicDemoApplicantStage to,
+  }) => withApplicant(
+    applicantId,
+    (applicant) => from.contains(applicant.stage)
+        ? applicant.copyWith(stage: to)
+        : applicant,
+  );
 
   /// Appends newly generated applicants (JOB-2/3, now atomic via
   /// `PublicDemoAggregate.recruit` in public_demo_aggregate.dart), skipping
@@ -165,6 +224,16 @@ class PublicDemoWorkflowState {
   /// the May-to-June transition — applicants who were rejected, declined, or
   /// never made it past interview are dropped from the roster at that point,
   /// exactly as before.
+  ///
+  /// WORKFLOW-STATE-1AB FIX5 P1: [PublicDemoJoinTransaction.join] returns
+  /// the *unchanged* applicant on failure (no BindingOffer, wrong
+  /// applicant, stale fiscal close, ...) — so a join failure here
+  /// deliberately does not clear whatever `stage` the applicant already
+  /// carried (e.g. `juneOrdered`). That is safe only because
+  /// [assignOrderedForMay] no longer trusts `stage` alone either: it also
+  /// requires [PublicDemoApplicant.hasJoined], which a failed join here
+  /// never sets. A join failure therefore can never reach an assignment,
+  /// regardless of which `stage` employment authority left behind.
   PublicDemoWorkflowState joinAndKeepOnly({
     required List<String> applicantIds,
     required int week,
@@ -210,10 +279,66 @@ class PublicDemoWorkflowState {
     ],
   );
 
-  PublicDemoWorkflowState withEngineerStage(
-    String engineerId,
-    PublicDemoSalesStage stage,
-  ) => withEngineer(engineerId, (engineer) => engineer.copyWith(stage: stage));
+  // ---------------------------------------------------------------------
+  // Engineer sales-pipeline transitions (WORKFLOW-STATE-1AB FIX5 P1):
+  // `withEngineerStage(engineerId, stage)` let the caller pick the
+  // resulting stage directly — including `ordered`, the exact stage
+  // assignOrderedForMay reads to build an assignment. It is gone. Each
+  // method below is a specific, named sales-pipeline event with its own
+  // required current-stage precondition, checked before advancing; an
+  // engineer not currently at the required stage is unchanged. `ordered`
+  // is reachable only via [recordOrder], which requires
+  // `clientInterviewPassed` — itself set only by
+  // [PublicDemoAggregate.recordEngineerInterviewResult], which derives the
+  // pass/fail outcome itself (from the engineer's own interview profile),
+  // never from a caller-supplied stage or score. There is no path from
+  // `waiting` to `ordered` that skips either interview.
+  // ---------------------------------------------------------------------
+
+  PublicDemoWorkflowState startSkillSheetReview(String engineerId) =>
+      _transitionEngineerStage(
+        engineerId,
+        from: const {PublicDemoSalesStage.waiting},
+        to: PublicDemoSalesStage.skillSheet,
+      );
+
+  PublicDemoWorkflowState beginSelling(String engineerId) =>
+      _transitionEngineerStage(
+        engineerId,
+        from: const {
+          PublicDemoSalesStage.skillSheet,
+          PublicDemoSalesStage.partnerInterviewFailed,
+          PublicDemoSalesStage.clientInterviewFailed,
+        },
+        to: PublicDemoSalesStage.selling,
+      );
+
+  PublicDemoWorkflowState introduceProject(String engineerId) =>
+      _transitionEngineerStage(
+        engineerId,
+        from: const {PublicDemoSalesStage.selling},
+        to: PublicDemoSalesStage.introduced,
+      );
+
+  /// The only production way an engineer reaches `ordered`. See this
+  /// section's class doc above for why that makes it unreachable without a
+  /// genuine partner+client interview pass.
+  PublicDemoWorkflowState recordOrder(String engineerId) =>
+      _transitionEngineerStage(
+        engineerId,
+        from: const {PublicDemoSalesStage.clientInterviewPassed},
+        to: PublicDemoSalesStage.ordered,
+      );
+
+  PublicDemoWorkflowState _transitionEngineerStage(
+    String engineerId, {
+    required Set<PublicDemoSalesStage> from,
+    required PublicDemoSalesStage to,
+  }) => withEngineer(
+    engineerId,
+    (engineer) =>
+        from.contains(engineer.stage) ? engineer.copyWith(stage: to) : engineer,
+  );
 
   /// Adds newly joined applicants as engineers (May's join step), skipping
   /// anyone already present by id — mirrors the widget's former inline
@@ -282,17 +407,31 @@ class PublicDemoWorkflowState {
   ) => _copyWith(assignments: assignments);
 
   /// The single domain-owned way to build May's assignment roster
-  /// (WORKFLOW-STATE-1AB FIX1 P1-3). Only engineers whose sales pipeline
-  /// reached [PublicDemoSalesStage.ordered] and only applicants whose
-  /// recruitment pipeline reached [PublicDemoApplicantStage.juneOrdered]
-  /// become an assignment — this reads only the authoritative engineer/
-  /// applicant stage facts already on this workflow, so the caller (the
-  /// widget) supplies no roster of its own and cannot fabricate one.
+  /// (WORKFLOW-STATE-1AB FIX1 P1-3). Reads only the authoritative engineer/
+  /// applicant facts already on this workflow, so the caller (the widget)
+  /// supplies no roster of its own and cannot fabricate one.
+  ///
+  /// WORKFLOW-STATE-1AB FIX5 P1 (defense in depth): does not trust `stage`
+  /// alone, even though FIX5 also closed every production path that could
+  /// set it without going through a genuine transition —
+  /// [PublicDemoSalesStage.ordered]/[PublicDemoApplicantStage.juneOrdered]
+  /// are corroborated against a second, independently-authoritative fact
+  /// each: an engineer additionally needs a genuine
+  /// [PublicDemoEngineerSales.lastInterviewScore] (set only by
+  /// [PublicDemoAggregate.recordEngineerInterviewResult] when it actually
+  /// evaluates a client interview), and an applicant additionally needs
+  /// [PublicDemoApplicant.hasJoined] — the unforgeable [PublicDemoJoinRecord]
+  /// only a genuine [PublicDemoJoinTransaction.join] can mint. This means a
+  /// future bug that lets `stage` alone drift out of sync (e.g. a stage set
+  /// before join is attempted, or a join that fails) still cannot produce an
+  /// assignment for a non-eligible engineer or non-joined applicant — see
+  /// `joinAndKeepOnly`'s own doc for exactly this join-failure case.
   /// Reproduces exactly the roster the pre-cutover widget computed inline.
   PublicDemoWorkflowState assignOrderedForMay() {
     final nextAssignments = [
       for (final engineer in engineers)
-        if (engineer.stage == PublicDemoSalesStage.ordered)
+        if (engineer.stage == PublicDemoSalesStage.ordered &&
+            engineer.lastInterviewScore != null)
           publicDemoInitialAssignments
                   .where((assignment) => assignment.engineerId == engineer.id)
                   .firstOrNull ??
@@ -302,7 +441,8 @@ class PublicDemoWorkflowState {
                 humanity: engineer.interviewProfile.humanity,
               ),
       for (final applicant in applicants)
-        if (applicant.stage == PublicDemoApplicantStage.juneOrdered)
+        if (applicant.stage == PublicDemoApplicantStage.juneOrdered &&
+            applicant.hasJoined)
           PublicDemoAssignment(
             engineerId: applicant.id,
             engineerName: applicant.name,

@@ -58,25 +58,45 @@ void main() {
       () {
         // WORKFLOW-STATE-1AB FIX4 P1-2: PublicDemoAggregate.restore is
         // gone — drain the real sales-slot budget (4, from aprilStart)
-        // through repeated real engineer-interview commands instead of
-        // constructing a pre-exhausted state directly. Nothing prevents a
-        // caller from calling this real command repeatedly on the same
-        // engineer (it has no idempotency guard, unlike completeInterview),
-        // so this is a genuine, production-reachable way to reach an
-        // exhausted budget.
+        // through repeated real commands instead of constructing a
+        // pre-exhausted state directly. FIX5 P1: `applyEngineerInterviewResult`
+        // (repeatable on the same engineer, with no stage precondition) is
+        // itself gone — its replacement, `recordEngineerInterviewResult`,
+        // requires each engineer to genuinely be at `introduced` first and
+        // only consumes one slot per engineer (it does not re-consume once
+        // the engineer has moved past that stage). Both real initial
+        // engineers' partner interviews (2 slots) plus both real initial
+        // applicants' completeInterview (2 slots) exhausts the budget of 4
+        // — a freshly recruited third applicant, never interviewed, is the
+        // target below.
         var aggregate = PublicDemoAggregate.initial();
-        final capacity = aggregate.state.salesCapacity;
-        for (var i = 0; i < capacity; i++) {
-          aggregate = aggregate.applyEngineerInterviewResult(
-            engineerId: aggregate.workflow.engineers.first.id,
-            type: PublicDemoInterviewType.partner,
-            stage: PublicDemoSalesStage.partnerInterviewPassed,
-            score: 80,
-          );
+        aggregate = aggregate
+            .recruit(PublicDemoRecruitmentMedium.engineer)
+            .aggregate!;
+
+        for (final engineerId in aggregate.workflow.engineers.map(
+          (e) => e.id,
+        )) {
+          aggregate = aggregate
+              .startSkillSheetReview(engineerId)
+              .beginSelling(engineerId)
+              .introduceProject(engineerId)
+              .recordEngineerInterviewResult(
+                engineerId: engineerId,
+                type: PublicDemoInterviewType.partner,
+              );
+        }
+        for (final applicant in aggregate.workflow.applicants.where(
+          (a) => !a.hasBeenInterviewed,
+        )) {
+          if (aggregate.state.salesRemaining <= 0) break;
+          aggregate = aggregate.completeInterview(applicant.id).aggregate;
         }
         expect(aggregate.state.salesRemaining, 0);
 
-        final target = aggregate.workflow.applicants[1];
+        final target = aggregate.workflow.applicants.firstWhere(
+          (a) => !a.hasBeenInterviewed,
+        );
         expect(target.hasBeenInterviewed, isFalse);
 
         final result = aggregate.completeInterview(target.id);
@@ -361,11 +381,26 @@ void main() {
 
     test('valid assignment succeeds: an ordered engineer gets a real May '
         'assignment through closeMay', () {
+      // WORKFLOW-STATE-1AB FIX5 P1: `withEngineerStage` is gone — reach
+      // `ordered` through the real sales-pipeline chain instead. eng-01's
+      // fixed interview profile (skillFit 78, matching its initial
+      // PublicDemoEngineerRuntime capability) deterministically passes
+      // both the partner and client interview thresholds.
+      final engineerId =
+          PublicDemoAggregate.initial().workflow.engineers.first.id;
       final aggregate = PublicDemoAggregate.initial()
-          .withEngineerStage(
-            PublicDemoAggregate.initial().workflow.engineers.first.id,
-            PublicDemoSalesStage.ordered,
+          .startSkillSheetReview(engineerId)
+          .beginSelling(engineerId)
+          .introduceProject(engineerId)
+          .recordEngineerInterviewResult(
+            engineerId: engineerId,
+            type: PublicDemoInterviewType.partner,
           )
+          .recordEngineerInterviewResult(
+            engineerId: engineerId,
+            type: PublicDemoInterviewType.client,
+          )
+          .recordOrder(engineerId)
           .closeApril(monthlyExpenses: 800000)
           .closeMay(week: 9, monthlyExpenses: 800000);
 
@@ -516,4 +551,246 @@ void main() {
       expect(joined.acceptedMonthlySalary, applicant.requestedMonthlySalary);
     });
   });
+
+  // WORKFLOW-STATE-1AB FIX5 P1: required adversarial coverage for the
+  // assignment-authority closure — `withEngineerStage`/`withApplicantStage`
+  // (and the equally-shaped `applyEngineerInterviewResult`/
+  // `consumeSlotAndSetApplicantStage`) are gone; TEST A/B below re-attempt
+  // the exact FIX4-flagged bypasses through the real replacement commands
+  // and confirm they are no-ops all the way through closeMay. TEST C
+  // exercises the join-failure defense in depth (section 5/6) through a
+  // genuinely-reachable production path, not a fabricated object. TEST
+  // D/E/F confirm the legitimate happy paths (and retry-safety) still
+  // work exactly as before.
+  group(
+    'WORKFLOW-STATE-1AB FIX5 P1: assignment-authority adversarial tests',
+    () {
+      test(
+        'TEST A: engineer stage spoof — recordOrder without genuine sales '
+        'progression is a no-op, and closeMay creates no assignment for it',
+        () {
+          final engineerId =
+              PublicDemoAggregate.initial().workflow.engineers.first.id;
+
+          // The former attack: PublicDemoAggregate.withEngineerStage(id,
+          // PublicDemoSalesStage.ordered). That method no longer exists; the
+          // closest remaining surface is calling the real recordOrder
+          // command directly, skipping every real sales-pipeline event. It
+          // must be a no-op — recordOrder requires clientInterviewPassed.
+          var aggregate = PublicDemoAggregate.initial().recordOrder(engineerId);
+          expect(
+            aggregate.workflow.engineers
+                .firstWhere((e) => e.id == engineerId)
+                .stage,
+            PublicDemoSalesStage.waiting,
+          );
+
+          aggregate = aggregate
+              .closeApril(monthlyExpenses: 800000)
+              .closeMay(week: 9, monthlyExpenses: 800000);
+
+          expect(
+            aggregate.workflow.assignments.any(
+              (a) => a.engineerId == engineerId,
+            ),
+            isFalse,
+          );
+        },
+      );
+
+      test('TEST B: applicant stage spoof — recordJuneOrder without a genuine '
+          'offer/pre-entry chain is a no-op, and closeMay creates no assignment '
+          'for it', () {
+        final applicantId =
+            PublicDemoAggregate.initial().workflow.applicants.first.id;
+
+        // The former attack: PublicDemoAggregate.withApplicantStage(id,
+        // PublicDemoApplicantStage.juneOrdered) on a non-joined, no-
+        // BindingOffer applicant. That method no longer exists; calling
+        // the real recordJuneOrder command directly must be a no-op —
+        // it requires preEntryClientPassed.
+        var aggregate = PublicDemoAggregate.initial().recordJuneOrder(
+          applicantId,
+        );
+        expect(
+          aggregate.workflow.applicants
+              .firstWhere((a) => a.id == applicantId)
+              .stage,
+          PublicDemoApplicantStage.applied,
+        );
+
+        aggregate = aggregate
+            .closeApril(monthlyExpenses: 800000)
+            .closeMay(week: 9, monthlyExpenses: 800000);
+
+        expect(
+          aggregate.workflow.assignments.any(
+            (a) => a.engineerId == applicantId,
+          ),
+          isFalse,
+        );
+      });
+
+      test('TEST C: a genuine juneOrdered applicant whose join fails (stale '
+          'fiscal close) never becomes an assignment', () {
+        var aggregate = PublicDemoAggregate.initial();
+        final applicantId = aggregate.workflow.applicants.first.id;
+        aggregate = aggregate.completeInterview(applicantId).aggregate;
+        final applicant = aggregate.workflow.applicants.firstWhere(
+          (a) => a.id == applicantId,
+        );
+        final offer = PublicDemoSalaryOffer(
+          requestedMonthlySalary: applicant.requestedMonthlySalary,
+          offeredMonthlySalary: applicant.requestedMonthlySalary,
+          acceptanceScore: 100,
+          motivationDelta: 0,
+          trustDelta: 0,
+        );
+        // Accepted at month 4 (before April closes) — genuinely minted,
+        // but bound to that fiscal close.
+        aggregate = aggregate.acceptOffer(
+          applicantId: applicantId,
+          offer: offer,
+          fiscalCloseId: PublicDemoFiscalCloseId.forMonth(4),
+        );
+        aggregate = aggregate.closeApril(monthlyExpenses: 800000); // -> May
+
+        // Walk the real pre-entry chain to juneOrdered — every stage
+        // precondition genuinely satisfied.
+        aggregate = aggregate
+            .beginPreEntrySkillSheet(applicantId)
+            .beginPreEntrySelling(applicantId)
+            .introducePreEntryProject(applicantId)
+            .recordPreEntryPartnerInterviewResult(applicantId)
+            .recordPreEntryClientInterviewResult(applicantId)
+            .recordJuneOrder(applicantId);
+        expect(
+          aggregate.workflow.applicants
+              .firstWhere((a) => a.id == applicantId)
+              .stage,
+          PublicDemoApplicantStage.juneOrdered,
+        );
+
+        // closeMay's join step now runs against May's fiscal close — the
+        // BindingOffer above was minted for April's, so the join fails
+        // (PublicDemoJoinStatus.staleFiscalClose), leaving hasJoined
+        // false despite the genuine juneOrdered stage.
+        final closed = aggregate.closeMay(week: 9, monthlyExpenses: 800000);
+        final result = closed.workflow.applicants.firstWhere(
+          (a) => a.id == applicantId,
+        );
+        expect(result.stage, PublicDemoApplicantStage.juneOrdered);
+        expect(result.hasJoined, isFalse);
+        expect(
+          closed.workflow.assignments.any((a) => a.engineerId == applicantId),
+          isFalse,
+        );
+      });
+
+      test('TEST D: genuine engineer happy path — an assignment is created '
+          'exactly once', () {
+        final engineerId =
+            PublicDemoAggregate.initial().workflow.engineers.first.id;
+        final aggregate = PublicDemoAggregate.initial()
+            .startSkillSheetReview(engineerId)
+            .beginSelling(engineerId)
+            .introduceProject(engineerId)
+            .recordEngineerInterviewResult(
+              engineerId: engineerId,
+              type: PublicDemoInterviewType.partner,
+            )
+            .recordEngineerInterviewResult(
+              engineerId: engineerId,
+              type: PublicDemoInterviewType.client,
+            )
+            .recordOrder(engineerId)
+            .closeApril(monthlyExpenses: 800000)
+            .closeMay(week: 9, monthlyExpenses: 800000);
+
+        expect(
+          aggregate.workflow.assignments
+              .where((a) => a.engineerId == engineerId)
+              .length,
+          1,
+        );
+      });
+
+      test('TEST E: genuine applicant happy path (interview -> offer -> '
+          'BindingOffer -> join -> valid order progression) — an assignment is '
+          'created exactly once', () {
+        var aggregate = PublicDemoAggregate.initial().closeApril(
+          monthlyExpenses: 800000,
+        ); // -> May
+        final applicantId = aggregate.workflow.applicants.first.id;
+        aggregate = aggregate.completeInterview(applicantId).aggregate;
+        final applicant = aggregate.workflow.applicants.firstWhere(
+          (a) => a.id == applicantId,
+        );
+        final offer = PublicDemoSalaryOffer(
+          requestedMonthlySalary: applicant.requestedMonthlySalary,
+          offeredMonthlySalary: applicant.requestedMonthlySalary,
+          acceptanceScore: 100,
+          motivationDelta: 0,
+          trustDelta: 0,
+        );
+        aggregate = aggregate.acceptOffer(
+          applicantId: applicantId,
+          offer: offer,
+          fiscalCloseId: PublicDemoFiscalCloseId.forMonth(
+            aggregate.state.month,
+          ),
+        );
+        aggregate = aggregate
+            .beginPreEntrySkillSheet(applicantId)
+            .beginPreEntrySelling(applicantId)
+            .introducePreEntryProject(applicantId)
+            .recordPreEntryPartnerInterviewResult(applicantId)
+            .recordPreEntryClientInterviewResult(applicantId)
+            .recordJuneOrder(applicantId);
+
+        final closed = aggregate.closeMay(week: 9, monthlyExpenses: 800000);
+
+        final result = closed.workflow.applicants.firstWhere(
+          (a) => a.id == applicantId,
+        );
+        expect(result.hasJoined, isTrue);
+        expect(
+          closed.workflow.assignments
+              .where((a) => a.engineerId == applicantId)
+              .length,
+          1,
+        );
+      });
+
+      test('TEST F: retrying the close/assignment command never duplicates the '
+          'assignment', () {
+        final engineerId =
+            PublicDemoAggregate.initial().workflow.engineers.first.id;
+        final ordered = PublicDemoAggregate.initial()
+            .startSkillSheetReview(engineerId)
+            .beginSelling(engineerId)
+            .introduceProject(engineerId)
+            .recordEngineerInterviewResult(
+              engineerId: engineerId,
+              type: PublicDemoInterviewType.partner,
+            )
+            .recordEngineerInterviewResult(
+              engineerId: engineerId,
+              type: PublicDemoInterviewType.client,
+            )
+            .recordOrder(engineerId)
+            .closeApril(monthlyExpenses: 800000);
+
+        final once = ordered.closeMay(week: 9, monthlyExpenses: 800000);
+        final twice = once.closeMay(week: 9, monthlyExpenses: 800000);
+
+        expect(
+          twice.workflow.assignments
+              .where((a) => a.engineerId == engineerId)
+              .length,
+          1,
+        );
+      });
+    },
+  );
 }

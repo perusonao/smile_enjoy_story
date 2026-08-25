@@ -1,8 +1,12 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:smile_enjoy_story/game/public_demo/public_demo_fiscal_close_id.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_monthly_close.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_recruitment.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_state.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_summer_bonus_plan.dart';
+import 'package:smile_enjoy_story/game/public_demo/public_demo_workflow_state.dart';
+
+import 'test_support/public_demo_offer_test_helpers.dart';
 
 /// 12MONTH-1: proves the common Monthly Close facade produces state that is
 /// identical, field for field, to the pre-existing advanceToX/closeJuly
@@ -18,6 +22,20 @@ void main() {
     salesSkillFit: 70,
     requestedMonthlySalary: 320000,
   );
+
+  // WORKFLOW-STATE-1AB FIX1 P1-4: advanceToJune/closeMay now derive
+  // joinedApplicantIds from real applicant records (via `hasJoined`), not a
+  // caller-supplied id list — this fixture stands in for the authoritative,
+  // already-joined applicant [PublicDemoWorkflowState.joinAndKeepOnly] would
+  // hand these entry points in production. FIX2 P1-4: `hasJoined` is now
+  // backed by an unforgeable [PublicDemoJoinRecord] that only the real
+  // [PublicDemoApplicant.join] can mint — copyWith(employeeMorale: ...,
+  // employeeCompanyTrust: ...) alone no longer counts as joined, so this
+  // fixture goes through the real accept+join path instead.
+  final joinedHire = acceptTestOffer(
+    hire,
+    offeredMonthlySalary: 320000,
+  ).join(week: 9, currentFiscalCloseId: PublicDemoFiscalCloseId.forMonth(5));
 
   /// [checkMoney] gates `cash`/`pendingRevenue` equivalence: REVENUE-4 makes
   /// the common close intentionally diverge from the legacy per-month path
@@ -117,14 +135,21 @@ void main() {
         monthlyExpenses: 800000,
         acceptedHires: 1,
         hiredWithOrders: 1,
-        joinedApplicantIds: const ['close-hire-01'],
+        joinedApplicants: [joinedHire],
       );
+      // WORKFLOW-STATE-1AB FIX3 P1-4: closeMay no longer accepts a
+      // `joinedApplicants` iterable at all — it derives the joined set from
+      // the whole authoritative `workflow` it is given (via
+      // `PublicDemoWorkflowState.joinedApplicants`).
       final result = PublicDemoMonthlyClose.closeMay(
         state: start,
+        workflow: PublicDemoWorkflowState(
+          applicants: [joinedHire],
+          engineers: const [],
+        ),
         monthlyExpenses: 800000,
         acceptedHires: 1,
         hiredWithOrders: 1,
-        joinedApplicantIds: const ['close-hire-01'],
       );
       expect(result.isClosed, isTrue);
       expect(result.closedMonth, 5);
@@ -146,6 +171,7 @@ void main() {
       );
       final result = PublicDemoMonthlyClose.closeMay(
         state: start,
+        workflow: PublicDemoWorkflowState.initial(),
         monthlyExpenses: 800000,
         acceptedHires: 1,
         hiredWithOrders: 1,
@@ -156,6 +182,194 @@ void main() {
     });
   });
 
+  group(
+    'joinedApplicantIds is a derived projection, not caller authority (P1-4)',
+    () {
+      PublicDemoState mayState() => PublicDemoState.aprilStart().advanceToMay(
+        monthlyExpenses: 800000,
+        orderedEngineers: 1,
+      );
+
+      test('an id with no correspondingly-joined applicant behind it never '
+          'appears: only applicants whose hasJoined is actually true '
+          'contribute an id', () {
+        final notActuallyJoined =
+            hire; // hasJoined is false: no morale/trust set.
+        final start = mayState();
+
+        final result = start.advanceToJune(
+          monthlyExpenses: 800000,
+          acceptedHires: 1,
+          hiredWithOrders: 1,
+          joinedApplicants: [notActuallyJoined],
+        );
+
+        expect(result.joinedApplicantIds, isEmpty);
+      });
+
+      // WORKFLOW-STATE-1AB FIX2 P1-4: hasJoined is now backed by an
+      // unforgeable PublicDemoJoinRecord (only PublicDemoApplicant.join can
+      // mint one) instead of the presence of employeeMorale/
+      // employeeCompanyTrust — a caller setting those two fields directly
+      // via copyWith no longer counts as "joined" at all.
+      test(
+        'a fabricated hasJoined applicant (employeeMorale/employeeCompanyTrust '
+        'set directly via copyWith, never through join) cannot enter the '
+        'joined projection or payroll',
+        () {
+          final fabricated = hire.copyWith(
+            employeeMorale: 80,
+            employeeCompanyTrust: 80,
+          );
+          expect(
+            fabricated.hasJoined,
+            isFalse,
+            reason: 'copyWith alone must not confer joined authority',
+          );
+          final start = mayState();
+
+          final result = start.advanceToJune(
+            monthlyExpenses: 800000,
+            acceptedHires: 1,
+            hiredWithOrders: 1,
+            joinedApplicants: [fabricated],
+          );
+
+          expect(result.joinedApplicantIds, isEmpty);
+          expect(result.joinedApplicantIds, isNot(contains(fabricated.id)));
+        },
+      );
+
+      test('duplicate applicant entries in one batch cannot duplicate payroll '
+          'membership', () {
+        final start = mayState();
+
+        final result = start.advanceToJune(
+          monthlyExpenses: 800000,
+          acceptedHires: 1,
+          hiredWithOrders: 1,
+          joinedApplicants: [joinedHire, joinedHire],
+        );
+
+        expect(result.joinedApplicantIds, ['close-hire-01']);
+      });
+
+      test('the joined projection exactly equals the authoritative applicants '
+          'that genuinely joined — no more, no less', () {
+        const secondHire = PublicDemoApplicant(
+          id: 'close-hire-02',
+          name: 'Second Hire',
+          resumeSummary: 'Java 2年',
+          interviewScore: 65,
+          acceptanceScore: 65,
+          salesSkillFit: 65,
+          requestedMonthlySalary: 300000,
+        );
+        final start = mayState();
+
+        final result = start.advanceToJune(
+          monthlyExpenses: 800000,
+          acceptedHires: 2,
+          hiredWithOrders: 1,
+          joinedApplicants: [joinedHire, secondHire],
+        );
+
+        expect(
+          result.joinedApplicantIds.toSet(),
+          {joinedHire.id},
+          reason:
+              'secondHire never joined (no BindingOffer/join), so the '
+              'projection must equal exactly the genuinely-joined subset',
+        );
+      });
+
+      test('the June/payroll path derives joined ids from the authoritative '
+          'workflow passed in, not any caller-supplied list', () {
+        final start = mayState();
+
+        final result = PublicDemoMonthlyClose.closeMay(
+          state: start,
+          workflow: PublicDemoWorkflowState(
+            applicants: [joinedHire],
+            engineers: const [],
+          ),
+          monthlyExpenses: 800000,
+          acceptedHires: 1,
+          hiredWithOrders: 1,
+        );
+
+        expect(result.state.joinedApplicantIds, ['close-hire-01']);
+      });
+
+      test('joinedApplicantIds cannot diverge from the workflow: passing '
+          'multiple applicants only the truly-joined ones are reflected', () {
+        const secondHire = PublicDemoApplicant(
+          id: 'close-hire-02',
+          name: 'Second Hire',
+          resumeSummary: 'Java 2年',
+          interviewScore: 65,
+          acceptanceScore: 65,
+          salesSkillFit: 65,
+          requestedMonthlySalary: 300000,
+        );
+        final start = mayState();
+
+        final result = start.advanceToJune(
+          monthlyExpenses: 800000,
+          acceptedHires: 2,
+          hiredWithOrders: 1,
+          joinedApplicants: [joinedHire, secondHire],
+        );
+
+        expect(result.joinedApplicantIds, ['close-hire-01']);
+      });
+
+      // WORKFLOW-STATE-1AB FIX3 P1-4: PublicDemoMonthlyClose.closeMay's
+      // production signature has no `joinedApplicants` parameter at all
+      // (removed in favor of `workflow:`, above) — so there is no argument
+      // through which a caller could omit a genuinely-joined applicant,
+      // pass an empty/subset iterable, or a stale snapshot. This is a
+      // structural (compile-time) guarantee: this whole test file only
+      // compiles against the new `workflow:`-based signature. The test
+      // below is the positive case — two genuinely-joined applicants in the
+      // workflow both survive the close; there is no way to ask for fewer.
+      test('two genuine joined applicants in the workflow both reach the '
+          'payroll projection — there is no parameter to omit either one', () {
+        const secondHire = PublicDemoApplicant(
+          id: 'close-hire-02',
+          name: 'Second Hire',
+          resumeSummary: 'Java 2年',
+          interviewScore: 65,
+          acceptanceScore: 65,
+          salesSkillFit: 65,
+          requestedMonthlySalary: 300000,
+        );
+        final secondJoined =
+            acceptTestOffer(secondHire, offeredMonthlySalary: 300000).join(
+              week: 9,
+              currentFiscalCloseId: PublicDemoFiscalCloseId.forMonth(5),
+            );
+        final start = mayState();
+
+        final result = PublicDemoMonthlyClose.closeMay(
+          state: start,
+          workflow: PublicDemoWorkflowState(
+            applicants: [joinedHire, secondJoined],
+            engineers: const [],
+          ),
+          monthlyExpenses: 800000,
+          acceptedHires: 2,
+          hiredWithOrders: 1,
+        );
+
+        expect(result.state.joinedApplicantIds.toSet(), {
+          'close-hire-01',
+          'close-hire-02',
+        });
+      });
+    },
+  );
+
   group('6->7 equivalence (June close)', () {
     PublicDemoState juneState() => PublicDemoState.aprilStart()
         .advanceToMay(monthlyExpenses: 800000, orderedEngineers: 1)
@@ -163,7 +377,7 @@ void main() {
           monthlyExpenses: 800000,
           acceptedHires: 1,
           hiredWithOrders: 1,
-          joinedApplicantIds: const ['close-hire-01'],
+          joinedApplicants: [joinedHire],
         );
 
     test('only one engineer keeps a July assignment', () {
@@ -221,7 +435,12 @@ void main() {
 
     test('bonus and monthly expenses settle atomically', () {
       final start = julyState();
-      final joined = [hire.join(week: 9)];
+      final joined = [
+        hire.join(
+          week: 9,
+          currentFiscalCloseId: PublicDemoFiscalCloseId.forMonth(5),
+        ),
+      ];
       final legacy = start.advanceToAugust(
         monthlyExpenses: 800000,
         applicants: joined,

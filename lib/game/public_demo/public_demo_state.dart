@@ -6,6 +6,31 @@ import 'public_demo_recruitment.dart';
 import 'public_demo_summer_bonus_plan.dart';
 import 'public_demo_summer_bonus_payment.dart';
 
+/// Authoritative, unforgeable proof that
+/// [PublicDemoState.useSalesSlotForInterview] actually consumed one sales
+/// slot on this exact call (WORKFLOW-STATE-1AB FIX3 P1-1) — not merely that
+/// the method was invoked (it is a no-op, minting nothing, once
+/// `salesRemaining` is exhausted or the fiscal year is already completed).
+///
+/// Constructor private to this file: the only place that can construct one
+/// is [PublicDemoState.useSalesSlotForInterview] itself. This is what closes
+/// WORKFLOW-STATE-1AB FIX2's residual P1-1 gap — `PublicDemoApplicant`
+/// alone can never validate its own interview prerequisite (an available
+/// sales slot lives on the finance side of the aggregate, not on the
+/// applicant) — by making that cross-aggregate fact a locally-checkable,
+/// unforgeable parameter instead:
+/// [PublicDemoApplicant.completeInterview] (public_demo_recruitment.dart)
+/// requires one, so interview authority can never be minted without a real,
+/// same-transaction sales-slot consumption. Only the TYPE (not the private
+/// constructor) needs to cross that file boundary, which Dart's ordinary
+/// cross-file type references allow — `completeInterview` never constructs
+/// one itself, only accepts a genuine instance as a parameter.
+/// [PublicDemoAggregate.completeInterview] (public_demo_aggregate.dart) is
+/// the only production caller of either method.
+class PublicDemoSalesSlotConsumptionProof {
+  const PublicDemoSalesSlotConsumptionProof._();
+}
+
 /// Minimal state for Public Demo 0.1 MVP-A.
 class PublicDemoState {
   factory PublicDemoState({
@@ -129,6 +154,15 @@ class PublicDemoState {
       salesUsed,
       engineersWaiting,
       engineersAssigned;
+
+  /// A DERIVED PROJECTION (WORKFLOW-STATE-1 §24), kept here only for the
+  /// finance/monthly-close callers already reading it as a plain
+  /// `List<String>`. SOURCE OF TRUTH: [PublicDemoWorkflowState.applicants]
+  /// (specifically each applicant's `hasJoined`), surfaced as
+  /// `PublicDemoWorkflowState.joinedApplicantIds`. This field is only ever
+  /// written by passing that already-computed projection in at month-close
+  /// time (see `PublicDemoMonthlyClose.closeMay`'s `joinedApplicantIds`
+  /// parameter) — nothing here writes back through to the workflow.
   final List<String> joinedApplicantIds;
 
   /// Actual employee capabilities. Assignments only own project conditions.
@@ -299,6 +333,23 @@ class PublicDemoState {
     return copyWith(salesUsed: salesUsed + 1);
   }
 
+  /// Same slot-budget rule as [useSalesSlot], but also returns unforgeable
+  /// proof of genuine consumption when it actually happens
+  /// (WORKFLOW-STATE-1AB FIX3 P1-1). [PublicDemoAggregate.completeInterview]
+  /// is the only production caller: it passes the proof to
+  /// [PublicDemoApplicant.completeInterview], the sole way to mint an
+  /// interview record, so that authority can never be minted without a real,
+  /// same-transaction sales-slot consumption.
+  PublicDemoSalesSlotConsumptionResult useSalesSlotForInterview() {
+    if (fiscalYearCompleted || salesRemaining <= 0) {
+      return PublicDemoSalesSlotConsumptionResult._(state: this, proof: null);
+    }
+    return PublicDemoSalesSlotConsumptionResult._(
+      state: copyWith(salesUsed: salesUsed + 1),
+      proof: const PublicDemoSalesSlotConsumptionProof._(),
+    );
+  }
+
   PublicDemoState advanceToMay({
     required int monthlyExpenses,
     required int orderedEngineers,
@@ -318,17 +369,50 @@ class PublicDemoState {
     );
   }
 
+  /// FIX3 P1-4: [joinedApplicants] is no longer a parameter any outward
+  /// caller controls — [PublicDemoMonthlyClose.closeMay] is now the only
+  /// production caller, and it always passes the complete, authoritative
+  /// `PublicDemoWorkflowState.joinedApplicants` for the workflow it was
+  /// given, never a caller-chosen subset. This method's own contract
+  /// (below) is unchanged: it still trusts nothing beyond each applicant's
+  /// own [PublicDemoApplicant.hasJoined] fact.
+  ///
+  /// WORKFLOW-STATE-1AB FIX1 P1-4: [joinedApplicants] carries the
+  /// authoritative applicant records themselves (the same ones
+  /// [PublicDemoWorkflowState.joinAndKeepOnly] just joined), not a
+  /// caller-supplied id list — [joinedApplicantIds] is derived here from
+  /// each applicant's own [PublicDemoApplicant.hasJoined] fact, so a caller
+  /// cannot make this projection diverge from actual join state by passing
+  /// an id with no correspondingly-joined applicant behind it.
+  ///
+  /// FIX2 P1-4: [PublicDemoApplicant.hasJoined] itself is now backed by an
+  /// unforgeable, identity-bound [PublicDemoJoinRecord] that only
+  /// [PublicDemoApplicant.join] can mint — a caller can no longer fabricate
+  /// a "joined" applicant by constructing one (or calling `copyWith`) with
+  /// `employeeMorale`/`employeeCompanyTrust` set directly, so this method
+  /// never has to trust a caller-provided applicant's join status on faith.
+  /// Duplicate ids within a single [joinedApplicants] batch are also
+  /// deduped before being appended, so passing the same joined applicant
+  /// twice cannot duplicate their payroll membership.
   PublicDemoState advanceToJune({
     required int monthlyExpenses,
     required int acceptedHires,
     required int hiredWithOrders,
-    List<String> joinedApplicantIds = const [],
+    Iterable<PublicDemoApplicant> joinedApplicants = const [],
   }) {
     if (month != 5) return this;
     final hires = acceptedHires < 0 ? 0 : acceptedHires;
     final ordered = hiredWithOrders.clamp(0, hires);
     final nextCash = cash - monthlyExpenses;
-    return copyWith(
+    // WORKFLOW-STATE-1AB FIX2 P1-4: dedupe within this batch itself, not
+    // just against the already-accumulated `joinedApplicantIds` — passing
+    // the same genuinely-joined applicant twice in [joinedApplicants] must
+    // not add their id to the payroll projection twice.
+    final newlyJoinedIds = <String>{
+      for (final applicant in joinedApplicants)
+        if (applicant.hasJoined) applicant.id,
+    };
+    return _copyWith(
       month: 6,
       cash: nextCash,
       salesUsed: 0,
@@ -336,10 +420,8 @@ class PublicDemoState {
       engineersAssigned: engineersAssigned + ordered,
       engineersWaiting: engineersWaiting + (hires - ordered),
       joinedApplicantIds: [
-        ...this.joinedApplicantIds,
-        ...joinedApplicantIds.where(
-          (id) => !this.joinedApplicantIds.contains(id),
-        ),
+        ...joinedApplicantIds,
+        ...newlyJoinedIds.where((id) => !joinedApplicantIds.contains(id)),
       ],
       monthOpeningCash: nextCash,
       monthTrainingSpent: 0,
@@ -430,7 +512,8 @@ class PublicDemoState {
       copyWith(monthTrainingSpent: monthTrainingSpent + amount);
 
   /// Records a recruitment-media charge already computed and applied by
-  /// [PublicDemoRecruitmentTransaction], mirroring [recordTrainingSpend].
+  /// PublicDemoRecruitmentWorkflowTransaction, mirroring
+  /// [recordTrainingSpend].
   PublicDemoState recordRecruitmentSpend(int amount) =>
       copyWith(monthRecruitmentSpent: monthRecruitmentSpent + amount);
 
@@ -507,7 +590,64 @@ class PublicDemoState {
     );
   }
 
+  /// Safe production copyWith (WORKFLOW-STATE-1AB FIX4 P1-4): deliberately
+  /// has no `joinedApplicantIds` parameter — that field is a DERIVED
+  /// PROJECTION (see its own doc comment above) and must never be settable
+  /// to an arbitrary caller-chosen list directly. [_copyWith] (below) is the
+  /// full-field internal version [advanceToJune] uses instead, the sole
+  /// place that ever writes this field, always from its own derivation of
+  /// genuinely-joined applicants.
   PublicDemoState copyWith({
+    int? month,
+    int? cash,
+    int? engineerCount,
+    int? adminCount,
+    int? salesCapacity,
+    int? salesUsed,
+    int? engineersWaiting,
+    int? engineersAssigned,
+    List<PublicDemoEngineerRuntime>? engineerRuntimes,
+    List<PublicDemoMonthlyGrowth>? latestGrowthResults,
+    List<int>? growthAppliedMonths,
+    Map<String, PublicDemoGrowthSource>? trainingSelections,
+    PublicDemoSummerBonusPlan? summerBonusSelection,
+    bool? summerBonusPaid,
+    Object? summerBonusPaidMonth = _unset,
+    Object? summerBonusPaidAmount = _unset,
+    Object? recruitmentMediumUsedMonth = _unset,
+    int? pendingRevenue,
+    bool? fiscalYearCompleted,
+    int? monthOpeningCash,
+    int? monthTrainingSpent,
+    int? monthRecruitmentSpent,
+    PublicDemoMonthlyCashFlow? latestMonthlyCashFlow,
+  }) => _copyWith(
+    month: month,
+    cash: cash,
+    engineerCount: engineerCount,
+    adminCount: adminCount,
+    salesCapacity: salesCapacity,
+    salesUsed: salesUsed,
+    engineersWaiting: engineersWaiting,
+    engineersAssigned: engineersAssigned,
+    engineerRuntimes: engineerRuntimes,
+    latestGrowthResults: latestGrowthResults,
+    growthAppliedMonths: growthAppliedMonths,
+    trainingSelections: trainingSelections,
+    summerBonusSelection: summerBonusSelection,
+    summerBonusPaid: summerBonusPaid,
+    summerBonusPaidMonth: summerBonusPaidMonth,
+    summerBonusPaidAmount: summerBonusPaidAmount,
+    recruitmentMediumUsedMonth: recruitmentMediumUsedMonth,
+    pendingRevenue: pendingRevenue,
+    fiscalYearCompleted: fiscalYearCompleted,
+    monthOpeningCash: monthOpeningCash,
+    monthTrainingSpent: monthTrainingSpent,
+    monthRecruitmentSpent: monthRecruitmentSpent,
+    latestMonthlyCashFlow: latestMonthlyCashFlow,
+  );
+
+  PublicDemoState _copyWith({
     int? month,
     int? cash,
     int? engineerCount,
@@ -690,4 +830,20 @@ class PublicDemoState {
     }
     return selections;
   }
+}
+
+/// Result of [PublicDemoState.useSalesSlotForInterview]: the resulting
+/// [state] always reflects whatever actually happened (unchanged when no
+/// slot was consumed), and [proof] is non-null exactly when a slot really
+/// was consumed on this call (WORKFLOW-STATE-1AB FIX3 P1-1).
+class PublicDemoSalesSlotConsumptionResult {
+  const PublicDemoSalesSlotConsumptionResult._({
+    required this.state,
+    required this.proof,
+  });
+
+  final PublicDemoState state;
+  final PublicDemoSalesSlotConsumptionProof? proof;
+
+  bool get consumed => proof != null;
 }

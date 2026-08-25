@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_month_label.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_monthly_close.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_state.dart';
+import 'package:smile_enjoy_story/game/public_demo/public_demo_workflow_state.dart';
 
 /// 12MONTH-3: [PublicDemoMonthlyClose.closeOrdinaryMonth] is the single
 /// shared entry point that extends the Common Monthly Close (12MONTH-1) and
@@ -221,6 +222,7 @@ void main() {
 
       state = PublicDemoMonthlyClose.closeMay(
         state: state,
+        workflow: PublicDemoWorkflowState.initial(),
         monthlyExpenses: 800000,
         acceptedHires: 0,
         hiredWithOrders: 0,

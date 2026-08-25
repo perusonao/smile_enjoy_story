@@ -1,8 +1,8 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:smile_enjoy_story/game/public_demo/public_demo_aggregate.dart';
+import 'package:smile_enjoy_story/game/public_demo/public_demo_fiscal_close_id.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_recruitment.dart';
-import 'package:smile_enjoy_story/game/public_demo/public_demo_recruitment_transaction.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_recruitment_medium.dart';
-import 'package:smile_enjoy_story/game/public_demo/public_demo_state.dart';
 
 void main() {
   const experiencedApplicant = PublicDemoApplicant(
@@ -80,17 +80,18 @@ void main() {
     );
     final entered = offered
         .copyWith(stage: PublicDemoApplicantStage.offerAccepted)
-        .join(week: 9);
+        .join(
+          week: 9,
+          currentFiscalCloseId: PublicDemoFiscalCloseId.forMonth(5),
+        );
 
     expect(offered.experienceMonths, 36);
     expect(entered.experienceMonths, 36);
   });
 
   test('recruitment media preserves template experience', () {
-    const transaction = PublicDemoRecruitmentTransaction();
-    final result = transaction.execute(
-      state: PublicDemoState.aprilStart(),
-      medium: PublicDemoRecruitmentMedium.engineer,
+    final result = PublicDemoAggregate.initial().recruit(
+      PublicDemoRecruitmentMedium.engineer,
     );
 
     expect(result.isSuccess, isTrue);

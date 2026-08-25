@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:smile_enjoy_story/game/public_demo/public_demo_fiscal_close_id.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_growth_engine.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_internal_training_transaction.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_raise.dart';
@@ -6,6 +7,8 @@ import 'package:smile_enjoy_story/game/public_demo/public_demo_raise_transaction
 import 'package:smile_enjoy_story/game/public_demo/public_demo_recruitment.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_state.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_summer_bonus_plan.dart';
+
+import 'test_support/public_demo_offer_test_helpers.dart';
 
 /// POST-12MONTH-1: once [PublicDemoState.fiscalYearCompleted] is true,
 /// Public Demo 0.1 is a read-only terminal state. No user action that
@@ -22,15 +25,18 @@ void main() {
         fiscalYearCompleted: true,
       );
 
-  PublicDemoApplicant joinedApplicant() => const PublicDemoApplicant(
-    id: 'raise-hire',
-    name: 'Raise Hire',
-    resumeSummary: 'Java 3年',
-    interviewScore: 70,
-    acceptanceScore: 70,
-    salesSkillFit: 70,
-    acceptedMonthlySalary: 320000,
-  ).join(week: 9);
+  PublicDemoApplicant joinedApplicant() => acceptTestOffer(
+    const PublicDemoApplicant(
+      id: 'raise-hire',
+      name: 'Raise Hire',
+      resumeSummary: 'Java 3年',
+      interviewScore: 70,
+      acceptanceScore: 70,
+      salesSkillFit: 70,
+      requestedMonthlySalary: 320000,
+    ),
+    offeredMonthlySalary: 320000,
+  ).join(week: 9, currentFiscalCloseId: PublicDemoFiscalCloseId.forMonth(5));
 
   group('A. Raise is locked after fiscal year completion', () {
     // POST-12MONTH-1-FIX1 P1-1: PublicDemoRaiseTransaction — not

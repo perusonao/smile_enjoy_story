@@ -1,12 +1,14 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:smile_enjoy_story/game/public_demo/public_demo_aggregate.dart'
+    show PublicDemoRecruitmentCalculation;
 import 'package:smile_enjoy_story/game/public_demo/public_demo_internal_training_transaction.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_monthly_cash_flow.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_monthly_close.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_recruitment_medium.dart';
-import 'package:smile_enjoy_story/game/public_demo/public_demo_recruitment_transaction.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_salary.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_state.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_summer_bonus_plan.dart';
+import 'package:smile_enjoy_story/game/public_demo/public_demo_workflow_state.dart';
 
 /// FINANCE-UX-1: proves [PublicDemoMonthlyClose] records an accurate,
 /// non-recomputed [PublicDemoMonthlyCashFlow] on [PublicDemoState] for every
@@ -134,6 +136,7 @@ void main() {
       );
       final result = PublicDemoMonthlyClose.closeMay(
         state: start,
+        workflow: PublicDemoWorkflowState.initial(),
         monthlyExpenses: 800000,
         acceptedHires: 0,
         hiredWithOrders: 0,
@@ -275,7 +278,13 @@ void main() {
       expect(trainingResult.isSuccess, isTrue);
       state = trainingResult.state;
 
-      final recruitmentResult = const PublicDemoRecruitmentTransaction()
+      // WORKFLOW-STATE-1AB FIX4 P1-2: PublicDemoAggregate.restore is gone —
+      // this test only cares about the pure cash/recordkeeping calculation
+      // (INTERNAL HELPER tier), not aggregate atomicity (covered in
+      // public_demo_recruitment_workflow_transaction_test.dart), so it
+      // calls PublicDemoRecruitmentCalculation directly against the custom
+      // `state` fixture instead of needing a whole authoritative aggregate.
+      final recruitmentResult = const PublicDemoRecruitmentCalculation()
           .execute(state: state, medium: PublicDemoRecruitmentMedium.engineer);
       expect(recruitmentResult.isSuccess, isTrue);
       state = recruitmentResult.state;

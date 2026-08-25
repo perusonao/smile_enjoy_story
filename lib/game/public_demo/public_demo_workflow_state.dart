@@ -464,44 +464,27 @@ class PublicDemoWorkflowState {
   /// Records a partner/client interview outcome for [engineerId]
   /// (WORKFLOW-STATE-1AB FIX6 P1, moved out of
   /// `PublicDemoAggregate.recordEngineerInterviewResult` so that file no
-  /// longer needs the now-private [_withEngineer] directly). Requires the
-  /// engineer to already be at the stage [type] demands (`introduced` for
-  /// partner, `partnerInterviewPassed` for client); a no-op otherwise.
-  /// Derives the resulting stage and score itself, from the engineer's own
-  /// [PublicDemoEngineerSales.interviewProfile] and [actualCapability], via
-  /// [PublicDemoInterviewEvaluator] — never accepted as a parameter.
-  /// Delegates the actual mutation to
-  /// [PublicDemoEngineerSales.recordInterviewOutcome], which is what mints
-  /// the unforgeable [PublicDemoEngineerInterviewRecord] on a genuine
-  /// client-interview pass.
+  /// longer needs the now-private [_withEngineer] directly; WORKFLOW-STATE-
+  /// 1AB FIX7 P2: the stage precondition, [PublicDemoInterviewEvaluator]
+  /// call, and record minting all now live inside
+  /// [PublicDemoEngineerSales.evaluateInterview] itself, so this method is a
+  /// thin, purely id-routing delegation — [actualCapability] is passed
+  /// through unchanged, never inspected here). A no-op for an unknown
+  /// [engineerId], or when the engineer is not already at the stage [type]
+  /// demands (`introduced` for partner, `partnerInterviewPassed` for
+  /// client) — both checked inside [PublicDemoEngineerSales
+  /// .evaluateInterview].
   PublicDemoWorkflowState recordEngineerInterviewResult({
     required String engineerId,
     required PublicDemoInterviewType type,
     required int actualCapability,
-  }) {
-    final engineer = engineers
-        .where((candidate) => candidate.id == engineerId)
-        .firstOrNull;
-    if (engineer == null) return this;
-    final requiredStage = type == PublicDemoInterviewType.partner
-        ? PublicDemoSalesStage.introduced
-        : PublicDemoSalesStage.partnerInterviewPassed;
-    if (engineer.stage != requiredStage) return this;
-
-    final result = PublicDemoInterviewEvaluator.evaluate(
+  }) => _withEngineer(
+    engineerId,
+    (candidate) => candidate.evaluateInterview(
       type: type,
-      profile: engineer.interviewProfile,
       actualCapability: actualCapability,
-    );
-    return _withEngineer(
-      engineerId,
-      (candidate) => candidate.recordInterviewOutcome(
-        type: type,
-        passed: result.passed,
-        score: result.score,
-      ),
-    );
-  }
+    ),
+  );
 
   /// Adds newly joined applicants as engineers (May's join step), skipping
   /// anyone already present by id — mirrors the widget's former inline

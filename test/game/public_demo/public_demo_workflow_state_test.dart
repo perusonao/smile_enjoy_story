@@ -125,7 +125,7 @@ void main() {
     // instead of fabricating a PublicDemoAssignment and injecting it
     // directly. FIX5/FIX6 P1: assignOrderedForMay also requires a genuine
     // PublicDemoEngineerInterviewRecord (set only by
-    // PublicDemoEngineerSales.recordInterviewOutcome — see
+    // PublicDemoEngineerSales.evaluateInterview — FIX7 P2 — see
     // recordTestClientInterviewPass — when it actually records a passed
     // client interview) — minted here via that real entry point since this
     // group tests assignOrderedForMay's own eligibility logic in isolation,
@@ -389,7 +389,7 @@ void main() {
     // sufficient (that field is publicly settable via `copyWith` and
     // proves nothing by itself) — a genuine
     // `PublicDemoEngineerInterviewRecord`, minted only by
-    // `PublicDemoEngineerSales.recordInterviewOutcome`, is required
+    // `PublicDemoEngineerSales.evaluateInterview` (FIX7 P2), is required
     // instead. Not `const` any more since minting one is a real method
     // call, not a compile-time literal.
     final orderedEngineer = recordTestClientInterviewPass(

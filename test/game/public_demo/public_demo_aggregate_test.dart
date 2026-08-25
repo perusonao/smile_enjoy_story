@@ -949,4 +949,171 @@ void main() {
       );
     });
   });
+
+  // WORKFLOW-STATE-1AB FIX7 P2: FIX6's independent review found one more
+  // provenance gap — `PublicDemoEngineerSales.recordInterviewOutcome`
+  // remained a PUBLIC API accepting `type`/`passed`/`score` as direct
+  // parameters. That let a production caller mint a genuine-looking
+  // `PublicDemoEngineerInterviewRecord` with a call like
+  // `engineer.recordInterviewOutcome(type: client, passed: true, score:
+  // 80)` — no real interview, no stage precondition, nothing but asserted
+  // literals. `recordInterviewOutcome` is gone; the line above no longer
+  // compiles from this file (a structural, compile-time closure, not just
+  // a behavioral one). Its replacement,
+  // `PublicDemoEngineerSales.evaluateInterview`, accepts only `type` and
+  // `actualCapability` — an interview-time skill signal, never an outcome
+  // assertion — and derives everything else (the required current stage,
+  // the pass/fail result, the score, and the record itself) internally.
+  group('WORKFLOW-STATE-1AB FIX7 P2: direct interview-record provenance '
+      'closure', () {
+    test('TEST A: the direct public interview-record mint attack is closed — '
+        'evaluateInterview cannot be used to skip the partner interview and '
+        'mint a client-interview-pass record directly, however favorable '
+        'the supplied capability/profile', () {
+      // The old attack constructed an engineer and called
+      // `recordInterviewOutcome(type: client, passed: true, score: 80)`
+      // directly — no stage check existed at all. The broadest remaining
+      // public surface for the same intent is calling `evaluateInterview`
+      // directly on an engineer that never genuinely passed a partner
+      // interview (here: still at the default `waiting` stage), with a
+      // maximally favorable profile/capability so any real formula would
+      // also pass.
+      const fabricated = PublicDemoEngineerSales(
+        id: 'intruder-direct',
+        name: 'Intruder',
+        summary: 'summary',
+        interviewProfile: PublicDemoInterviewProfile(
+          skillFit: 99,
+          humanity: 99,
+          morale: 99,
+          clientTrust: 99,
+        ),
+      );
+
+      final attempted = fabricated.evaluateInterview(
+        type: PublicDemoInterviewType.client,
+        actualCapability: 100,
+      );
+
+      expect(
+        attempted.hasGenuineInterviewRecord,
+        isFalse,
+        reason:
+            'evaluateInterview requires stage == partnerInterviewPassed '
+            'before a client interview can even be attempted; a waiting '
+            'engineer is an unconditional no-op',
+      );
+      expect(attempted.stage, PublicDemoSalesStage.waiting);
+      expect(attempted.lastInterviewScore, isNull);
+
+      final assigned = PublicDemoWorkflowState(
+        applicants: const [],
+        engineers: [attempted.copyWith(stage: PublicDemoSalesStage.ordered)],
+      ).assignOrderedForMay();
+      expect(assigned.assignments, isEmpty);
+    });
+
+    test('TEST DIRECT PROVENANCE ATTACK: the exact FIX6-review attack shape '
+        '— mint via the remaining public construction/evaluation surface, '
+        'force stage to ordered, wrap in a detached workflow — still '
+        'cannot satisfy genuine provenance and still produces no '
+        'assignment', () {
+      const fabricated = PublicDemoEngineerSales(
+        id: 'intruder-detached',
+        name: 'Intruder',
+        summary: 'summary',
+        interviewProfile: PublicDemoInterviewProfile(
+          skillFit: 99,
+          humanity: 99,
+          morale: 99,
+          clientTrust: 99,
+        ),
+      );
+
+      final detachedWorkflow = PublicDemoWorkflowState(
+        applicants: const [],
+        engineers: [
+          fabricated
+              .evaluateInterview(
+                type: PublicDemoInterviewType.client,
+                actualCapability: 100,
+              )
+              .copyWith(stage: PublicDemoSalesStage.ordered),
+        ],
+      );
+
+      expect(
+        detachedWorkflow.engineers.single.hasGenuineInterviewRecord,
+        isFalse,
+      );
+      expect(detachedWorkflow.assignOrderedForMay().assignments, isEmpty);
+    });
+
+    test('TEST E: wrong/invalid interview progression never produces a '
+        'genuine record — a partner interview attempted from `waiting`, and '
+        'a client interview attempted from `introduced` (partner not yet '
+        'passed), are both no-ops', () {
+      const engineer = PublicDemoEngineerSales(
+        id: 'eng-progression',
+        name: 'Engineer',
+        summary: 'summary',
+        interviewProfile: PublicDemoInterviewProfile(
+          skillFit: 90,
+          humanity: 90,
+          morale: 90,
+          clientTrust: 90,
+        ),
+      );
+
+      final clientFromWaiting = engineer.evaluateInterview(
+        type: PublicDemoInterviewType.client,
+        actualCapability: 100,
+      );
+      expect(clientFromWaiting.stage, PublicDemoSalesStage.waiting);
+      expect(clientFromWaiting.hasGenuineInterviewRecord, isFalse);
+
+      final introduced = engineer.copyWith(
+        stage: PublicDemoSalesStage.introduced,
+      );
+      final clientFromIntroduced = introduced.evaluateInterview(
+        type: PublicDemoInterviewType.client,
+        actualCapability: 100,
+      );
+      expect(clientFromIntroduced.stage, PublicDemoSalesStage.introduced);
+      expect(clientFromIntroduced.hasGenuineInterviewRecord, isFalse);
+    });
+
+    test('TEST C/D: genuine partner -> client interview progression through '
+        'the aggregate still mints a genuine record and still produces '
+        'exactly one assignment', () {
+      final engineerId =
+          PublicDemoAggregate.initial().workflow.engineers.first.id;
+      final aggregate = PublicDemoAggregate.initial()
+          .startSkillSheetReview(engineerId)
+          .beginSelling(engineerId)
+          .introduceProject(engineerId)
+          .recordEngineerInterviewResult(
+            engineerId: engineerId,
+            type: PublicDemoInterviewType.partner,
+          )
+          .recordEngineerInterviewResult(
+            engineerId: engineerId,
+            type: PublicDemoInterviewType.client,
+          )
+          .recordOrder(engineerId)
+          .closeApril(monthlyExpenses: 800000)
+          .closeMay(week: 9, monthlyExpenses: 800000);
+
+      final orderedEngineer = aggregate.workflow.engineers.firstWhere(
+        (e) => e.id == engineerId,
+      );
+      expect(orderedEngineer.hasGenuineInterviewRecord, isTrue);
+      expect(
+        aggregate.workflow.assignments
+            .where((a) => a.engineerId == engineerId)
+            .length,
+        1,
+      );
+    });
+  });
 }

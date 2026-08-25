@@ -15,24 +15,28 @@ enum PublicDemoSalesStage {
 
 /// Authoritative, unforgeable proof that a specific engineer actually
 /// passed a genuine client interview through
-/// [PublicDemoEngineerSales.recordInterviewOutcome] (WORKFLOW-STATE-1AB
-/// FIX6 P1).
+/// [PublicDemoEngineerSales.evaluateInterview] (WORKFLOW-STATE-1AB FIX6 P1,
+/// FIX7 P2).
 ///
 /// Constructor private to this file: only [PublicDemoEngineerSales
-/// .recordInterviewOutcome] — called exclusively by
+/// .evaluateInterview] — called exclusively by
 /// [PublicDemoWorkflowState.recordEngineerInterviewResult]
 /// (public_demo_workflow_state.dart), itself called only by
 /// [PublicDemoAggregate.recordEngineerInterviewResult]
-/// (public_demo_aggregate.dart), after a real
-/// [PublicDemoInterviewEvaluator.evaluate] pass — can mint one, bound to
-/// that engineer's own id. `stage == PublicDemoSalesStage.ordered` and
+/// (public_demo_aggregate.dart) — can mint one, bound to that engineer's
+/// own id, and only after [evaluateInterview] has itself verified the
+/// required current stage and run a real
+/// [PublicDemoInterviewEvaluator.evaluate] pass (WORKFLOW-STATE-1AB FIX7
+/// P2: `evaluateInterview` no longer accepts `passed`/`score` as
+/// parameters — a caller can request an interview attempt but cannot
+/// assert its outcome). `stage == PublicDemoSalesStage.ordered` and
 /// `lastInterviewScore != null` are NOT proof by themselves: both fields
 /// remain publicly settable via [PublicDemoEngineerSales.copyWith] (a value
-/// object needs that for [recordInterviewOutcome] itself to work), but
-/// doing so does not also produce a genuine
-/// [PublicDemoEngineerInterviewRecord] — [PublicDemoWorkflowState
-/// .assignOrderedForMay] gates assignment eligibility on this record's
-/// identity, not on `stage`/`lastInterviewScore` alone (mirrors
+/// object needs that for [evaluateInterview] itself to work), but doing so
+/// does not also produce a genuine [PublicDemoEngineerInterviewRecord] —
+/// [PublicDemoWorkflowState.assignOrderedForMay] gates assignment
+/// eligibility on this record's identity, not on
+/// `stage`/`lastInterviewScore` alone (mirrors
 /// [PublicDemoInterviewRecord]/[PublicDemoApplicant.hasBeenInterviewed] in
 /// public_demo_recruitment.dart).
 class PublicDemoEngineerInterviewRecord {
@@ -117,25 +121,51 @@ class PublicDemoEngineerSales {
     trust: trust ?? this.trust,
   );
 
-  /// The single sanctioned way to record a genuine partner/client interview
-  /// outcome for this engineer's sales pipeline (WORKFLOW-STATE-1AB FIX6
-  /// P1, replacing the raw `copyWith(stage:, lastInterviewScore:)` call
-  /// that used to live in `PublicDemoAggregate.recordEngineerInterviewResult`).
-  /// [type]/[passed]/[score] must come from an actual
-  /// [PublicDemoInterviewEvaluator.evaluate] call against this engineer's
-  /// own [interviewProfile] — called only by
-  /// [PublicDemoWorkflowState.recordEngineerInterviewResult]
-  /// (public_demo_workflow_state.dart). Mints
-  /// [PublicDemoEngineerInterviewRecord] — bound to this engineer's own id
-  /// — only when [type] is [PublicDemoInterviewType.client] and [passed] is
-  /// true; every other outcome updates `stage`/`lastInterviewScore` without
-  /// touching [interviewRecord].
-  PublicDemoEngineerSales recordInterviewOutcome({
+  /// The single sanctioned way to attempt a genuine partner/client
+  /// interview for this engineer's sales pipeline (WORKFLOW-STATE-1AB FIX7
+  /// P2, replacing `recordInterviewOutcome`, which accepted `passed`/
+  /// `score` as direct parameters — a production caller could supply
+  /// `type: client, passed: true, score: 80` with no actual evaluation
+  /// behind them at all, minting a genuine-looking
+  /// [PublicDemoEngineerInterviewRecord] with no genuine interview having
+  /// occurred).
+  ///
+  /// [actualCapability] is the only caller-supplied signal — an
+  /// interview-time skill reading, not an outcome assertion. Everything
+  /// else is derived here, from this engineer's own [stage] and
+  /// [interviewProfile]:
+  ///
+  /// - A no-op unless [stage] already equals the one [type] requires
+  ///   (`introduced` for partner, `partnerInterviewPassed` for client) —
+  ///   checked here too, defense in depth alongside
+  ///   [PublicDemoWorkflowState.recordEngineerInterviewResult] and
+  ///   [PublicDemoAggregate.recordEngineerInterviewResult]
+  ///   (public_demo_workflow_state.dart / public_demo_aggregate.dart), the
+  ///   only production callers — so this cannot be used to skip the
+  ///   partner interview and mint a client-interview pass directly.
+  /// - The resulting stage/score come from a real
+  ///   [PublicDemoInterviewEvaluator.evaluate] call; `passed`/`score` are
+  ///   never accepted as parameters, so no caller can assert either
+  ///   directly.
+  /// - Mints [PublicDemoEngineerInterviewRecord] — bound to this engineer's
+  ///   own id — only when [type] is [PublicDemoInterviewType.client] and
+  ///   the evaluation genuinely passed; every other outcome updates
+  ///   `stage`/`lastInterviewScore` without touching [interviewRecord].
+  PublicDemoEngineerSales evaluateInterview({
     required PublicDemoInterviewType type,
-    required bool passed,
-    required int score,
+    required int actualCapability,
   }) {
-    final nextStage = switch ((type, passed)) {
+    final requiredStage = type == PublicDemoInterviewType.partner
+        ? PublicDemoSalesStage.introduced
+        : PublicDemoSalesStage.partnerInterviewPassed;
+    if (stage != requiredStage) return this;
+
+    final result = PublicDemoInterviewEvaluator.evaluate(
+      type: type,
+      profile: interviewProfile,
+      actualCapability: actualCapability,
+    );
+    final nextStage = switch ((type, result.passed)) {
       (PublicDemoInterviewType.partner, true) =>
         PublicDemoSalesStage.partnerInterviewPassed,
       (PublicDemoInterviewType.partner, false) =>
@@ -146,10 +176,10 @@ class PublicDemoEngineerSales {
         PublicDemoSalesStage.clientInterviewFailed,
     };
     final passedClientInterview =
-        type == PublicDemoInterviewType.client && passed;
+        type == PublicDemoInterviewType.client && result.passed;
     return copyWith(
       stage: nextStage,
-      lastInterviewScore: score,
+      lastInterviewScore: result.score,
       interviewRecord: passedClientInterview
           ? PublicDemoEngineerInterviewRecord._(engineerId: id)
           : null,

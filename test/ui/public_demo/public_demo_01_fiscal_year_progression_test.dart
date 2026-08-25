@@ -144,6 +144,24 @@ void main() {
           findsNothing,
           reason: 'month $nextMonthLabel',
         );
+        if (nextMonthLabel == '10月') {
+          expect(
+            currentState(tester).financialStatus,
+            PublicDemoFinancialStatus.cashShortage,
+          );
+          final flow = find.byKey(
+            const Key('public-demo-monthly-cash-flow-card'),
+          );
+          final shortage = find.byKey(
+            const Key('public-demo-cash-shortage-card'),
+          );
+          expect(flow, findsOneWidget);
+          expect(shortage, findsOneWidget);
+          expect(
+            tester.getTopLeft(flow).dy,
+            lessThan(tester.getTopLeft(shortage).dy),
+          );
+        }
       }
       expect(find.text('11月'), findsOneWidget);
       expect(

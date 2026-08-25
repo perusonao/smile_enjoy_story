@@ -17,6 +17,7 @@ import '../../game/public_demo/public_demo_summer_bonus_plan.dart';
 import '../../game/public_demo/public_demo_workflow_state.dart';
 import '../asset_paths.dart';
 import 'public_demo_event_dialog.dart';
+import 'public_demo_cash_shortage_card.dart';
 import 'public_demo_growth_result_card.dart';
 import 'public_demo_interview_result_dialog.dart';
 import 'public_demo_monthly_cash_flow_card.dart';
@@ -615,6 +616,7 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
         PublicDemoMonthlyCashFlowCard(flow: s.latestMonthlyCashFlow!),
         const SizedBox(height: 8),
       ],
+      PublicDemoCashShortageCard(state: s),
       if (s.latestGrowthResults.isNotEmpty) ...[
         const Text('今月の成長', style: TextStyle(fontWeight: FontWeight.bold)),
         const SizedBox(height: 4),

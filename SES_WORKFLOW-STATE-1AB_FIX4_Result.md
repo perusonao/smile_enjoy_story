@@ -10,9 +10,9 @@ BRANCH: `claude/workflow-state-fix4-domain-boundary`
 
 IMPLEMENTATION COMMIT: `34df0bc` (`fix(public-demo): close WORKFLOW-STATE-1A+B Public Domain authority bypasses (FIX4)`)
 
-REPORT COMMIT: (this file's own commit, recorded after commit below)
+REPORT COMMIT: `bd35178` (`docs: add WORKFLOW-STATE-1AB FIX4 result report`)
 
-REMOTE HEAD: (recorded after push below)
+REMOTE HEAD: (recorded after push, see follow-up commit)
 
 DIFF: 10 files changed, 705 insertions(+), 616 deletions(-) — 4 `lib/` files (`public_demo_aggregate.dart`, `public_demo_state.dart`, `public_demo_workflow_state.dart`, `public_demo_01_placeholder_screen.dart`), 6 `test/` files. No files outside `lib/game/public_demo`, `lib/ui/public_demo`, and `test/game/public_demo` were touched.
 

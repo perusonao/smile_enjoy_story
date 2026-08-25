@@ -55,22 +55,23 @@ void main() {
         .applicant;
   }
 
-  PublicDemoWorkflowState workflowWithOneJoinedHire() =>
-      PublicDemoWorkflowState.restore(
-        applicants: [joinedApplicant('hire-01', 320000)],
-        engineers: const [],
-        assignments: const [
-          PublicDemoAssignment(
-            engineerId: 'hire-01',
-            engineerName: 'Snapshot Hire',
-            projectName: 'Test Project',
-            deliveryPressure: 50,
-            budgetHealth: 70,
-            humanity: 70,
-            nextOrderStatus: PublicDemoNextOrderStatus.accepted,
-          ),
-        ],
-      );
+  // WORKFLOW-STATE-1AB FIX4 P1-2: PublicDemoWorkflowState.restore is gone —
+  // build the assignment through the real assignOrderedForMay/
+  // withAssignmentUpdate authoritative transitions instead of injecting a
+  // fabricated PublicDemoAssignment directly.
+  PublicDemoWorkflowState workflowWithOneJoinedHire() {
+    final joined = joinedApplicant(
+      'hire-01',
+      320000,
+    ).copyWith(stage: PublicDemoApplicantStage.juneOrdered);
+    return PublicDemoWorkflowState(
+      applicants: [joined],
+      engineers: const [],
+    ).assignOrderedForMay().withAssignmentUpdate(
+      'hire-01',
+      nextOrderStatus: PublicDemoNextOrderStatus.accepted,
+    );
+  }
 
   test(
     'captures joined payroll identities, salary, and BindingOffer provenance',
@@ -100,10 +101,9 @@ void main() {
 
       // Build an entirely different workflow (as production code would via
       // setState) and confirm the already-captured snapshot is unaffected.
-      final mutated = PublicDemoWorkflowState.restore(
+      final mutated = PublicDemoWorkflowState(
         applicants: workflow.applicants,
         engineers: workflow.engineers,
-        assignments: const [],
       );
       expect(mutated.assignments, isEmpty);
       expect(snapshot.assignedEngineerIds, {'hire-01'});
@@ -144,7 +144,7 @@ void main() {
   test(
     'an applicant with no BindingOffer is simply absent from provenance',
     () {
-      final workflow = PublicDemoWorkflowState.restore(
+      final workflow = PublicDemoWorkflowState(
         applicants: const [
           PublicDemoApplicant(
             id: 'no-offer',
@@ -156,7 +156,6 @@ void main() {
           ),
         ],
         engineers: const [],
-        assignments: const [],
       );
       final snapshot = PublicDemoWorkflowSnapshot.capture(workflow, month: 5);
 

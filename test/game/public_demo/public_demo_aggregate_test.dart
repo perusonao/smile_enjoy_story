@@ -7,18 +7,26 @@ import 'package:smile_enjoy_story/game/public_demo/public_demo_recruitment.dart'
 import 'package:smile_enjoy_story/game/public_demo/public_demo_recruitment_medium.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_sales.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_salary_offer.dart';
-import 'package:smile_enjoy_story/game/public_demo/public_demo_state.dart';
-import 'package:smile_enjoy_story/game/public_demo/public_demo_workflow_state.dart';
 
-import 'test_support/public_demo_offer_test_helpers.dart';
-
-/// WORKFLOW-STATE-1AB FIX3: [PublicDemoAggregate] is the single authoritative
-/// Public Demo 0.1 root. These tests target the four P1 closures directly
-/// through the aggregate — the actual production boundary the widget now
-/// exercises (public_demo_01_placeholder_screen.dart) — rather than the
-/// lower-level building blocks alone (already covered by
+/// WORKFLOW-STATE-1AB FIX3/FIX4: [PublicDemoAggregate] is the single
+/// authoritative Public Demo 0.1 root. These tests target the four P1
+/// closures directly through the aggregate — the actual production
+/// boundary the widget exercises (public_demo_01_placeholder_screen.dart)
+/// — rather than the lower-level building blocks alone (already covered by
 /// public_demo_workflow_state_test.dart, public_demo_binding_offer_test.dart,
 /// public_demo_join_test.dart, and public_demo_monthly_close_test.dart).
+///
+/// FIX4: independent review found that FIX3's own `PublicDemoAggregate
+/// .restore(state:, workflow:)` and `.withState(newState)` were themselves
+/// still public, production-reachable APIs — so combining them with
+/// public lower-level helpers (`PublicDemoMonthlyClose.closeMay`,
+/// `PublicDemoState.advanceToJune`) let a caller commit finance-only or
+/// workflow-only changes, inject an arbitrary workflow/assignment roster,
+/// or supply a stale/omitted/subsetted joined-applicant set as if
+/// authoritative. Both are now gone. Every fixture below is built by
+/// chaining the SAME real [PublicDemoAggregate] commands production code
+/// uses, starting from [PublicDemoAggregate.initial] — never a
+/// reconstruction shortcut, because none exists any more.
 void main() {
   group('P1-1: interview authority (completeInterview)', () {
     test(
@@ -48,17 +56,24 @@ void main() {
     test(
       'no sales slot available: completeInterview rejects and changes nothing',
       () {
-        // salesCapacity - salesUsed == 0: an exhausted budget reached the
-        // same way `useSalesSlot`/`completeInterview` themselves reach it
-        // (incrementing `salesUsed`), just precomputed here so the test
-        // does not need as many distinct applicants as
-        // PublicDemoState.aprilStart()'s salesCapacity.
-        final aggregate = PublicDemoAggregate.restore(
-          state: PublicDemoState.aprilStart().copyWith(
-            salesUsed: PublicDemoState.aprilStart().salesCapacity,
-          ),
-          workflow: PublicDemoWorkflowState.initial(),
-        );
+        // WORKFLOW-STATE-1AB FIX4 P1-2: PublicDemoAggregate.restore is
+        // gone — drain the real sales-slot budget (4, from aprilStart)
+        // through repeated real engineer-interview commands instead of
+        // constructing a pre-exhausted state directly. Nothing prevents a
+        // caller from calling this real command repeatedly on the same
+        // engineer (it has no idempotency guard, unlike completeInterview),
+        // so this is a genuine, production-reachable way to reach an
+        // exhausted budget.
+        var aggregate = PublicDemoAggregate.initial();
+        final capacity = aggregate.state.salesCapacity;
+        for (var i = 0; i < capacity; i++) {
+          aggregate = aggregate.applyEngineerInterviewResult(
+            engineerId: aggregate.workflow.engineers.first.id,
+            type: PublicDemoInterviewType.partner,
+            stage: PublicDemoSalesStage.partnerInterviewPassed,
+            score: 80,
+          );
+        }
         expect(aggregate.state.salesRemaining, 0);
 
         final target = aggregate.workflow.applicants[1];
@@ -119,7 +134,7 @@ void main() {
     // anything this file *can* construct — still cannot mint one.
     test('withApplicant cannot fabricate interview completion: no lambda this '
         'file can write mints a genuine PublicDemoInterviewRecord', () {
-      final workflow = PublicDemoWorkflowState.initial();
+      final workflow = PublicDemoAggregate.initial().workflow;
       final applicantId = workflow.applicants.first.id;
 
       // The broadest fabrication attempt available: replace the real
@@ -191,35 +206,70 @@ void main() {
   });
 
   group('P1-2: recruitment atomicity (recruit)', () {
-    test('finance-only commit is impossible through the public API: there '
-        'is no field that exposes a committed PublicDemoState without the '
-        'paired PublicDemoWorkflowState', () {
+    test('A: finance-only recruitment commit cannot be performed', () {
+      // Old attack: `old.withState(next.state)`. `withState` no longer
+      // exists on PublicDemoAggregate at all (FIX4) — there is no method
+      // through which the finance half of a recruit() result could be
+      // committed alone, so this is necessarily a structural/compile-time
+      // guarantee rather than a runtime failure to trigger. The runtime
+      // half of the guarantee: recruit()'s only handle on a committed
+      // outcome, `result.aggregate`, always carries workflow together
+      // with state — asserted below and in the FIX4 bypass audit (see
+      // SES_WORKFLOW-STATE-1AB_FIX4_Result.md).
       final aggregate = PublicDemoAggregate.initial();
       final result = aggregate.recruit(PublicDemoRecruitmentMedium.engineer);
 
       expect(result.isSuccess, isTrue);
-      // The ONLY way to read the committed outcome is `result.aggregate`,
-      // which always carries state and workflow together.
-      expect(result.aggregate!.state.cash, lessThan(aggregate.state.cash));
+      expect(result.aggregate!.state.cash, isNot(aggregate.state.cash));
       expect(
         result.aggregate!.workflow.applicants.length,
-        greaterThan(aggregate.workflow.applicants.length),
+        isNot(aggregate.workflow.applicants.length),
       );
     });
 
-    test('insufficient cash leaves the aggregate unchanged (both roots)', () {
-      final aggregate = PublicDemoAggregate.restore(
-        state: aggregatePoorState(),
-        workflow: PublicDemoWorkflowState.initial(),
-      );
-
+    test('B: workflow-only recruitment commit cannot be performed', () {
+      // Old attack: `PublicDemoAggregate.restore(state: old.state,
+      // workflow: next.workflow)`. `.restore` no longer exists at all
+      // (FIX4) — there is no production API that accepts a caller-supplied
+      // (state, workflow) pair and stores it as authoritative, so a
+      // caller cannot recombine one aggregate's original state with
+      // another's post-recruit workflow either. Structural guarantee,
+      // same reasoning as A.
+      final aggregate = PublicDemoAggregate.initial();
       final result = aggregate.recruit(PublicDemoRecruitmentMedium.engineer);
 
-      expect(result.isSuccess, isFalse);
-      expect(result.aggregate, isNull);
+      expect(result.isSuccess, isTrue);
+      // The only way to read the committed workflow is paired with its
+      // own committed state in the same `result.aggregate` — there is no
+      // field or method that would let this test (or any caller) build a
+      // "workflow moved, state didn't" aggregate even if it wanted to.
+      expect(
+        result.aggregate!.workflow.applicants.length,
+        aggregate.workflow.applicants.length + 2,
+      );
+      expect(result.aggregate!.state.cash, aggregate.state.cash - 100000);
     });
 
-    test('applicant generation failure leaves the aggregate unchanged', () {
+    test(
+      'I: insufficient cash leaves the aggregate unchanged (both roots)',
+      () {
+        // Reaches a genuinely poor aggregate through a real command chain
+        // (closeApril's own monthlyExpenses parameter draining nearly all of
+        // PublicDemoAggregate.initial's starting cash) rather than
+        // constructing one directly.
+        final poor = PublicDemoAggregate.initial().closeApril(
+          monthlyExpenses: 2999999,
+        );
+        expect(poor.state.cash, 1);
+
+        final result = poor.recruit(PublicDemoRecruitmentMedium.engineer);
+
+        expect(result.isSuccess, isFalse);
+        expect(result.aggregate, isNull);
+      },
+    );
+
+    test('I: applicant generation failure leaves the aggregate unchanged', () {
       final aggregate = PublicDemoAggregate.initial();
 
       final result = aggregate.recruit(
@@ -232,7 +282,7 @@ void main() {
       expect(result.aggregate, isNull);
     });
 
-    test('success changes finance and workflow together, never one alone', () {
+    test('J: recruitment success commits both together, never one alone', () {
       final aggregate = PublicDemoAggregate.initial();
       final result = aggregate.recruit(PublicDemoRecruitmentMedium.free);
 
@@ -276,75 +326,53 @@ void main() {
   });
 
   group('P1-3: assignment authority (via closeMay)', () {
-    test('fake assignment roster cannot construct an authoritative aggregate: '
-        'PublicDemoAggregate.restore + PublicDemoWorkflowState.restore are '
-        'the only ways to inject one, and neither is on the production '
-        'command surface the widget uses', () {
-      const fabricatedRoster = [
-        PublicDemoAssignment(
+    test(
+      'C: arbitrary assignment restore cannot become authority — there is no '
+      'production API that accepts a caller-constructed PublicDemoAssignment '
+      'and stores it as authoritative',
+      () {
+        const fabricated = PublicDemoAssignment(
           engineerId: 'intruder',
           engineerName: 'Fabricated',
           projectName: 'Fabricated Project',
           deliveryPressure: 0,
           budgetHealth: 100,
           humanity: 100,
-        ),
-      ];
-      // This compiles ONLY via `.restore` — the safe production factory
-      // (`PublicDemoWorkflowState(applicants:, engineers:)`) has no
-      // `assignments` parameter at all (P1-3).
-      final workflow = PublicDemoWorkflowState.restore(
-        applicants: const [],
-        engineers: const [],
-        assignments: fabricatedRoster,
-      );
-      // Once restored, `closeMay` (the production transition) always
-      // REPLACES the roster wholesale via `assignOrderedForMay` — the
-      // fabricated entry never survives a real close.
-      final aggregate = PublicDemoAggregate.restore(
-        state: aggregateMayState(),
-        workflow: workflow,
-      );
+        );
+        // The only way to reach a workflow with ANY assignment content is
+        // assignOrderedForMay (via closeMay), which computes the roster
+        // itself from engineer/applicant stage facts already on the
+        // aggregate — there is no parameter anywhere to inject
+        // `fabricated` into, and no `.restore(...)`/public
+        // `copyWith(assignments: ...)` left to plant it directly either
+        // (both removed in FIX4).
+        final aggregate = PublicDemoAggregate.initial()
+            .closeApril(monthlyExpenses: 800000)
+            .closeMay(week: 9, monthlyExpenses: 800000);
 
-      final result = aggregate.closeMay(week: 9, monthlyExpenses: 800000);
-
-      expect(
-        result.workflow.assignments.any((a) => a.engineerId == 'intruder'),
-        isFalse,
-      );
-    });
+        expect(
+          aggregate.workflow.assignments.any(
+            (a) => a.engineerId == fabricated.engineerId,
+          ),
+          isFalse,
+        );
+      },
+    );
 
     test('valid assignment succeeds: an ordered engineer gets a real May '
         'assignment through closeMay', () {
-      const orderedEngineer = PublicDemoEngineerSales(
-        id: 'agg-eng-01',
-        name: 'Ordered Engineer',
-        summary: 'summary',
-        stage: PublicDemoSalesStage.ordered,
-        interviewProfile: PublicDemoInterviewProfile(
-          skillFit: 70,
-          humanity: 70,
-          morale: 70,
-          clientTrust: 60,
-        ),
-      );
-      final aggregate = PublicDemoAggregate.restore(
-        state: aggregateMayState(),
-        workflow: PublicDemoWorkflowState.restore(
-          applicants: const [],
-          engineers: const [orderedEngineer],
-          assignments: const [],
-        ),
-      );
+      final aggregate = PublicDemoAggregate.initial()
+          .withEngineerStage(
+            PublicDemoAggregate.initial().workflow.engineers.first.id,
+            PublicDemoSalesStage.ordered,
+          )
+          .closeApril(monthlyExpenses: 800000)
+          .closeMay(week: 9, monthlyExpenses: 800000);
 
-      final result = aggregate.closeMay(week: 9, monthlyExpenses: 800000);
-
-      expect(result.workflow.assignments, isNotEmpty);
+      expect(aggregate.workflow.assignments, isNotEmpty);
       expect(
-        result.workflow.assignments.every(
-          (a) =>
-              aggregate.workflow.engineers.any((e) => e.id == a.engineerId) ||
-              aggregate.workflow.applicants.any((ap) => ap.id == a.engineerId),
+        aggregate.workflow.assignments.every(
+          (a) => aggregate.workflow.engineers.any((e) => e.id == a.engineerId),
         ),
         isTrue,
       );
@@ -352,126 +380,140 @@ void main() {
   });
 
   group('P1-4: joined/payroll projection (via closeMay)', () {
-    test('two genuine joined applicants both survive closeMay — there is no '
-        'joinedApplicants parameter on the aggregate to omit either one', () {
-      final first = acceptTestOffer(
-        const PublicDemoApplicant(
-          id: 'agg-hire-01',
-          name: 'Hire 1',
-          resumeSummary: 'Java 3年',
-          interviewScore: 70,
-          acceptanceScore: 70,
-          salesSkillFit: 70,
-          requestedMonthlySalary: 320000,
-        ),
-        offeredMonthlySalary: 320000,
+    /// Accepts a binding offer for [applicantId] via the real, production
+    /// `PublicDemoAggregate.completeInterview`/`acceptOffer` commands —
+    /// `acceptanceScore: 100` forces acceptance so this fixture does not
+    /// also have to satisfy the real evaluator's threshold. The
+    /// [PublicDemoFiscalCloseId] is derived from [aggregate]'s own current
+    /// month — a genuine join requires the offer and the eventual
+    /// closeMay to share the same fiscal close (join happens the same
+    /// month applicants are actually hired, i.e. May, matching the real
+    /// widget's own offer()/may() sequencing).
+    PublicDemoAggregate hireApplicant(
+      PublicDemoAggregate aggregate,
+      String applicantId,
+    ) {
+      final applicant = aggregate.workflow.applicants.firstWhere(
+        (a) => a.id == applicantId,
       );
-      final second = acceptTestOffer(
-        const PublicDemoApplicant(
-          id: 'agg-hire-02',
-          name: 'Hire 2',
-          resumeSummary: 'Java 2年',
-          interviewScore: 65,
-          acceptanceScore: 65,
-          salesSkillFit: 65,
-          requestedMonthlySalary: 300000,
-        ),
-        offeredMonthlySalary: 300000,
+      final interviewed = aggregate.completeInterview(applicant.id).aggregate;
+      final offer = PublicDemoSalaryOffer(
+        requestedMonthlySalary: applicant.requestedMonthlySalary,
+        offeredMonthlySalary: applicant.requestedMonthlySalary,
+        acceptanceScore: 100,
+        motivationDelta: 0,
+        trustDelta: 0,
       );
-      final aggregate = PublicDemoAggregate.restore(
-        state: aggregateMayState(),
-        workflow: PublicDemoWorkflowState.restore(
-          applicants: [
-            first.copyWith(stage: PublicDemoApplicantStage.offerAccepted),
-            second.copyWith(stage: PublicDemoApplicantStage.offerAccepted),
-          ],
-          engineers: const [],
-          assignments: const [],
+      return interviewed.acceptOffer(
+        applicantId: applicant.id,
+        offer: offer,
+        fiscalCloseId: PublicDemoFiscalCloseId.forMonth(
+          interviewed.state.month,
         ),
       );
+    }
+
+    test('D/G: two genuine joined applicants both survive closeMay, and '
+        'joinedApplicantIds reflects exactly them — there is no '
+        'joinedApplicants/joinedApplicantIds parameter on the aggregate to '
+        'omit either one or substitute an arbitrary list', () {
+      var aggregate = PublicDemoAggregate.initial();
+      final ids = aggregate.workflow.applicants.map((a) => a.id).toList();
+      expect(ids, hasLength(2), reason: 'the fixture needs exactly two');
+
+      aggregate = aggregate.closeApril(monthlyExpenses: 800000);
+      aggregate = hireApplicant(aggregate, ids[0]);
+      aggregate = hireApplicant(aggregate, ids[1]);
 
       final result = aggregate.closeMay(week: 9, monthlyExpenses: 800000);
 
-      expect(result.state.joinedApplicantIds.toSet(), {
-        'agg-hire-01',
-        'agg-hire-02',
-      });
+      expect(result.state.joinedApplicantIds.toSet(), ids.toSet());
     });
 
-    test('duplicate identity in the workflow cannot duplicate payroll '
-        'membership: joinedApplicantIds is a deduplicated set-like list', () {
-      final hire = acceptTestOffer(
-        const PublicDemoApplicant(
-          id: 'agg-hire-dup',
-          name: 'Hire',
-          resumeSummary: 'Java 3年',
-          interviewScore: 70,
-          acceptanceScore: 70,
-          salesSkillFit: 70,
-          requestedMonthlySalary: 320000,
-        ),
-        offeredMonthlySalary: 320000,
-      ).copyWith(stage: PublicDemoApplicantStage.offerAccepted);
-      final aggregate = PublicDemoAggregate.restore(
-        state: aggregateMayState(),
-        workflow: PublicDemoWorkflowState.restore(
-          applicants: [hire],
-          engineers: const [],
-          assignments: const [],
-        ),
-      );
+    test('E: joined omission cannot control May close — closeMay(week:, '
+        'monthlyExpenses:) has no parameter through which a caller could ask '
+        'for fewer than the genuinely-joined applicants', () {
+      var aggregate = PublicDemoAggregate.initial();
+      final ids = aggregate.workflow.applicants.map((a) => a.id).toList();
+      aggregate = aggregate.closeApril(monthlyExpenses: 800000);
+      // Only ONE of the two pool applicants is hired — the other never
+      // gets an offer, so it genuinely does not join. The point: nothing
+      // about closeMay's signature would let a caller who DID hire both
+      // choose to report only one — the previous test (D/G) already
+      // proves both survive when both are genuine. This test confirms
+      // the complementary case: a genuinely-not-joined applicant is
+      // correctly absent, not present through some caller override.
+      aggregate = hireApplicant(aggregate, ids[0]);
+      final neverHired = ids[1];
 
       final result = aggregate.closeMay(week: 9, monthlyExpenses: 800000);
 
-      expect(
-        result.state.joinedApplicantIds.where((id) => id == 'agg-hire-dup'),
-        hasLength(1),
-      );
+      expect(result.state.joinedApplicantIds, isNot(contains(neverHired)));
+      expect(result.state.joinedApplicantIds, hasLength(1));
+    });
+
+    test('F: stale workflow cannot be supplied to close — closeMay always '
+        'operates on this aggregate\'s own current workflow; there is no '
+        '`workflow:` parameter through which an earlier-held reference could '
+        'be substituted', () {
+      final base = PublicDemoAggregate.initial();
+
+      // Advance the REAL aggregate (recruit adds a brand-new applicant
+      // id that never existed in `base.workflow` at all); `base` itself
+      // stays untouched (Dart immutability) and now-stale. There is no
+      // way to hand closeMay `base.workflow` instead of the advanced
+      // aggregate's own current one, because closeMay accepts no
+      // workflow argument at all.
+      var advanced = base.recruit(PublicDemoRecruitmentMedium.free).aggregate!;
+      final recruitedId = advanced.workflow.applicants
+          .where((a) => !base.workflow.applicants.any((b) => b.id == a.id))
+          .single
+          .id;
+      advanced = advanced.closeApril(monthlyExpenses: 800000);
+      advanced = hireApplicant(advanced, recruitedId);
+
+      final closed = advanced.closeMay(week: 9, monthlyExpenses: 800000);
+
+      // If closeMay could somehow have operated on `base.workflow`
+      // (captured before the recruit) instead of `advanced`'s own live
+      // one, the recruited-and-hired applicant would be structurally
+      // absent — it did not exist in `base.workflow` at all. Its
+      // presence in the payroll projection proves closeMay used the
+      // aggregate's own current workflow, never the stale reference.
+      expect(closed.state.joinedApplicantIds, contains(recruitedId));
     });
 
     test('salary derives from the authoritative BindingOffer, never a '
         'caller-tampered acceptedMonthlySalary field', () {
-      final hire = acceptTestOffer(
-        const PublicDemoApplicant(
-          id: 'agg-hire-salary',
-          name: 'Hire',
-          resumeSummary: 'Java 3年',
-          interviewScore: 70,
-          acceptanceScore: 70,
-          salesSkillFit: 70,
-          requestedMonthlySalary: 320000,
-        ),
-        offeredMonthlySalary: 320000,
-      ).copyWith(stage: PublicDemoApplicantStage.offerAccepted);
-      // Tamper with the field a caller could freely set — the join
-      // transition inside closeMay must resolve salary from the
-      // BindingOffer, never from this.
-      final tampered = hire.copyWith(acceptedMonthlySalary: 1);
-      final aggregate = PublicDemoAggregate.restore(
-        state: aggregateMayState(),
-        workflow: PublicDemoWorkflowState.restore(
-          applicants: [tampered],
-          engineers: const [],
-          assignments: const [],
-        ),
+      var aggregate = PublicDemoAggregate.initial();
+      final applicant = aggregate.workflow.applicants.first;
+      aggregate = aggregate.closeApril(monthlyExpenses: 800000);
+      aggregate = hireApplicant(aggregate, applicant.id);
+
+      // Tamper with the field a caller could freely set on the workflow
+      // via the still-generic withApplicant — the join transition
+      // inside closeMay must resolve salary from the BindingOffer,
+      // never from this. This LOCAL value is never committed anywhere:
+      // there is no aggregate API left (no restore, no withWorkflow)
+      // that would let a caller substitute it for the real workflow
+      // before calling closeMay.
+      final tamperedWorkflow = aggregate.workflow.withApplicant(
+        applicant.id,
+        (a) => a.copyWith(acceptedMonthlySalary: 1),
+      );
+      expect(
+        tamperedWorkflow.applicants
+            .firstWhere((a) => a.id == applicant.id)
+            .acceptedMonthlySalary,
+        1,
       );
 
       final result = aggregate.closeMay(week: 9, monthlyExpenses: 800000);
 
       final joined = result.workflow.applicants.firstWhere(
-        (a) => a.id == 'agg-hire-salary',
+        (a) => a.id == applicant.id,
       );
-      expect(joined.acceptedMonthlySalary, 320000);
+      expect(joined.acceptedMonthlySalary, applicant.requestedMonthlySalary);
     });
   });
 }
-
-/// Test-only fixture: a finance state too poor to afford any recruitment
-/// medium, but otherwise a normal April start.
-PublicDemoState aggregatePoorState() =>
-    PublicDemoState.aprilStart().copyWith(cash: 0);
-
-/// Test-only fixture: a finance state at May (month 5), the month closeMay
-/// actually operates on.
-PublicDemoState aggregateMayState() => PublicDemoState.aprilStart()
-    .advanceToMay(monthlyExpenses: 800000, orderedEngineers: 0);

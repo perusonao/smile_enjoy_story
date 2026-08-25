@@ -110,13 +110,7 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
       workflow.assignedEngineerIds(month: s.month);
 
   void _selectInternalTraining(String engineerId) {
-    final result = const PublicDemoInternalTrainingTransaction().execute(
-      state: s,
-      engineerId: engineerId,
-      assignedEngineerIds: _currentlyAssignedEngineerIds,
-    );
-    if (!result.isSuccess) return;
-    setState(() => _game = _game.withState(result.state));
+    setState(() => _game = _game.selectInternalTraining(engineerId));
   }
 
   @override

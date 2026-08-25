@@ -2,6 +2,7 @@ import 'public_demo_assignment.dart';
 import 'public_demo_engineer_runtime.dart';
 import 'public_demo_fiscal_close_id.dart';
 import 'public_demo_interview.dart';
+import 'public_demo_internal_training_transaction.dart';
 import 'public_demo_monthly_close.dart';
 import 'public_demo_raise_transaction.dart';
 import 'public_demo_recruitment.dart';
@@ -12,9 +13,9 @@ import 'public_demo_state.dart';
 import 'public_demo_summer_bonus_plan.dart';
 import 'public_demo_workflow_state.dart';
 
-/// The single authoritative Public Demo 0.1 root (WORKFLOW-STATE-1AB FIX3):
-/// atomically owns both finance/monthly-close facts ([state]) and workflow
-/// facts ([workflow]) as one unit.
+/// The single authoritative Public Demo 0.1 root (WORKFLOW-STATE-1AB
+/// FIX3/FIX4): atomically owns both finance/monthly-close facts ([state])
+/// and workflow facts ([workflow]) as one unit.
 ///
 /// FIX2 still let a caller obtain [PublicDemoState]/[PublicDemoWorkflowState]
 /// as two independently-committable values — a recruitment
@@ -22,14 +23,35 @@ import 'public_demo_workflow_state.dart';
 /// one half of, a `closeMay(..., joinedApplicants: ...)` caller-chosen
 /// iterable, a public `PublicDemoWorkflowState(..., assignments: ...)`
 /// factory, and a zero-argument `PublicDemoApplicant.markInterviewed()`.
-/// FIX3 closes all four by making this class the only place gameplay code
+/// FIX3 closed all four by making this class the only place gameplay code
 /// holds workflow/finance state: every authority-significant transition is
 /// a method here that takes the current aggregate (`this`) and returns the
 /// next one, atomically, or a result whose only way to reach the next
 /// aggregate is a single field. [PublicDemo01PlaceholderScreen] keeps
 /// exactly one field of this type and only ever replaces it wholesale.
 ///
-/// This class deliberately does NOT expose a generic
+/// FIX3's own `.restore(state:, workflow:)` factory and `withState(newState)`
+/// method were themselves still public, production-reachable APIs — commenting
+/// them "restore-only"/"read-only-ish" did not actually stop a caller from
+/// calling them to inject an arbitrary finance state, or an arbitrary
+/// (state, workflow) pair, as the authoritative aggregate (independent
+/// review FIX4 finding). Both are now gone entirely. There is no
+/// constructor, factory, or method anywhere on this class that accepts a
+/// caller-supplied [PublicDemoState] or [PublicDemoWorkflowState] value and
+/// stores it directly into [state]/[workflow] — [initial] takes no
+/// parameters, and every other method computes its result strictly from
+/// `this.state`/`this.workflow` plus caller-supplied identifiers/enums/ints
+/// (never a whole root value). This is what makes "finance-only commit" and
+/// "workflow-only commit" structurally impossible from the Public Domain
+/// API, not just absent from `PublicDemo01PlaceholderScreen`'s own call
+/// sites: even if a caller directly invokes a lower-level helper like
+/// [PublicDemoMonthlyClose.closeMay] or [PublicDemoState.advanceToJune]
+/// (both remain public — read their own docs for why that is still safe)
+/// and gets back a fabricated [PublicDemoState], there is no longer any API
+/// on this class through which that value could be committed as
+/// authoritative.
+///
+/// This class also deliberately does NOT expose a generic
 /// `withState(PublicDemoState Function(PublicDemoState) update)` /
 /// `withWorkflow(...)`-style combinator: a caller-supplied transform can
 /// simply ignore the value it is given and return an arbitrary fabricated
@@ -39,26 +61,23 @@ import 'public_demo_workflow_state.dart';
 /// problem this class exists to close. Every method below is instead a
 /// named, specific transition that only ever composes already-safe,
 /// already-audited operations on [state]/[workflow] — never a caller
-/// closure.
+/// closure or a caller-supplied root value.
+///
+/// Test fixtures needing a specific intermediate aggregate state build it
+/// by chaining these same real commands from [initial] — exactly as
+/// production code does — never via a reconstruction shortcut this file
+/// does not expose.
 class PublicDemoAggregate {
   const PublicDemoAggregate._({required this.state, required this.workflow});
 
-  /// Public Demo 0.1's starting aggregate.
+  /// Public Demo 0.1's starting aggregate. The ONLY way to obtain a
+  /// [PublicDemoAggregate] without already holding one — every other
+  /// instance is computed from an existing one via the command methods
+  /// below.
   factory PublicDemoAggregate.initial() => PublicDemoAggregate._(
     state: PublicDemoState.aprilStart(),
     workflow: PublicDemoWorkflowState.initial(),
   );
-
-  /// Restore-only reconstruction boundary: for test fixtures and any future
-  /// save/load deserialization, never for a live gameplay transition. Every
-  /// other method on this class computes the next aggregate from the
-  /// current one via an already-validated domain command; this is the sole
-  /// escape hatch that accepts an arbitrary [state]/[workflow] pair
-  /// directly, and [PublicDemo01PlaceholderScreen] never calls it.
-  factory PublicDemoAggregate.restore({
-    required PublicDemoState state,
-    required PublicDemoWorkflowState workflow,
-  }) => PublicDemoAggregate._(state: state, workflow: workflow);
 
   final PublicDemoState state;
   final PublicDemoWorkflowState workflow;
@@ -131,7 +150,7 @@ class PublicDemoAggregate {
     PublicDemoRecruitmentMedium medium, {
     PublicDemoRecruitmentCandidateGenerator? candidateGenerator,
   }) {
-    final calculation = _PublicDemoRecruitmentCalculation(
+    final calculation = PublicDemoRecruitmentCalculation(
       candidateGenerator: candidateGenerator,
     ).execute(state: state, medium: medium);
     if (!calculation.isSuccess) {
@@ -155,19 +174,24 @@ class PublicDemoAggregate {
     );
   }
 
-  /// Replaces [state] with an already-computed value from a trusted,
-  /// single-root finance transaction (e.g.
-  /// [PublicDemoInternalTrainingTransaction]) — [workflow] is untouched.
-  /// Unlike a generic `withWorkflow`, this does not reopen any of FIX3's
-  /// four closed gaps: none of P1-1/2/3/4 concerned finance-only field
-  /// values, only whether a recruitment/interview/month-close command
-  /// paired cash and workflow atomically, or whether the workflow's own
-  /// applicant/assignment membership could be truncated or substituted —
-  /// this method touches neither, so it is safe as a raw-value passthrough
-  /// where the analogous `withWorkflow` deliberately does not exist (see
-  /// class doc).
-  PublicDemoAggregate withState(PublicDemoState newState) =>
-      _copyWith(state: newState);
+  /// The single sanctioned way to purchase internal training for one
+  /// waiting engineer (WORKFLOW-STATE-1AB FIX4 P1-1). Computes the
+  /// engineer's currently-assigned eligibility from this aggregate's own
+  /// [workflow] internally via [PublicDemoInternalTrainingTransaction] —
+  /// the caller supplies only [engineerId], never a [PublicDemoState] value
+  /// to commit. Silently unchanged on any failure (unknown engineer,
+  /// already assigned, already selected, insufficient cash, fiscal year
+  /// completed), mirroring every other simple no-op-on-failure command on
+  /// this class.
+  PublicDemoAggregate selectInternalTraining(String engineerId) {
+    final result = const PublicDemoInternalTrainingTransaction().execute(
+      state: state,
+      engineerId: engineerId,
+      assignedEngineerIds: workflow.assignedEngineerIds(month: state.month),
+    );
+    if (!result.isSuccess) return this;
+    return _copyWith(state: result.state);
+  }
 
   // ---------------------------------------------------------------------
   // Offer / applicant / engineer / assignment value transitions
@@ -496,23 +520,31 @@ enum PublicDemoRecruitmentTransactionStatus {
   generationFailed,
 }
 
-/// Pure, all-or-nothing recruitment-media purchase calculation. Private to
-/// this file: the only caller is [PublicDemoAggregate.recruit], which always
-/// commits both of this class's outputs (cash and generated applicants)
-/// together into one new aggregate.
-class _PublicDemoRecruitmentCalculation {
-  const _PublicDemoRecruitmentCalculation({
+/// Pure, all-or-nothing recruitment-media purchase calculation — INTERNAL
+/// HELPER tier (WORKFLOW-STATE-1AB FIX4): takes and returns only
+/// [PublicDemoState] values (never a [PublicDemoWorkflowState] or a
+/// [PublicDemoAggregate]), so it cannot itself commit anything as
+/// authoritative. It is public, and directly testable, for the same reason
+/// [PublicDemoMonthlyClose] and [PublicDemoState.advanceToJune] are public:
+/// exercising pure month/cash/generation validation logic in isolation does
+/// not require, and must not require, fabricating a whole authoritative
+/// aggregate. [PublicDemoAggregate.recruit] is the sole production caller
+/// that actually commits this calculation's output (cash) together with
+/// the generated applicants (workflow) into one new aggregate — nothing
+/// about this class alone lets a caller retain only one half.
+class PublicDemoRecruitmentCalculation {
+  const PublicDemoRecruitmentCalculation({
     PublicDemoRecruitmentCandidateGenerator? candidateGenerator,
   }) : _candidateGenerator = candidateGenerator ?? _generateApplicants;
 
   final PublicDemoRecruitmentCandidateGenerator _candidateGenerator;
 
-  _PublicDemoRecruitmentCalculationResult execute({
+  PublicDemoRecruitmentCalculationResult execute({
     required PublicDemoState state,
     required PublicDemoRecruitmentMedium medium,
   }) {
     if (!state.canUseRecruitmentMediaInMonth(state.month)) {
-      return _PublicDemoRecruitmentCalculationResult._(
+      return PublicDemoRecruitmentCalculationResult._(
         state: state,
         medium: medium,
         chargedAmount: 0,
@@ -521,7 +553,7 @@ class _PublicDemoRecruitmentCalculation {
       );
     }
     if (state.cash < medium.cost) {
-      return _PublicDemoRecruitmentCalculationResult._(
+      return PublicDemoRecruitmentCalculationResult._(
         state: state,
         medium: medium,
         chargedAmount: 0,
@@ -536,7 +568,7 @@ class _PublicDemoRecruitmentCalculation {
       count: medium.applicantCount,
     );
     if (applicants.length != medium.applicantCount) {
-      return _PublicDemoRecruitmentCalculationResult._(
+      return PublicDemoRecruitmentCalculationResult._(
         state: state,
         medium: medium,
         chargedAmount: 0,
@@ -549,7 +581,7 @@ class _PublicDemoRecruitmentCalculation {
         .copyWith(cash: state.cash - medium.cost)
         .recordRecruitmentSpend(medium.cost)
         .markRecruitmentMediaUsed(state.month);
-    return _PublicDemoRecruitmentCalculationResult._(
+    return PublicDemoRecruitmentCalculationResult._(
       state: committed,
       medium: medium,
       chargedAmount: medium.cost,
@@ -587,8 +619,10 @@ class _PublicDemoRecruitmentCalculation {
   }
 }
 
-class _PublicDemoRecruitmentCalculationResult {
-  const _PublicDemoRecruitmentCalculationResult._({
+/// Read-only result of [PublicDemoRecruitmentCalculation.execute] — a pure
+/// [PublicDemoState] value, not connected to any [PublicDemoAggregate].
+class PublicDemoRecruitmentCalculationResult {
+  const PublicDemoRecruitmentCalculationResult._({
     required this.state,
     required this.medium,
     required this.chargedAmount,

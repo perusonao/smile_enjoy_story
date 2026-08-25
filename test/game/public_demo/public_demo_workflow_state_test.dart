@@ -87,20 +87,32 @@ void main() {
       );
     });
 
+    // WORKFLOW-STATE-1AB FIX4 P1-2: PublicDemoWorkflowState.restore is
+    // gone — build a genuine assignment through the real
+    // assignOrderedForMay authoritative transition (an ordered engineer)
+    // instead of fabricating a PublicDemoAssignment and injecting it
+    // directly.
+    PublicDemoWorkflowState workflowWithGenuineAssignment(String engineerId) =>
+        PublicDemoWorkflowState(
+          applicants: const [],
+          engineers: [
+            PublicDemoEngineerSales(
+              id: engineerId,
+              name: 'Test',
+              summary: 'summary',
+              stage: PublicDemoSalesStage.ordered,
+              interviewProfile: const PublicDemoInterviewProfile(
+                skillFit: 70,
+                humanity: 70,
+                morale: 70,
+                clientTrust: 60,
+              ),
+            ),
+          ],
+        ).assignOrderedForMay();
+
     test('withAssignmentUpdate updates only the targeted assignment', () {
-      const assignment = PublicDemoAssignment(
-        engineerId: 'eng-01',
-        engineerName: 'Test',
-        projectName: 'Test Project',
-        deliveryPressure: 50,
-        budgetHealth: 70,
-        humanity: 70,
-      );
-      final workflow = PublicDemoWorkflowState.restore(
-        applicants: const [],
-        engineers: const [],
-        assignments: [assignment],
-      );
+      final workflow = workflowWithGenuineAssignment('eng-01');
       final next = workflow.withAssignmentUpdate(
         'eng-01',
         nextOrderStatus: PublicDemoNextOrderStatus.accepted,
@@ -124,19 +136,8 @@ void main() {
     // guarantee.
     test('fake assignment cannot be injected via withAssignmentUpdate: only '
         'nextOrderStatus/replacementStage/fieldEvaluation can ever change', () {
-      const assignment = PublicDemoAssignment(
-        engineerId: 'eng-01',
-        engineerName: 'Real Engineer',
-        projectName: 'Real Project',
-        deliveryPressure: 40,
-        budgetHealth: 60,
-        humanity: 55,
-      );
-      final workflow = PublicDemoWorkflowState.restore(
-        applicants: const [],
-        engineers: const [],
-        assignments: [assignment],
-      );
+      final workflow = workflowWithGenuineAssignment('eng-01');
+      final original = workflow.assignments.single;
 
       final next = workflow.withAssignmentUpdate(
         'eng-01',
@@ -146,12 +147,12 @@ void main() {
       );
       final updated = next.assignments.single;
 
-      expect(updated.engineerId, assignment.engineerId);
-      expect(updated.engineerName, assignment.engineerName);
-      expect(updated.projectName, assignment.projectName);
-      expect(updated.deliveryPressure, assignment.deliveryPressure);
-      expect(updated.budgetHealth, assignment.budgetHealth);
-      expect(updated.humanity, assignment.humanity);
+      expect(updated.engineerId, original.engineerId);
+      expect(updated.engineerName, original.engineerName);
+      expect(updated.projectName, original.projectName);
+      expect(updated.deliveryPressure, original.deliveryPressure);
+      expect(updated.budgetHealth, original.budgetHealth);
+      expect(updated.humanity, original.humanity);
       expect(updated.nextOrderStatus, PublicDemoNextOrderStatus.accepted);
       expect(updated.replacementStage, PublicDemoReplacementStage.ordered);
       expect(updated.fieldEvaluation, 99);
@@ -159,10 +160,9 @@ void main() {
 
     test('withAssignmentUpdate for an unknown engineerId is a no-op: it cannot '
         'be used to append a new (fabricated) assignment to the roster', () {
-      final workflow = PublicDemoWorkflowState.restore(
+      final workflow = PublicDemoWorkflowState(
         applicants: const [],
         engineers: const [],
-        assignments: const [],
       );
 
       final next = workflow.withAssignmentUpdate(
@@ -201,31 +201,36 @@ void main() {
   });
 
   group('assignedEngineerIds matches pre-July vs. post-July semantics', () {
+    // WORKFLOW-STATE-1AB FIX4 P1-2: PublicDemoWorkflowState.restore is
+    // gone — build genuine assignments for real ordered engineers via
+    // assignOrderedForMay, then dial in each one's decision fields through
+    // the real withAssignmentUpdate transition.
+    PublicDemoWorkflowState orderedEngineersWorkflow(List<String> ids) =>
+        PublicDemoWorkflowState(
+          applicants: const [],
+          engineers: [
+            for (final id in ids)
+              PublicDemoEngineerSales(
+                id: id,
+                name: id,
+                summary: 'summary',
+                stage: PublicDemoSalesStage.ordered,
+                interviewProfile: const PublicDemoInterviewProfile(
+                  skillFit: 70,
+                  humanity: 70,
+                  morale: 70,
+                  clientTrust: 60,
+                ),
+              ),
+          ],
+        ).assignOrderedForMay();
+
     test('before July, every assignment counts regardless of order status', () {
-      const assignments = [
-        PublicDemoAssignment(
-          engineerId: 'eng-01',
-          engineerName: 'A',
-          projectName: 'P',
-          deliveryPressure: 50,
-          budgetHealth: 70,
-          humanity: 70,
-        ),
-        PublicDemoAssignment(
-          engineerId: 'eng-02',
-          engineerName: 'B',
-          projectName: 'P',
-          deliveryPressure: 50,
-          budgetHealth: 70,
-          humanity: 70,
-          nextOrderStatus: PublicDemoNextOrderStatus.notOffered,
-        ),
-      ];
-      final workflow = PublicDemoWorkflowState.restore(
-        applicants: const [],
-        engineers: const [],
-        assignments: assignments,
-      );
+      final workflow = orderedEngineersWorkflow(['eng-01', 'eng-02'])
+          .withAssignmentUpdate(
+            'eng-02',
+            nextOrderStatus: PublicDemoNextOrderStatus.notOffered,
+          );
 
       expect(workflow.assignedEngineerIds(month: 6), {'eng-01', 'eng-02'});
     });
@@ -233,41 +238,21 @@ void main() {
     test(
       'from July, only accepted/ordered assignments count (12MONTH-3-FIX1 P1-1)',
       () {
-        const assignments = [
-          PublicDemoAssignment(
-            engineerId: 'eng-01',
-            engineerName: 'A',
-            projectName: 'P',
-            deliveryPressure: 50,
-            budgetHealth: 70,
-            humanity: 70,
-            nextOrderStatus: PublicDemoNextOrderStatus.accepted,
-          ),
-          PublicDemoAssignment(
-            engineerId: 'eng-02',
-            engineerName: 'B',
-            projectName: 'P',
-            deliveryPressure: 50,
-            budgetHealth: 70,
-            humanity: 70,
-            nextOrderStatus: PublicDemoNextOrderStatus.notOffered,
-            replacementStage: PublicDemoReplacementStage.ordered,
-          ),
-          PublicDemoAssignment(
-            engineerId: 'eng-03',
-            engineerName: 'C',
-            projectName: 'P',
-            deliveryPressure: 50,
-            budgetHealth: 70,
-            humanity: 70,
-            nextOrderStatus: PublicDemoNextOrderStatus.notOffered,
-          ),
-        ];
-        final workflow = PublicDemoWorkflowState.restore(
-          applicants: const [],
-          engineers: const [],
-          assignments: assignments,
-        );
+        final workflow =
+            orderedEngineersWorkflow(['eng-01', 'eng-02', 'eng-03'])
+                .withAssignmentUpdate(
+                  'eng-01',
+                  nextOrderStatus: PublicDemoNextOrderStatus.accepted,
+                )
+                .withAssignmentUpdate(
+                  'eng-02',
+                  nextOrderStatus: PublicDemoNextOrderStatus.notOffered,
+                  replacementStage: PublicDemoReplacementStage.ordered,
+                )
+                .withAssignmentUpdate(
+                  'eng-03',
+                  nextOrderStatus: PublicDemoNextOrderStatus.notOffered,
+                );
 
         expect(workflow.assignedEngineerIds(month: 7), {'eng-01', 'eng-02'});
         expect(workflow.assignedEngineerIds(month: 15), {'eng-01', 'eng-02'});
@@ -313,10 +298,9 @@ void main() {
           acceptanceScore: 40,
           salesSkillFit: 40,
         );
-        final workflow = PublicDemoWorkflowState.restore(
+        final workflow = PublicDemoWorkflowState(
           applicants: [accepted('joins', 320000), rejected],
           engineers: const [],
-          assignments: const [],
         );
 
         final next = workflow.joinAndKeepOnly(
@@ -333,10 +317,9 @@ void main() {
       test(
         'withJoinedEngineers adds newly joined applicants as engineers once',
         () {
-          final workflow = PublicDemoWorkflowState.restore(
+          final workflow = PublicDemoWorkflowState(
             applicants: [accepted('joins', 320000)],
             engineers: const [],
-            assignments: const [],
           );
           final joined = workflow
               .joinAndKeepOnly(
@@ -404,10 +387,9 @@ void main() {
 
     test('valid assignment path: only ordered engineers/applicants become '
         'an assignment', () {
-      final workflow = PublicDemoWorkflowState.restore(
+      final workflow = PublicDemoWorkflowState(
         applicants: const [orderedApplicant, notOrderedApplicant],
         engineers: const [orderedEngineer, waitingEngineer],
-        assignments: const [],
       );
 
       final next = workflow.assignOrderedForMay();
@@ -420,10 +402,9 @@ void main() {
 
     test('an engineer that never reached the ordered stage is rejected: it '
         'never gets an assignment, however the roster is computed', () {
-      final workflow = PublicDemoWorkflowState.restore(
+      final workflow = PublicDemoWorkflowState(
         applicants: const [],
         engineers: const [waitingEngineer],
-        assignments: const [],
       );
 
       final next = workflow.assignOrderedForMay();
@@ -434,10 +415,9 @@ void main() {
     test('calling assignOrderedForMay again never duplicates an assignment: '
         'the roster is always replaced wholesale from current stage facts, '
         'never appended to', () {
-      final workflow = PublicDemoWorkflowState.restore(
+      final workflow = PublicDemoWorkflowState(
         applicants: const [orderedApplicant],
         engineers: const [orderedEngineer],
-        assignments: const [],
       );
 
       final once = workflow.assignOrderedForMay();
@@ -455,21 +435,21 @@ void main() {
         'assignments except by deriving them from its own engineer/applicant '
         'stage facts', () {
       // This is a compile-time guarantee, in three layers (WORKFLOW-STATE-
-      // 1AB FIX1 P1-3, FIX2 P1-3, FIX3 P1-3):
+      // 1AB FIX1 P1-3, FIX2 P1-3, FIX3 P1-3), hardened further by FIX4:
       // 1. `_withAssignments` (the former wholesale-replace method) is
       //    private to public_demo_workflow_state.dart.
-      // 2. The public `copyWith` does not accept an `assignments`
-      //    parameter at all — `workflow.copyWith(assignments: [fake])`
-      //    does not compile.
-      // 3. FIX3: the general-purpose public factory constructor
-      //    (`PublicDemoWorkflowState(applicants:, engineers:)`) no longer
-      //    accepts an `assignments` parameter either — only `.restore(...)`
-      //    (used above, and explicitly documented as a test-fixture/
-      //    future-deserialization-only reconstruction boundary the
-      //    production command surface never calls) does. A caller holding
-      //    a reference to an existing, authoritative
-      //    PublicDemoWorkflowState cannot inject an arbitrary fabricated
-      //    PublicDemoAssignment into it through any of these.
+      // 2. `_copyWith` (the full-field internal version) is private too —
+      //    FIX4 removed the public `copyWith(applicants:, engineers:)`
+      //    wrapper entirely, since even without an `assignments` parameter
+      //    it still let a caller wholesale-replace the applicant/engineer
+      //    lists from outside this file.
+      // 3. The general-purpose public factory constructor
+      //    (`PublicDemoWorkflowState(applicants:, engineers:)`) never
+      //    accepted an `assignments` parameter (FIX3), and FIX4 removed
+      //    the `.restore(...)` reconstruction factory that used to accept
+      //    one — there is no production-reachable way left to inject an
+      //    arbitrary fabricated PublicDemoAssignment into an existing
+      //    workflow through any of these.
       //    (PublicDemoAssignment itself remains freely publicly
       //    constructible — WORKFLOW-STATE-1AB §6 design rule — that alone
       //    is harmless since it can never reach an existing workflow's
@@ -477,10 +457,9 @@ void main() {
       // The only way to change the assignment roster on an existing
       // workflow from outside this file is through assignOrderedForMay,
       // which reads only this workflow's own authoritative stage facts.
-      final workflow = PublicDemoWorkflowState.restore(
+      final workflow = PublicDemoWorkflowState(
         applicants: const [orderedApplicant],
         engineers: const [orderedEngineer],
-        assignments: const [],
       );
       final next = workflow.assignOrderedForMay();
       expect(next.assignments, isNotEmpty);
@@ -550,10 +529,9 @@ void main() {
         currentFiscalCloseId: PublicDemoFiscalCloseId.forMonth(5),
       );
 
-      final workflow = PublicDemoWorkflowState.restore(
+      final workflow = PublicDemoWorkflowState(
         applicants: [joined],
         engineers: const [engineer],
-        assignments: const [],
       );
 
       expect(workflow.moraleByEngineerId['eng-01'], 72);

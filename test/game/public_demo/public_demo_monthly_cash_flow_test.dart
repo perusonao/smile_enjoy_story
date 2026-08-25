@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:smile_enjoy_story/game/public_demo/public_demo_aggregate.dart';
+import 'package:smile_enjoy_story/game/public_demo/public_demo_aggregate.dart'
+    show PublicDemoRecruitmentCalculation;
 import 'package:smile_enjoy_story/game/public_demo/public_demo_internal_training_transaction.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_monthly_cash_flow.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_monthly_close.dart';
@@ -277,12 +278,16 @@ void main() {
       expect(trainingResult.isSuccess, isTrue);
       state = trainingResult.state;
 
-      final recruitmentResult = PublicDemoAggregate.restore(
-        state: state,
-        workflow: PublicDemoWorkflowState.initial(),
-      ).recruit(PublicDemoRecruitmentMedium.engineer);
+      // WORKFLOW-STATE-1AB FIX4 P1-2: PublicDemoAggregate.restore is gone —
+      // this test only cares about the pure cash/recordkeeping calculation
+      // (INTERNAL HELPER tier), not aggregate atomicity (covered in
+      // public_demo_recruitment_workflow_transaction_test.dart), so it
+      // calls PublicDemoRecruitmentCalculation directly against the custom
+      // `state` fixture instead of needing a whole authoritative aggregate.
+      final recruitmentResult = const PublicDemoRecruitmentCalculation()
+          .execute(state: state, medium: PublicDemoRecruitmentMedium.engineer);
       expect(recruitmentResult.isSuccess, isTrue);
-      state = recruitmentResult.aggregate!.state;
+      state = recruitmentResult.state;
 
       final result = PublicDemoMonthlyClose.closeOrdinaryMonth(
         state: state,

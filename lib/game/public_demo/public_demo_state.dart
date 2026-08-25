@@ -412,7 +412,7 @@ class PublicDemoState {
       for (final applicant in joinedApplicants)
         if (applicant.hasJoined) applicant.id,
     };
-    return copyWith(
+    return _copyWith(
       month: 6,
       cash: nextCash,
       salesUsed: 0,
@@ -590,7 +590,64 @@ class PublicDemoState {
     );
   }
 
+  /// Safe production copyWith (WORKFLOW-STATE-1AB FIX4 P1-4): deliberately
+  /// has no `joinedApplicantIds` parameter — that field is a DERIVED
+  /// PROJECTION (see its own doc comment above) and must never be settable
+  /// to an arbitrary caller-chosen list directly. [_copyWith] (below) is the
+  /// full-field internal version [advanceToJune] uses instead, the sole
+  /// place that ever writes this field, always from its own derivation of
+  /// genuinely-joined applicants.
   PublicDemoState copyWith({
+    int? month,
+    int? cash,
+    int? engineerCount,
+    int? adminCount,
+    int? salesCapacity,
+    int? salesUsed,
+    int? engineersWaiting,
+    int? engineersAssigned,
+    List<PublicDemoEngineerRuntime>? engineerRuntimes,
+    List<PublicDemoMonthlyGrowth>? latestGrowthResults,
+    List<int>? growthAppliedMonths,
+    Map<String, PublicDemoGrowthSource>? trainingSelections,
+    PublicDemoSummerBonusPlan? summerBonusSelection,
+    bool? summerBonusPaid,
+    Object? summerBonusPaidMonth = _unset,
+    Object? summerBonusPaidAmount = _unset,
+    Object? recruitmentMediumUsedMonth = _unset,
+    int? pendingRevenue,
+    bool? fiscalYearCompleted,
+    int? monthOpeningCash,
+    int? monthTrainingSpent,
+    int? monthRecruitmentSpent,
+    PublicDemoMonthlyCashFlow? latestMonthlyCashFlow,
+  }) => _copyWith(
+    month: month,
+    cash: cash,
+    engineerCount: engineerCount,
+    adminCount: adminCount,
+    salesCapacity: salesCapacity,
+    salesUsed: salesUsed,
+    engineersWaiting: engineersWaiting,
+    engineersAssigned: engineersAssigned,
+    engineerRuntimes: engineerRuntimes,
+    latestGrowthResults: latestGrowthResults,
+    growthAppliedMonths: growthAppliedMonths,
+    trainingSelections: trainingSelections,
+    summerBonusSelection: summerBonusSelection,
+    summerBonusPaid: summerBonusPaid,
+    summerBonusPaidMonth: summerBonusPaidMonth,
+    summerBonusPaidAmount: summerBonusPaidAmount,
+    recruitmentMediumUsedMonth: recruitmentMediumUsedMonth,
+    pendingRevenue: pendingRevenue,
+    fiscalYearCompleted: fiscalYearCompleted,
+    monthOpeningCash: monthOpeningCash,
+    monthTrainingSpent: monthTrainingSpent,
+    monthRecruitmentSpent: monthRecruitmentSpent,
+    latestMonthlyCashFlow: latestMonthlyCashFlow,
+  );
+
+  PublicDemoState _copyWith({
     int? month,
     int? cash,
     int? engineerCount,

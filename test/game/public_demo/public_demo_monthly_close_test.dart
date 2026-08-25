@@ -140,14 +140,12 @@ void main() {
       // WORKFLOW-STATE-1AB FIX3 P1-4: closeMay no longer accepts a
       // `joinedApplicants` iterable at all — it derives the joined set from
       // the whole authoritative `workflow` it is given (via
-      // `PublicDemoWorkflowState.joinedApplicants`), exactly the projection
-      // `.restore` reproduces here.
+      // `PublicDemoWorkflowState.joinedApplicants`).
       final result = PublicDemoMonthlyClose.closeMay(
         state: start,
-        workflow: PublicDemoWorkflowState.restore(
+        workflow: PublicDemoWorkflowState(
           applicants: [joinedHire],
           engineers: const [],
-          assignments: const [],
         ),
         monthlyExpenses: 800000,
         acceptedHires: 1,
@@ -291,10 +289,9 @@ void main() {
 
         final result = PublicDemoMonthlyClose.closeMay(
           state: start,
-          workflow: PublicDemoWorkflowState.restore(
+          workflow: PublicDemoWorkflowState(
             applicants: [joinedHire],
             engineers: const [],
-            assignments: const [],
           ),
           monthlyExpenses: 800000,
           acceptedHires: 1,
@@ -356,10 +353,9 @@ void main() {
 
         final result = PublicDemoMonthlyClose.closeMay(
           state: start,
-          workflow: PublicDemoWorkflowState.restore(
+          workflow: PublicDemoWorkflowState(
             applicants: [joinedHire, secondJoined],
             engineers: const [],
-            assignments: const [],
           ),
           monthlyExpenses: 800000,
           acceptedHires: 2,

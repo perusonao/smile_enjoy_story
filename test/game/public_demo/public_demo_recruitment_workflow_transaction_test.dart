@@ -3,159 +3,172 @@ import 'package:smile_enjoy_story/game/public_demo/public_demo_aggregate.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_recruitment.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_recruitment_medium.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_state.dart';
-import 'package:smile_enjoy_story/game/public_demo/public_demo_workflow_state.dart';
 
 /// WORKFLOW-STATE-1 §14/§15/§27, WORKFLOW-STATE-1AB FIX1 P1-2, FIX2 P1-2,
-/// FIX3 P1-2: recruitment must commit cash (finance side) and generated
-/// applicants (workflow side) atomically — "cash spent, applicants missing"
-/// and "applicants created, cash not spent" must both be impossible
-/// outcomes. [PublicDemoAggregate.recruit] is the only production entry
-/// point — including for tests.
+/// FIX3 P1-2, FIX4 P1-2: recruitment must commit cash (finance side) and
+/// generated applicants (workflow side) atomically — "cash spent,
+/// applicants missing" and "applicants created, cash not spent" must both
+/// be impossible outcomes. [PublicDemoAggregate.recruit] is the only
+/// production entry point that ever commits either.
 ///
-/// FIX3 P1-2: FIX2's own `PublicDemoRecruitmentWorkflowTransaction.execute`
-/// still handed the committed [PublicDemoState]/[PublicDemoWorkflowState]
-/// to an `onCommitted(state, workflow)` callback as two separately-typed
-/// parameters — nothing in that shape stopped a caller's callback body from
-/// applying only one of them (`s = state; // workflow discarded`). FIX3
-/// removes the callback entirely: [PublicDemoAggregate.recruit] returns a
-/// [PublicDemoRecruitmentTransactionResult] whose only reference to the
-/// committed outcome is a single `aggregate` field — one authoritative
-/// root, or null on failure. There is no way to read a committed cash
-/// state without the generated applicants alongside it, or vice versa.
+/// FIX4 P1-2: FIX3's `PublicDemoAggregate.restore(state:, workflow:)` was
+/// itself still a public, production-reachable API — this file used it to
+/// build custom `PublicDemoState` fixtures (specific months, specific cash
+/// balances) for tests that only actually care about the pure month/cash/
+/// generation calculation, never about aggregate atomicity. Since that
+/// calculation ([PublicDemoRecruitmentCalculation]) is itself public and
+/// state-only — INTERNAL HELPER tier, same reasoning as
+/// [PublicDemoMonthlyClose]/[PublicDemoState.advanceToJune] remaining
+/// public — those tests now call it directly instead of assembling a whole
+/// aggregate via a reconstruction shortcut that no longer exists. The
+/// aggregate-atomicity tests (this file's first group) instead reach their
+/// fixture states by chaining real [PublicDemoAggregate] commands from
+/// [PublicDemoAggregate.initial], exactly as production code does.
 void main() {
-  PublicDemoRecruitmentTransactionResult run(
-    PublicDemoAggregate aggregate,
-    PublicDemoRecruitmentMedium medium,
-  ) => aggregate.recruit(medium);
+  group('PublicDemoAggregate.recruit atomicity', () {
+    PublicDemoRecruitmentTransactionResult run(
+      PublicDemoAggregate aggregate,
+      PublicDemoRecruitmentMedium medium,
+    ) => aggregate.recruit(medium);
 
-  test('successful recruitment commits cash and applicants together', () {
-    final aggregate = PublicDemoAggregate.initial();
-    final applicantsBefore = aggregate.workflow.applicants.length;
-
-    final result = run(aggregate, PublicDemoRecruitmentMedium.engineer);
-
-    expect(result.isSuccess, isTrue);
-    expect(result.aggregate!.state.cash, aggregate.state.cash - 100000);
-    expect(result.aggregate!.workflow.applicants.length, applicantsBefore + 2);
-    // Every generated applicant actually landed in the committed workflow.
-    final generatedIds = result.generatedApplicants
-        .map((applicant) => applicant.id)
-        .toSet();
-    final committedIds = result.aggregate!.workflow.applicants
-        .map((applicant) => applicant.id)
-        .toSet();
-    expect(committedIds.containsAll(generatedIds), isTrue);
-  });
-
-  test('failed recruitment (insufficient cash) commits nothing: cash and '
-      'applicants are structurally unreachable, not merely unchanged', () {
-    final aggregate = PublicDemoAggregate.restore(
-      state: PublicDemoState.aprilStart().copyWith(cash: 99999),
-      workflow: PublicDemoWorkflowState.initial(),
-    );
-
-    final result = run(aggregate, PublicDemoRecruitmentMedium.engineer);
-
-    expect(result.isSuccess, isFalse);
-    expect(
-      result.status,
-      PublicDemoRecruitmentTransactionStatus.insufficientCash,
-    );
-    expect(result.aggregate, isNull);
-  });
-
-  test(
-    'failed recruitment (already used this month) is also an atomic no-op',
-    () {
+    test('successful recruitment commits cash and applicants together', () {
       final aggregate = PublicDemoAggregate.initial();
-      final first = run(aggregate, PublicDemoRecruitmentMedium.free);
-      expect(first.isSuccess, isTrue);
-
-      final second = run(
-        first.aggregate!,
-        PublicDemoRecruitmentMedium.engineer,
-      );
-
-      expect(
-        second.status,
-        PublicDemoRecruitmentTransactionStatus.alreadyUsedThisMonth,
-      );
-      expect(second.aggregate, isNull);
-    },
-  );
-
-  test(
-    'cash-without-applicants and applicants-without-cash are both structurally '
-    'impossible: the committed aggregate always moves cash and applicants '
-    'together, or nothing commits at all',
-    () {
-      final aggregate = PublicDemoAggregate.initial();
-
-      for (final medium in PublicDemoRecruitmentMedium.values) {
-        final result = run(aggregate, medium);
-        if (result.isSuccess) {
-          expect(result.aggregate, isNotNull);
-          expect(
-            result.aggregate!.state.cash,
-            aggregate.state.cash - medium.cost,
-          );
-          expect(
-            result.aggregate!.workflow.applicants.length,
-            aggregate.workflow.applicants.length + medium.applicantCount,
-          );
-        } else {
-          expect(result.aggregate, isNull);
-        }
-      }
-    },
-  );
-
-  test(
-    'generated applicants are never appended when the underlying transaction fails',
-    () {
-      final aggregate = PublicDemoAggregate.initial();
-
-      final result = aggregate.recruit(
-        PublicDemoRecruitmentMedium.free,
-        candidateGenerator:
-            ({required month, required medium, required count}) => const [],
-      );
-
-      expect(
-        result.status,
-        PublicDemoRecruitmentTransactionStatus.generationFailed,
-      );
-      expect(result.aggregate, isNull);
-    },
-  );
-
-  group('public caller cannot retain only charged cash authority (P1-2)', () {
-    test('the read-only PublicDemoRecruitmentTransactionResult exposes no '
-        'separately-committable PublicDemoState/PublicDemoWorkflowState: '
-        'the only reference to the committed outcome is one `aggregate` '
-        'field', () {
-      final aggregate = PublicDemoAggregate.initial();
+      final applicantsBefore = aggregate.workflow.applicants.length;
 
       final result = run(aggregate, PublicDemoRecruitmentMedium.engineer);
+
       expect(result.isSuccess, isTrue);
-      expect(result.generatedApplicants, hasLength(2));
-      expect(result.chargedAmount, 100000);
       expect(result.aggregate!.state.cash, aggregate.state.cash - 100000);
       expect(
         result.aggregate!.workflow.applicants.length,
-        aggregate.workflow.applicants.length + 2,
+        applicantsBefore + 2,
       );
+      // Every generated applicant actually landed in the committed workflow.
+      final generatedIds = result.generatedApplicants
+          .map((applicant) => applicant.id)
+          .toSet();
+      final committedIds = result.aggregate!.workflow.applicants
+          .map((applicant) => applicant.id)
+          .toSet();
+      expect(committedIds.containsAll(generatedIds), isTrue);
+    });
+
+    test('failed recruitment (insufficient cash) commits nothing: cash and '
+        'applicants are structurally unreachable, not merely unchanged', () {
+      // Reaches a genuinely poor aggregate through a real command chain
+      // (PublicDemoAggregate.initial's April cash minus almost all of it
+      // via closeApril's own monthlyExpenses parameter) rather than
+      // constructing one directly — there is no production API that
+      // accepts a caller-supplied PublicDemoState any more.
+      final poor = PublicDemoAggregate.initial().closeApril(
+        monthlyExpenses: 2999999,
+      );
+      expect(poor.state.cash, 1);
+
+      final result = run(poor, PublicDemoRecruitmentMedium.engineer);
+
+      expect(result.isSuccess, isFalse);
+      expect(
+        result.status,
+        PublicDemoRecruitmentTransactionStatus.insufficientCash,
+      );
+      expect(result.aggregate, isNull);
+    });
+
+    test(
+      'failed recruitment (already used this month) is also an atomic no-op',
+      () {
+        final aggregate = PublicDemoAggregate.initial();
+        final first = run(aggregate, PublicDemoRecruitmentMedium.free);
+        expect(first.isSuccess, isTrue);
+
+        final second = run(
+          first.aggregate!,
+          PublicDemoRecruitmentMedium.engineer,
+        );
+
+        expect(
+          second.status,
+          PublicDemoRecruitmentTransactionStatus.alreadyUsedThisMonth,
+        );
+        expect(second.aggregate, isNull);
+      },
+    );
+
+    test(
+      'cash-without-applicants and applicants-without-cash are both structurally '
+      'impossible: the committed aggregate always moves cash and applicants '
+      'together, or nothing commits at all',
+      () {
+        final aggregate = PublicDemoAggregate.initial();
+
+        for (final medium in PublicDemoRecruitmentMedium.values) {
+          final result = run(aggregate, medium);
+          if (result.isSuccess) {
+            expect(result.aggregate, isNotNull);
+            expect(
+              result.aggregate!.state.cash,
+              aggregate.state.cash - medium.cost,
+            );
+            expect(
+              result.aggregate!.workflow.applicants.length,
+              aggregate.workflow.applicants.length + medium.applicantCount,
+            );
+          } else {
+            expect(result.aggregate, isNull);
+          }
+        }
+      },
+    );
+
+    test(
+      'generated applicants are never appended when the underlying transaction fails',
+      () {
+        final aggregate = PublicDemoAggregate.initial();
+
+        final result = aggregate.recruit(
+          PublicDemoRecruitmentMedium.free,
+          candidateGenerator:
+              ({required month, required medium, required count}) => const [],
+        );
+
+        expect(
+          result.status,
+          PublicDemoRecruitmentTransactionStatus.generationFailed,
+        );
+        expect(result.aggregate, isNull);
+      },
+    );
+
+    group('public caller cannot retain only charged cash authority (P1-2)', () {
+      test('the read-only PublicDemoRecruitmentTransactionResult exposes no '
+          'separately-committable PublicDemoState/PublicDemoWorkflowState: '
+          'the only reference to the committed outcome is one `aggregate` '
+          'field', () {
+        final aggregate = PublicDemoAggregate.initial();
+
+        final result = run(aggregate, PublicDemoRecruitmentMedium.engineer);
+        expect(result.isSuccess, isTrue);
+        expect(result.generatedApplicants, hasLength(2));
+        expect(result.chargedAmount, 100000);
+        expect(result.aggregate!.state.cash, aggregate.state.cash - 100000);
+        expect(
+          result.aggregate!.workflow.applicants.length,
+          aggregate.workflow.applicants.length + 2,
+        );
+      });
     });
   });
 
-  group('pure cash/applicant calculation (via the sole sanctioned entry)', () {
-    PublicDemoRecruitmentTransactionResult runFrom(
+  group('PublicDemoRecruitmentCalculation: pure month/cash/generation logic '
+      '(INTERNAL HELPER tier — see class doc)', () {
+    PublicDemoRecruitmentCalculationResult runFrom(
       PublicDemoState state,
       PublicDemoRecruitmentMedium medium,
-    ) => PublicDemoAggregate.restore(
+    ) => const PublicDemoRecruitmentCalculation().execute(
       state: state,
-      workflow: PublicDemoWorkflowState.initial(),
-    ).recruit(medium);
+      medium: medium,
+    );
 
     test('free succeeds without charging cash and records one applicant', () {
       final before = PublicDemoState.aprilStart();
@@ -163,8 +176,8 @@ void main() {
 
       expect(result.isSuccess, isTrue);
       expect(result.chargedAmount, 0);
-      expect(result.aggregate!.state.cash, before.cash);
-      expect(result.aggregate!.state.recruitmentMediumUsedMonth, 4);
+      expect(result.state.cash, before.cash);
+      expect(result.state.recruitmentMediumUsedMonth, 4);
       expect(result.generatedApplicants, hasLength(1));
     });
 
@@ -174,8 +187,8 @@ void main() {
 
       expect(result.isSuccess, isTrue);
       expect(result.chargedAmount, 100000);
-      expect(result.aggregate!.state.cash, before.cash - 100000);
-      expect(result.aggregate!.state.recruitmentMediumUsedMonth, 4);
+      expect(result.state.cash, before.cash - 100000);
+      expect(result.state.recruitmentMediumUsedMonth, 4);
       expect(result.generatedApplicants, hasLength(2));
     });
 
@@ -260,21 +273,12 @@ void main() {
           .copyWith(growthAppliedMonths: [4]);
       final result = runFrom(before, PublicDemoRecruitmentMedium.free);
 
-      expect(
-        result.aggregate!.state.trainingSelections,
-        before.trainingSelections,
-      );
-      expect(
-        result.aggregate!.state.growthAppliedMonths,
-        before.growthAppliedMonths,
-      );
-      expect(
-        result.aggregate!.state.summerBonusSelection,
-        before.summerBonusSelection,
-      );
+      expect(result.state.trainingSelections, before.trainingSelections);
+      expect(result.state.growthAppliedMonths, before.growthAppliedMonths);
+      expect(result.state.summerBonusSelection, before.summerBonusSelection);
       expect(
         PublicDemoState.fromJson(
-          result.aggregate!.state.toJson(),
+          result.state.toJson(),
         ).recruitmentMediumUsedMonth,
         4,
       );
@@ -288,12 +292,12 @@ void main() {
           cash: 200000,
         );
         final purchased = runFrom(july, PublicDemoRecruitmentMedium.engineer);
-        final closed = purchased.aggregate!.state.advanceToAugust(
+        final closed = purchased.state.advanceToAugust(
           monthlyExpenses: 100000,
           applicants: const [],
         );
 
-        expect(purchased.aggregate!.state.cash, 100000);
+        expect(purchased.state.cash, 100000);
         expect(closed.isPaid, isTrue);
         expect(closed.state.cash, 0);
       },
@@ -307,15 +311,20 @@ void main() {
     // dead end (Codex finding). The domain range was reverted to the
     // pre-12MONTH-3 4-8 (see public_demo_state.dart's
     // `_normalizedRecruitmentMediaMonth`); these tests pin that fix at the
-    // transaction layer, the actual point where cash would otherwise have
-    // been spent for nothing.
+    // pure calculation layer, the actual point where cash would otherwise
+    // have been spent for nothing.
+    PublicDemoRecruitmentCalculationResult runFrom(
+      PublicDemoState state,
+      PublicDemoRecruitmentMedium medium,
+    ) => const PublicDemoRecruitmentCalculation().execute(
+      state: state,
+      medium: medium,
+    );
+
     test('A: paid recruitment is rejected for every month 9 through 15', () {
       for (var month = 9; month <= 15; month++) {
-        final before = PublicDemoAggregate.restore(
-          state: PublicDemoState.aprilStart().copyWith(month: month),
-          workflow: PublicDemoWorkflowState.initial(),
-        );
-        final result = run(before, PublicDemoRecruitmentMedium.engineer);
+        final before = PublicDemoState.aprilStart().copyWith(month: month);
+        final result = runFrom(before, PublicDemoRecruitmentMedium.engineer);
         expect(
           result.isSuccess,
           isFalse,
@@ -326,17 +335,14 @@ void main() {
 
     test('B: cash never decreases for a rejected month-9-15 attempt', () {
       for (var month = 9; month <= 15; month++) {
-        final before = PublicDemoAggregate.restore(
-          state: PublicDemoState.aprilStart().copyWith(
-            month: month,
-            cash: 5000000,
-          ),
-          workflow: PublicDemoWorkflowState.initial(),
+        final before = PublicDemoState.aprilStart().copyWith(
+          month: month,
+          cash: 5000000,
         );
-        final result = run(before, PublicDemoRecruitmentMedium.engineer);
+        final result = runFrom(before, PublicDemoRecruitmentMedium.engineer);
         expect(
-          result.aggregate,
-          isNull,
+          result.state.cash,
+          before.cash,
           reason: 'month $month must not commit any cash change',
         );
         expect(result.chargedAmount, 0, reason: 'month $month');
@@ -345,31 +351,20 @@ void main() {
 
     test('C: no applicant is generated for a rejected month-9-15 attempt', () {
       for (var month = 9; month <= 15; month++) {
-        final before = PublicDemoAggregate.restore(
-          state: PublicDemoState.aprilStart().copyWith(month: month),
-          workflow: PublicDemoWorkflowState.initial(),
-        );
-        final result = run(before, PublicDemoRecruitmentMedium.engineer);
+        final before = PublicDemoState.aprilStart().copyWith(month: month);
+        final result = runFrom(before, PublicDemoRecruitmentMedium.engineer);
         expect(
           result.generatedApplicants,
           isEmpty,
           reason: 'month $month must not generate applicants',
-        );
-        expect(
-          result.aggregate,
-          isNull,
-          reason: 'month $month must not append to the workflow roster',
         );
       }
     });
 
     test('C (free medium too): no applicant is generated for month 9-15', () {
       for (final month in [9, 12, 15]) {
-        final before = PublicDemoAggregate.restore(
-          state: PublicDemoState.aprilStart().copyWith(month: month),
-          workflow: PublicDemoWorkflowState.initial(),
-        );
-        final result = run(before, PublicDemoRecruitmentMedium.free);
+        final before = PublicDemoState.aprilStart().copyWith(month: month);
+        final result = runFrom(before, PublicDemoRecruitmentMedium.free);
         expect(result.isSuccess, isFalse, reason: 'month $month');
         expect(result.generatedApplicants, isEmpty, reason: 'month $month');
       }
@@ -377,11 +372,8 @@ void main() {
 
     test('D: months 4 through 8 are unaffected (no regression)', () {
       for (var month = 4; month <= 8; month++) {
-        final before = PublicDemoAggregate.restore(
-          state: PublicDemoState.aprilStart().copyWith(month: month),
-          workflow: PublicDemoWorkflowState.initial(),
-        );
-        final result = run(before, PublicDemoRecruitmentMedium.free);
+        final before = PublicDemoState.aprilStart().copyWith(month: month);
+        final result = runFrom(before, PublicDemoRecruitmentMedium.free);
         expect(
           result.isSuccess,
           isTrue,

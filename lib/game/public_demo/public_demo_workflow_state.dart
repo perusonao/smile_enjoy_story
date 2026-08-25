@@ -58,36 +58,28 @@ class PublicDemoWorkflowState {
     engineers: publicDemoInitialEngineers,
   );
 
-  /// Restore-only reconstruction boundary (WORKFLOW-STATE-1AB FIX3 P1-3):
-  /// for test fixtures and any future save/load deserialization, never for
-  /// a live gameplay transition. Unlike the safe production factory above,
-  /// this DOES accept an arbitrary `assignments` roster — the production
-  /// command surface ([PublicDemoAggregate], [assignOrderedForMay]) never
-  /// calls this, so it is never reachable from the shipped UI.
-  factory PublicDemoWorkflowState.restore({
-    required List<PublicDemoApplicant> applicants,
-    required List<PublicDemoEngineerSales> engineers,
-    required List<PublicDemoAssignment> assignments,
-  }) => PublicDemoWorkflowState._(
-    applicants: List.unmodifiable(applicants),
-    engineers: List.unmodifiable(engineers),
-    assignments: List.unmodifiable(assignments),
-  );
-
   final List<PublicDemoApplicant> applicants;
   final List<PublicDemoEngineerSales> engineers;
   final List<PublicDemoAssignment> assignments;
 
-  /// Deliberately has no `assignments` parameter (WORKFLOW-STATE-1AB FIX2
-  /// P1-3): a caller holding a reference to an existing, authoritative
-  /// [PublicDemoWorkflowState] cannot inject an arbitrary assignment roster
-  /// into it via this public surface. [_copyWith] (below) is the full-field
-  /// internal version [_withAssignments] uses instead.
-  PublicDemoWorkflowState copyWith({
-    List<PublicDemoApplicant>? applicants,
-    List<PublicDemoEngineerSales>? engineers,
-  }) => _copyWith(applicants: applicants, engineers: engineers);
-
+  // WORKFLOW-STATE-1AB FIX4 P1-2: the FIX3 `.restore(...)` reconstruction
+  // factory (applicants/engineers/assignments accepted verbatim) was itself
+  // still a PUBLIC production-reachable API — commenting it "restore-only"
+  // did not actually stop a caller from calling it to inject a fabricated
+  // assignment roster. It has been removed entirely, along with the public
+  // `copyWith(applicants:, engineers:)` this file used to expose (WORKFLOW-
+  // STATE-1AB FIX2 P1-3's own doc comment already noted `assignments` was
+  // deliberately absent from it, but the method itself remaining public
+  // still let a caller wholesale-replace the applicant/engineer lists,
+  // which is enough to omit/duplicate/reorder existing entries). Every
+  // caller outside this file must now go through the named, field-specific
+  // methods below (`withApplicant`, `withGeneratedApplicants`,
+  // `joinAndKeepOnly`, `withEngineer`, `withJoinedEngineers`,
+  // `withApplicantStage`, `withEngineerStage`, `withAssignmentUpdate`,
+  // `assignOrderedForMay`) — [_copyWith] is private, used only by them.
+  // There is no test-fixture escape hatch here any more either: test
+  // fixtures needing a specific workflow now build it by chaining these
+  // same real methods, exactly as production code does.
   PublicDemoWorkflowState _copyWith({
     List<PublicDemoApplicant>? applicants,
     List<PublicDemoEngineerSales>? engineers,
@@ -109,7 +101,7 @@ class PublicDemoWorkflowState {
   PublicDemoWorkflowState withApplicant(
     String applicantId,
     PublicDemoApplicant Function(PublicDemoApplicant applicant) update,
-  ) => copyWith(
+  ) => _copyWith(
     applicants: [
       for (final applicant in applicants)
         if (applicant.id == applicantId) update(applicant) else applicant,
@@ -139,7 +131,7 @@ class PublicDemoWorkflowState {
     List<PublicDemoApplicant> generated,
   ) {
     final existingIds = applicants.map((applicant) => applicant.id).toSet();
-    return copyWith(
+    return _copyWith(
       applicants: [
         ...applicants,
         for (final applicant in generated)
@@ -191,7 +183,7 @@ class PublicDemoWorkflowState {
               )
               .applicant,
     ];
-    return copyWith(applicants: kept);
+    return _copyWith(applicants: kept);
   }
 
   Iterable<PublicDemoApplicant> get joinedApplicants =>
@@ -211,7 +203,7 @@ class PublicDemoWorkflowState {
   PublicDemoWorkflowState withEngineer(
     String engineerId,
     PublicDemoEngineerSales Function(PublicDemoEngineerSales engineer) update,
-  ) => copyWith(
+  ) => _copyWith(
     engineers: [
       for (final engineer in engineers)
         if (engineer.id == engineerId) update(engineer) else engineer,
@@ -228,7 +220,7 @@ class PublicDemoWorkflowState {
   /// dedup exactly.
   PublicDemoWorkflowState withJoinedEngineers(
     Iterable<PublicDemoApplicant> joined,
-  ) => copyWith(
+  ) => _copyWith(
     engineers: [
       ...engineers,
       for (final applicant in joined)

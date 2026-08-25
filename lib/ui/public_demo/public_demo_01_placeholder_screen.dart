@@ -80,6 +80,8 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
           '今月はすでに求人媒体を利用しています。',
         PublicDemoRecruitmentTransactionStatus.generationFailed =>
           '応募者を用意できませんでした。もう一度お試しください。',
+        PublicDemoRecruitmentTransactionStatus.blockedByFinancialShortage =>
+          '資金繰りが悪化しているため、求人媒体を利用できません。',
         PublicDemoRecruitmentTransactionStatus.success => '',
       };
       ScaffoldMessenger.of(
@@ -670,9 +672,10 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
             Text('会社への信頼：${PublicDemoEmployeeCondition.label(trust)}'),
             const SizedBox(height: 4),
             Text(reason, style: Theme.of(context).textTheme.bodySmall),
-            if (!s.fiscalYearCompleted &&
-                a.canRequestRaiseIn(s.month)) ...const [SizedBox(height: 8)],
-            if (!s.fiscalYearCompleted && a.canRequestRaiseIn(s.month))
+            if (!s.isCloseBlocked && a.canRequestRaiseIn(s.month)) ...const [
+              SizedBox(height: 8),
+            ],
+            if (!s.isCloseBlocked && a.canRequestRaiseIn(s.month))
               FilledButton(
                 key: Key('public-demo-raise-request-${a.id}'),
                 onPressed: () =>
@@ -712,12 +715,15 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
                 padding: EdgeInsets.only(top: 6),
                 child: Text('今月は社内研修'),
               )
-            // POST-12MONTH-1: once the fiscal year is completed, Public
-            // Demo 0.1 is a read-only terminal state — the training action
-            // (and its cash preview) is hidden rather than shown disabled,
-            // since the "第1期終了" card elsewhere on this screen already
-            // makes the reason clear.
-            else if (!s.fiscalYearCompleted) ...[
+            // POST-12MONTH-1 / FINANCE-FAILURE-1A+1B: once the fiscal year
+            // is completed, or a terminal financial status (BANKRUPTCY /
+            // MARCH CASH-SHORTAGE FAILURE) is reached, Public Demo 0.1 is a
+            // read-only terminal state — the training action (and its cash
+            // preview) is hidden rather than shown disabled. This mirrors
+            // the domain-level guard already enforced by
+            // PublicDemoInternalTrainingTransaction regardless of this UI
+            // check (WORKFLOW-STATE-1's "never rely on UI alone" contract).
+            else if (!s.isCloseBlocked) ...[
               Text(
                 '研修後の現預金 ¥${s.cash - PublicDemoInternalTrainingTransaction.cost}',
               ),

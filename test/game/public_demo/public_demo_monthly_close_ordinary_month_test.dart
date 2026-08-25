@@ -206,12 +206,21 @@ void main() {
         'fiscal year complete', () {
       // One April order (matching the existing per-domain-file "ordered
       // engineers win a May assignment" fixture) is enough to carry Revenue
-      // through June and make July's fixed bonus-close cash guard payable —
-      // a "zero orders the whole way" route runs out of cash exactly at
-      // July's guard and is not this test's concern (that pre-existing
-      // guard is exercised on its own in public_demo_monthly_close_test.dart
-      // and public_demo_monthly_close_revenue_test.dart).
-      var state = PublicDemoState.aprilStart();
+      // through June and July. This test is only about the mechanical
+      // month-by-month progression through closeOrdinaryMonth, not about
+      // financial-shortage/bankruptcy outcomes (see
+      // public_demo_monthly_close_test.dart,
+      // public_demo_monthly_close_revenue_test.dart, and
+      // public_demo_financial_status_test.dart for those) — so starting
+      // cash is raised well above the flat 800,000/month expense run rate
+      // for a full 12-close fiscal year (FINANCE-FAILURE-1A+1B: unlike
+      // before, a monthly close that closes with negative cash now enters
+      // CASH SHORTAGE, and a second consecutive one goes BANKRUPTCY, which
+      // would otherwise stop this test's progression before March).
+      var state = PublicDemoState.aprilStart().copyWith(
+        cash: 12000000,
+        monthOpeningCash: 12000000,
+      );
 
       state = PublicDemoMonthlyClose.closeApril(
         state: state,

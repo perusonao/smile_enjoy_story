@@ -1,4 +1,5 @@
 import 'public_demo_engineer_runtime.dart';
+import 'public_demo_financial_status.dart';
 import 'public_demo_growth_engine.dart';
 import 'public_demo_monthly_cash_flow.dart';
 import 'public_demo_monthly_growth.dart';
@@ -56,6 +57,8 @@ class PublicDemoState {
     int? recruitmentMediumUsedMonth,
     int pendingRevenue = 0,
     bool fiscalYearCompleted = false,
+    PublicDemoFinancialStatus financialStatus =
+        PublicDemoFinancialStatus.normal,
     int? monthOpeningCash,
     int monthTrainingSpent = 0,
     int monthRecruitmentSpent = 0,
@@ -101,6 +104,7 @@ class PublicDemoState {
     ),
     pendingRevenue: _normalizedPendingRevenue(pendingRevenue),
     fiscalYearCompleted: fiscalYearCompleted,
+    financialStatus: financialStatus,
     monthOpeningCash: monthOpeningCash ?? cash,
     monthTrainingSpent: monthTrainingSpent < 0 ? 0 : monthTrainingSpent,
     monthRecruitmentSpent: monthRecruitmentSpent < 0
@@ -130,6 +134,7 @@ class PublicDemoState {
     required this.recruitmentMediumUsedMonth,
     required this.pendingRevenue,
     required this.fiscalYearCompleted,
+    required this.financialStatus,
     required this.monthOpeningCash,
     required this.monthTrainingSpent,
     required this.monthRecruitmentSpent,
@@ -204,6 +209,40 @@ class PublicDemoState {
   /// to show a year-end state instead of a 16th month; it carries no score,
   /// rank, or other year-end detail (12MONTH-3 scope).
   final bool fiscalYearCompleted;
+
+  /// The single authoritative financial-health status (FINANCE-FAILURE-1A+
+  /// 1B) — see [PublicDemoFinancialStatus]'s own class doc for the full
+  /// shortage/recovery/bankruptcy/March-failure contract. Never inferred
+  /// from [cash]'s sign or from [fiscalYearCompleted] by any caller; this
+  /// field is the sole source of truth.
+  final PublicDemoFinancialStatus financialStatus;
+
+  /// Whether either terminal financial outcome has been reached —
+  /// [PublicDemoFinancialStatus.bankruptcy] or
+  /// [PublicDemoFinancialStatus.marchCashShortageFailure]. Terminal once
+  /// true: it can never be cleared by any later close.
+  bool get isFinanciallyTerminal => financialStatus.isTerminal;
+
+  /// The single authoritative guard every monthly-close command checks
+  /// before mutating anything (WORKFLOW-STATE-1AB's pre-AR-idempotency
+  /// contract, extended to the financial-terminal case): once the fiscal
+  /// year is completed OR a terminal financial status has been reached, no
+  /// further monthly close may collect AR, apply Growth, pay salary/fixed
+  /// costs/bonus, move cash, or record a cash-flow fact. A retried close
+  /// against a [isCloseBlocked] state is a no-op, not a partial mutation.
+  bool get isCloseBlocked => fiscalYearCompleted || isFinanciallyTerminal;
+
+  /// Whether an optional, obligation-creating action must be rejected by
+  /// domain authority: recruitment media (including free media), accepting
+  /// a new salary offer, internal paid training, and selecting a summer
+  /// bonus above [PublicDemoSummerBonusPlan.none] (FINANCE-FAILURE-1A+1B
+  /// §13-16). True during the [PublicDemoFinancialStatus.cashShortage]
+  /// grace period and for either terminal status — sales, interviews,
+  /// assignment/order progression, existing payroll, and AR settlement
+  /// remain unaffected.
+  bool get isFinanciallyRestricted =>
+      financialStatus == PublicDemoFinancialStatus.cashShortage ||
+      isFinanciallyTerminal;
 
   /// The cash balance at the moment the current [month] began (FINANCE-UX-1)
   /// — a snapshot taken by the last month-advancing transition, not a
@@ -302,11 +341,17 @@ class PublicDemoState {
 
   /// Updates the intended bonus without changing cash, salary, or growth.
   /// Once paid, the historical decision is immutable. Once the fiscal year
-  /// is completed, this is a no-op as well (POST-12MONTH-1).
+  /// is completed, this is a no-op as well (POST-12MONTH-1). A plan above
+  /// [PublicDemoSummerBonusPlan.none] is also rejected while
+  /// [isFinanciallyRestricted] (FINANCE-FAILURE-1A+1B §13/16) — selecting
+  /// [PublicDemoSummerBonusPlan.none] itself always remains available.
   PublicDemoState selectSummerBonus(PublicDemoSummerBonusPlan plan) {
     if (fiscalYearCompleted ||
         summerBonusPaid ||
         plan == summerBonusSelection) {
+      return this;
+    }
+    if (plan != PublicDemoSummerBonusPlan.none && isFinanciallyRestricted) {
       return this;
     }
     return copyWith(summerBonusSelection: plan);
@@ -354,7 +399,7 @@ class PublicDemoState {
     required int monthlyExpenses,
     required int orderedEngineers,
   }) {
-    if (month != 4) return this;
+    if (month != 4 || isCloseBlocked) return this;
     final assigned = orderedEngineers.clamp(0, engineerCount);
     final nextCash = cash - monthlyExpenses;
     return copyWith(
@@ -363,6 +408,11 @@ class PublicDemoState {
       salesUsed: 0,
       engineersAssigned: assigned,
       engineersWaiting: engineerCount - assigned,
+      financialStatus: PublicDemoFinancialStatus.afterClose(
+        previous: financialStatus,
+        isMarch: false,
+        closingCash: nextCash,
+      ),
       monthOpeningCash: nextCash,
       monthTrainingSpent: 0,
       monthRecruitmentSpent: 0,
@@ -400,7 +450,7 @@ class PublicDemoState {
     required int hiredWithOrders,
     Iterable<PublicDemoApplicant> joinedApplicants = const [],
   }) {
-    if (month != 5) return this;
+    if (month != 5 || isCloseBlocked) return this;
     final hires = acceptedHires < 0 ? 0 : acceptedHires;
     final ordered = hiredWithOrders.clamp(0, hires);
     final nextCash = cash - monthlyExpenses;
@@ -423,6 +473,11 @@ class PublicDemoState {
         ...joinedApplicantIds,
         ...newlyJoinedIds.where((id) => !joinedApplicantIds.contains(id)),
       ],
+      financialStatus: PublicDemoFinancialStatus.afterClose(
+        previous: financialStatus,
+        isMarch: false,
+        closingCash: nextCash,
+      ),
       monthOpeningCash: nextCash,
       monthTrainingSpent: 0,
       monthRecruitmentSpent: 0,
@@ -433,7 +488,7 @@ class PublicDemoState {
     required int monthlyExpenses,
     required int assignedInJuly,
   }) {
-    if (month != 6) return this;
+    if (month != 6 || isCloseBlocked) return this;
     final assigned = assignedInJuly.clamp(0, engineerCount);
     final nextCash = cash - monthlyExpenses;
     return copyWith(
@@ -442,6 +497,11 @@ class PublicDemoState {
       salesUsed: 0,
       engineersAssigned: assigned,
       engineersWaiting: engineerCount - assigned,
+      financialStatus: PublicDemoFinancialStatus.afterClose(
+        previous: financialStatus,
+        isMarch: false,
+        closingCash: nextCash,
+      ),
       monthOpeningCash: nextCash,
       monthTrainingSpent: 0,
       monthRecruitmentSpent: 0,
@@ -470,12 +530,17 @@ class PublicDemoState {
   /// forward unchanged because Public Demo 0.1 has no per-month
   /// assignment-renewal UI beyond June's.
   PublicDemoState advanceToNextOrdinaryMonth({required int monthlyExpenses}) {
-    if (month < 8 || month > 14) return this;
+    if (month < 8 || month > 14 || isCloseBlocked) return this;
     final nextCash = cash - monthlyExpenses;
     return copyWith(
       month: month + 1,
       cash: nextCash,
       salesUsed: 0,
+      financialStatus: PublicDemoFinancialStatus.afterClose(
+        previous: financialStatus,
+        isMarch: false,
+        closingCash: nextCash,
+      ),
       monthOpeningCash: nextCash,
       monthTrainingSpent: 0,
       monthRecruitmentSpent: 0,
@@ -486,17 +551,29 @@ class PublicDemoState {
   ///
   /// Ordinary monthly expenses still settle exactly as in
   /// [advanceToNextOrdinaryMonth], but the month does not advance to a 16th
-  /// value. Instead [fiscalYearCompleted] becomes true — Public Demo 0.1's
-  /// minimal year-end signal (12MONTH-3). Calling this again once already
-  /// completed is a no-op, matching every other idempotent close guard in
-  /// this class.
+  /// value. [fiscalYearCompleted] becomes true only when this close's
+  /// resulting [financialStatus] is NOT terminal (FINANCE-FAILURE-1A+1B
+  /// §12): a March close that ends in
+  /// [PublicDemoFinancialStatus.bankruptcy] or
+  /// [PublicDemoFinancialStatus.marchCashShortageFailure] is a real,
+  /// committed close (cash/AR/expenses all settle) but is never annual
+  /// success — [isCloseBlocked] (via [isFinanciallyTerminal]) then keeps
+  /// every later call a no-op exactly the way completed success already
+  /// did. Calling this again once already completed (by either outcome) is
+  /// a no-op, matching every other idempotent close guard in this class.
   PublicDemoState completeFiscalYear({required int monthlyExpenses}) {
-    if (month != 15 || fiscalYearCompleted) return this;
+    if (month != 15 || isCloseBlocked) return this;
     final nextCash = cash - monthlyExpenses;
+    final nextStatus = PublicDemoFinancialStatus.afterClose(
+      previous: financialStatus,
+      isMarch: true,
+      closingCash: nextCash,
+    );
     return copyWith(
       cash: nextCash,
       salesUsed: 0,
-      fiscalYearCompleted: true,
+      fiscalYearCompleted: !nextStatus.isTerminal,
+      financialStatus: nextStatus,
       monthOpeningCash: nextCash,
       monthTrainingSpent: 0,
       monthRecruitmentSpent: 0,
@@ -617,6 +694,7 @@ class PublicDemoState {
     Object? recruitmentMediumUsedMonth = _unset,
     int? pendingRevenue,
     bool? fiscalYearCompleted,
+    PublicDemoFinancialStatus? financialStatus,
     int? monthOpeningCash,
     int? monthTrainingSpent,
     int? monthRecruitmentSpent,
@@ -641,6 +719,7 @@ class PublicDemoState {
     recruitmentMediumUsedMonth: recruitmentMediumUsedMonth,
     pendingRevenue: pendingRevenue,
     fiscalYearCompleted: fiscalYearCompleted,
+    financialStatus: financialStatus,
     monthOpeningCash: monthOpeningCash,
     monthTrainingSpent: monthTrainingSpent,
     monthRecruitmentSpent: monthRecruitmentSpent,
@@ -668,6 +747,7 @@ class PublicDemoState {
     Object? recruitmentMediumUsedMonth = _unset,
     int? pendingRevenue,
     bool? fiscalYearCompleted,
+    PublicDemoFinancialStatus? financialStatus,
     int? monthOpeningCash,
     int? monthTrainingSpent,
     int? monthRecruitmentSpent,
@@ -699,6 +779,7 @@ class PublicDemoState {
         : recruitmentMediumUsedMonth as int?,
     pendingRevenue: pendingRevenue ?? this.pendingRevenue,
     fiscalYearCompleted: fiscalYearCompleted ?? this.fiscalYearCompleted,
+    financialStatus: financialStatus ?? this.financialStatus,
     monthOpeningCash: monthOpeningCash ?? this.monthOpeningCash,
     monthTrainingSpent: monthTrainingSpent ?? this.monthTrainingSpent,
     monthRecruitmentSpent: monthRecruitmentSpent ?? this.monthRecruitmentSpent,
@@ -732,6 +813,7 @@ class PublicDemoState {
     'recruitmentMediumUsedMonth': recruitmentMediumUsedMonth,
     'pendingRevenue': pendingRevenue,
     'fiscalYearCompleted': fiscalYearCompleted,
+    'financialStatus': financialStatus.name,
     'monthOpeningCash': monthOpeningCash,
     'monthTrainingSpent': monthTrainingSpent,
     'monthRecruitmentSpent': monthRecruitmentSpent,
@@ -790,6 +872,9 @@ class PublicDemoState {
     fiscalYearCompleted: json['fiscalYearCompleted'] is bool
         ? json['fiscalYearCompleted'] as bool
         : false,
+    financialStatus: PublicDemoFinancialStatus.fromJson(
+      json['financialStatus'],
+    ),
     monthOpeningCash: json['monthOpeningCash'] is int
         ? json['monthOpeningCash'] as int
         : json['cash'] as int,

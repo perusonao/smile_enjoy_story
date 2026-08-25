@@ -32,6 +32,18 @@ class PublicDemoInternalTrainingTransaction {
         PublicDemoInternalTrainingStatus.fiscalYearCompleted,
       );
     }
+    // FINANCE-FAILURE-1A+1B §13/16: paid internal training is optional
+    // spending, rejected by domain authority while
+    // [PublicDemoState.isFinanciallyRestricted] — checked before the cash
+    // guard below, same as every other precondition here, so a rejected
+    // purchase never charges cash or selects a training source.
+    if (state.isFinanciallyRestricted) {
+      return _failure(
+        state,
+        engineerId,
+        PublicDemoInternalTrainingStatus.blockedByFinancialShortage,
+      );
+    }
     if (assignedEngineerIds.contains(engineerId)) {
       return _failure(
         state,
@@ -117,4 +129,5 @@ enum PublicDemoInternalTrainingStatus {
   alreadySelected,
   insufficientCash,
   fiscalYearCompleted,
+  blockedByFinancialShortage,
 }

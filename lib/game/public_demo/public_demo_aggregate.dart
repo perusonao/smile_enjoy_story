@@ -143,10 +143,28 @@ class PublicDemoAggregate {
   /// ([PublicDemoWorkflowState]) commit together in the returned
   /// [PublicDemoRecruitmentTransactionResult.aggregate] — the single new
   /// authoritative root — or [aggregate] is null and neither changes.
+  ///
+  /// FINANCE-FAILURE-1A+1B §13/15: rejected by domain authority — before
+  /// any cash mutation, usage mutation, or applicant generation — while
+  /// [PublicDemoState.isFinanciallyRestricted]. This applies to every
+  /// medium, including [PublicDemoRecruitmentMedium.free]: B'.1 finalized
+  /// that a zero-cost medium still creates recruitment activity Public
+  /// Demo 0.1 must not allow during a cash shortfall, not just a cash
+  /// mutation to gate.
   PublicDemoRecruitmentTransactionResult recruit(
     PublicDemoRecruitmentMedium medium, {
     PublicDemoRecruitmentCandidateGenerator? candidateGenerator,
   }) {
+    if (state.isFinanciallyRestricted) {
+      return PublicDemoRecruitmentTransactionResult._(
+        aggregate: null,
+        medium: medium,
+        chargedAmount: 0,
+        generatedApplicants: const [],
+        status:
+            PublicDemoRecruitmentTransactionStatus.blockedByFinancialShortage,
+      );
+    }
     final calculation = PublicDemoRecruitmentCalculation(
       candidateGenerator: candidateGenerator,
     ).execute(state: state, medium: medium);
@@ -198,17 +216,28 @@ class PublicDemoAggregate {
 
   /// The single sanctioned way to accept a salary offer for one applicant
   /// (WORKFLOW-STATE-1 §11).
+  ///
+  /// FINANCE-FAILURE-1A+1B §13/14: rejected by domain authority — not just
+  /// a disabled UI control — while
+  /// [PublicDemoState.isFinanciallyRestricted], since an accepted offer
+  /// mints the [PublicDemoBindingOffer] that is this game's salary-
+  /// obligation boundary. A [PublicDemoBindingOffer] already minted before
+  /// the shortage began is unaffected: this only ever guards a NEW
+  /// acceptance call, never an applicant's already-authoritative offer.
   PublicDemoAggregate acceptOffer({
     required String applicantId,
     required PublicDemoSalaryOffer offer,
     required PublicDemoFiscalCloseId fiscalCloseId,
-  }) => _copyWith(
-    workflow: workflow.acceptOffer(
-      applicantId: applicantId,
-      offer: offer,
-      fiscalCloseId: fiscalCloseId,
-    ),
-  );
+  }) {
+    if (state.isFinanciallyRestricted) return this;
+    return _copyWith(
+      workflow: workflow.acceptOffer(
+        applicantId: applicantId,
+        offer: offer,
+        fiscalCloseId: fiscalCloseId,
+      ),
+    );
+  }
 
   // ---------------------------------------------------------------------
   // WORKFLOW-STATE-1AB FIX5 P1: `withEngineerStage(engineerId, stage)` and
@@ -406,15 +435,25 @@ class PublicDemoAggregate {
   // ---------------------------------------------------------------------
 
   /// Closes April (state-only; workflow is not part of April's transition).
-  PublicDemoAggregate closeApril({required int monthlyExpenses}) => _copyWith(
-    state: PublicDemoMonthlyClose.closeApril(
-      state: _closeGrowth(const {}),
-      monthlyExpenses: monthlyExpenses,
-      orderedEngineers: workflow.engineers
-          .where((engineer) => engineer.stage == PublicDemoSalesStage.ordered)
-          .length,
-    ).state,
-  );
+  ///
+  /// FINANCE-FAILURE-1A+1B §5: the pre-AR-idempotency guard below runs
+  /// before Growth, AR, salary, or cash are touched at all — a retry once
+  /// [state.month] is no longer 4, or once [PublicDemoState.isCloseBlocked]
+  /// (fiscal year completed or a terminal financial status reached), is a
+  /// complete no-op returning this exact aggregate, never a partial
+  /// mutation. Every other month-end command below follows the same shape.
+  PublicDemoAggregate closeApril({required int monthlyExpenses}) {
+    if (state.month != 4 || state.isCloseBlocked) return this;
+    return _copyWith(
+      state: PublicDemoMonthlyClose.closeApril(
+        state: _closeGrowth(const {}),
+        monthlyExpenses: monthlyExpenses,
+        orderedEngineers: workflow.engineers
+            .where((engineer) => engineer.stage == PublicDemoSalesStage.ordered)
+            .length,
+      ).state,
+    );
+  }
 
   /// Closes May: joins eligible applicants, adds them as engineers, builds
   /// the domain-computed assignment roster, then closes the finance month
@@ -427,6 +466,7 @@ class PublicDemoAggregate {
     required int week,
     required int monthlyExpenses,
   }) {
+    if (state.month != 5 || state.isCloseBlocked) return this;
     bool accepted(PublicDemoApplicant applicant) => const {
       PublicDemoApplicantStage.offerAccepted,
       PublicDemoApplicantStage.preEntrySkillSheet,
@@ -494,45 +534,60 @@ class PublicDemoAggregate {
   PublicDemoAggregate closeJune({
     required int assignedInJuly,
     required int monthlyExpenses,
-  }) => _copyWith(
-    state: PublicDemoMonthlyClose.closeJune(
-      state: _closeGrowth(
-        workflow.assignments.map((assignment) => assignment.engineerId).toSet(),
-      ),
-      monthlyExpenses: monthlyExpenses,
-      assignedInJuly: assignedInJuly,
-    ).state,
-  );
+  }) {
+    if (state.month != 6 || state.isCloseBlocked) return this;
+    return _copyWith(
+      state: PublicDemoMonthlyClose.closeJune(
+        state: _closeGrowth(
+          workflow.assignments
+              .map((assignment) => assignment.engineerId)
+              .toSet(),
+        ),
+        monthlyExpenses: monthlyExpenses,
+        assignedInJuly: assignedInJuly,
+      ).state,
+    );
+  }
 
   /// Closes July (state-only; reads `workflow.joinedApplicants` — the full
   /// authoritative derived set, never a caller-chosen subset).
-  PublicDemoAggregate closeJuly({required int monthlyExpenses}) => _copyWith(
-    state: PublicDemoMonthlyClose.closeJuly(
-      state: _closeGrowth(
-        workflow.assignments
-            .where(
-              (assignment) =>
-                  assignment.nextOrderStatus ==
-                      PublicDemoNextOrderStatus.accepted ||
-                  assignment.replacementStage ==
-                      PublicDemoReplacementStage.ordered,
-            )
-            .map((assignment) => assignment.engineerId)
-            .toSet(),
-      ),
-      monthlyExpenses: monthlyExpenses,
-      applicants: workflow.joinedApplicants,
-    ).state,
-  );
+  ///
+  /// FINANCE-FAILURE-1A+1B §11 (P0): there is no insufficient-cash rollback
+  /// here any more — see [PublicDemoMonthlyClose.closeJuly]'s own doc.
+  PublicDemoAggregate closeJuly({required int monthlyExpenses}) {
+    if (state.month != 7 || state.isCloseBlocked) return this;
+    return _copyWith(
+      state: PublicDemoMonthlyClose.closeJuly(
+        state: _closeGrowth(
+          workflow.assignments
+              .where(
+                (assignment) =>
+                    assignment.nextOrderStatus ==
+                        PublicDemoNextOrderStatus.accepted ||
+                    assignment.replacementStage ==
+                        PublicDemoReplacementStage.ordered,
+              )
+              .map((assignment) => assignment.engineerId)
+              .toSet(),
+        ),
+        monthlyExpenses: monthlyExpenses,
+        applicants: workflow.joinedApplicants,
+      ).state,
+    );
+  }
 
   /// Closes any ordinary month from August through March (state-only).
-  PublicDemoAggregate closeOrdinaryMonth({required int monthlyExpenses}) =>
-      _copyWith(
-        state: PublicDemoMonthlyClose.closeOrdinaryMonth(
-          state: _closeGrowth(workflow.assignedEngineerIds(month: state.month)),
-          monthlyExpenses: monthlyExpenses,
-        ).state,
-      );
+  PublicDemoAggregate closeOrdinaryMonth({required int monthlyExpenses}) {
+    if (state.month < 8 || state.month > 15 || state.isCloseBlocked) {
+      return this;
+    }
+    return _copyWith(
+      state: PublicDemoMonthlyClose.closeOrdinaryMonth(
+        state: _closeGrowth(workflow.assignedEngineerIds(month: state.month)),
+        monthlyExpenses: monthlyExpenses,
+      ).state,
+    );
+  }
 
   /// This is called only by the month-end commands above, after all
   /// current-month work/contract decisions and before the next month
@@ -611,6 +666,7 @@ enum PublicDemoRecruitmentTransactionStatus {
   alreadyUsedThisMonth,
   insufficientCash,
   generationFailed,
+  blockedByFinancialShortage,
 }
 
 /// Pure, all-or-nothing recruitment-media purchase calculation — INTERNAL

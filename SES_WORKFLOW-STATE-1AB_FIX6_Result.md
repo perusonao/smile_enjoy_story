@@ -18,10 +18,10 @@ FIX4: `34df0bcb05c409ef1fe49d06d07f8a55be2b5638`
 `5f3cec274b85e2f000d7a69dacb2b7c45974da61` (`fix(public-demo): close WORKFLOW-STATE-1A+B generic workflow mutation authority (FIX6)`)
 
 ## REPORT COMMIT
-See this file's own commit (recorded in a follow-up commit, matching the FIX4/FIX5 report pattern).
+`ff8e5ae12c2d47e748b65b996880c922c14e5e9b` (`docs: add WORKFLOW-STATE-1AB FIX6 result report`)
 
 ## REMOTE HEAD
-Recorded in a follow-up commit after push (see git log on `origin/claude/workflow-state-fix6-final-boundary`).
+`ff8e5ae12c2d47e748b65b996880c922c14e5e9b` (`origin/claude/workflow-state-fix6-final-boundary`, confirmed pushed and matching local HEAD)
 
 ## DIFF
 6 files changed: 3 production files, 2 test files modified, 1 new test-support helper file. No UI file changed (`public_demo_01_placeholder_screen.dart` untouched — the widget already called only named domain commands after FIX5; none of those command signatures changed).

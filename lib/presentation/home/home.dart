@@ -1,0 +1,4 @@
+/// Barrel export for the home dashboard shell (Phase 1A).
+library;
+
+export 'home_shell_page.dart';

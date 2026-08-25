@@ -2,3 +2,4 @@
 library;
 
 export 'home_shell_page.dart';
+export 'models/employee_stage_display.dart';

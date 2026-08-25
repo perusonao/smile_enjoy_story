@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:smile_enjoy_story/game/public_demo/public_demo_financial_status.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_monthly_close.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_state.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_summer_bonus_plan.dart';
@@ -222,14 +223,17 @@ void main() {
     });
   });
 
-  group('Atomic failure: Revenue and the underlying close settle together '
-      'or not at all (July bonus cash guard)', () {
-    test('insufficient cash even after Revenue settles: whole close fails, '
-        'state (including pendingRevenue) is completely unchanged', () {
+  group('FINANCE-FAILURE-1A+1B: Revenue and the underlying close always settle '
+      'together — bonus affordability only ever gates the optional bonus '
+      'itself, never a rollback of the mandatory close (no more July '
+      'insufficient-cash rollback)', () {
+    test('insufficient cash even after Revenue settles: the mandatory close '
+        'still commits (AR collected, salary/fixed costs paid), the bonus '
+        'pays zero instead', () {
       // totalOutflow for plan=one, no extra hires = 800,000 + 550,000 =
       // 1,350,000 (see public_demo_monthly_close_test.dart for the same
       // constants). cash(800,000) + pendingRevenue(500,000) = 1,300,000,
-      // still short.
+      // still short of paying the bonus too.
       final start = fixture(
         month: 7,
         cash: 800000,
@@ -242,16 +246,19 @@ void main() {
         monthlyExpenses: 800000,
         applicants: const [],
       );
-      expect(result.isInsufficientCash, isTrue);
-      expect(result.state, same(start));
-      expect(result.state.cash, 800000);
-      expect(result.state.pendingRevenue, 500000);
-      expect(result.state.month, 7);
-      expect(result.state.summerBonusPaid, isFalse);
+      expect(result.isClosed, isTrue);
+      expect(result.state.summerBonusPaid, isTrue);
+      expect(result.state.summerBonusPaidAmount, 0);
+      expect(result.state.month, 8);
+      // AR collected (500,000) + cash(800,000) - monthlyExpenses
+      // (800,000) - bonus(0) = 500,000.
+      expect(result.state.cash, 500000);
+      expect(result.state.financialStatus, PublicDemoFinancialStatus.normal);
     });
 
-    test('Revenue settling is what makes salary+bonus payable: fails '
-        'without it, succeeds with it', () {
+    test('Revenue settling is what makes the bonus payable: bonus is zeroed '
+        'without it, paid in full with it — the mandatory close commits '
+        'either way', () {
       final start = fixture(
         month: 7,
         cash: 1000000,
@@ -260,13 +267,16 @@ void main() {
         summerBonusSelection: PublicDemoSummerBonusPlan.one,
       );
 
-      // Without Revenue connected, raw cash (1,000,000) alone cannot cover
-      // totalOutflow (1,350,000).
+      // Without Revenue connected, raw cash (1,000,000) alone cannot
+      // cover totalOutflow (1,350,000) — but the mandatory close still
+      // commits, with the bonus reduced to zero.
       final withoutRevenue = start.advanceToAugust(
         monthlyExpenses: 800000,
         applicants: const [],
       );
-      expect(withoutRevenue.isInsufficientCash, isTrue);
+      expect(withoutRevenue.isPaid, isTrue);
+      expect(withoutRevenue.bonusAmount, 0);
+      expect(withoutRevenue.state.cash, 1000000 - 800000);
 
       // With Revenue connected, the old pendingRevenue (500,000) settles
       // into cash first, making 1,500,000 available -- enough to pay.
@@ -277,6 +287,7 @@ void main() {
       );
       expect(result.isClosed, isTrue);
       expect(result.state.summerBonusPaid, isTrue);
+      expect(result.state.summerBonusPaidAmount, 550000);
       expect(result.cashAfter, 1500000 - 1350000);
       // July's assigned=1 books 500,000 as August's pending.
       expect(result.state.pendingRevenue, 500000);

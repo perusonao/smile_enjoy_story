@@ -1,11 +1,27 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:smile_enjoy_story/game/public_demo/public_demo_financial_status.dart';
+import 'package:smile_enjoy_story/game/public_demo/public_demo_state.dart';
 import 'package:smile_enjoy_story/ui/public_demo/public_demo_01_placeholder_screen.dart';
 
-// 12MONTH-3: proves the real widget can be driven from August through the
-// March close via the new common ordinary-month button, that internal
-// months 13/14/15 always render as "1月"/"2月"/"3月" (never "13月" etc.),
-// and that the minimal year-end card appears afterward.
+// `s` (unlike the enclosing `_S` state class) is not library-private, so it
+// can be read directly off the widget's State for precise assertions
+// instead of scraping rendered text (mirrors
+// public_demo_01_completion_lock_ui_test.dart's own helper).
+PublicDemoState currentState(WidgetTester tester) =>
+    (tester.state(find.byType(PublicDemo01PlaceholderScreen)) as dynamic).s
+        as PublicDemoState;
+
+// 12MONTH-3: proves the real widget can be driven from August onward via the
+// new common ordinary-month button. Calendar-label correctness for internal
+// months 13/14/15 ("1月"/"2月"/"3月", never "13月" etc.) is covered
+// unconditionally at the pure-domain level by public_demo_month_label_test
+// .dart; this widget test's own remaining concern is that the real UI wires
+// that shared button/label through August-October, and that the
+// FINANCE-FAILURE-1A+1B terminal guard (a bankrupt aggregate cannot mutate
+// again) holds for the widget's own still-rendered close button too — see
+// the FINANCE-FAILURE-1A+1B comment at this test's tail for why this
+// playthrough does not reach March any more.
 //
 // April orders one engineer (Sato) via the same deterministic interview
 // steps public_demo_01_success_playthrough_test.dart already exercises,
@@ -54,8 +70,9 @@ Future<void> dismissDialog(WidgetTester tester, String confirmLabel) async {
 
 void main() {
   testWidgets(
-    'Public Demo can be operated from August through the March close, with '
-    'correct calendar labels at every internal month 8-15',
+    'Public Demo can be operated from August with correct calendar labels, '
+    'and the terminal financial guard holds once this playthrough reaches '
+    'bankruptcy (FINANCE-FAILURE-1A+1B)',
     (tester) async {
       await tester.pumpWidget(
         const MaterialApp(home: PublicDemo01PlaceholderScreen()),
@@ -96,43 +113,57 @@ void main() {
         findsNothing,
       );
 
-      // August through February: each closes via the new shared ordinary
-      // month button and lands on the next calendar label.
+      // August through October: each still closes via the new shared
+      // ordinary month button and lands on the next calendar label.
+      //
+      // FINANCE-FAILURE-1A+1B: this playthrough deliberately never renews
+      // Sato's assignment past June (see the class doc above) and never
+      // orders a second engineer, so Revenue (0-500,000/month) never covers
+      // the founding team's fixed 800,000/month payroll+overhead — a real
+      // structural deficit, not a bug. Under the pre-FINANCE-FAILURE
+      // contract that deficit accumulated as unlimited free debt all the
+      // way to a false fiscal "success"; the approved contract instead
+      // enters CASH SHORTAGE (closing September) and then BANKRUPTCY
+      // (closing October) — see public_demo_monthly_close_ordinary_month_
+      // test.dart's own fiscal-year test for the same trajectory verified
+      // at the pure-domain level with a solvent fixture, and
+      // public_demo_financial_status_test.dart for the shortage/bankruptcy
+      // contract itself. Calendar-label correctness for internal months
+      // 13/14/15 ("1月"/"2月"/"3月", never "13月" etc.) remains covered
+      // unconditionally by public_demo_month_label_test.dart.
       const closes = [
         ('8月終了→9月', '9月'),
         ('9月終了→10月', '10月'),
         ('10月終了→11月', '11月'),
-        ('11月終了→12月', '12月'),
-        ('12月終了→1月', '1月'),
-        ('1月終了→2月', '2月'),
-        ('2月終了→3月', '3月'),
       ];
       for (final (buttonLabel, nextMonthLabel) in closes) {
         await tapAndSettle(tester, buttonLabel);
         expect(find.text(nextMonthLabel), findsOneWidget);
-        expect(find.text('13月'), findsNothing);
-        expect(find.text('14月'), findsNothing);
-        expect(find.text('15月'), findsNothing);
         expect(
           find.byKey(const Key('public-demo-recruitment-media-card')),
           findsNothing,
           reason: 'month $nextMonthLabel',
         );
       }
-      expect(find.text('3月'), findsOneWidget);
-      expect(find.text('13月'), findsNothing);
-      expect(find.text('14月'), findsNothing);
-      expect(find.text('15月'), findsNothing);
-
-      // March closes the fiscal year instead of advancing to a 13th month.
-      await tapAndSettle(tester, '3月終了→第1期終了');
+      expect(find.text('11月'), findsOneWidget);
       expect(
-        find.byKey(const Key('public-demo-fiscal-year-complete')),
-        findsOneWidget,
+        currentState(tester).financialStatus,
+        PublicDemoFinancialStatus.bankruptcy,
+        reason:
+            'closing October (11月終了) is the second consecutive '
+            'negative-cash close, so this fiscal year is already bankrupt',
       );
-      expect(find.text('第1期終了'), findsOneWidget);
-      expect(find.text('1年間の経営が終了しました。'), findsOneWidget);
-      expect(find.text('3月終了→第1期終了'), findsNothing);
+
+      // Terminal guard: once bankrupt, the still-rendered ordinary-month
+      // close button is a no-op (FINANCE-FAILURE-1A+1B §22/23 test X) —
+      // month, cash, and financial status all stay exactly as they were.
+      final beforeRetry = currentState(tester);
+      await tapAndSettle(tester, '11月終了→12月');
+      final afterRetry = currentState(tester);
+      expect(afterRetry.month, beforeRetry.month);
+      expect(afterRetry.cash, beforeRetry.cash);
+      expect(afterRetry.financialStatus, beforeRetry.financialStatus);
+      expect(find.text('12月'), findsNothing);
     },
   );
 }

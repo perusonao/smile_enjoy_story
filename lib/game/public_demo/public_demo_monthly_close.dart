@@ -59,7 +59,7 @@ class PublicDemoMonthlyClose {
     required int orderedEngineers,
   }) {
     final closedMonth = state.month;
-    final isApril = closedMonth == 4;
+    final isApril = closedMonth == 4 && !state.isCloseBlocked;
     final revenueResult = isApril
         ? PublicDemoRevenuePayment.apply(state: state)
         : null;
@@ -114,7 +114,7 @@ class PublicDemoMonthlyClose {
     required int hiredWithOrders,
   }) {
     final closedMonth = state.month;
-    final isMay = closedMonth == 5;
+    final isMay = closedMonth == 5 && !state.isCloseBlocked;
     final revenueResult = isMay
         ? PublicDemoRevenuePayment.apply(state: state)
         : null;
@@ -156,7 +156,7 @@ class PublicDemoMonthlyClose {
     required int assignedInJuly,
   }) {
     final closedMonth = state.month;
-    final isJune = closedMonth == 6;
+    final isJune = closedMonth == 6 && !state.isCloseBlocked;
     final revenueResult = isJune
         ? PublicDemoRevenuePayment.apply(state: state)
         : null;
@@ -191,21 +191,31 @@ class PublicDemoMonthlyClose {
 
   /// Closes July, delegating to [PublicDemoSummerBonusPayment.closeJuly]
   /// (which itself is called by [PublicDemoState.advanceToAugust]). Ordinary
-  /// monthly expenses and the selected summer bonus still settle atomically.
+  /// monthly expenses always settle — this is the single monthly-close
+  /// authority for July, and (FINANCE-FAILURE-1A+1B §11, P0) there is no
+  /// insufficient-cash rollback path any more: prior AR collection, salary,
+  /// and fixed costs are never undone merely because the resulting cash
+  /// would go negative. [PublicDemoFinancialStatus]'s shortage/bankruptcy
+  /// rules (applied inside [PublicDemoState.advanceToAugust] via
+  /// [PublicDemoSummerBonusPayment.closeJuly]) decide the outcome instead.
   ///
-  /// Revenue settles into cash *before* the bonus cash guard runs, so last
-  /// month's collected revenue is part of the funds available to pay salary
-  /// and bonus — matching the 30-day site's payment timing. If the guard
-  /// still finds cash insufficient, the whole close (including the revenue
-  /// settlement and any cash-flow summary) is rolled back: this returns the
-  /// original, untouched [state], not the revenue-applied intermediate.
+  /// Revenue settles into cash *before* the bonus affordability check runs,
+  /// so last month's collected revenue is part of the funds available to
+  /// pay salary, fixed costs, and bonus — matching the 30-day site's
+  /// payment timing. Affordability gating remains scoped to the *optional*
+  /// bonus itself: [PublicDemoSummerBonusPayment.closeJuly] pays 0 bonus
+  /// (never less than the requested amount, never partial) when the
+  /// company cannot afford both mandatory monthly expenses and the
+  /// selected bonus together — it never converts that into a rollback of
+  /// the mandatory close.
   static PublicDemoMonthlyCloseResult closeJuly({
     required PublicDemoState state,
     required int monthlyExpenses,
     required Iterable<PublicDemoApplicant> applicants,
   }) {
     final closedMonth = state.month;
-    final revenueEligible = closedMonth == 7 && !state.summerBonusPaid;
+    final revenueEligible =
+        closedMonth == 7 && !state.summerBonusPaid && !state.isCloseBlocked;
     final revenueResult = revenueEligible
         ? PublicDemoRevenuePayment.apply(state: state)
         : null;
@@ -215,14 +225,6 @@ class PublicDemoMonthlyClose {
       monthlyExpenses: monthlyExpenses,
       applicants: applicants,
     );
-    if (result.isInsufficientCash) {
-      return PublicDemoMonthlyCloseResult._(
-        state: state,
-        status: PublicDemoMonthlyCloseStatus.insufficientCash,
-        cashBefore: state.cash,
-        closedMonth: closedMonth,
-      );
-    }
     var next = result.state;
     if (result.isPaid) {
       next = next.recordMonthlyCashFlow(
@@ -280,7 +282,7 @@ class PublicDemoMonthlyClose {
   }) {
     final closedMonth = state.month;
     final isOrdinaryMonth =
-        closedMonth >= 8 && closedMonth <= 15 && !state.fiscalYearCompleted;
+        closedMonth >= 8 && closedMonth <= 15 && !state.isCloseBlocked;
     final revenueResult = isOrdinaryMonth
         ? PublicDemoRevenuePayment.apply(state: state)
         : null;
@@ -362,10 +364,8 @@ class PublicDemoMonthlyCloseResult {
   final int closedMonth;
 
   bool get isClosed => status == PublicDemoMonthlyCloseStatus.closed;
-  bool get isInsufficientCash =>
-      status == PublicDemoMonthlyCloseStatus.insufficientCash;
   int get cashAfter => state.cash;
   int get cashMovement => cashAfter - cashBefore;
 }
 
-enum PublicDemoMonthlyCloseStatus { closed, insufficientCash, notApplicable }
+enum PublicDemoMonthlyCloseStatus { closed, notApplicable }

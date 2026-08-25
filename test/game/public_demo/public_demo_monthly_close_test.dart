@@ -458,7 +458,8 @@ void main() {
       expect(result.state.pendingRevenue, 0);
     });
 
-    test('insufficient cash leaves state unchanged on both paths', () {
+    test('FINANCE-FAILURE-1A+1B: insufficient cash for the bonus still closes '
+        'on both paths, paying zero bonus instead of rolling back', () {
       final start = julyState(cash: 1349999);
       final legacy = start.advanceToAugust(
         monthlyExpenses: 800000,
@@ -469,8 +470,9 @@ void main() {
         monthlyExpenses: 800000,
         applicants: const [],
       );
-      expect(result.isInsufficientCash, isTrue);
-      expect(result.state, same(start));
+      expect(result.isClosed, isTrue);
+      expect(result.state.summerBonusPaidAmount, 0);
+      expect(result.cashAfter, legacy.state.cash);
       expectStateEquivalent(legacy.state, result.state);
     });
 

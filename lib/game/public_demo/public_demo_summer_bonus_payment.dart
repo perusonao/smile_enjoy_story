@@ -1,3 +1,4 @@
+import 'public_demo_financial_status.dart';
 import 'public_demo_recruitment.dart';
 import 'public_demo_salary.dart';
 import 'public_demo_state.dart';
@@ -19,35 +20,50 @@ class PublicDemoSummerBonusPayment {
               plan.months)
           .round();
 
-  /// Returns an unchanged state when this is not July, has already closed its
-  /// bonus decision, or cannot pay both ordinary monthly costs and the bonus.
+  /// Returns an unchanged state when this is not July, has already closed
+  /// its bonus decision, or the aggregate's financial state already blocks
+  /// any further monthly close ([PublicDemoState.isCloseBlocked]).
+  ///
+  /// FINANCE-FAILURE-1A+1B §11 (P0): the mandatory monthly close (prior AR
+  /// settlement, salary, fixed costs) always commits — there is no
+  /// insufficient-cash rollback of this close any more. Affordability
+  /// gating is instead scoped to the *optional* summer bonus alone: when
+  /// the company cannot afford both `monthlyExpenses` and the selected
+  /// bonus together, the bonus paid is 0 (as if
+  /// [PublicDemoSummerBonusPlan.none] had been selected) and the mandatory
+  /// close still proceeds — including with a negative resulting cash,
+  /// which [PublicDemoState.advanceToAugust]'s own financial-status
+  /// transition (via [PublicDemoState.copyWith]'s `financialStatus`) turns
+  /// into shortage/bankruptcy exactly like any other month.
   static PublicDemoSummerBonusPaymentResult closeJuly({
     required PublicDemoState state,
     required int monthlyExpenses,
     required Iterable<PublicDemoApplicant> applicants,
   }) {
-    if (state.month != 7 || state.summerBonusPaid) {
+    if (state.month != 7 || state.summerBonusPaid || state.isCloseBlocked) {
       return PublicDemoSummerBonusPaymentResult.notApplicable(
         state: state,
         monthlyExpenses: monthlyExpenses,
       );
     }
-    final bonusAmount = calculateSummerBonus(
+    final requestedBonus = calculateSummerBonus(
       plan: state.summerBonusSelection,
       applicants: applicants,
       month: 7,
     );
-    final totalOutflow = monthlyExpenses + bonusAmount;
-    if (state.cash < totalOutflow) {
-      return PublicDemoSummerBonusPaymentResult.insufficientCash(
-        state: state,
-        monthlyExpenses: monthlyExpenses,
-        bonusAmount: bonusAmount,
-      );
-    }
-    final nextCash = state.cash - totalOutflow;
+    final canAffordBonus = state.cash >= monthlyExpenses + requestedBonus;
+    final bonusAmount = canAffordBonus ? requestedBonus : 0;
+    final nextCash = state.cash - monthlyExpenses - bonusAmount;
     final paid = state
-        .copyWith(cash: nextCash, salesUsed: 0)
+        .copyWith(
+          cash: nextCash,
+          salesUsed: 0,
+          financialStatus: PublicDemoFinancialStatus.afterClose(
+            previous: state.financialStatus,
+            isMarch: false,
+            closingCash: nextCash,
+          ),
+        )
         .markSummerBonusPaid(month: 7, amount: bonusAmount)
         .copyWith(
           month: 8,
@@ -88,18 +104,6 @@ class PublicDemoSummerBonusPaymentResult {
     status: PublicDemoSummerBonusPaymentStatus.paid,
   );
 
-  factory PublicDemoSummerBonusPaymentResult.insufficientCash({
-    required PublicDemoState state,
-    required int monthlyExpenses,
-    required int bonusAmount,
-  }) => PublicDemoSummerBonusPaymentResult._(
-    state: state,
-    cashBefore: state.cash,
-    monthlyExpenses: monthlyExpenses,
-    bonusAmount: bonusAmount,
-    status: PublicDemoSummerBonusPaymentStatus.insufficientCash,
-  );
-
   factory PublicDemoSummerBonusPaymentResult.notApplicable({
     required PublicDemoState state,
     required int monthlyExpenses,
@@ -118,15 +122,9 @@ class PublicDemoSummerBonusPaymentResult {
   final PublicDemoSummerBonusPaymentStatus status;
 
   bool get isPaid => status == PublicDemoSummerBonusPaymentStatus.paid;
-  bool get isInsufficientCash =>
-      status == PublicDemoSummerBonusPaymentStatus.insufficientCash;
   int get totalOutflow => monthlyExpenses + bonusAmount;
   int get cashAfter => state.cash;
   int get cashMovement => cashAfter - cashBefore;
 }
 
-enum PublicDemoSummerBonusPaymentStatus {
-  paid,
-  insufficientCash,
-  notApplicable,
-}
+enum PublicDemoSummerBonusPaymentStatus { paid, notApplicable }

@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:smile_enjoy_story/game/public_demo/public_demo_financial_status.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_fiscal_close_id.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_raise.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_recruitment.dart';
@@ -138,16 +139,39 @@ void main() {
     expect(duplicate.state.cash, paid.state.cash);
   });
 
-  test('insufficient cash leaves all July and bonus fields unchanged', () {
+  test('FINANCE-FAILURE-1A+1B: insufficient cash for the selected bonus pays '
+      'zero bonus instead — the mandatory close is never rolled back', () {
+    // totalOutflow for plan=one, no extra hires would be 800,000 +
+    // 550,000 = 1,350,000; cash is exactly 1 short of that.
     final before = july(cash: 1349999);
     final result = before.advanceToAugust(
       monthlyExpenses: 800000,
       applicants: [],
     );
-    expect(result.isInsufficientCash, isTrue);
-    expect(result.state, same(before));
-    expect(result.state.summerBonusPaid, isFalse);
-    expect(result.state.month, 7);
+    expect(result.isPaid, isTrue);
+    expect(result.bonusAmount, 0);
+    expect(result.state.summerBonusPaid, isTrue);
+    expect(result.state.summerBonusPaidAmount, 0);
+    expect(result.state.month, 8);
+    // Only the mandatory 800,000 settles — the unaffordable bonus does not.
+    expect(result.state.cash, 1349999 - 800000);
+  });
+
+  test('FINANCE-FAILURE-1A+1B: mandatory expenses alone exceeding cash still '
+      'completes the close, with the resulting negative cash committed', () {
+    final before = july(cash: 500000, plan: PublicDemoSummerBonusPlan.none);
+    final result = before.advanceToAugust(
+      monthlyExpenses: 800000,
+      applicants: [],
+    );
+    expect(result.isPaid, isTrue);
+    expect(result.bonusAmount, 0);
+    expect(result.state.month, 8);
+    expect(result.state.cash, -300000);
+    expect(
+      result.state.financialStatus,
+      PublicDemoFinancialStatus.cashShortage,
+    );
   });
 
   test(

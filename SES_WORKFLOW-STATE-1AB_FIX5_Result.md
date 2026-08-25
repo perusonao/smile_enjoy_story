@@ -7,9 +7,9 @@
   (rebuilt directly on the FIX4 report head; the branch's prior local state
   was a stale, no-unique-work pointer into unrelated early repo history and
   was reset — `git checkout -B` onto `fbf88c36009c4e99adfc3451777c6b508a8bb837`)
-- IMPLEMENTATION COMMIT: `99b6ccf` (`fix(public-demo): close WORKFLOW-STATE-1A+B assignment stage authority bypass (FIX5)`)
-- REPORT COMMIT: this file's own commit (see `git log`)
-- REMOTE HEAD: pushed to `origin/claude/workflow-state-fix5-assignment-authority-z4vf48`
+- IMPLEMENTATION COMMIT: `99b6ccf2bdd7d5ac13576c9b5c2aabbf1773cc05` (`fix(public-demo): close WORKFLOW-STATE-1A+B assignment stage authority bypass (FIX5)`)
+- REPORT COMMIT: `944fe5d782cb5c63d1a2f5b05cac3adbbf317787` (`docs: add WORKFLOW-STATE-1AB FIX5 result report`)
+- REMOTE HEAD: `944fe5d782cb5c63d1a2f5b05cac3adbbf317787` (`origin/claude/workflow-state-fix5-assignment-authority-z4vf48`, confirmed pushed)
 - DIFF: 6 files changed (implementation + tests), no UI/balance changes
 
 ## ENGINEER GENERIC STAGE SETTER

@@ -583,61 +583,25 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
     PublicDemoApplicantStage.preEntryClientFailed => 4,
     PublicDemoApplicantStage.juneOrdered => 5,
   };
-  String monthGoal() => switch (s.month) {
-    4 => '待機中の技術者を営業し、5月の案件参画を決めましょう',
-    5 => '応募者を採用し、入社前から6月の案件獲得を目指しましょう',
-    6 => '翌月の発注を確認し、7月も稼働できる状態を作りましょう',
-    _ => '今月の経営状況を確認し、翌月への準備をしましょう',
-  };
-  Widget stat(String label, String value) => Expanded(
-    child: Card(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 6),
-        child: Column(
-          children: [
-            Text(
-              value,
-              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 17),
-            ),
-            Text(label, style: const TextStyle(fontSize: 11)),
-          ],
-        ),
-      ),
-    ),
-  );
+  // HOME-RUNTIME-2A: `monthGoal()` and `stat()` are gone from this screen.
+  //
+  //  * The month-goal `switch` MOVED to
+  //    `HomeDashboardDisplayData.monthGoalText` and is rendered once, by the
+  //    HOME section's `今月やること` slot. It was not copied — there is still
+  //    exactly one month-goal table in the app.
+  //  * The 現預金/参画/待機/営業残 stat row is deleted: all four values are in
+  //    the merged compact KPI, which reads them from the same authoritative
+  //    fields. Note the cash tile keeps HOME-RUNTIME-READ-1's truncating
+  //    `~/` semantics rather than this row's old `floor()`.
+  //
+  // What is left here is the post-close detail this phase does not touch.
   Widget dashboard() => Column(
     crossAxisAlignment: CrossAxisAlignment.start,
     children: [
-      Card(
-        child: Padding(
-          padding: const EdgeInsets.all(14),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                '今月やること',
-                style: TextStyle(fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 4),
-              Text(monthGoal()),
-            ],
-          ),
-        ),
-      ),
-      Row(
-        children: [
-          stat('現預金', '¥${(s.cash / 10000).floor()}万'),
-          stat('参画', '${s.engineersAssigned}名'),
-          stat('待機', '${s.engineersWaiting}名'),
-          stat('営業残', '${s.salesRemaining}回'),
-        ],
-      ),
-      const SizedBox(height: 8),
       if (s.latestMonthlyCashFlow != null) ...[
         PublicDemoMonthlyCashFlowCard(flow: s.latestMonthlyCashFlow!),
         const SizedBox(height: 8),
       ],
-      PublicDemoCashShortageCard(state: s),
       if (s.latestGrowthResults.isNotEmpty) ...[
         const Text('今月の成長', style: TextStyle(fontWeight: FontWeight.bold)),
         const SizedBox(height: 4),
@@ -714,50 +678,63 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
   Widget internalTrainingCard({
     required String engineerId,
     required String engineerName,
+    bool showEngineerName = true,
   }) {
     final selected = s.trainingSelections.containsKey(engineerId);
     final assigned = _currentlyAssignedEngineerIds.contains(engineerId);
     final affordable = s.cash >= PublicDemoInternalTrainingTransaction.cost;
     if (assigned) return const SizedBox.shrink();
+    // POST-12MONTH-1 / FINANCE-FAILURE-1A+1B: once the fiscal year is
+    // completed, or a terminal financial status (BANKRUPTCY / MARCH
+    // CASH-SHORTAGE FAILURE) is reached, Public Demo 0.1 is a read-only
+    // terminal state — the training action is hidden rather than shown
+    // disabled, while the card itself stays visible as read-only info. This
+    // mirrors the domain-level guard already enforced by
+    // PublicDemoInternalTrainingTransaction regardless of this UI check
+    // (WORKFLOW-STATE-1's "never rely on UI alone" contract).
+    final showAction = !selected && !s.isCloseBlocked;
     return Card(
       key: Key('public-demo-internal-training-$engineerId'),
+      margin: const EdgeInsets.symmetric(vertical: 4),
       child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        child: Row(
           children: [
-            Text(
-              '$engineerName（待機）',
-              style: const TextStyle(fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 4),
-            const Text('社内研修'),
-            const Text('¥30,000'),
-            if (selected)
-              const Padding(
-                padding: EdgeInsets.only(top: 6),
-                child: Text('今月は社内研修'),
-              )
-            // POST-12MONTH-1 / FINANCE-FAILURE-1A+1B: once the fiscal year
-            // is completed, or a terminal financial status (BANKRUPTCY /
-            // MARCH CASH-SHORTAGE FAILURE) is reached, Public Demo 0.1 is a
-            // read-only terminal state — the training action (and its cash
-            // preview) is hidden rather than shown disabled. This mirrors
-            // the domain-level guard already enforced by
-            // PublicDemoInternalTrainingTransaction regardless of this UI
-            // check (WORKFLOW-STATE-1's "never rely on UI alone" contract).
-            else if (!s.isCloseBlocked) ...[
-              Text(
-                '研修後の現預金 ¥${s.cash - PublicDemoInternalTrainingTransaction.cost}',
+            Expanded(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Whose card this is only needs saying when the card
+                  // stands on its own (the month >= 6 list). Nested inside
+                  // an employee card the name is already the line above,
+                  // and repeating it is what made this a full-height card.
+                  if (showEngineerName)
+                    Text(
+                      '$engineerName（待機）',
+                      style: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 13,
+                      ),
+                    ),
+                  Text(
+                    selected ? '社内研修 ¥30,000（今月は社内研修）' : '社内研修 ¥30,000',
+                    style: const TextStyle(fontSize: 13),
+                  ),
+                  // The training action's own affordability guard is
+                  // unchanged (`s.cash >= PublicDemoInternalTrainingTransaction.cost`);
+                  // only the ¥-preview line that restated cash a fourth
+                  // time on this screen is gone.
+                  if (showAction && !affordable)
+                    const Text('現預金が不足しています。', style: TextStyle(fontSize: 11)),
+                ],
               ),
-              if (!affordable)
-                const Padding(
-                  padding: EdgeInsets.only(top: 4),
-                  child: Text('現預金が不足しています。', style: TextStyle(fontSize: 12)),
-                ),
-              const SizedBox(height: 8),
+            ),
+            if (showAction) ...[
+              const SizedBox(width: 8),
               FilledButton(
                 key: Key('public-demo-internal-training-action-$engineerId'),
+                style: _publicDemoCompactFilledButtonStyle(context),
                 onPressed: affordable
                     ? () => _selectInternalTraining(engineerId)
                     : null,
@@ -769,6 +746,19 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
       ),
     );
   }
+
+  /// The Public Demo screen widens every FilledButton's padding (see
+  /// [_publicDemoFilledButtonStyle]); the one-line training action opts back
+  /// out of that so a secondary action does not set the height of the row
+  /// it sits in. Purely visual — it changes no command, guard, or key.
+  ButtonStyle? _publicDemoCompactFilledButtonStyle(BuildContext c) =>
+      Theme.of(c).filledButtonTheme.style?.copyWith(
+        padding: const WidgetStatePropertyAll(
+          EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        ),
+        visualDensity: VisualDensity.compact,
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      );
 
   Widget assignmentCard(int i) {
     final a = workflow.assignments[i];
@@ -877,7 +867,6 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
             ),
             const SizedBox(height: 4),
             Text(e.summary),
-            internalTrainingCard(engineerId: e.id, engineerName: e.name),
             PublicDemoSalesProgress(currentStep: engineerStep(e)),
             const SizedBox(height: 8),
             if (e.stage == PublicDemoSalesStage.waiting &&
@@ -941,6 +930,18 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
                     setState(() => _game = _game.beginSelling(e.id)),
                 child: const Text('再営業'),
               ),
+            // HOME-RUNTIME-2A: internal training is this employee's
+            // *secondary* action, so it now sits after their sales action
+            // instead of between their identity and it. Same command, same
+            // eligibility, same keys — only the position and the row height
+            // changed, and the point of both is that the sales action can no
+            // longer be pushed below the fold by a card that outranks it on
+            // screen without outranking it in importance.
+            internalTrainingCard(
+              engineerId: e.id,
+              engineerName: e.name,
+              showEngineerName: false,
+            ),
           ],
         ),
       ),
@@ -1095,15 +1096,24 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                // HOME-RUNTIME-2A: the FINANCE-FAILURE-1C shortage
+                // explanation is hoisted above everything else. Its
+                // authority is unchanged and still lives entirely in the
+                // card itself — it renders only when
+                // `state.financialStatus == cashShortage` and never infers
+                // that from the sign of cash. This screen decides where the
+                // card goes, not whether it applies, which is why
+                // `financialStatus` is still not projected into HOME.
+                PublicDemoCashShortageCard(state: s),
                 // HOME-RUNTIME-READ-1: the new HOME read-only display,
                 // added alongside (never in place of) the existing Public
                 // Demo UI below. It receives only the projection — no
                 // aggregate, no state, no commands, no callbacks.
+                //
+                // HOME-RUNTIME-2A: its MonthHeaderBar is now the only month
+                // display on the screen — the `N月` headline that used to
+                // restate it here is deleted.
                 PublicDemoHomeDashboardSection(data: _homeDashboardData),
-                Text(
-                  publicDemoMonthLabel(s.month),
-                  style: Theme.of(c).textTheme.headlineMedium,
-                ),
                 dashboard(),
                 if (s.month == 4) ...[
                   for (var i = 0; i < workflow.engineers.length; i++) ec(i),

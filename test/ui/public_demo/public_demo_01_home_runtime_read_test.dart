@@ -12,10 +12,22 @@
 // (`PublicDemoMonthlyClose`) rather than a hand-built projection.
 //
 // Scope guard: this phase connects year/month, cash, revenue,
-// pendingRevenue, employeeCount and assignedEmployeeCount only, and HOME
-// stays a read-only consumer. Employee identity/images, key events,
-// financialStatus warnings, company status, month-end CTA activation and
-// bottom-nav navigation are explicitly NOT connected yet.
+// pendingRevenue, employeeCount and assignedEmployeeCount only. Employee
+// identity/images, key events, financialStatus warnings, company status,
+// month-end CTA activation and bottom-nav navigation are explicitly NOT
+// connected.
+//
+// HOME-RUNTIME-2C deliberately rewrote test 14's half of that guard, in
+// this file, as the integration design's PHASE 2C requires ("rewritten
+// deliberately in a reviewable PR ... never quietly relaxed as a side
+// effect of a layout PR"). "HOME contains zero interactive elements"
+// became "HOME contains exactly the whitelisted command entry points, each
+// bound to an existing PublicDemoAggregate command" — a different, and
+// stricter, statement than the one it replaced: it now pins *which*
+// element is allowed to exist, what it may be bound to, and that nothing
+// else in the subtree gained a mutation path. Every other clause of the
+// original guard (HOME holds no aggregate, no state, no finance
+// arithmetic, no financial verdict) is asserted unchanged.
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -25,10 +37,13 @@ import 'package:smile_enjoy_story/app/app_experience.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_financial_status.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_monthly_close.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_revenue.dart';
+import 'package:smile_enjoy_story/game/public_demo/public_demo_sales.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_state.dart';
+import 'package:smile_enjoy_story/game/public_demo/public_demo_workflow_state.dart';
 import 'package:smile_enjoy_story/presentation/home/home.dart';
 import 'package:smile_enjoy_story/presentation/home/widgets/kpi_section.dart';
 import 'package:smile_enjoy_story/presentation/home/widgets/month_header_bar.dart';
+import 'package:smile_enjoy_story/presentation/home/widgets/recommended_action_section.dart';
 import 'package:smile_enjoy_story/ui/public_demo/public_demo_01_placeholder_screen.dart';
 import 'package:smile_enjoy_story/ui/public_demo/public_demo_home_dashboard_section.dart';
 
@@ -40,6 +55,12 @@ import 'package:smile_enjoy_story/ui/public_demo/public_demo_home_dashboard_sect
 PublicDemoState currentState(WidgetTester tester) =>
     (tester.state(find.byType(PublicDemo01PlaceholderScreen)) as dynamic).s
         as PublicDemoState;
+
+/// The screen's own authoritative workflow state, alongside [currentState].
+PublicDemoWorkflowState currentWorkflow(WidgetTester tester) =>
+    (tester.state(find.byType(PublicDemo01PlaceholderScreen)) as dynamic)
+        .workflow
+        as PublicDemoWorkflowState;
 
 Finder get sectionFinder => find.byType(PublicDemoHomeDashboardSection);
 
@@ -154,7 +175,13 @@ void main() {
       // duplicate is gone" check.
       expect(find.text('1年目 4月'), findsOneWidget);
       expect(find.text('4月'), findsNothing);
-      expect(find.text('今月やること'), findsOneWidget);
+      // HOME-RUNTIME-2C: April has an eligible action, so the slot that
+      // 2A gave the month goal now states that action instead. The goal
+      // itself did not move again and was not duplicated — it is the same
+      // single slot, showing the more specific of the two things it can
+      // say (see the role-split test in the consolidation suite).
+      expect(find.byKey(const Key('home-recommended-action')), findsOneWidget);
+      expect(find.text('今月やること'), findsNothing);
       expect(find.text('現金'), findsOneWidget);
       expect(find.text('現預金'), findsNothing);
 
@@ -323,17 +350,19 @@ void main() {
       expect(inHome(find.text('入金予定')), findsOneWidget);
     });
 
-    testWidgets('14: HOME has no mutation path back into the aggregate', (
+    testWidgets('14: HOME\'s only mutation path is the whitelisted '
+        'Recommended Action CTA, bound to an existing aggregate command', (
       tester,
     ) async {
       await pumpDemo(tester);
 
-      // Structural: the whole HOME subtree is exactly the two read-only
-      // display widgets, each of which accepts ONLY the projection — there
-      // is no constructor on either that can carry a PublicDemoState, a
-      // PublicDemoAggregate, or a command callback.
+      // Structural: the HOME subtree is the read-only display widgets plus
+      // the one 2C slot. Each display widget still accepts ONLY the
+      // projection — there is no constructor on either that can carry a
+      // PublicDemoState, a PublicDemoAggregate, or a command callback.
       expect(inHome(find.byType(MonthHeaderBar)), findsOneWidget);
       expect(inHome(find.byType(KpiSection)), findsOneWidget);
+      expect(inHome(find.byType(RecommendedActionSection)), findsOneWidget);
       expect(
         tester.widget<MonthHeaderBar>(inHome(find.byType(MonthHeaderBar))).data,
         isA<HomeDashboardDisplayData>(),
@@ -343,10 +372,22 @@ void main() {
         isA<HomeDashboardDisplayData>(),
       );
 
-      // Structural: nothing inside the HOME subtree is interactive, so
-      // there is no affordance that could reach a domain command.
+      // Structural: the ONLY interactive element in the whole HOME subtree
+      // is the single whitelisted CTA. One entry point, not a surface.
+      final cta = find.byKey(const Key('home-recommended-action-cta'));
+      expect(inHome(cta), findsOneWidget);
+      expect(
+        inHome(find.byWidgetPredicate((w) => w is ButtonStyleButton)),
+        findsOneWidget,
+        reason: 'exactly one button — the CTA — may exist inside HOME',
+      );
+      // Every other interactive type is absent from HOME *outside* the
+      // CTA. Compared against the CTA's own subtree rather than asserted
+      // to zero, because a Material button legitimately builds an InkWell
+      // of its own: this says "the only interactive internals in HOME are
+      // the ones the whitelisted CTA itself contributes", which is the
+      // precise claim, and still fails if anything else grows a gesture.
       for (final interactive in <Finder>[
-        find.byWidgetPredicate((w) => w is ButtonStyleButton),
         find.byType(InkWell),
         find.byType(IconButton),
         find.byType(ListTile),
@@ -354,16 +395,71 @@ void main() {
         find.byType(Switch),
         find.byType(Checkbox),
       ]) {
-        expect(inHome(interactive), findsNothing);
+        expect(
+          inHome(interactive).evaluate().length,
+          find.descendant(of: cta, matching: interactive).evaluate().length,
+          reason:
+              'only the whitelisted CTA may contribute interactive widgets '
+              'to the HOME subtree',
+        );
       }
+      // ...and it is genuinely enabled, not a decorative disabled control.
+      expect(tester.widget<FilledButton>(cta).onPressed, isNotNull);
 
-      // Behavioural: poking at the HOME section changes nothing
-      // authoritative.
+      // Structural: what HOME is handed is a resolved slot carrying one
+      // bound callback — not the aggregate, not the state, not a command
+      // API, and not a table of handlers it could pick from.
+      final slot = tester
+          .widget<PublicDemoHomeDashboardSection>(sectionFinder)
+          .recommendedAction;
+      expect(slot, isA<HomeRecommendedActionAvailable>());
+      final candidate = (slot as HomeRecommendedActionAvailable).candidate;
+      expect(candidate.action, isA<HomeRecommendedAction>());
+      expect(candidate.action.kind, isA<HomeRecommendedActionKind>());
+      expect(candidate.invoke, isA<VoidCallback>());
+
+      // Behavioural: the CTA is bound to an existing PublicDemoAggregate
+      // command — pressing it moves the authoritative workflow exactly the
+      // way April's own SkillSheet確認 button does, and nothing else.
+      final before = currentState(tester);
+      final stageBefore = currentWorkflow(tester).engineers.first.stage;
+      expect(stageBefore, PublicDemoSalesStage.waiting);
+
+      await tester.tap(cta);
+      await settle(tester);
+
+      expect(
+        currentWorkflow(tester).engineers.first.stage,
+        PublicDemoSalesStage.skillSheet,
+        reason: 'the CTA runs the same startSkillSheetReview command',
+      );
+      // Finance is untouched: HOME cannot spend, book, or close anything.
+      final after = currentState(tester);
+      expect(after.month, before.month);
+      expect(after.cash, before.cash);
+      expect(after.pendingRevenue, before.pendingRevenue);
+      expect(after.engineerCount, before.engineerCount);
+      expect(after.engineersAssigned, before.engineersAssigned);
+      expect(after.engineersWaiting, before.engineersWaiting);
+      expect(after.financialStatus, before.financialStatus);
+      expect(after.fiscalYearCompleted, before.fiscalYearCompleted);
+    });
+
+    testWidgets('14b: poking the non-CTA parts of HOME still changes '
+        'nothing authoritative', (tester) async {
+      await pumpDemo(tester);
+
       final before = currentState(tester);
       await tester.tap(inHome(find.byType(KpiSection)), warnIfMissed: false);
       await tester.pumpAndSettle();
       await tester.tap(
         inHome(find.byType(MonthHeaderBar)),
+        warnIfMissed: false,
+      );
+      await tester.pumpAndSettle();
+      // The recommended-action card's own body (not its CTA) is inert too.
+      await tester.tap(
+        find.byKey(const Key('home-recommended-action-headline')),
         warnIfMissed: false,
       );
       await tester.pumpAndSettle();
@@ -377,6 +473,10 @@ void main() {
       expect(after.engineersWaiting, before.engineersWaiting);
       expect(after.financialStatus, before.financialStatus);
       expect(after.fiscalYearCompleted, before.fiscalYearCompleted);
+      expect(
+        currentWorkflow(tester).engineers.first.stage,
+        PublicDemoSalesStage.waiting,
+      );
     });
 
     testWidgets('the projection is not a second SSOT: it is re-derived from '

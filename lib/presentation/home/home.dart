@@ -4,3 +4,4 @@ library;
 export 'home_shell_page.dart';
 export 'models/employee_stage_display.dart';
 export 'models/home_dashboard_display_data.dart';
+export 'models/home_recommended_action.dart';

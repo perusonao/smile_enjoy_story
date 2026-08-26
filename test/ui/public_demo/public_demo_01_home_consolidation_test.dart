@@ -15,9 +15,19 @@
 // reasonable number of taps and which therefore go through the same real
 // domain (PublicDemoMonthlyClose) the screen itself uses.
 //
-// Scope guard: HOME is still read-only in this phase. No button, InkWell or
-// ListTile is added to the HOME subtree, and the projection still carries
-// no financialStatus and no fiscalYearCompleted — see the "boundaries" group.
+// Scope guard: the projection still carries no financialStatus and no
+// fiscalYearCompleted — see the "boundaries" group.
+//
+// HOME-RUNTIME-2C deliberately rewrote the other half of that guard
+// (group 15) here, as the integration design's PHASE 2C requires. "HOME has
+// no interactive element" became "HOME has exactly one — the whitelisted
+// Recommended Action CTA, bound to an existing PublicDemoAggregate
+// command". That is stricter, not weaker: it pins which single element may
+// exist and what it may do, where the old form only counted to zero.
+// 2C also reconciled the `今月やること` slot with the Recommended Action —
+// they are one slot showing one of two things, never two stacked cards —
+// so the tests that pinned the month goal's presence now pin that role
+// split in both directions instead.
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -33,6 +43,7 @@ import 'package:smile_enjoy_story/presentation/home/home.dart';
 import 'package:smile_enjoy_story/presentation/home/widgets/key_events_section.dart';
 import 'package:smile_enjoy_story/presentation/home/widgets/kpi_section.dart';
 import 'package:smile_enjoy_story/presentation/home/widgets/month_header_bar.dart';
+import 'package:smile_enjoy_story/presentation/home/widgets/recommended_action_section.dart';
 import 'package:smile_enjoy_story/ui/public_demo/public_demo_01_placeholder_screen.dart';
 import 'package:smile_enjoy_story/ui/public_demo/public_demo_cash_shortage_card.dart';
 import 'package:smile_enjoy_story/ui/public_demo/public_demo_home_dashboard_section.dart';
@@ -142,9 +153,16 @@ const _targets = <({Size size, double contentBudget})>[
   (size: Size(390, 844), contentBudget: 660),
 ];
 
-/// The 360x800 budget, for the few assertions that only need the tighter
-/// of the two.
-double get _smallestBudget => _targets.first.contentBudget;
+/// How far below the AppBar the HOME block itself may end at 360x800.
+///
+/// HOME-RUNTIME-2A's block measured 282pt (month header + compact KPI +
+/// month-goal card). HOME-RUNTIME-2C swaps the last of those for the
+/// recommended-action card, whose only structural addition is one CTA row.
+/// 320pt is that block plus that row: enough for the phase, and not enough
+/// for a second card to reappear in the slot. It is still barely half of
+/// the 615pt browser-chrome content budget, so the screen's own content
+/// keeps the rest.
+const double _homeBlockCeiling = 320;
 
 void main() {
   group('1-2: the Public Demo entry point is preserved', () {
@@ -167,7 +185,11 @@ void main() {
       expect(sectionFinder, findsOneWidget);
       expect(inHome(find.byType(MonthHeaderBar)), findsOneWidget);
       expect(inHome(find.byType(KpiSection)), findsOneWidget);
-      expect(inHome(find.byType(KeyEventsSection)), findsOneWidget);
+      expect(inHome(find.byType(RecommendedActionSection)), findsOneWidget);
+      // The Phase 1A `重要イベント` placeholder is not part of the runtime
+      // HOME: 2C moved the slot's whole presentation to
+      // RecommendedActionSection.
+      expect(inHome(find.byType(KeyEventsSection)), findsNothing);
     });
   });
 
@@ -246,20 +268,18 @@ void main() {
       expect(find.text('信用'), findsOneWidget);
     });
 
-    testWidgets('14: the month goal is displayed once, in HOME, as text', (
+    testWidgets('14: the month-goal table still has exactly one home, and '
+        'the slot shows it exactly when no action is eligible', (
       tester,
     ) async {
       await pumpDemo(tester);
 
       const aprilGoal = '待機中の技術者を営業し、5月の案件参画を決めましょう';
-      expect(find.text('今月やること'), findsOneWidget);
-      expect(inHome(find.text('今月やること')), findsOneWidget);
-      expect(find.text(aprilGoal), findsOneWidget);
-      expect(inHome(find.text(aprilGoal)), findsOneWidget);
-      expect(homeData(tester).monthGoalText, aprilGoal);
 
-      // The goal moved rather than being copied: the screen no longer has
-      // a month-goal table of its own to fall out of step with.
+      // The table itself did not move again and was not copied: the screen
+      // still has no month-goal switch of its own, and the projection is
+      // still the single place the text comes from.
+      expect(homeData(tester).monthGoalText, aprilGoal);
       expect(
         () =>
             (tester.state(find.byType(PublicDemo01PlaceholderScreen))
@@ -268,12 +288,43 @@ void main() {
         throwsNoSuchMethodError,
       );
 
+      // HOME-RUNTIME-2C: April HAS an eligible action, so the one slot
+      // states that action rather than the month's general goal. The two
+      // never appear together — that is what keeps this a slot and not a
+      // second card stacked above the first.
+      expect(find.byKey(const Key('home-recommended-action')), findsOneWidget);
+      expect(find.text('今月やること'), findsNothing);
+      expect(find.text(aprilGoal), findsNothing);
+      expect(find.byKey(const Key('home-month-goal')), findsNothing);
+
       // And it follows the authoritative month.
       await tapAndSettle(tester, '4月終了→5月');
       await dismiss(tester);
       expect(currentState(tester).month, 5);
-      expect(find.text(aprilGoal), findsNothing);
-      expect(find.text('応募者を採用し、入社前から6月の案件獲得を目指しましょう'), findsOneWidget);
+      expect(
+        homeData(tester).monthGoalText,
+        '応募者を採用し、入社前から6月の案件獲得を目指しましょう',
+      );
+    });
+
+    testWidgets('14b: with no eligible action the same slot falls back to '
+        'the month goal, in HOME, as text', (tester) async {
+      // June on the no-hire route: nothing is assigned, nobody joined, and
+      // no engineer is in a sellable stage — the design table's "none of
+      // the above" row.
+      await pumpDemo(tester);
+      await tapAndSettle(tester, '4月終了→5月');
+      await dismiss(tester);
+      await tapAndSettle(tester, '5月終了→6月');
+      await settle(tester);
+      expect(currentState(tester).month, 6);
+
+      const juneGoal = '翌月の発注を確認し、7月も稼働できる状態を作りましょう';
+      expect(find.byKey(const Key('home-recommended-action')), findsNothing);
+      expect(find.text('今月やること'), findsOneWidget);
+      expect(inHome(find.text('今月やること')), findsOneWidget);
+      expect(find.text(juneGoal), findsOneWidget);
+      expect(inHome(find.text(juneGoal)), findsOneWidget);
     });
   });
 
@@ -372,29 +423,47 @@ void main() {
     });
   });
 
-  group('15: HOME is still read-only', () {
-    testWidgets('the whole HOME subtree — including the new month-goal slot '
-        '— has no interactive element and no mutation path', (tester) async {
+  group('15: HOME\'s only mutation path is the whitelisted CTA', () {
+    testWidgets('the HOME subtree has exactly one interactive element — the '
+        'Recommended Action CTA — and everything else is still inert', (
+      tester,
+    ) async {
       await pumpDemo(tester);
 
+      final cta = find.byKey(const Key('home-recommended-action-cta'));
+      expect(inHome(cta), findsOneWidget);
+      expect(
+        inHome(find.byWidgetPredicate((w) => w is ButtonStyleButton)),
+        findsOneWidget,
+        reason: 'the CTA is the ONLY button HOME is allowed to contain',
+      );
+      // Every other interactive type is absent outside the CTA's own
+      // subtree — compared against the CTA rather than to zero, because a
+      // Material button legitimately builds an InkWell of its own.
       for (final interactive in <Finder>[
-        find.byWidgetPredicate((w) => w is ButtonStyleButton),
         find.byType(InkWell),
-        find.byType(ListTile),
         find.byType(GestureDetector),
+        find.byType(ListTile),
         find.byType(IconButton),
         find.byType(TextField),
         find.byType(Switch),
         find.byType(Checkbox),
       ]) {
-        expect(inHome(interactive), findsNothing);
+        expect(
+          inHome(interactive).evaluate().length,
+          find.descendant(of: cta, matching: interactive).evaluate().length,
+          reason:
+              'only the whitelisted CTA may contribute interactive widgets '
+              'to the HOME subtree',
+        );
       }
 
+      // The non-CTA parts of HOME remain completely inert.
       final before = currentState(tester);
       for (final target in <Finder>[
         inHome(find.byType(KpiSection)),
         inHome(find.byType(MonthHeaderBar)),
-        inHome(find.byType(KeyEventsSection)),
+        find.byKey(const Key('home-recommended-action-headline')),
       ]) {
         await tester.tap(target, warnIfMissed: false);
         await tester.pumpAndSettle();
@@ -482,10 +551,76 @@ void main() {
       final viewport = tester.getRect(find.byType(ListView));
       final home = tester.getRect(sectionFinder);
       expect(home.top, greaterThanOrEqualTo(viewport.top));
-      // The HOME block is a summary, not the screen: it must leave room for
-      // real content underneath it inside the browser-chrome budget.
-      expect(home.bottom - viewport.top, lessThan(_smallestBudget / 2));
+      // The HOME block is a summary plus one CTA, not the screen: it must
+      // still leave room for real content underneath it inside the
+      // browser-chrome budget.
+      //
+      // HOME-RUNTIME-2C raised this ceiling from `_smallestBudget / 2`
+      // (307.5pt) to _homeBlockCeiling, once and deliberately. 2A's HOME
+      // measured 282pt; 2C replaces its month-goal card with the
+      // recommended-action card, which costs the height of one CTA row.
+      // The ceiling is the 2A block plus that row and nothing more, so it
+      // still fails the moment the slot grows into a second card — which
+      // is the regression this assertion exists to catch. What the number
+      // may NOT be traded against is the CTA's tap target: the budget was
+      // raised rather than the button shrunk below 48pt.
+      expect(home.bottom - viewport.top, lessThanOrEqualTo(_homeBlockCeiling));
     });
+
+    for (final (:size, :contentBudget) in _targets) {
+      final label = '${size.width.toInt()}x${size.height.toInt()}';
+
+      testWidgets('2C: the Recommended Action CTA is itself inside the '
+          'first view, above where the legacy button sits, at $label', (
+        tester,
+      ) async {
+        await pumpDemoAt(tester, size);
+
+        expect(
+          tester
+              .state<ScrollableState>(find.byType(Scrollable).first)
+              .position
+              .pixels,
+          0,
+          reason: 'this must describe the unscrolled screen',
+        );
+
+        final viewport = tester.getRect(find.byType(ListView));
+        final cta = tester.getRect(
+          find.byKey(const Key('home-recommended-action-cta')),
+        );
+        final headline = tester.getRect(
+          find.byKey(const Key('home-recommended-action-headline')),
+        );
+        final legacy = tester.getRect(actionButton('SkillSheet確認'));
+
+        // Both halves of the message — who/what, and where to tap — are
+        // painted inside the viewport and inside the browser-chrome budget.
+        expect(headline.top, greaterThanOrEqualTo(viewport.top));
+        expect(cta.bottom, lessThanOrEqualTo(viewport.bottom));
+        expect(
+          cta.bottom - viewport.top,
+          lessThanOrEqualTo(contentBudget),
+          reason:
+              'the CTA ends ${cta.bottom - viewport.top}pt below the AppBar; '
+              'the browser-chrome content budget at $label is '
+              '${contentBudget}pt',
+        );
+
+        // The whole point of the phase: the next action is now reachable
+        // far higher than the per-employee button it shortcuts to.
+        expect(
+          cta.bottom,
+          lessThan(legacy.top),
+          reason:
+              'the Recommended Action must sit above the employee card '
+              'action it leads to',
+        );
+
+        // A 48pt tap target was not sacrificed to fit.
+        expect(cta.height, greaterThanOrEqualTo(44.0));
+      });
+    }
   });
 
   group('18, 24: every action the cleanup touched is still reachable', () {
@@ -805,7 +940,17 @@ void main() {
           expect(rect.height, greaterThan(20.0), reason: tile);
         }
         expect(
-          tester.getRect(find.byKey(const Key('home-month-goal-text'))).right,
+          tester
+              .getRect(
+                find.byKey(const Key('home-recommended-action-headline')),
+              )
+              .right,
+          lessThanOrEqualTo(size.width),
+        );
+        expect(
+          tester
+              .getRect(find.byKey(const Key('home-recommended-action-cta')))
+              .right,
           lessThanOrEqualTo(size.width),
         );
 

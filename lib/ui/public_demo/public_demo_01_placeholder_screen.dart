@@ -1,3 +1,5 @@
+import 'dart:async' show unawaited;
+
 import 'package:flutter/material.dart';
 import '../../game/public_demo/public_demo_aggregate.dart';
 import '../../game/public_demo/public_demo_assignment.dart';
@@ -12,10 +14,12 @@ import '../../game/public_demo/public_demo_salary_finance.dart';
 import '../../game/public_demo/public_demo_salary.dart';
 import '../../game/public_demo/public_demo_state.dart';
 import '../../game/public_demo/public_demo_employee_condition.dart';
+import '../../game/public_demo/public_demo_financial_status.dart';
 import '../../game/public_demo/public_demo_raise.dart';
 import '../../game/public_demo/public_demo_summer_bonus_plan.dart';
 import '../../game/public_demo/public_demo_workflow_state.dart';
 import '../../presentation/home/models/home_dashboard_display_data.dart';
+import '../../presentation/home/models/home_recommended_action.dart';
 import '../asset_paths.dart';
 import 'public_demo_event_dialog.dart';
 import 'public_demo_cash_shortage_card.dart';
@@ -27,6 +31,17 @@ import 'public_demo_sales_progress.dart';
 import 'public_demo_salary_offer_dialog.dart';
 import 'public_demo_raise_dialog.dart';
 import 'public_demo_summer_bonus_dialog.dart';
+
+/// Signature of the local collector the HOME-RUNTIME-2C emit helpers append
+/// to. Named rather than inlined so each helper's shape is obvious at a
+/// glance, and so no helper can accidentally take a different collector.
+typedef _AddCandidate =
+    void Function(
+      HomeRecommendedActionKind kind,
+      VoidCallback invoke, {
+      String? subjectName,
+      String? targetId,
+    });
 
 class PublicDemo01PlaceholderScreen extends StatefulWidget {
   const PublicDemo01PlaceholderScreen({super.key});
@@ -135,6 +150,85 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
 
   void _selectInternalTraining(String engineerId) {
     setState(() => _game = _game.selectInternalTraining(engineerId));
+  }
+
+  // HOME-RUNTIME-2C: the engineer/applicant stage commands below were
+  // inline `onPressed:` closures until this phase. They are named methods
+  // now for exactly one reason: the HOME Recommended Action CTA and the
+  // employee card's own button must be the *same* binding, not two closures
+  // that happen to call the same command today. Each is bound once, at the
+  // single site that emits the candidate and renders the button together,
+  // so the two can never drift apart. No command, guard, or key changed.
+  void _startSkillSheetReview(String engineerId) =>
+      setState(() => _game = _game.startSkillSheetReview(engineerId));
+
+  void _beginSelling(String engineerId) =>
+      setState(() => _game = _game.beginSelling(engineerId));
+
+  void _introduceProject(String engineerId) =>
+      setState(() => _game = _game.introduceProject(engineerId));
+
+  void _reviewResume(String applicantId) =>
+      setState(() => _game = _game.reviewResume(applicantId));
+
+  void _beginPreEntrySkillSheet(String applicantId) =>
+      setState(() => _game = _game.beginPreEntrySkillSheet(applicantId));
+
+  void _beginPreEntrySelling(String applicantId) =>
+      setState(() => _game = _game.beginPreEntrySelling(applicantId));
+
+  void _introducePreEntryProject(String applicantId) =>
+      setState(() => _game = _game.introducePreEntryProject(applicantId));
+
+  /// Records the engineer's order, then shows the order event. Extracted
+  /// verbatim from the `受注` button's own closure.
+  Future<void> _recordEngineerOrder(PublicDemoEngineerSales e) async {
+    setState(() => _game = _game.recordOrder(e.id));
+    if (!mounted) return;
+    await _precacheEventImage(AssetPaths.eventOrderDecision);
+    if (!mounted) return;
+    await showDialog<void>(
+      context: context,
+      builder: (context) => PublicDemoEventDialog(
+        title: '案件を受注しました',
+        imageAsset: AssetPaths.eventOrderDecision,
+        imageKey: const Key('public-demo-order-decision-image'),
+        message: '${e.name}さんの5月分案件を受注しました。',
+        nextAction: '翌月からの参画に備え、残りの営業状況も確認しましょう。',
+      ),
+    );
+  }
+
+  /// Records the applicant's June order, then shows the order event.
+  /// Extracted verbatim from the `6月受注` button's own closure.
+  Future<void> _recordApplicantJuneOrder(PublicDemoApplicant a) async {
+    setState(() => _game = _game.recordJuneOrder(a.id));
+    if (!mounted) return;
+    await _precacheEventImage(AssetPaths.eventOrderDecision);
+    if (!mounted) return;
+    await showDialog<void>(
+      context: context,
+      builder: (context) => PublicDemoEventDialog(
+        title: '案件を受注しました',
+        imageAsset: AssetPaths.eventOrderDecision,
+        imageKey: const Key('public-demo-order-decision-image'),
+        message: '${a.name}さんの6月分案件を受注しました。',
+        nextAction: '入社と初参画に向けて6月へ進みましょう。',
+      ),
+    );
+  }
+
+  /// The HOME-RUNTIME-2C P0 CTA. Purely a scroll: the FINANCE-FAILURE-1C
+  /// shortage card at the top of this screen *is* the response, and this
+  /// only brings the player back to it. It touches no state and no command,
+  /// so no finance authority moves into the recommendation path.
+  void _scrollToShortageCard() {
+    if (!_scrollController.hasClients) return;
+    _scrollController.animateTo(
+      0,
+      duration: const Duration(milliseconds: 250),
+      curve: Curves.easeOut,
+    );
   }
 
   @override
@@ -760,6 +854,421 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
         tapTargetSize: MaterialTapTargetSize.shrinkWrap,
       );
 
+
+  // =====================================================================
+  // HOME-RUNTIME-2C — Recommended Action: eligibility emission
+  // =====================================================================
+  //
+  // This screen is the eligibility authority, and this is the only place
+  // that decides *which* actions are recommendable. HOME ranks and renders
+  // what it is given; it never asks a question of its own.
+  //
+  // The rule every emit site below follows, without exception:
+  //
+  //   A candidate is emitted only from the same `if (s.month == N)` branch,
+  //   under the same predicate, as the production button it triggers.
+  //
+  // That is not a stylistic preference — it is the whole correctness
+  // argument. Action availability in Public Demo is not expressible as a
+  // per-action predicate: it is a predicate *inside a month-gated UI
+  // branch*. `canUseRecruitmentMediaInMonth(month)` is the standing example
+  // — it is satisfied in months where no 求人媒体 card is rendered at all, so
+  // a recommendation engine that consulted the predicate alone would offer
+  // the player a button that does not exist. Reading the predicate at the
+  // render site instead makes that class of bug unrepresentable.
+  //
+  // Consequences worth stating explicitly:
+  //
+  //  * Nothing here re-implements a game rule. Every predicate below is
+  //    read verbatim off the authority (`s`, `workflow`, the same getters
+  //    the buttons already use); none is recombined into a new one.
+  //  * Nothing disabled is ever emitted. Where a button has an enablement
+  //    condition (`salesRemaining > 0`, affordability, interview score),
+  //    the candidate carries that same condition, so the CTA is never a
+  //    dead affordance.
+  //  * Every domain guard still runs anyway. `invoke` enters
+  //    `PublicDemoAggregate` through the same command, so the UI check
+  //    below is a second line of defence, never the only one.
+  //  * The month close is deliberately never a candidate: MONTH END CTA
+  //    PLAN keeps it at the bottom of the scroll, and it belongs to
+  //    HOME-RUNTIME-2D.
+
+  /// The recommended-action slot for this build.
+  ///
+  /// A getter, never a [State] field, for exactly the reason
+  /// [_homeDashboardData] is one: it is evaluated while [build] runs, so it
+  /// always describes the state of *that* build and can never go stale.
+  /// Presentation ranking is not persisted and not authoritative (SAVE
+  /// AUTHORITY) — nothing here is written back to [_game].
+  HomeRecommendedActionSlot get _recommendedActionSlot {
+    // TERMINAL PLAN: bankruptcy, the March cash-shortage failure and fiscal
+    // completion all mean the same thing for this slot — there is no next
+    // action. `isCloseBlocked` is the authority's own name for exactly that
+    // set, so the check reads it rather than restating its three cases.
+    //
+    // This decision is made here, by the owner that can see
+    // `financialStatus` and `fiscalYearCompleted`, and only its *outcome*
+    // crosses into HOME. The projection still carries no financial verdict,
+    // so HOME remains structurally unable to render one.
+    if (s.isCloseBlocked) return const HomeRecommendedActionSuppressed();
+
+    final selected = selectHomeRecommendedAction(_recommendedActionCandidates);
+    return selected == null
+        ? const HomeRecommendedActionNone()
+        : HomeRecommendedActionAvailable(selected);
+  }
+
+  /// Every action that is legal *and* on screen right now, in the order
+  /// [build] renders it. Ordering matters only as the selector's tie-break
+  /// (`workflow.engineers` / `.applicants` / `.assignments` order, per the
+  /// design); which one wins is decided by presentation priority.
+  List<HomeRecommendedActionCandidate> get _recommendedActionCandidates {
+    final candidates = <HomeRecommendedActionCandidate>[];
+
+    void add(
+      HomeRecommendedActionKind kind,
+      VoidCallback invoke, {
+      String? subjectName,
+      String? targetId,
+    }) {
+      candidates.add(
+        HomeRecommendedActionCandidate(
+          action: HomeRecommendedAction(
+            kind: kind,
+            subjectName: subjectName,
+            targetId: targetId,
+          ),
+          invoke: invoke,
+        ),
+      );
+    }
+
+    // ---- P0: the shortage card, which build() renders above HOME in
+    // every month while this status holds. FINANCE AUTHORITY is untouched:
+    // this reads the authoritative status to decide *where to point the
+    // player*, and the CTA only scrolls.
+    if (s.financialStatus == PublicDemoFinancialStatus.cashShortage) {
+      add(
+        HomeRecommendedActionKind.cashShortageResponse,
+        _scrollToShortageCard,
+      );
+    }
+
+    // ---- month 4: `for (...) ec(i)` ----------------------------------
+    if (s.month == 4) {
+      for (final e in workflow.engineers) {
+        _addEngineerStageCandidate(add, e);
+      }
+    }
+
+    // ---- month 5: recruitment media, then `for (...) ac(i)` ----------
+    if (s.month == 5) {
+      _addRecruitmentMediaCandidate(add);
+      for (final a in workflow.applicants) {
+        _addApplicantStageCandidate(add, a);
+      }
+    }
+
+    // ---- month 6: condition cards, the still-selling engineers, then
+    // the assignment cards — the same three loops, with the same filters.
+    if (s.month == 6) {
+      for (final a in _joinedEmployees) {
+        _addRaiseCandidate(add, a);
+      }
+      for (final e in workflow.engineers) {
+        if (!s.joinedApplicantIds.contains(e.id)) continue;
+        if (e.stage == PublicDemoSalesStage.ordered) continue;
+        if (workflow.assignments.any((x) => x.engineerId == e.id)) continue;
+        _addEngineerStageCandidate(add, e);
+      }
+      for (final a in workflow.assignments) {
+        _addAssignmentCandidate(add, a);
+      }
+    }
+
+    // ---- month 7: the summer-bonus decision --------------------------
+    //
+    // July's 求人媒体 card is rendered and enabled here too, but it is
+    // deliberately NOT a candidate — see
+    // [_addRecruitmentMediaCandidate]'s doc for why.
+    if (s.month == 7) {
+      // The bonus button is rendered (and enabled) all month and doubles
+      // as `夏季賞与を変更` once decided. Only the *undecided* case is
+      // recommendable — re-deciding is not the next thing to do.
+      if (!_summerBonusDecisionConfirmed) {
+        add(
+          HomeRecommendedActionKind.summerBonusDecision,
+          () => unawaited(decideSummerBonus()),
+        );
+      }
+    }
+
+    // ---- month >= 7: the standalone condition cards ------------------
+    if (s.month >= 7) {
+      for (final a in _joinedEmployees) {
+        _addRaiseCandidate(add, a);
+      }
+    }
+
+    return candidates;
+  }
+
+  /// The joined employees `employeeConditionCard` is rendered for — the
+  /// same `where` clause, read once so months 6 and 7+ cannot drift.
+  Iterable<PublicDemoApplicant> get _joinedEmployees => workflow.applicants
+      .where((a) => s.joinedApplicantIds.contains(a.id) && a.hasJoined);
+
+  /// Mirrors `ec(i)`'s stage buttons, branch for branch. The two `Ready`
+  /// stages emit nothing when `readyForFieldSales` is false, exactly as the
+  /// card renders no button there.
+  void _addEngineerStageCandidate(_AddCandidate add, PublicDemoEngineerSales e) {
+    void emit(HomeRecommendedActionKind kind, VoidCallback invoke) =>
+        add(kind, invoke, subjectName: e.name, targetId: e.id);
+
+    switch (e.stage) {
+      case PublicDemoSalesStage.waiting:
+        if (readyForFieldSales(e.id)) {
+          emit(
+            HomeRecommendedActionKind.employeeSkillSheetReview,
+            () => _startSkillSheetReview(e.id),
+          );
+        }
+      case PublicDemoSalesStage.skillSheet:
+        if (readyForFieldSales(e.id)) {
+          emit(
+            HomeRecommendedActionKind.employeeBeginSelling,
+            () => _beginSelling(e.id),
+          );
+        }
+      case PublicDemoSalesStage.selling:
+        emit(
+          HomeRecommendedActionKind.employeeIntroduceProject,
+          () => _introduceProject(e.id),
+        );
+      case PublicDemoSalesStage.introduced:
+        // `上位会社面談` is the one engineer button with an enablement
+        // condition; an exhausted sales slot means no candidate, not a
+        // disabled CTA.
+        if (s.salesRemaining > 0) {
+          emit(
+            HomeRecommendedActionKind.employeePartnerInterview,
+            () => unawaited(
+              ei(
+                workflow.engineers.indexWhere((x) => x.id == e.id),
+                PublicDemoInterviewType.partner,
+              ),
+            ),
+          );
+        }
+      case PublicDemoSalesStage.partnerInterviewPassed:
+        emit(
+          HomeRecommendedActionKind.employeeClientInterview,
+          () => unawaited(
+            ei(
+              workflow.engineers.indexWhere((x) => x.id == e.id),
+              PublicDemoInterviewType.client,
+            ),
+          ),
+        );
+      case PublicDemoSalesStage.clientInterviewPassed:
+        emit(
+          HomeRecommendedActionKind.employeeAcceptOrder,
+          () => unawaited(_recordEngineerOrder(e)),
+        );
+      case PublicDemoSalesStage.partnerInterviewFailed:
+      case PublicDemoSalesStage.clientInterviewFailed:
+        emit(
+          HomeRecommendedActionKind.employeeResumeSelling,
+          () => _beginSelling(e.id),
+        );
+      case PublicDemoSalesStage.ordered:
+        // No button on the card at this stage, so no candidate.
+        break;
+    }
+  }
+
+  /// Mirrors `ac(i)`'s stage buttons, branch for branch.
+  void _addApplicantStageCandidate(_AddCandidate add, PublicDemoApplicant a) {
+    void emit(HomeRecommendedActionKind kind, VoidCallback invoke) =>
+        add(kind, invoke, subjectName: a.name, targetId: a.id);
+
+    final index = workflow.applicants.indexWhere((x) => x.id == a.id);
+
+    switch (a.stage) {
+      case PublicDemoApplicantStage.applied:
+        emit(
+          HomeRecommendedActionKind.applicantReviewResume,
+          () => _reviewResume(a.id),
+        );
+      case PublicDemoApplicantStage.resumeReviewed:
+        if (s.salesRemaining > 0) {
+          emit(
+            HomeRecommendedActionKind.applicantInterview,
+            () => recruit(index),
+          );
+        }
+      case PublicDemoApplicantStage.interviewed:
+        if (a.interviewScore >= 60) {
+          emit(
+            HomeRecommendedActionKind.applicantSalaryOffer,
+            () => unawaited(offer(index)),
+          );
+        }
+      case PublicDemoApplicantStage.offerAccepted:
+        // The card renders a button only for the pre-join sales path; the
+        // other branch is the read-only `入社後、研修で育成します` line.
+        if (a.canEnterPreJoinSales) {
+          emit(
+            HomeRecommendedActionKind.applicantBeginPreEntrySkillSheet,
+            () => _beginPreEntrySkillSheet(a.id),
+          );
+        }
+      case PublicDemoApplicantStage.preEntrySkillSheet:
+        emit(
+          HomeRecommendedActionKind.applicantBeginPreEntrySelling,
+          () => _beginPreEntrySelling(a.id),
+        );
+      case PublicDemoApplicantStage.preEntrySelling:
+        emit(
+          HomeRecommendedActionKind.applicantIntroduceProject,
+          () => _introducePreEntryProject(a.id),
+        );
+      case PublicDemoApplicantStage.preEntryIntroduced:
+        if (s.salesRemaining > 0) {
+          emit(
+            HomeRecommendedActionKind.applicantPartnerInterview,
+            () => unawaited(pi(index)),
+          );
+        }
+      case PublicDemoApplicantStage.preEntryPartnerPassed:
+        emit(
+          HomeRecommendedActionKind.applicantClientInterview,
+          () => unawaited(ci(index)),
+        );
+      case PublicDemoApplicantStage.preEntryClientPassed:
+        emit(
+          HomeRecommendedActionKind.applicantJuneOrder,
+          () => unawaited(_recordApplicantJuneOrder(a)),
+        );
+      case PublicDemoApplicantStage.rejected:
+      case PublicDemoApplicantStage.offerDeclined:
+      case PublicDemoApplicantStage.preEntryPartnerFailed:
+      case PublicDemoApplicantStage.preEntryClientFailed:
+      case PublicDemoApplicantStage.juneOrdered:
+        // No button on the card at these stages, so no candidate.
+        break;
+    }
+  }
+
+  /// Mirrors `assignmentCard(i)`, branch for branch — including the fact
+  /// that the whole replacement chain only exists under `notOffered`.
+  void _addAssignmentCandidate(_AddCandidate add, PublicDemoAssignment a) {
+    final index = workflow.assignments.indexWhere(
+      (x) => x.engineerId == a.engineerId,
+    );
+    void emit(HomeRecommendedActionKind kind, VoidCallback invoke) =>
+        add(kind, invoke, subjectName: a.engineerName, targetId: a.engineerId);
+
+    switch (a.nextOrderStatus) {
+      case PublicDemoNextOrderStatus.undecided:
+        emit(
+          HomeRecommendedActionKind.assignmentConfirmNextOrder,
+          () => decideOrder(index),
+        );
+      case PublicDemoNextOrderStatus.offered:
+        emit(
+          HomeRecommendedActionKind.assignmentAcceptNextOrder,
+          () => acceptOrder(index),
+        );
+      case PublicDemoNextOrderStatus.accepted:
+        // `7月：現案件継続予定` — nothing left to do for this engineer.
+        break;
+      case PublicDemoNextOrderStatus.notOffered:
+        switch (a.replacementStage) {
+          case PublicDemoReplacementStage.none:
+            emit(
+              HomeRecommendedActionKind.assignmentBeginReplacementSelling,
+              () => ars(index, PublicDemoReplacementStage.selling),
+            );
+          case PublicDemoReplacementStage.selling:
+            emit(
+              HomeRecommendedActionKind.assignmentIntroduceReplacementProject,
+              () => ars(index, PublicDemoReplacementStage.introduced),
+            );
+          case PublicDemoReplacementStage.introduced:
+            if (s.salesRemaining > 0) {
+              emit(
+                HomeRecommendedActionKind
+                    .assignmentReplacementPartnerInterview,
+                () => replacementPartner(index),
+              );
+            }
+          case PublicDemoReplacementStage.partnerPassed:
+            emit(
+              HomeRecommendedActionKind.assignmentReplacementClientInterview,
+              () => replacementClient(index),
+            );
+          case PublicDemoReplacementStage.partnerFailed:
+          case PublicDemoReplacementStage.clientFailed:
+            emit(
+              HomeRecommendedActionKind.assignmentResumeReplacementSelling,
+              () => ars(index, PublicDemoReplacementStage.selling),
+            );
+          case PublicDemoReplacementStage.clientPassed:
+            emit(
+              HomeRecommendedActionKind.assignmentAcceptReplacementOrder,
+              () => ars(index, PublicDemoReplacementStage.ordered),
+            );
+          case PublicDemoReplacementStage.ordered:
+            // `7月：新案件参画予定` — nothing left to do.
+            break;
+        }
+    }
+  }
+
+  /// Mirrors `employeeConditionCard`'s raise button. `isCloseBlocked` is
+  /// already excluded upstream; `canRequestRaiseIn` stays the authority.
+  void _addRaiseCandidate(_AddCandidate add, PublicDemoApplicant a) {
+    if (!a.canRequestRaiseIn(s.month)) return;
+    add(
+      HomeRecommendedActionKind.raiseRequest,
+      () => unawaited(raise(workflow.applicants.indexWhere((x) => x.id == a.id))),
+      subjectName: a.name,
+      targetId: a.id,
+    );
+  }
+
+  /// Mirrors `_RecruitmentMediaCard`'s enablement: the card is rendered all
+  /// month, but its button is disabled once the month's single use is
+  /// spent, so only the usable case is a candidate.
+  ///
+  /// Called from the month-5 branch only, and deliberately not from
+  /// month 7, even though `build` renders the same card there.
+  /// `_RecruitmentMediaCard` and `ac(i)` are rendered together in May, so a
+  /// May hire can be reviewed, interviewed, offered and sold; in July the
+  /// card is rendered *without* the applicant list, and no later month
+  /// renders it either, so applicants generated in July can never be
+  /// advanced. Recommending it there would spend the player's cash (up to
+  /// ¥100,000 on the engineer medium) on candidates that are structurally
+  /// unusable — a dead end AGENTS.md's Failure Recovery rule forbids, and
+  /// the opposite of what this slot exists to do.
+  ///
+  /// This is a recommendation decision only. July's card, its button and
+  /// its command are untouched: a player who wants to use it still can,
+  /// exactly as before this phase. Whether that July card should exist at
+  /// all — or whether July should render the applicant pipeline — is a
+  /// pre-existing product question, outside HOME-RUNTIME-2C.
+  void _addRecruitmentMediaCandidate(_AddCandidate add) {
+    if (!s.canUseRecruitmentMediaInMonth(s.month)) return;
+    add(
+      HomeRecommendedActionKind.recruitmentMedia,
+      () => unawaited(_openRecruitmentMedia()),
+    );
+  }
+
+  // Internal training is deliberately not emitted — see
+  // HomeRecommendedActionKind's "deliberate absences".
+
   Widget assignmentCard(int i) {
     final a = workflow.assignments[i];
     return Card(
@@ -873,22 +1382,19 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
                 readyForFieldSales(e.id)) ...[
               const Text('営業準備OK', style: TextStyle(fontSize: 12)),
               FilledButton(
-                onPressed: () =>
-                    setState(() => _game = _game.startSkillSheetReview(e.id)),
+                onPressed: () => _startSkillSheetReview(e.id),
                 child: const Text('SkillSheet確認'),
               ),
             ],
             if (e.stage == PublicDemoSalesStage.skillSheet &&
                 readyForFieldSales(e.id))
               FilledButton(
-                onPressed: () =>
-                    setState(() => _game = _game.beginSelling(e.id)),
+                onPressed: () => _beginSelling(e.id),
                 child: const Text('営業開始'),
               ),
             if (e.stage == PublicDemoSalesStage.selling)
               FilledButton(
-                onPressed: () =>
-                    setState(() => _game = _game.introduceProject(e.id)),
+                onPressed: () => _introduceProject(e.id),
                 child: const Text('案件紹介'),
               ),
             if (e.stage == PublicDemoSalesStage.introduced)
@@ -905,29 +1411,13 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
               ),
             if (e.stage == PublicDemoSalesStage.clientInterviewPassed)
               FilledButton(
-                onPressed: () async {
-                  setState(() => _game = _game.recordOrder(e.id));
-                  if (!mounted) return;
-                  await _precacheEventImage(AssetPaths.eventOrderDecision);
-                  if (!mounted) return;
-                  await showDialog<void>(
-                    context: context,
-                    builder: (context) => PublicDemoEventDialog(
-                      title: '案件を受注しました',
-                      imageAsset: AssetPaths.eventOrderDecision,
-                      imageKey: const Key('public-demo-order-decision-image'),
-                      message: '${e.name}さんの5月分案件を受注しました。',
-                      nextAction: '翌月からの参画に備え、残りの営業状況も確認しましょう。',
-                    ),
-                  );
-                },
+                onPressed: () => _recordEngineerOrder(e),
                 child: const Text('受注'),
               ),
             if (e.stage == PublicDemoSalesStage.partnerInterviewFailed ||
                 e.stage == PublicDemoSalesStage.clientInterviewFailed)
               FilledButton(
-                onPressed: () =>
-                    setState(() => _game = _game.beginSelling(e.id)),
+                onPressed: () => _beginSelling(e.id),
                 child: const Text('再営業'),
               ),
             // HOME-RUNTIME-2A: internal training is this employee's
@@ -979,8 +1469,7 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
             const SizedBox(height: 8),
             if (a.stage == PublicDemoApplicantStage.applied)
               FilledButton(
-                onPressed: () =>
-                    setState(() => _game = _game.reviewResume(a.id)),
+                onPressed: () => _reviewResume(a.id),
                 child: const Text('経歴書確認'),
               ),
             if (a.stage == PublicDemoApplicantStage.resumeReviewed)
@@ -999,8 +1488,7 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
             if (a.stage == PublicDemoApplicantStage.offerAccepted &&
                 a.canEnterPreJoinSales)
               FilledButton(
-                onPressed: () =>
-                    setState(() => _game = _game.beginPreEntrySkillSheet(a.id)),
+                onPressed: () => _beginPreEntrySkillSheet(a.id),
                 child: const Text('入社前SkillSheet'),
               ),
             if (a.stage == PublicDemoApplicantStage.offerAccepted &&
@@ -1008,15 +1496,12 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
               const Text('入社後、研修で育成します'),
             if (a.stage == PublicDemoApplicantStage.preEntrySkillSheet)
               FilledButton(
-                onPressed: () =>
-                    setState(() => _game = _game.beginPreEntrySelling(a.id)),
+                onPressed: () => _beginPreEntrySelling(a.id),
                 child: const Text('入社前営業'),
               ),
             if (a.stage == PublicDemoApplicantStage.preEntrySelling)
               FilledButton(
-                onPressed: () => setState(
-                  () => _game = _game.introducePreEntryProject(a.id),
-                ),
+                onPressed: () => _introducePreEntryProject(a.id),
                 child: const Text('案件紹介'),
               ),
             if (a.stage == PublicDemoApplicantStage.preEntryIntroduced)
@@ -1028,22 +1513,7 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
               FilledButton(onPressed: () => ci(i), child: const Text('客先面談')),
             if (a.stage == PublicDemoApplicantStage.preEntryClientPassed)
               FilledButton(
-                onPressed: () async {
-                  setState(() => _game = _game.recordJuneOrder(a.id));
-                  if (!mounted) return;
-                  await _precacheEventImage(AssetPaths.eventOrderDecision);
-                  if (!mounted) return;
-                  await showDialog<void>(
-                    context: context,
-                    builder: (context) => PublicDemoEventDialog(
-                      title: '案件を受注しました',
-                      imageAsset: AssetPaths.eventOrderDecision,
-                      imageKey: const Key('public-demo-order-decision-image'),
-                      message: '${a.name}さんの6月分案件を受注しました。',
-                      nextAction: '入社と初参画に向けて6月へ進みましょう。',
-                    ),
-                  );
-                },
+                onPressed: () => _recordApplicantJuneOrder(a),
                 child: const Text('6月受注'),
               ),
           ],
@@ -1113,7 +1583,10 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
                 // HOME-RUNTIME-2A: its MonthHeaderBar is now the only month
                 // display on the screen — the `N月` headline that used to
                 // restate it here is deleted.
-                PublicDemoHomeDashboardSection(data: _homeDashboardData),
+                PublicDemoHomeDashboardSection(
+                  data: _homeDashboardData,
+                  recommendedAction: _recommendedActionSlot,
+                ),
                 dashboard(),
                 if (s.month == 4) ...[
                   for (var i = 0; i < workflow.engineers.length; i++) ec(i),

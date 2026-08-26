@@ -23,6 +23,21 @@ final _sampleData = HomeDashboardDisplayData.fromPublicDemoState(
       .copyWith(cash: 2500000, pendingRevenue: 500000),
 );
 
+/// Isolates the 現金 tile's formatting from the other 万-formatted tiles
+/// (売上/入金予定): [revenue]/[pendingRevenue] are pinned to a value whose
+/// formatted text never collides with any of the small cash boundary
+/// values this file tests, so `find.text(expected)` below can safely
+/// assert `findsOneWidget` instead of a looser `findsWidgets`.
+HomeDashboardDisplayData _dataWithCash(int cash) => HomeDashboardDisplayData(
+  year: 1,
+  monthLabel: '4月',
+  cash: cash,
+  revenue: 1230000000,
+  pendingRevenue: 1230000000,
+  employeeCount: 0,
+  assignedEmployeeCount: 0,
+);
+
 Future<void> _pump(WidgetTester tester, Widget child) async {
   await tester.pumpWidget(MaterialApp(home: Scaffold(body: child)));
   await tester.pumpAndSettle();
@@ -89,6 +104,37 @@ void main() {
       expect(find.text('¥50万'), findsNWidgets(2));
       // 稼働案件/信用 have no HOME-UI-1C authority yet and stay placeholders.
       expect(find.text('—'), findsNWidgets(2));
+    });
+
+    group('negative cash formatting (P2)', () {
+      // `floor()`-based yen formatting rounded a small negative cash value
+      // (e.g. -5,000) away from zero to -1万 instead of the correct 0万 —
+      // reported as a P2 finding in HOME-UI-1C's independent review. This
+      // matrix pins down the required boundary behavior on both sides of
+      // zero, mirroring how the existing positive case already worked.
+      const cases = <int, String>{
+        0: '¥0万',
+        5000: '¥0万',
+        9999: '¥0万',
+        10000: '¥1万',
+        15000: '¥1万',
+        -1: '¥0万',
+        -5000: '¥0万',
+        -9999: '¥0万',
+        -10000: '¥-1万',
+        -15000: '¥-1万',
+      };
+
+      for (final entry in cases.entries) {
+        testWidgets('cash=${entry.key} renders ${entry.value}', (tester) async {
+          await _pumpScrollable(
+            tester,
+            KpiSection(data: _dataWithCash(entry.key)),
+          );
+
+          expect(find.text(entry.value), findsOneWidget);
+        });
+      }
     });
   });
 

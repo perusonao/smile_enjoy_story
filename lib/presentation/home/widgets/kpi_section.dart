@@ -17,7 +17,12 @@ class _KpiTileData {
   final String? value;
 }
 
-String _yen(int amount) => '¥${(amount / 10000).floor()}万';
+// `floor()` rounds toward negative infinity, so a small negative amount
+// (e.g. -5,000) would floor to -1万 instead of the correct 0万 — overstating
+// a shortfall that hasn't actually reached ¥1万 yet. `~/` (Dart's
+// truncating integer division) rounds toward zero instead, which matches
+// how the positive case already read and keeps -10,000 correctly at -1万.
+String _yen(int amount) => '¥${amount ~/ 10000}万';
 
 List<_KpiTileData> _tilesFor(HomeDashboardDisplayData? data) => [
   _KpiTileData(

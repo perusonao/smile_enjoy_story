@@ -41,7 +41,7 @@ void main() {
     await tester.pumpWidget(
       const MaterialApp(home: PublicDemo01PlaceholderScreen()),
     );
-    expect(find.text('4月'), findsOneWidget);
+    expect(find.text('1年目 4月'), findsOneWidget);
 
     // April: advance without winning an order. The demo must still recover into May.
     await tapAndSettle(tester, '4月終了→5月');
@@ -52,7 +52,7 @@ void main() {
     );
     await tester.tap(find.widgetWithText(FilledButton, '確認'));
     await tester.pumpAndSettle();
-    expect(find.text('5月'), findsOneWidget);
+    expect(find.text('1年目 5月'), findsOneWidget);
     // The completed April growth is visible without another modal. Both
     // engineers waited, so no practical experience is claimed.
     expect(find.text('今月の成長'), findsOneWidget);
@@ -61,13 +61,13 @@ void main() {
 
     // May: advance without hiring. This is a valid failure/recovery route.
     await tapAndSettle(tester, '5月終了→6月');
-    expect(find.text('6月'), findsOneWidget);
+    expect(find.text('1年目 6月'), findsOneWidget);
     expect(find.textContaining('翌月の発注を確認'), findsOneWidget);
     expect(find.text('6月終了→7月'), findsOneWidget);
 
     // June: no assignments is valid; advance into July waiting state.
     await tapAndSettle(tester, '6月終了→7月');
-    expect(find.text('7月'), findsOneWidget);
+    expect(find.text('1年目 7月'), findsOneWidget);
     // Recruitment media is now presented at the top of July. Keep asserting
     // the exact July assignment/waiting contract after scrolling to it.
     await tester.scrollUntilVisible(

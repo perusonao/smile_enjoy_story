@@ -147,10 +147,16 @@ void main() {
       expect(find.byType(HomeShellPage), findsNothing);
       expect(find.text('S.E.S. Public Demo 0.1'), findsOneWidget);
 
-      // Existing Public Demo UI is untouched and still present.
-      expect(find.text('4月'), findsOneWidget);
+      // HOME-RUNTIME-2A consolidated the duplicated display: the month, the
+      // month goal, and cash are each rendered exactly once now, by the HOME
+      // section, instead of twice in two vocabularies. Each assertion below
+      // keeps its original cardinality and gains the paired "...and the
+      // duplicate is gone" check.
+      expect(find.text('1年目 4月'), findsOneWidget);
+      expect(find.text('4月'), findsNothing);
       expect(find.text('今月やること'), findsOneWidget);
-      expect(find.text('現預金'), findsOneWidget);
+      expect(find.text('現金'), findsOneWidget);
+      expect(find.text('現預金'), findsNothing);
 
       // ...and the new read-only HOME section is mounted next to it.
       expect(sectionFinder, findsOneWidget);

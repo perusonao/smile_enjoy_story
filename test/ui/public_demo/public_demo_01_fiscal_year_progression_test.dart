@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_financial_status.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_state.dart';
 import 'package:smile_enjoy_story/ui/public_demo/public_demo_01_placeholder_screen.dart';
+import 'package:smile_enjoy_story/ui/public_demo/public_demo_home_dashboard_section.dart';
 
 // `s` (unlike the enclosing `_S` state class) is not library-private, so it
 // can be read directly off the widget's State for precise assertions
@@ -91,7 +92,7 @@ void main() {
       await dismissDialog(tester, '確認');
       await tapAndSettle(tester, '4月終了→5月');
       await dismissDialog(tester, '確認');
-      expect(find.text('5月'), findsOneWidget);
+      expect(find.text('1年目 5月'), findsOneWidget);
 
       // May and June: no further hiring or order-renewal interaction. Sato's
       // April order alone is enough Revenue for July's cash guard to pass.
@@ -104,7 +105,7 @@ void main() {
       await tester.tap(find.byKey(const Key('public-demo-summer-bonus-none')));
       await tester.pumpAndSettle();
       await tapAndSettle(tester, '7月終了→8月');
-      expect(find.text('8月'), findsOneWidget);
+      expect(find.text('1年目 8月'), findsOneWidget);
       // 12MONTH-3-FIX1 P1-2: no month past May can process a generated
       // applicant, so the paid recruitment-media CTA must not render for
       // any ordinary month (it did briefly, for 8-15, before this fix).
@@ -138,7 +139,7 @@ void main() {
       ];
       for (final (buttonLabel, nextMonthLabel) in closes) {
         await tapAndSettle(tester, buttonLabel);
-        expect(find.text(nextMonthLabel), findsOneWidget);
+        expect(find.text('1年目 $nextMonthLabel'), findsOneWidget);
         expect(
           find.byKey(const Key('public-demo-recruitment-media-card')),
           findsNothing,
@@ -157,13 +158,26 @@ void main() {
           );
           expect(flow, findsOneWidget);
           expect(shortage, findsOneWidget);
+          // HOME-RUNTIME-2A inverted this ordering deliberately: the
+          // shortage warning is hoisted to the very top of the screen, above
+          // the HOME summary and therefore above the post-close cash-flow
+          // detail. Same two cards, same cardinality, same single ordering
+          // assertion — it now pins the order the phase established, and the
+          // added HOME-relative check makes it stronger than a bare pairwise
+          // comparison could be.
           expect(
-            tester.getTopLeft(flow).dy,
-            lessThan(tester.getTopLeft(shortage).dy),
+            tester.getTopLeft(shortage).dy,
+            lessThan(tester.getTopLeft(flow).dy),
+          );
+          expect(
+            tester.getTopLeft(shortage).dy,
+            lessThan(
+              tester.getTopLeft(find.byType(PublicDemoHomeDashboardSection)).dy,
+            ),
           );
         }
       }
-      expect(find.text('11月'), findsOneWidget);
+      expect(find.text('1年目 11月'), findsOneWidget);
       expect(
         currentState(tester).financialStatus,
         PublicDemoFinancialStatus.bankruptcy,
@@ -181,7 +195,7 @@ void main() {
       expect(afterRetry.month, beforeRetry.month);
       expect(afterRetry.cash, beforeRetry.cash);
       expect(afterRetry.financialStatus, beforeRetry.financialStatus);
-      expect(find.text('12月'), findsNothing);
+      expect(find.text('1年目 12月'), findsNothing);
     },
   );
 }

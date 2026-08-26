@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../presentation/home/models/home_dashboard_display_data.dart';
+import '../../presentation/home/widgets/key_events_section.dart';
 import '../../presentation/home/widgets/kpi_section.dart';
 import '../../presentation/home/widgets/month_header_bar.dart';
 
@@ -25,9 +26,23 @@ import '../../presentation/home/widgets/month_header_bar.dart';
 ///    projected [data], so nothing here can go stale or become a second
 ///    source of truth.
 ///
-/// The Public Demo screen keeps all of its existing UI — this section is
-/// added alongside it, not in place of it, and `HomeShellPage` itself
-/// remains unwired from the app's navigation.
+/// HOME-RUNTIME-2A composes three read-only display widgets here — the
+/// month header, the compact KPI, and the month-goal slot — and they are now
+/// the *only* place each of those things is shown. The legacy duplicates
+/// (the `N月` headline, the 現預金/参画/待機/営業残 stat row, and the
+/// `今月やること` card) are deleted from the owning screen in the same change
+/// rather than left rendering the same facts a second time.
+///
+/// Everything above still holds unchanged for the widened projection: the
+/// three fields HOME-RUNTIME-2A added (`waitingEmployeeCount`,
+/// `salesRemaining`, `monthGoalText`) are read-only projected values like
+/// the rest. In particular no financial verdict (`financialStatus`,
+/// `fiscalYearCompleted`) is projected, so the shortage/terminal cards stay
+/// composed by the owning screen, outside this subtree.
+///
+/// The Public Demo screen keeps every one of its actions — this section
+/// replaces duplicated *display*, never an action, and `HomeShellPage`
+/// itself remains unwired from the app's navigation.
 class PublicDemoHomeDashboardSection extends StatelessWidget {
   const PublicDemoHomeDashboardSection({super.key, required this.data});
 
@@ -42,9 +57,11 @@ class PublicDemoHomeDashboardSection extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         MonthHeaderBar(data: data),
-        const SizedBox(height: 12),
-        KpiSection(data: data),
-        const SizedBox(height: 12),
+        const SizedBox(height: 8),
+        KpiSection.compact(data: data),
+        const SizedBox(height: 8),
+        KeyEventsSection(data: data),
+        const SizedBox(height: 8),
       ],
     );
   }

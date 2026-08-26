@@ -95,7 +95,7 @@ void main() {
     );
     await tester.tap(find.widgetWithText(FilledButton, '確認'));
     await tester.pumpAndSettle();
-    expect(find.text('5月'), findsOneWidget);
+    expect(find.text('1年目 5月'), findsOneWidget);
 
     // May: Takahashi is hired at the requested salary and wins a June order
     // before joining.
@@ -126,17 +126,17 @@ void main() {
       '入社・初参画！',
       imageKey: const Key('public-demo-first-assignment-image'),
     );
-    expect(find.text('6月'), findsOneWidget);
+    expect(find.text('1年目 6月'), findsOneWidget);
     expect(find.text('参画'), findsOneWidget);
-    // HOME-RUNTIME-READ-1: the runtime HOME read-only section now also
-    // renders the same authoritative headcount (社員数/参画中), so "2名"
-    // legitimately appears more than once on this screen. Scoped to the
-    // legacy 参画 stat card this assertion has always been about, which
-    // keeps it exactly as strong as before (that card shows 2名, once)
-    // instead of relaxing it to findsWidgets.
+    // HOME-RUNTIME-2A merged the legacy 参画 stat card into the single
+    // compact KPI, so this assertion now names that KPI tile directly by
+    // key. That is strictly stronger than the previous Card-scoped lookup:
+    // the old form would have been satisfied by ANY "2名" inside the same
+    // card as the 参画 label (the 待機/社員 tiles are its neighbours now),
+    // while this one can only be satisfied by the 参画 tile itself.
     expect(
       find.descendant(
-        of: find.ancestor(of: find.text('参画'), matching: find.byType(Card)),
+        of: find.byKey(const Key('home-kpi-compact-assigned')),
         matching: find.text('2名'),
       ),
       findsOneWidget,
@@ -154,7 +154,7 @@ void main() {
     }
     await tapAndSettle(tester, '6月終了→7月');
 
-    expect(find.text('7月'), findsOneWidget);
+    expect(find.text('1年目 7月'), findsOneWidget);
     // The new month opens at the dashboard so the completed June growth is
     // immediately visible; Sato's assigned result includes practical work.
     expect(find.text('今月の成長'), findsOneWidget);

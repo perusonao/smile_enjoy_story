@@ -136,6 +136,17 @@ Future<void> playApril(WidgetTester tester) async {
   await dismiss(tester);
 }
 
+/// Advances to July on the no-hire route, where the recruitment-media card
+/// is rendered but the applicant pipeline is not.
+Future<void> playIntoJuly(WidgetTester tester) async {
+  await tapAndSettle(tester, '4月終了→5月');
+  await dismiss(tester);
+  await tapAndSettle(tester, '5月終了→6月');
+  await settle(tester);
+  await tapAndSettle(tester, '6月終了→7月');
+  await settle(tester);
+}
+
 /// Drives the structurally-insolvent trajectory the existing suites pin —
 /// CASH SHORTAGE closing September — using nothing but the real screen and
 /// the real domain commands behind it. `PublicDemoAggregate` deliberately
@@ -343,6 +354,46 @@ void main() {
         recommended(tester)!.kind,
         HomeRecommendedActionKind.applicantReviewResume,
       );
+    });
+
+    testWidgets('July\'s 求人媒体 is never recommended: its card is rendered '
+        'and enabled, but no month renders the applicant pipeline again', (
+      tester,
+    ) async {
+      await pumpDemo(tester);
+      await playIntoJuly(tester);
+      expect(currentState(tester).month, 7);
+
+      // The card is on screen and its button is live — this is NOT the
+      // "disabled action" case.
+      final media = find.byKey(
+        const Key('public-demo-open-recruitment-media'),
+      );
+      expect(media, findsOneWidget);
+      expect(tester.widget<FilledButton>(media).onPressed, isNotNull);
+      expect(
+        currentState(tester).canUseRecruitmentMediaInMonth(7),
+        isTrue,
+        reason: 'the P3 predicate itself is satisfied in July',
+      );
+
+      // But July renders no applicant card, and neither does any later
+      // month — so anything it generates is stranded.
+      expect(actionButton('経歴書確認'), findsNothing);
+      expect(actionButton('採用面談'), findsNothing);
+
+      // Settle the bonus so nothing else can outrank the media action.
+      await tapAndSettle(tester, '夏季賞与を決める');
+      await tester.tap(find.byKey(const Key('public-demo-summer-bonus-none')));
+      await settle(tester);
+
+      // Even now — nothing else eligible, predicate true, button live —
+      // HOME does not send the player to spend cash on a dead end.
+      final action = recommended(tester);
+      if (action != null) {
+        expect(action.kind, isNot(HomeRecommendedActionKind.recruitmentMedia));
+      }
+      expect(find.text('求人媒体で候補者を追加'), findsNothing);
     });
 
     testWidgets('no candidate ever names a button that is not on screen', (

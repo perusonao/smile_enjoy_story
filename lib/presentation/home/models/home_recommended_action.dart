@@ -67,7 +67,7 @@ import 'package:flutter/foundation.dart' show VoidCallback, immutable;
 /// an action across a design band boundary, and nothing here makes an
 /// action eligible that was not already eligible.
 ///
-/// Three deliberate absences:
+/// Four deliberate absences:
 ///
 ///  * **Month close is never recommended.** MONTH END CTA PLAN keeps it at
 ///    the bottom of the scroll on purpose ("finish this month's work
@@ -80,9 +80,17 @@ import 'package:flutter/foundation.dart' show VoidCallback, immutable;
 ///    mentions into "the next thing to do" would be a balance nudge, i.e.
 ///    a game decision this layer has no authority to make. It stays a
 ///    secondary action on the employee's own card, exactly as 2A left it.
+///  * **July's 求人媒体 is never recommended**, though its card is rendered
+///    and enabled there. May renders the recruitment card and the applicant
+///    pipeline together; July renders the card alone, and no month after it
+///    renders the pipeline at all, so a July hire can never be advanced.
+///    Design row P3 assumes the action leads somewhere; where it does not,
+///    recommending it would spend the player's cash on structurally
+///    unusable candidates. The owner's emit site carries the reasoning.
 ///  * **Nothing disabled is ever recommended.** A candidate is emitted only
 ///    where the production button is both rendered *and* enabled, so the
-///    slot never offers a dead CTA.
+///    slot never offers a dead CTA. Being *enabled* is necessary, not
+///    sufficient: the July case above is enabled and still excluded.
 enum HomeRecommendedActionKind {
   // ---- P0: terminal / critical -----------------------------------------
   /// Design row P0. The FINANCE-FAILURE-1C shortage card is the action.

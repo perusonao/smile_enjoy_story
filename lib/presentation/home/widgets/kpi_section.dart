@@ -1,31 +1,73 @@
 import 'package:flutter/material.dart';
 
+import '../models/home_dashboard_display_data.dart';
 import 'dashboard_section_card.dart';
 
-/// Placeholder data for a single KPI tile.
-///
-/// Phase 1A ships fixed placeholder labels only; real values (cash,
-/// headcount, active projects, credit, ...) are wired in a later phase.
+/// One KPI tile's label plus its resolved display value.
 class _KpiTileData {
-  const _KpiTileData({required this.icon, required this.label});
+  const _KpiTileData({required this.icon, required this.label, this.value});
 
   final IconData icon;
   final String label;
+
+  /// Resolved display text, or `null` to render the Phase 1A placeholder
+  /// dash. Formatting (yen/万-units, "名" suffix, ...) happens here in the
+  /// presentation layer only — the underlying value itself is never
+  /// recomputed (see [HomeDashboardDisplayData]'s own class doc).
+  final String? value;
 }
 
-const _kpiTiles = [
-  _KpiTileData(icon: Icons.payments_outlined, label: '現金'),
-  _KpiTileData(icon: Icons.groups_outlined, label: '社員数'),
-  _KpiTileData(icon: Icons.assignment_outlined, label: '稼働案件'),
-  _KpiTileData(icon: Icons.verified_outlined, label: '信用'),
+// `floor()` rounds toward negative infinity, so a small negative amount
+// (e.g. -5,000) would floor to -1万 instead of the correct 0万 — overstating
+// a shortfall that hasn't actually reached ¥1万 yet. `~/` (Dart's
+// truncating integer division) rounds toward zero instead, which matches
+// how the positive case already read and keeps -10,000 correctly at -1万.
+String _yen(int amount) => '¥${amount ~/ 10000}万';
+
+List<_KpiTileData> _tilesFor(HomeDashboardDisplayData? data) => [
+  _KpiTileData(
+    icon: Icons.payments_outlined,
+    label: '現金',
+    value: data == null ? null : _yen(data.cash),
+  ),
+  _KpiTileData(
+    icon: Icons.groups_outlined,
+    label: '社員数',
+    value: data == null ? null : '${data.employeeCount}名',
+  ),
+  _KpiTileData(
+    icon: Icons.handshake_outlined,
+    label: '参画中',
+    value: data == null ? null : '${data.assignedEmployeeCount}名',
+  ),
+  _KpiTileData(
+    icon: Icons.trending_up_outlined,
+    label: '売上',
+    value: data == null ? null : _yen(data.revenue),
+  ),
+  _KpiTileData(
+    icon: Icons.schedule_outlined,
+    label: '入金予定',
+    value: data == null ? null : _yen(data.pendingRevenue),
+  ),
+  // 稼働案件 (active projects) / 信用 (credit) have no HOME-UI-1C candidate
+  // field yet — kept as Phase 1A placeholders until a later phase defines
+  // their authoritative source.
+  const _KpiTileData(icon: Icons.assignment_outlined, label: '稼働案件'),
+  const _KpiTileData(icon: Icons.verified_outlined, label: '信用'),
 ];
 
 /// KPI area of the home dashboard.
 ///
-/// Renders a static 2-column grid of placeholder KPI tiles. No values are
-/// computed here — that is the responsibility of a later phase.
+/// Renders a static 2-column grid of KPI tiles. HOME-UI-1C: when [data] is
+/// supplied, 現金/社員数/参画中/売上/入金予定 show real read-only values
+/// projected from the authoritative Public Demo finance state; 稼働案件/信用
+/// remain placeholders. [data] stays optional and defaults to `null`, which
+/// renders every tile as the original Phase 1A placeholder dash.
 class KpiSection extends StatelessWidget {
-  const KpiSection({super.key});
+  const KpiSection({super.key, this.data});
+
+  final HomeDashboardDisplayData? data;
 
   @override
   Widget build(BuildContext context) {
@@ -38,7 +80,7 @@ class KpiSection extends StatelessWidget {
         mainAxisSpacing: 12,
         crossAxisSpacing: 12,
         childAspectRatio: 2.1,
-        children: [for (final tile in _kpiTiles) _KpiTile(data: tile)],
+        children: [for (final tile in _tilesFor(data)) _KpiTile(data: tile)],
       ),
     );
   }
@@ -77,7 +119,7 @@ class _KpiTile extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                 ),
                 Text(
-                  '—',
+                  data.value ?? '—',
                   style: theme.textTheme.titleMedium?.copyWith(
                     fontWeight: FontWeight.bold,
                   ),

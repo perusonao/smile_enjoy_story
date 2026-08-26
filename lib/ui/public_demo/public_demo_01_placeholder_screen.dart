@@ -15,10 +15,12 @@ import '../../game/public_demo/public_demo_employee_condition.dart';
 import '../../game/public_demo/public_demo_raise.dart';
 import '../../game/public_demo/public_demo_summer_bonus_plan.dart';
 import '../../game/public_demo/public_demo_workflow_state.dart';
+import '../../presentation/home/models/home_dashboard_display_data.dart';
 import '../asset_paths.dart';
 import 'public_demo_event_dialog.dart';
 import 'public_demo_cash_shortage_card.dart';
 import 'public_demo_growth_result_card.dart';
+import 'public_demo_home_dashboard_section.dart';
 import 'public_demo_interview_result_dialog.dart';
 import 'public_demo_monthly_cash_flow_card.dart';
 import 'public_demo_sales_progress.dart';
@@ -55,6 +57,25 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
   /// Read-only view of [_game]'s workflow side. Never assigned directly —
   /// see [_game].
   PublicDemoWorkflowState get workflow => _game.workflow;
+
+  /// HOME-RUNTIME-READ-1: the read-only HOME dashboard projection, derived
+  /// on demand from the authoritative aggregate this widget owns ([_game],
+  /// via its finance-side view [s]).
+  ///
+  /// Deliberately a getter and never a [State] field: it is evaluated only
+  /// while [build] is constructing the tree, so what HOME renders is always
+  /// a projection of the state of *that* build. The existing
+  /// `setState(() => _game = ...)` -> rebuild path is therefore also the
+  /// entire refresh mechanism — no snapshot is stored anywhere to go stale,
+  /// nothing has to be kept in sync, and this cannot become a second source
+  /// of truth for cash, revenue, or headcount.
+  ///
+  /// [HomeDashboardDisplayData.fromPublicDemoState] takes only
+  /// [PublicDemoState]: [workflow] (and with it applicants/pre-entry facts)
+  /// is never passed to it, and neither [_game] nor any command on it ever
+  /// leaves this widget.
+  HomeDashboardDisplayData get _homeDashboardData =>
+      HomeDashboardDisplayData.fromPublicDemoState(s);
 
   bool _summerBonusDecisionConfirmed = false;
 
@@ -1074,6 +1095,11 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                // HOME-RUNTIME-READ-1: the new HOME read-only display,
+                // added alongside (never in place of) the existing Public
+                // Demo UI below. It receives only the projection — no
+                // aggregate, no state, no commands, no callbacks.
+                PublicDemoHomeDashboardSection(data: _homeDashboardData),
                 Text(
                   publicDemoMonthLabel(s.month),
                   style: Theme.of(c).textTheme.headlineMedium,

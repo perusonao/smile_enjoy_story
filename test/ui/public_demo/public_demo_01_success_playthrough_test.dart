@@ -128,7 +128,19 @@ void main() {
     );
     expect(find.text('6月'), findsOneWidget);
     expect(find.text('参画'), findsOneWidget);
-    expect(find.text('2名'), findsOneWidget);
+    // HOME-RUNTIME-READ-1: the runtime HOME read-only section now also
+    // renders the same authoritative headcount (社員数/参画中), so "2名"
+    // legitimately appears more than once on this screen. Scoped to the
+    // legacy 参画 stat card this assertion has always been about, which
+    // keeps it exactly as strong as before (that card shows 2名, once)
+    // instead of relaxing it to findsWidgets.
+    expect(
+      find.descendant(
+        of: find.ancestor(of: find.text('参画'), matching: find.byType(Card)),
+        matching: find.text('2名'),
+      ),
+      findsOneWidget,
+    );
     expect(find.text('社員コンディション'), findsOneWidget);
     expect(find.text('モチベーション：高い'), findsOneWidget);
     expect(find.text('会社への信頼：高い'), findsOneWidget);

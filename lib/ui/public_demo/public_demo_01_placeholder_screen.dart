@@ -19,7 +19,9 @@ import '../../game/public_demo/public_demo_raise.dart';
 import '../../game/public_demo/public_demo_summer_bonus_plan.dart';
 import '../../game/public_demo/public_demo_workflow_state.dart';
 import '../../presentation/home/models/home_dashboard_display_data.dart';
+import '../../presentation/home/models/home_office_stage_display.dart';
 import '../../presentation/home/models/home_recommended_action.dart';
+import '../../presentation/home/widgets/home_office_stage_section.dart';
 import '../asset_paths.dart';
 import 'public_demo_event_dialog.dart';
 import 'public_demo_cash_shortage_card.dart';
@@ -91,6 +93,46 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
   /// leaves this widget.
   HomeDashboardDisplayData get _homeDashboardData =>
       HomeDashboardDisplayData.fromPublicDemoState(s);
+
+  /// HOME-RUNTIME-2B — the Office Stage's read-only projection.
+  ///
+  /// Deliberately a *separate* projection from [_homeDashboardData] rather
+  /// than three more fields on it. `HomeDashboardDisplayData
+  /// .fromPublicDemoState` takes only a [PublicDemoState] by design, and
+  /// that narrowness is load-bearing: it is why HOME structurally cannot
+  /// see an applicant, a pre-entry stage, or a financial verdict. Employee
+  /// *names* are a workflow fact, so folding them into that projection
+  /// would have meant widening its input to the whole workflow — paying
+  /// for a picture with the boundary HOME-RUNTIME-2A and 2C both rest on.
+  ///
+  /// So this follows the shape 2C already established for
+  /// [_recommendedActionSlot] instead: the owner, which legitimately holds
+  /// both halves of the aggregate, resolves the display here while [build]
+  /// runs and injects the finished value. Read-only in both directions —
+  /// it reads authoritative state and returns a value object, and nothing
+  /// it produces is written back to [_game], persisted, or ranked.
+  ///
+  /// The roster is [PublicDemoWorkflowState.engineers] verbatim, in its own
+  /// order. That list *is* the company's employees: `withJoinedEngineers`
+  /// appends each applicant to it as they join, so reading it needs no
+  /// union with the applicant pool and cannot disagree with the headcount
+  /// the KPI above already shows.
+  ///
+  /// No assignment status is read, deliberately — see the note at the top
+  /// of `home_office_stage_display.dart` for why a per-employee
+  /// 参画/待機 claim cannot be made from this layer without either
+  /// contradicting the KPI or reconciling three authorities that are
+  /// Assignment/Domain's to reconcile.
+  HomeOfficeStageDisplay get _officeStageDisplay => HomeOfficeStageDisplay(
+    members: [
+      for (final engineer in workflow.engineers)
+        HomeOfficeStageMember(
+          id: engineer.id,
+          name: engineer.name,
+          portraitAssetPath: homeOfficeStagePortraitFor(engineer.id),
+        ),
+    ],
+  );
 
   bool _summerBonusDecisionConfirmed = false;
 
@@ -1587,6 +1629,25 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
                   data: _homeDashboardData,
                   recommendedAction: _recommendedActionSlot,
                 ),
+                // HOME-RUNTIME-2B: the Office Stage sits BELOW the
+                // Recommended Action and above the legacy content, and the
+                // order is the design's, not an aesthetic preference.
+                // Recommended Action is the primary interaction; the Office
+                // Stage is a visual layer. Putting the picture first would
+                // have bought a better-looking screen by pushing the one
+                // thing the player is supposed to do out of the opening
+                // view — undoing exactly what HOME-RUNTIME-2A and 2C did.
+                //
+                // It is also a sibling of PublicDemoHomeDashboardSection
+                // rather than a child: that section is the read-only
+                // projection mount point whose height the consolidation
+                // suite pins to a deliberately tight ceiling, and a picture
+                // is not one of the facts that ceiling was drawn around.
+                // Keeping it outside leaves that guard measuring exactly
+                // what it was written to measure.
+                const SizedBox(height: 8),
+                HomeOfficeStageSection(display: _officeStageDisplay),
+                const SizedBox(height: 8),
                 dashboard(),
                 if (s.month == 4) ...[
                   for (var i = 0; i < workflow.engineers.length; i++) ec(i),

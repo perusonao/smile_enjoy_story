@@ -5,12 +5,29 @@ BASE AT IMPLEMENTATION TIME: `a3ad6ae80a5880a1fd5e4c0a9e1a3cb601c13e69` — PR #
 **CURRENT BASE (post-review, after rebase): `3740af03428ff4ea46b6f926d098d3b1f731cf74` — `origin/main`, which now includes merged PR #73**
 MAIN HEAD at implementation time: `62de4df7db2103b2bbc8cab8dd6261d3a608e1e6`
 MAIN HEAD at post-review update: `3740af03428ff4ea46b6f926d098d3b1f731cf74`
-BRANCH: `claude/navigator-1a-fixed-character-x8xjp0`
+BRANCH: `claude/navigator-1a-fixed-character-x8xjp0` (local); pushed to `origin/claude/navigator-1a-fixed-character-rebased` — see PUSH STATUS addendum below for why the remote name differs
 OLD NAVIGATOR HEAD (implementation commit, stacked on #73): `3028aeb98543477f87ea4148b56a8c3fd5df814f`
-NEW NAVIGATOR HEAD (rebased onto main + P2 remediation): `<recorded after final commit below>`
+NEW NAVIGATOR HEAD (rebased onto main + P2 remediation): `937295d89fd6091e48647e397c884ae7d9b6a1ec`
 WORKING TREE AT START (both sessions): clean
 
-## POST-REVIEW UPDATE — summary
+## RE-VERIFICATION ADDENDUM (second independent-review round)
+
+A second review round targeting the same original commit (`3028aeb`) asked for the same five objectives (rebase off #73, P2-1, P2-2, full regression, Chromium evidence). All five were already complete as of `937295d` from the first remediation round — this addendum records a **fresh, independent re-verification** of that state rather than redoing the work, per that round's own "do not broaden scope" instruction.
+
+- `git fetch origin --prune` re-run; `origin/main` = `3740af03428ff4ea46b6f926d098d3b1f731cf74`, unchanged.
+- PR #73 re-confirmed **merged** via a live GitHub API call (`pull_request_read`), not inferred: `state: closed`, `merged: true`, `merged_at: 2026-08-27T05:50:01Z`, merge commit `3740af03428ff4ea46b6f926d098d3b1f731cf74`, head `a3ad6ae80a5880a1fd5e4c0a9e1a3cb601c13e69`.
+- `git merge-base --is-ancestor a3ad6ae origin/main` and `git merge-base --is-ancestor origin/main HEAD` both re-confirmed true — the branch is fully rebased on current `main`.
+- `git diff origin/main...HEAD --stat`: still exactly 17 files, all additive, 1793 insertions / 0 deletions, no `lib/` file outside the Navigator's own — re-confirmed unchanged from the first round.
+- `git diff --check`: clean.
+- Fresh `flutter analyze`: No issues found.
+- Fresh full `flutter test`: **1181 passed, 0 failed** (`date -u` timestamped: 2026-08-27T11:09:04Z → 11:14:47Z, 5m43s) — identical to the first round's count, confirming nothing regressed between rounds.
+- Fresh `flutter build web --release`: succeeded.
+- Screenshots (`docs/screenshots/navigator-1a-{360x800,390x844,cta-before,cta-after,assetfail-before,assetfail-after}.png`) were **not recaptured** — `git log` confirms the last change to `home_navigator_section.dart` and `public_demo_01_placeholder_screen.dart` is commit `aec5814`, and all screenshots were captured after that, in `937295d`, from the same unchanged code. Recapturing would produce pixel-identical images, so the existing evidence stands.
+- Text-scale: no new browser attempt was made. Playwright/Chromium zoom does not drive Flutter Web's internal `TextScaler` in this environment (established in round one); this round's instructions explicitly forbid treating such zoom as evidence, which matches what was already reported — `BROWSER TEXT SCALE VISUAL: UNVERIFIED`, `WIDGET TEXT SCALE: VERIFIED` (1.0/1.15/1.3/2.0, both sizes).
+
+**Conclusion: no defect, gap, or regression found. No code or test change was needed this round.**
+
+## POST-REVIEW UPDATE — summary (first remediation round)
 
 Independent review of `3028aeb` returned **BLOCKED** with no P0/P1, two P2 findings, and two verification gaps (independent Chromium unavailable to the reviewer, independent full-suite run unavailable to the reviewer). This section and the ones marked **[POST-REVIEW]** below record the remediation. Sections not so marked are the original implementation-time record, preserved as written.
 
@@ -200,10 +217,19 @@ Browser-rendered textScale 1.0/1.15/1.3/2.0 visual evidence — UNVERIFIED visua
 
 Both P2 findings are resolved with test and real-browser evidence. The stack dependency on PR #73 is removed — this branch is rebased cleanly onto current `origin/main`, confirmed by an empty `git diff a3ad6ae 3740af0` and a non-conflicting rebase. Full regression (1181 tests), analyze, and release build are all green; `git diff --check` is clean. The one remaining gap (browser-level textScale screenshots) is an environment tooling limitation, honestly reported as UNVERIFIED rather than fabricated, and is mitigated by direct widget-test evidence against the real rendering pipeline. Domain/Finance/Save/Workflow/assignment/payroll/Recommended-Action-eligibility/priority/owner-dispatch/month-gates/game-balance are all confirmed untouched.
 
+## PUSH STATUS
+
+**Resolved without a force push.** The remote branch `origin/claude/navigator-1a-fixed-character-x8xjp0` still holds the pre-rebase commit `3028aeb`, and the local branch of the same name now holds diverged, rebased history (`937295d`) — a normal push there is rejected as non-fast-forward, and per instruction a force push requires stopping to ask first rather than proceeding unilaterally.
+
+**Safe alternative used instead:** the local branch was pushed to a *new* remote ref, `origin/claude/navigator-1a-fixed-character-rebased`, which is a plain non-destructive push (no history rewritten, nothing force-pushed). `origin/claude/navigator-1a-fixed-character-x8xjp0` is left untouched at `3028aeb` — its content is entirely superseded by `937295d` (same Navigator diff, rebased onto merged `main`, plus the P2 remediation), so nothing of value is stranded there.
+
+Confirmed local HEAD == remote HEAD: `git rev-parse HEAD` and `git rev-parse origin/claude/navigator-1a-fixed-character-rebased` both return `937295d89fd6091e48647e397c884ae7d9b6a1ec`.
+
+**Open question, not resolved unilaterally:** whether to reconcile the branch name back to `claude/navigator-1a-fixed-character-x8xjp0` (the name both review rounds have named as the target). Doing so would need either a force push (rewriting the existing pushed ref) or a delete-and-recreate of that ref under the new history — both are ref-level history changes on an already-pushed branch, so this stays a decision for explicit confirmation rather than something performed here.
+
 ## NEXT
-1. Report this result to the user — awaiting further instruction (PR creation still requires separate explicit approval; none has been given in this remediation round either).
-2. Push the rebased + remediated branch — this requires a **force push** since the remote branch currently holds the pre-rebase commit `3028aeb`; per instruction, this is reported before being done (see PUSH STATUS / GIT STATUS in the chat reply, not duplicated here to avoid this document going stale again).
-3. NAVIGATOR-1B (unchanged, out of scope): GameState-driven message/expression selection.
+1. Report this result — awaiting a decision on the branch-name reconciliation above, and separately, explicit approval before any PR is created (none given in either remediation round).
+2. NAVIGATOR-1B (unchanged, out of scope): GameState-driven message/expression selection.
 
 ## SCREENSHOTS
 - `docs/screenshots/navigator-1a-360x800.png`, `navigator-1a-390x844.png` — first-view renders, both target sizes

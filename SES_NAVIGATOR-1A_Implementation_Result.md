@@ -6,9 +6,16 @@ BASE AT IMPLEMENTATION TIME: `a3ad6ae80a5880a1fd5e4c0a9e1a3cb601c13e69` — PR #
 MAIN HEAD at implementation time: `62de4df7db2103b2bbc8cab8dd6261d3a608e1e6`
 MAIN HEAD at post-review update: `3740af03428ff4ea46b6f926d098d3b1f731cf74`
 BRANCH: `claude/navigator-1a-fixed-character-x8xjp0` (local and remote, reconciled via merge commit — see PUSH STATUS below)
-OLD NAVIGATOR HEAD (implementation commit, stacked on #73): `3028aeb98543477f87ea4148b56a8c3fd5df814f`
-NEW NAVIGATOR HEAD (rebased onto main + P2 remediation): `937295d89fd6091e48647e397c884ae7d9b6a1ec`
-CURRENT NAVIGATOR HEAD (merge commit reconciling both histories, ready for merge): `d3883ce9e02362a81459693c52467caeb53d2fa9`
+NAVIGATOR HEAD HISTORY:
+  Original (implementation, stacked on #73): `3028aeb98543477f87ea4148b56a8c3fd5df814f`
+  Rebased (onto main + P2 remediation): `937295d89fd6091e48647e397c884ae7d9b6a1ec`
+  Reconciliation milestone (merge commit): `d3883ce9e02362a81459693c52467caeb53d2fa9`
+
+CURRENT BRANCH STATUS:
+  Primary branch: `origin/claude/navigator-1a-fixed-character-x8xjp0`
+  Live HEAD authority: Git remote branch (resolve with `git rev-parse origin/claude/navigator-1a-fixed-character-x8xjp0`)
+  This document is committed on the primary branch; do not embed the moving HEAD SHA here.
+
 WORKING TREE AT START (both sessions): clean
 
 ## RE-VERIFICATION ADDENDUM (second independent-review round)
@@ -220,11 +227,17 @@ Both P2 findings are resolved with test and real-browser evidence. The stack dep
 
 ## PUSH STATUS
 
-**Reconciled via merge commit.** The remote branch `origin/claude/navigator-1a-fixed-character-x8xjp0` initially held the pre-rebase commit `3028aeb`, and the local branch of the same name held diverged, rebased history (`937295d`). Rather than using a force push (which requires explicit prior approval), a merge commit (`d3883ce9e02362a81459693c52467caeb53d2fa9`) was created locally to reconcile both histories. This commit preserves both the pre-rebase and rebased lineages as ancestors, allowing a clean fast-forward push to the original branch name.
+**Reconciled via merge commit.** The remote branch `origin/claude/navigator-1a-fixed-character-x8xjp0` initially held the pre-rebase commit `3028aeb`, and the local branch held diverged, rebased history (`937295d`). Rather than using a force push (which requires explicit prior approval), a merge commit was created locally to reconcile both histories. This commit preserves both the pre-rebase and rebased lineages as ancestors, allowing a clean fast-forward push to the original branch name.
 
-**Current state:** `origin/claude/navigator-1a-fixed-character-x8xjp0` now holds the merge commit `d3883ce9e02362a81459693c52467caeb53d2fa9`, which is the current HEAD of both local and remote branches. Confirmed via `git rev-parse HEAD` and `git rev-parse origin/claude/navigator-1a-fixed-character-x8xjp0` both returning the same commit hash.
+**Branch status:** The primary NAVIGATOR-1A branch `origin/claude/navigator-1a-fixed-character-x8xjp0` is synchronized. Historical milestone commits (`3028aeb`, `937295d`, and the reconciliation merge) are preserved in the lineage.
 
-**Alternative branch:** `origin/claude/navigator-1a-fixed-character-rebased` was also pushed as a non-destructive record of the rebased state (commit `937295d`) for reference, but the primary target branch now reflects the reconciled history.
+**Authority for live HEAD:** The current branch tip must be resolved from Git via:
+```
+git rev-parse origin/claude/navigator-1a-fixed-character-x8xjp0
+```
+This document, being committed on that branch, does not embed its own SHA as a permanent "current" state marker — Git is the authoritative source for the moving branch tip.
+
+**Alternative branch:** `origin/claude/navigator-1a-fixed-character-rebased` remains pushed as a non-destructive historical record of the rebased state for reference, if needed.
 
 ## NEXT
 1. Report this result — awaiting a decision on the branch-name reconciliation above, and separately, explicit approval before any PR is created (none given in either remediation round).

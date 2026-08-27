@@ -1,86 +1,123 @@
 # SES NAVIGATOR-1A Fixed Character — Implementation Result
 
 REPOSITORY: perusonao/smile_enjoy_story
-BASE (this branch's parent): `a3ad6ae80a5880a1fd5e4c0a9e1a3cb601c13e69` — PR #73 head, "fix: let the Office Stage title row grow with the text scale" (NOT `origin/main`; see DEPENDENCY below)
-MAIN HEAD at investigation time: `62de4df7db2103b2bbc8cab8dd6261d3a608e1e6` ("Merge PR #72: HOME-RUNTIME-2C Recommended Action")
+BASE AT IMPLEMENTATION TIME: `a3ad6ae80a5880a1fd5e4c0a9e1a3cb601c13e69` — PR #73 head (see historical PR #73 STATUS below)
+**CURRENT BASE (post-review, after rebase): `3740af03428ff4ea46b6f926d098d3b1f731cf74` — `origin/main`, which now includes merged PR #73**
+MAIN HEAD at implementation time: `62de4df7db2103b2bbc8cab8dd6261d3a608e1e6`
+MAIN HEAD at post-review update: `3740af03428ff4ea46b6f926d098d3b1f731cf74`
 BRANCH: `claude/navigator-1a-fixed-character-x8xjp0`
-WORKING TREE AT START: clean (repo freshly cloned for this session)
+OLD NAVIGATOR HEAD (implementation commit, stacked on #73): `3028aeb98543477f87ea4148b56a8c3fd5df814f`
+NEW NAVIGATOR HEAD (rebased onto main + P2 remediation): `<recorded after final commit below>`
+WORKING TREE AT START (both sessions): clean
+
+## POST-REVIEW UPDATE — summary
+
+Independent review of `3028aeb` returned **BLOCKED** with no P0/P1, two P2 findings, and two verification gaps (independent Chromium unavailable to the reviewer, independent full-suite run unavailable to the reviewer). This section and the ones marked **[POST-REVIEW]** below record the remediation. Sections not so marked are the original implementation-time record, preserved as written.
+
+1. **Stack dependency removed.** PR #73 merge commit `3740af0` confirmed via `git fetch` + `git merge-base --is-ancestor a3ad6ae origin/main` (not assumed). `git diff a3ad6ae 3740af0` is empty — the merge is a pure fast-forward-equivalent merge commit with no squash or extra changes — so rebasing the single NAVIGATOR-1A commit onto `origin/main` was a clean, non-conflicting, non-duplicating replay (`git rebase origin/main`). Post-rebase diff against `origin/main` is still exactly the 13-file, Navigator-only change set.
+2. **P2-1 (stale documentation) fixed** — both documents updated with STATUS UPDATE / POST-REVIEW sections distinguishing implementation-time state from current verified state, without rewriting the historical record.
+3. **P2-2 (no real-HOME asset-failure→CTA-progression test) fixed** — new test in `test/ui/public_demo/public_demo_01_home_navigator_test.dart`, group `P2-2`, plus **real-browser Chromium confirmation** of the same property (see CHROMIUM ACCEPTANCE below) — stronger evidence than the review asked for.
+4. Full regression re-run green (see FULL TEST RESULT). `git diff --check` clean. Release web build succeeds.
 
 ## DESIGN AUTHORITY
 
-Design record: `docs/design/SES_NAVIGATOR-1A_Fixed_Character_Design.md` (this branch, written before/alongside implementation). No separate external NAVIGATOR-1A design document existed in the repository or was supplied beyond the in-conversation implementation prompt and the attached character reference images (`01_Hiyori_Sakura_normal_reference.png`, `02_Hiyori_Sakura_expression_reference.png`).
+Design record: `docs/design/SES_NAVIGATOR-1A_Fixed_Character_Design.md`. No separate external NAVIGATOR-1A design document existed in the repository or was supplied beyond the in-conversation implementation prompt and the attached character reference images.
 
-## PR #73 STATUS (verified against GitHub, not a prior report)
+## PR #73 STATUS — historical (implementation time) vs current (post-review)
 
-| | |
-|---|---|
-| State | **open, not merged** |
-| Base | `62de4df` (level with `origin/main` at the time) |
-| Head | `a3ad6ae80a5880a1fd5e4c0a9e1a3cb601c13e69` |
-| mergeable_state | `unstable` |
-| Blocking CI | all green |
-| `e2e-webkit` | red, but byte-identical to the same pre-existing failure on base `62de4df` (known seed-100001 flake, non-blocking per repo policy) — reported by the PR itself, not this phase's concern |
-| Codex P2 (Office Stage title row textScale clipping) | **already fixed** by the PR's own second commit (`a3ad6ae`); verified by reading current code — `ConstrainedBox(minHeight: ...)` replaces the old fixed `SizedBox(height: 20)`. Not re-fixed here. |
+| | Implementation time | Post-review (current) |
+|---|---|---|
+| State | open, not merged | **merged** |
+| Merge commit | — | `3740af03428ff4ea46b6f926d098d3b1f731cf74` |
+| Head this phase built on | `a3ad6ae80a5880a1fd5e4c0a9e1a3cb601c13e69` | same commit, now an ancestor of `origin/main` (confirmed via `merge-base --is-ancestor`) |
+| Codex P2 (Office Stage title row textScale clipping) | already fixed by #73's own second commit | unchanged, still present on `main` |
+| NAVIGATOR-1A merge order | must wait for #73 | **no longer blocked — can merge directly against `main`** |
 
-**Decision (user-directed):** stack NAVIGATOR-1A on PR #73's head rather than wait for merge or base on stale `main`. This branch is therefore **dependent on PR #73 merging first** — see GIT STATUS.
+## P2-1 RESULT
 
-## IMPLEMENTED
+**Fixed.** Both `docs/design/SES_NAVIGATOR-1A_Fixed_Character_Design.md` and this file now carry explicit STATUS UPDATE / POST-REVIEW sections stating the current verified state (PR #73 merged, commit `3740af0`; this branch rebased onto current `origin/main`) while preserving the original implementation-time sections unchanged, clearly labeled as historical. Nothing about the design decisions themselves was rewritten — only which base is current.
+
+## P2-2 RESULT
+
+**Fixed, with two independent layers of evidence:**
+
+1. **Widget-test layer** — new test `test/ui/public_demo/public_demo_01_home_navigator_test.dart`, group `P2-2: a Navigator asset failure cannot block HOME progression`. Renders the real `PublicDemo01PlaceholderScreen` wrapped in an `AssetBundle` that fails to load *only* `AssetPaths.navigatorNormal` (every other asset — Office Stage background/portraits, fonts — passes through to the real bundle, so the test cannot mistake "the whole screen degraded" for "the navigator's fallback specifically works"). Confirms: no exception during layout; the navigator's silhouette fallback (`home-navigator-portrait-fallback`) renders; the real `home-recommended-action-cta` is present and unaffected; **tapping it actually runs the real production handler** (`_startSkillSheetReview`, the same one the existing playthrough suites use) and the real `PublicDemoWorkflowState.engineers.first.stage` moves `waiting → skillSheet` — identical to the effect with no navigator on screen. No mock of the HOME action path, no change to Recommended Action eligibility/priority, no change to owner dispatch.
+2. **Real-browser layer (Chromium, beyond what the review asked for)** — see CHROMIUM ACCEPTANCE → ASSET FAILURE below. Built a served copy of the release web build with `assets/assets/images/navigator/navigator_normal.webp` physically deleted, confirmed via Playwright's network log that the browser genuinely requests the asset and receives HTTP 404 (not a synthetic in-process failure), then used Chromium's accessibility/semantics tree (enabled via the same hidden control real screen-reader users activate) to find and tap the real CTA. Screenshots before and after are visually identical in every respect except the navigator's fallback icon and the same production state transition the healthy build produces.
+
+## IMPLEMENTED (original)
 
 - 佐倉ひより (Hiyori Sakura) identity constants: name, role, one fixed greeting, full `NavigatorExpression` vocabulary declared (only `normal` has artwork).
 - `HomeNavigatorSection` widget: portrait + name + role badge + greeting, non-interactive, mounted as a HOME sibling directly below `HomeOfficeStageSection`.
 - Cropped/resized character-reference portrait registered as a bundled asset via the repo's existing directory-form `pubspec.yaml` convention and `AssetPaths`.
-- 58 new tests (33 component-level, 25 real-screen-level), all passing.
+- 58 new tests (33 component-level, 25 real-screen-level), all passing at implementation time.
 - Design + result documentation.
 
-## FILES CHANGED
+**[POST-REVIEW] additionally implemented:**
+- Branch rebased onto current `origin/main` (PR #73 merged); stack dependency removed.
+- One new real-HOME test (P2-2), +1 test (58 → 59 in the navigator suites; see FULL TEST RESULT for the whole-repo count).
+- Documentation updated in place (P2-1).
+
+## FILES CHANGED SINCE 3028aeb
+
+Relative to the reviewed commit `3028aeb` (i.e., the P2 remediation on top of the rebase — the rebase itself moved the parent commit but changed no file content, confirmed by `git diff a3ad6ae 3028aeb` file list being identical to `git diff origin/main <new-head>` before this remediation):
+
+Modified:
+- `docs/design/SES_NAVIGATOR-1A_Fixed_Character_Design.md` — STATUS UPDATE, P2-1/P2-2 sections, screenshot references (documentation only)
+- `SES_NAVIGATOR-1A_Implementation_Result.md` — this file, rewritten with post-review results
+- `test/ui/public_demo/public_demo_01_home_navigator_test.dart` — new `P2-2` test group, new `_NavigatorPortraitOnlyFailingBundle` helper, `pumpDemoAt` gained an optional `assetBundle` parameter
 
 New:
-- `lib/presentation/home/models/home_navigator_display.dart`
-- `lib/presentation/home/widgets/home_navigator_section.dart`
-- `test/presentation/home/home_navigator_section_test.dart`
-- `test/ui/public_demo/public_demo_01_home_navigator_test.dart`
-- `assets/images/navigator/navigator_normal.webp`
-- `docs/design/SES_NAVIGATOR-1A_Fixed_Character_Design.md`
-- `SES_NAVIGATOR-1A_Implementation_Result.md` (this file)
-- `docs/screenshots/navigator-1a-360x800.png`, `docs/screenshots/navigator-1a-390x844.png`
+- `docs/screenshots/navigator-1a-cta-before.png`, `navigator-1a-cta-after.png` — real-browser CTA tap evidence (healthy asset)
+- `docs/screenshots/navigator-1a-assetfail-before.png`, `navigator-1a-assetfail-after.png` — real-browser CTA tap evidence (navigator asset 404)
 
-Modified (39 lines total, all additive):
-- `lib/ui/public_demo/public_demo_01_placeholder_screen.dart` (+26): import + mount point (`HomeNavigatorSection` after `HomeOfficeStageSection`)
-- `lib/ui/asset_paths.dart` (+8): `_navigatorDir`, `navigatorNormal` constant, added to `AssetPaths.all`
-- `pubspec.yaml` (+4): `assets/images/navigator/` directory registration
-- `lib/presentation/home/home.dart` (+1): barrel export of the new model
+No production `lib/` file changed in this remediation pass — P2-2 was a test-and-verification gap, not an implementation defect, matching the review's own "no P0/P1 implementation defect" finding. `docs/screenshots/navigator-1a-360x800.png` / `-390x844.png` were refreshed with freshly-captured renders from the rebased build (pixel-identical to the implementation-time captures — same UI, same viewport, same state) rather than left stale.
 
-No file outside this list was touched. No existing test was modified, skipped, or relaxed.
+## GIT STATUS AND FILES CHANGED (original, at implementation time)
+
+New: `lib/presentation/home/models/home_navigator_display.dart`, `lib/presentation/home/widgets/home_navigator_section.dart`, `test/presentation/home/home_navigator_section_test.dart`, `test/ui/public_demo/public_demo_01_home_navigator_test.dart`, `assets/images/navigator/navigator_normal.webp`, `docs/design/SES_NAVIGATOR-1A_Fixed_Character_Design.md`, `SES_NAVIGATOR-1A_Implementation_Result.md`, `docs/screenshots/navigator-1a-{360x800,390x844}.png`.
+
+Modified (39 lines total, all additive): `lib/ui/public_demo/public_demo_01_placeholder_screen.dart` (+26), `lib/ui/asset_paths.dart` (+8), `pubspec.yaml` (+4), `lib/presentation/home/home.dart` (+1).
+
+No file outside this list was touched at implementation time. No existing test was modified, skipped, or relaxed — true then and still true after the P2 remediation.
 
 ## ASSETS
 
-Source: `01_Hiyori_Sakura_normal_reference.png` (1448×1086, supplied attachment). Cropped to a 760×760 head-and-shoulders square, resized to 512×512, encoded as WebP q88 (55KB) → `assets/images/navigator/navigator_normal.webp`. Well above the requested 256×256 floor. `assets/images/navigator/` registered in `pubspec.yaml` the same directory-bundling way `characters/`/`events/`/`locations/` already are; path exposed only via `AssetPaths.navigatorNormal`, resolved only through `HomeNavigatorIdentity.portraitAssetFor`.
+Source: `01_Hiyori_Sakura_normal_reference.png` (1448×1086, supplied attachment). Cropped to a 760×760 head-and-shoulders square, resized to 512×512, encoded as WebP q88 (55KB) → `assets/images/navigator/navigator_normal.webp`. Well above the requested 256×256 floor. `assets/images/navigator/` registered in `pubspec.yaml` the same directory-bundling way `characters/`/`events/`/`locations/` already are; path exposed only via `AssetPaths.navigatorNormal`, resolved only through `HomeNavigatorIdentity.portraitAssetFor`. Unchanged by the post-review remediation.
 
 ## AUTHORITY CHECK
 
+Re-confirmed against the current (rebased + remediated) diff, not just carried forward from the implementation-time record:
+
 - No new field on `PublicDemoState`, `PublicDemoWorkflowState`, or any save-serialised type — confirmed no diff in `lib/game/public_demo/*.dart`.
 - No new field on any Finance/Salary type — confirmed no diff in `lib/game/public_demo/public_demo_salary.dart` or callers.
-- `HomeNavigatorSection` takes no callback and constructs no `GestureDetector`/`InkWell`/`ButtonStyleButton` — verified by widget-tree assertion in both new suites.
-- Recommended Action CTA remains HOME's sole mutation entry point — verified by re-running the existing `home-recommended-action-cta` presence/position checks alongside the navigator's on the real screen.
-- `total 社員数` KPI investigated: `HomeDashboardDisplayData.employeeCount` reads `PublicDemoState.engineerCount` (2, engineers only) — 総務 already excluded from that tile pre-existing this phase. **Not changed.** Reported as a known discrepancy, not resolved here (see design doc EMPLOYEE COUNT section).
-- `adminCount: 1` already existed in `PublicDemoState.aprilStart()`; `adminMonthlySalary` already existed in `PublicDemoSalary` and was already folded into `baselineMonthlyExpenses`. Confirmed unchanged (no diff in either file).
+- No diff in Domain (`lib/game/public_demo/*.dart` broadly), assignment, payroll, month-close, or workflow-transition files.
+- `HomeNavigatorSection` still takes no callback and constructs no `GestureDetector`/`InkWell`/`ButtonStyleButton` — re-verified by widget-tree assertion, now including the P2-2 test's assertion that this holds even when its asset fails.
+- **Recommended Action eligibility, priority, and owner dispatch are untouched** — the P2-2 test proves this by tapping the *real* CTA and observing the *real* production state transition, not a stand-in. No file under `lib/presentation/home/models/home_recommended_action.dart` or the owner's `_recommendedActionCandidates`/`emit` dispatch in `public_demo_01_placeholder_screen.dart` appears in the diff.
+- `total 社員数` KPI / `adminCount` discrepancy: **re-confirmed as pre-existing / outside NAVIGATOR-1A scope**, per the review's own classification. Not touched in this remediation pass either — see design doc EMPLOYEE COUNT section.
+- Month gates, game balance, salary/cash calculation: no diff.
+
+## FILES CHANGED
+
+See FILES CHANGED SINCE 3028aeb above for the post-review delta, and GIT STATUS AND FILES CHANGED (original) for the full implementation-time list — the union is the complete change set now on the branch.
 
 ## LAYOUT
 
 ```
 KPI → Recommended Action → Office Stage → Navigator → legacy content
 ```
-Verified as tree-traversal order (survives text-scale-driven scroll displacement) and, at default text scale, as vertical position, on the real `PublicDemo01PlaceholderScreen`.
+Verified as tree-traversal order and, at default text scale, as vertical position, on the real `PublicDemo01PlaceholderScreen` — re-confirmed after the rebase (same assertions, same result, now running against #73's merged Office Stage rather than its pre-merge head, which is byte-identical content).
 
-## 360x800 RESULT
-Navigator card: 64.0pt height (target `HomeNavigatorMetrics.compactTargetHeight = 64` matched exactly), no horizontal overflow, no overlap with Office Stage above or legacy content below. See `docs/screenshots/navigator-1a-360x800.png`.
+## 360x800
 
-## 390x844 RESULT
-Navigator card: 64.0pt height at default text scale, no overflow. See `docs/screenshots/navigator-1a-390x844.png`.
+No horizontal or vertical overflow. Navigator card 64.0pt height, no overlap with Office Stage above or legacy content below. Recommended Action CTA visually unobstructed and, per CHROMIUM ACCEPTANCE below, actionable. See `docs/screenshots/navigator-1a-360x800.png`.
 
-## TEXT SCALE RESULT
+## 390x844
 
-Measured via `flutter test` (real Flutter text-layout pipeline, MediaQuery-driven — not a mock):
+Same result. See `docs/screenshots/navigator-1a-390x844.png`.
+
+## TEXT SCALE
+
+Retained from implementation time, re-verified after the rebase (`flutter test`, real Flutter text-layout pipeline, MediaQuery-driven):
 
 | textScale | 360×800 | 390×844 |
 |---|---|---|
@@ -89,46 +126,89 @@ Measured via `flutter test` (real Flutter text-layout pipeline, MediaQuery-drive
 | 1.3 | 79.0pt | 83.0pt |
 | 2.0 | 140.0pt | 116.0pt |
 
-At every scale and both sizes: name/role/greeting each measured against an independently-computed required text height (no clipping — see test group J), card grows monotonically with scale (never shrinks or holds flat, meaning no fixed height is absorbing growth by cutting text), and nothing paints outside the screen horizontally. At 1.3/2.0 the card is permitted to and does push below the strict first view, per the instruction's explicit allowance — order is still pinned unchanged at every scale.
+No clipping at any measured scale/size (name/role/greeting each checked against an independently-computed required text height); card grows monotonically with scale; nothing paints outside the screen horizontally.
 
-**Browser-rendered textScale screenshots: UNAVAILABLE.** Playwright/Chromium's zoom and device-metric overrides do not drive Flutter Web's internal `TextScaler` (confirmed: three screenshots attempted at simulated 1.0/1.3/2.0 zoom were byte-identical, md5-verified). This is a tooling limitation of this environment's screenshot pipeline, not an untested code path — the identical property (does this exact text clip at this exact scale) is verified above through the real Flutter rendering pipeline, which is the stronger form of evidence for a glyph-clipping question.
+**UNVERIFIED — browser-level textScale visual evidence.** Playwright/Chromium's zoom and device-metric overrides do not drive Flutter Web's internal `TextScaler` (re-confirmed this session: not re-attempted, since the implementation-time attempt already established this — three screenshots at simulated 1.0/1.3/2.0 zoom were byte-identical, md5-verified). No fabricated evidence is offered in its place. The widget-test evidence above remains the valid, verified record of this property.
 
-## TESTS
+## ASSET FAILURE (CHROMIUM ACCEPTANCE)
+
+**Verified in a real browser**, not only in the widget-test harness:
+
+1. Built a served copy of `flutter build web --release`'s output with `assets/assets/images/navigator/navigator_normal.webp` deleted.
+2. Playwright's network-response log confirms the running page genuinely requests that URL and receives **HTTP 404** — the failure is real, not simulated in-process.
+3. Screenshot: the navigator card renders its grey silhouette fallback icon in place of the portrait; name (佐倉 ひより), role badge (総務), and greeting all render normally; Office Stage and the rest of HOME are visually unaffected; no blank areas, no broken layout, no visible error.
+4. Chromium's accessibility/semantics tree was enabled (the same control real screen-reader/automation users activate) and used to locate the real `SkillSheetを確認` CTA — found successfully with the navigator asset broken.
+5. Tapped it. Result: `次にやること` changes from "佐藤 健のSkillSheetを確認" to "佐藤 健の営業を開始", the CTA label changes from "SkillSheetを確認" to "営業を開始", and 佐藤健's status badge advances 待機→営業準備 — **the identical real production state transition** produced when the navigator's asset loads successfully (verified side-by-side against the healthy-build screenshots taken in the same session).
+
+Screenshots: `docs/screenshots/navigator-1a-assetfail-before.png`, `navigator-1a-assetfail-after.png` (broken asset); `navigator-1a-cta-before.png`, `navigator-1a-cta-after.png` (healthy asset, same tap, for comparison).
+
+## CTA PROGRESSION
+
+Confirmed in the real browser independently of the asset-failure scenario: with the navigator's asset healthy, the same semantics-tree tap on `SkillSheetを確認` produces the same transition described above. This establishes the baseline the asset-failure run is compared against — the CTA's behavior is unchanged by the navigator's presence, working or broken.
+
+## FULL TEST RESULT
 
 | Check | Result |
 |---|---|
 | `flutter analyze` | **No issues found** |
-| `flutter test` (new navigator suites only) | **58 passed**, 0 failed (33 component + 25 screen) |
-| `flutter test` (full suite) | **1180 passed**, 0 failed (baseline at base `a3ad6ae`: 1122; +58, exact) |
+| `flutter test` (full suite, post-rebase + P2-2 addition) | **1181 passed**, 0 failed |
+| Delta from previous 1180 | **+1** (the new P2-2 real-HOME test; the rebase itself changed no test content) |
+| Duration | 5m44s wall clock (measured: `date` before/after the run — 2026-08-27T10:37:55Z → 2026-08-27T10:43:39Z) |
 | `flutter build web --release` | ✓ Built `build/web` |
 | `git diff --check` | clean |
-| `dart format` on changed/new files | clean (2 files reformatted before commit, 0 diff remaining) |
-| E2E (Playwright) | not run — outside this phase's completion conditions, consistent with PR #73's own stated policy for presentation-only HOME phases |
+| E2E (Playwright) | not run for the flutter test suite itself; Playwright WAS used for the Chromium acceptance pass above (a separate, manual verification, not part of `flutter test`) |
 
-Toolchain: Flutter 3.44.8 / Dart 3.12.2, matching this repo's `public-demo-validation` / `public-demo-preview` workflow pins (installed fresh in this session; not previously present in the container).
+Toolchain: Flutter 3.44.8 / Dart 3.12.2, matching this repo's CI pins.
+
+## TEST COUNT
+
+1181 total (was 1180 before this remediation pass; was 1122 at PR #73's own head before NAVIGATOR-1A existed). Navigator-specific: 33 component (`home_navigator_section_test.dart`, unchanged) + 26 real-screen (`public_demo_01_home_navigator_test.dart`, was 25, +1 for P2-2) = 59.
+
+## ANALYZE
+No issues found.
+
+## BUILD
+`flutter build web --release` succeeded; `build/web` produced and used for the Chromium acceptance pass.
+
+## DIFF CHECK
+Clean (`git diff --check` exit 0).
+
+## AUTHORITY CHECK
+See AUTHORITY CHECK section above — re-confirmed post-remediation, nothing outside presentation touched.
 
 ## P0
-None found.
+None found (original implementation or post-review remediation).
 
 ## P1
 None found.
 
 ## P2
-None found.
+**Both resolved** — see P2-1 RESULT and P2-2 RESULT above.
 
 ## P3
-Browser-level (as opposed to widget-test-level) confirmation of textScale-driven layout is unavailable in this environment's screenshot tooling — see TEXT SCALE RESULT and design doc KNOWN GAPS #1. Does not block completion; mitigated by direct widget-test measurement against the real text-layout pipeline.
+Browser-level (as opposed to widget-test-level) confirmation of textScale-driven layout remains unavailable in this environment's screenshot tooling. Unchanged by this remediation pass; does not block completion; mitigated by direct widget-test measurement against the real text-layout pipeline.
 
 ## BLOCKED
-None. Implementation, tests, build, and documentation are complete and pushed to the branch (see below). The only external blocker is PR #73 needing to merge before this PR can, which was surfaced to the user before implementation began and accepted as the chosen path.
+None.
 
 ## UNVERIFIED
-Browser-rendered textScale 1.3/2.0 screenshots (see TEXT SCALE RESULT) — UNVERIFIED visually, VERIFIED via widget test.
+Browser-rendered textScale 1.0/1.15/1.3/2.0 visual evidence — UNVERIFIED visually, VERIFIED via widget test (see TEXT SCALE above). No other item is UNVERIFIED.
+
+## VERDICT
+
+**READY FOR INDEPENDENT RE-REVIEW.**
+
+Both P2 findings are resolved with test and real-browser evidence. The stack dependency on PR #73 is removed — this branch is rebased cleanly onto current `origin/main`, confirmed by an empty `git diff a3ad6ae 3740af0` and a non-conflicting rebase. Full regression (1181 tests), analyze, and release build are all green; `git diff --check` is clean. The one remaining gap (browser-level textScale screenshots) is an environment tooling limitation, honestly reported as UNVERIFIED rather than fabricated, and is mitigated by direct widget-test evidence against the real rendering pipeline. Domain/Finance/Save/Workflow/assignment/payroll/Recommended-Action-eligibility/priority/owner-dispatch/month-gates/game-balance are all confirmed untouched.
+
+## NEXT
+1. Report this result to the user — awaiting further instruction (PR creation still requires separate explicit approval; none has been given in this remediation round either).
+2. Push the rebased + remediated branch — this requires a **force push** since the remote branch currently holds the pre-rebase commit `3028aeb`; per instruction, this is reported before being done (see PUSH STATUS / GIT STATUS in the chat reply, not duplicated here to avoid this document going stale again).
+3. NAVIGATOR-1B (unchanged, out of scope): GameState-driven message/expression selection.
 
 ## SCREENSHOTS
-- `docs/screenshots/navigator-1a-360x800.png`
-- `docs/screenshots/navigator-1a-390x844.png`
-(both: release web build, real Chromium render, textScale 1.0)
+- `docs/screenshots/navigator-1a-360x800.png`, `navigator-1a-390x844.png` — first-view renders, both target sizes
+- `docs/screenshots/navigator-1a-cta-before.png`, `navigator-1a-cta-after.png` — real CTA tap, healthy asset
+- `docs/screenshots/navigator-1a-assetfail-before.png`, `navigator-1a-assetfail-after.png` — real CTA tap, navigator asset 404
 
 ## DESIGN DOCUMENT
 `docs/design/SES_NAVIGATOR-1A_Fixed_Character_Design.md`
@@ -136,43 +216,44 @@ Browser-rendered textScale 1.3/2.0 screenshots (see TEXT SCALE RESULT) — UNVER
 ## RESULT DOCUMENT
 `SES_NAVIGATOR-1A_Implementation_Result.md` (this file)
 
-## GIT STATUS
-Working tree clean at investigation start. All changes are additive/scoped as listed under FILES CHANGED — no unrelated files touched. Not yet committed as of writing this document (commit happens immediately after, before push).
-
-## PUSH STATUS
-Pending — will push to `origin/claude/navigator-1a-fixed-character-x8xjp0` after this document is committed, per instructions (report before PR, no PR without approval).
-
-## PR STATUS
-**Not created.** Per instructions, no PR is opened until explicit approval is given after this report. When created, its base must be `claude/home-runtime-2b-office-stage-fa1cpy` (PR #73's branch), not `main` — this PR is stacked on #73 and cannot merge before it.
-
 ## AI TOOL
 Claude Code
 
 ## MODEL
-Configured for `claude-opus-5`; session model was switched mid-session to `claude-sonnet-5` by the user (`/model claude-sonnet-5`). The exact model that served each turn was not independently queried against `get_session`.
+Sonnet 5 (session was explicitly set to `claude-sonnet-5` before this remediation round began, per the task's RESOURCE POLICY — no escalation to Opus occurred; none was needed).
 
-## SESSION USAGE / 5-HOUR USAGE / WEEKLY USAGE / TOKENS / CREDITS / RESET INFORMATION
-UNAVAILABLE — not exposed to this session.
-
-## USAGE SOURCE
+## SESSION USAGE
 UNAVAILABLE
 
-## USAGE VERIFIED
-UNVERIFIED
+## 5-HOUR USAGE
+UNAVAILABLE
 
-## PROCESS START / PROCESS END / ELAPSED TIME / ACTIVE WORK TIME / WAITING TIME
-UNAVAILABLE — wall-clock timing was not independently instrumented this session; no reliable start/end timestamp source was queried.
+## WEEKLY USAGE
+UNAVAILABLE
+
+## TOKENS/CREDITS
+UNAVAILABLE
+
+## RESET INFORMATION
+UNAVAILABLE
+
+## TASK START
+UNAVAILABLE — no reliable instrumented start timestamp for the overall task (only the full-test-run sub-step was independently timestamped; see FULL TEST RESULT).
+
+## TASK END
+UNAVAILABLE
+
+## ELAPSED TIME
+UNAVAILABLE for the task as a whole. The `flutter test` full-suite run specifically measured 5m44s (see FULL TEST RESULT) — that sub-interval is TIME VERIFIED; the overall task is not.
+
+## ACTIVE TIME
+UNAVAILABLE
+
+## WAITING TIME
+UNAVAILABLE
 
 ## TIME SOURCE
-UNAVAILABLE
+`date -u` wall-clock timestamps, for the one measured sub-interval only (full-suite test run). No other step was timestamped.
 
 ## TIME VERIFIED
-UNVERIFIED
-
-## VERDICT
-NAVIGATOR-1A is complete on its own terms: 佐倉ひより is visible on Public Demo HOME exactly once, correctly named and labeled, positioned after Recommended Action and Office Stage, entirely inert, asset-failure-tolerant, and provably free of any effect on Domain/Finance/Save/Workflow state — all with passing tests, clean analyze/build/diff, and both required viewports screenshotted overflow-free. The one open item is structural, not a defect: this branch is stacked on unmerged PR #73 and cannot land on `main` independently.
-
-## NEXT
-1. Report this result to the user (this document) — awaiting PR-creation approval, per instructions.
-2. On approval, push and open a PR with base `claude/home-runtime-2b-office-stage-fa1cpy`, explicitly noting the stack-on-#73 dependency in the PR body.
-3. NAVIGATOR-1B (out of this phase's scope): GameState-driven message/expression selection, built on the `NavigatorExpression` vocabulary and `expression` parameter already declared here.
+Partially — only the full-suite test run duration is TIME VERIFIED. All other timing fields are UNAVAILABLE/UNVERIFIED; no value was estimated in their place.

@@ -19,14 +19,17 @@
 // PublicDemoAggregate behind it.
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:smile_enjoy_story/game/public_demo/public_demo_sales.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_state.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_workflow_state.dart';
 import 'package:smile_enjoy_story/presentation/home/models/home_navigator_display.dart';
 import 'package:smile_enjoy_story/presentation/home/widgets/home_navigator_section.dart';
 import 'package:smile_enjoy_story/presentation/home/widgets/home_office_stage_section.dart';
 import 'package:smile_enjoy_story/presentation/home/widgets/recommended_action_section.dart';
+import 'package:smile_enjoy_story/ui/asset_paths.dart';
 import 'package:smile_enjoy_story/ui/public_demo/public_demo_01_placeholder_screen.dart';
 import 'package:smile_enjoy_story/ui/public_demo/public_demo_home_dashboard_section.dart';
 
@@ -87,10 +90,16 @@ Future<void> pumpDemoAt(
   WidgetTester tester, {
   Size size = const Size(390, 844),
   double textScale = 1.0,
+  AssetBundle? assetBundle,
 }) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1.0;
   addTearDown(tester.view.reset);
+
+  Widget screen = const PublicDemo01PlaceholderScreen();
+  if (assetBundle != null) {
+    screen = DefaultAssetBundle(bundle: assetBundle, child: screen);
+  }
 
   await tester.pumpWidget(
     MaterialApp(
@@ -99,11 +108,28 @@ Future<void> pumpDemoAt(
           size: size,
           textScaler: TextScaler.linear(textScale),
         ),
-        child: const PublicDemo01PlaceholderScreen(),
+        child: screen,
       ),
     ),
   );
   await tester.pumpAndSettle();
+}
+
+/// Fails to load exactly the navigator's portrait and nothing else —
+/// every other asset (the Office Stage background, its engineer portraits,
+/// fonts) is served by the real bundle. P2-2 asks for an *isolated*
+/// navigator asset failure on the real screen, not a screen where every
+/// image is broken; a bundle that failed everything would leave this test
+/// unable to tell "the navigator's fallback works" apart from "the whole
+/// screen degraded and happened not to crash".
+class _NavigatorPortraitOnlyFailingBundle extends CachingAssetBundle {
+  @override
+  Future<ByteData> load(String key) {
+    if (key == AssetPaths.navigatorNormal) {
+      throw FlutterError('simulated asset failure: $key');
+    }
+    return rootBundle.load(key);
+  }
 }
 
 /// Every field of the authoritative state, as one comparable record.
@@ -450,5 +476,104 @@ void main() {
         }
       });
     }
+  });
+
+  group('P2-2: a Navigator asset failure cannot block HOME progression', () {
+    testWidgets('with the navigator portrait failing to load, the fallback '
+        'renders AND the real Recommended Action CTA still dispatches the '
+        'real production handler', (tester) async {
+      // 1. Render the real HOME with exactly the navigator's asset failing
+      // — every other asset (Office Stage background/portraits, fonts) is
+      // served normally, so a failure elsewhere in the screen cannot be
+      // mistaken for the property this test is about.
+      await pumpDemoAt(
+        tester,
+        assetBundle: _NavigatorPortraitOnlyFailingBundle(),
+      );
+      // The decode failure surfaces asynchronously; give it real wall-clock
+      // time to land, the way the existing Public Demo image suites do.
+      for (var i = 0; i < 10; i++) {
+        await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 50)),
+        );
+        await tester.pump();
+      }
+      await tester.pumpAndSettle();
+      expect(
+        tester.takeException(),
+        isNull,
+        reason: 'a broken navigator asset must not throw out of layout',
+      );
+
+      // 2. The navigator itself degraded to its silhouette fallback rather
+      // than disappearing or crashing the section around it. The `Image`
+      // widget itself is still constructed (its asset path is non-null —
+      // this is a decode failure, not a missing-artwork case) but its
+      // errorBuilder took over what it renders, which is what the fallback
+      // key appearing proves.
+      expect(find.byType(HomeNavigatorSection), findsOneWidget);
+      expect(
+        find.byKey(const Key('home-navigator-portrait-fallback')),
+        findsOneWidget,
+        reason:
+            'the errorBuilder fallback must render in place of the '
+            'failed image',
+      );
+      expect(find.text('佐倉 ひより'), findsOneWidget);
+      expect(find.text('総務'), findsOneWidget);
+      expect(find.text(HomeNavigatorIdentity.greeting), findsOneWidget);
+
+      // 3. The existing Recommended Action CTA is unaffected — still
+      // present, still above the navigator, still the real production
+      // widget (not a stand-in).
+      expect(ctaFinder, findsOneWidget);
+      final ctaLabel = tester.widget<Text>(
+        find.descendant(of: ctaFinder, matching: find.byType(Text)).first,
+      );
+      expect(ctaLabel.data, isNotEmpty);
+
+      // 4. Actually tap it — no mocking of the HOME action path, no
+      // stand-in handler. This is the same `SkillSheet確認` production
+      // button the existing playthrough suites open with.
+      final workflowBefore = workflowSnapshot(tester);
+      expect(
+        currentWorkflow(tester).engineers.first.stage,
+        PublicDemoSalesStage.waiting,
+        reason:
+            'the trajectory this test drives assumes April\'s opening '
+            'state — 佐藤健 still waiting',
+      );
+
+      await tapAndSettle(tester, 'SkillSheet確認');
+
+      // 5. The expected existing destination/action actually occurred: the
+      // real owner dispatch ran `_startSkillSheetReview`, advancing the
+      // real workflow's sales stage — the same authoritative effect this
+      // button has with no navigator on screen at all.
+      expect(
+        workflowSnapshot(tester),
+        isNot(workflowBefore),
+        reason:
+            'the real Recommended Action CTA must still reach the real '
+            'production handler and move real workflow state, proving '
+            'Navigator presentation failure did not become a gameplay or '
+            'navigation failure',
+      );
+      expect(
+        currentWorkflow(tester).engineers.first.stage,
+        PublicDemoSalesStage.skillSheet,
+        reason: 'SkillSheet確認 must have run its real effect',
+      );
+
+      // The navigator itself is unmoved by the state change that just
+      // happened — still exactly one, still the fixed identity, still the
+      // fallback (the asset never becomes loadable mid-test).
+      expect(find.byType(HomeNavigatorSection), findsOneWidget);
+      expect(
+        find.byKey(const Key('home-navigator-portrait-fallback')),
+        findsOneWidget,
+      );
+      expect(find.text('佐倉 ひより'), findsOneWidget);
+    });
   });
 }

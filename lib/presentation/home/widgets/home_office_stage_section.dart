@@ -146,8 +146,16 @@ class HomeOfficeStageSection extends StatelessWidget {
             // removed: the KPI row two widgets above already owns that
             // fact, and HOME-RUNTIME-2A's rule is that each fact has
             // exactly one place on screen.
-            SizedBox(
-              height: HomeOfficeStageMetrics._titleRowHeight,
+            // A *minimum*, not a fixed height: at an increased system text
+            // scale `labelLarge`'s line height exceeds 20pt, and a fixed
+            // box would clip the heading rather than let the card grow —
+            // which is one of the growths the safety ceiling's margin is
+            // there to absorb (the card measures 196pt at 2x scale,
+            // still under 213).
+            ConstrainedBox(
+              constraints: const BoxConstraints(
+                minHeight: HomeOfficeStageMetrics._titleRowHeight,
+              ),
               child: Align(
                 alignment: Alignment.centerLeft,
                 child: Text(

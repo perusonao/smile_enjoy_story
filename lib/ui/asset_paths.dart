@@ -10,6 +10,7 @@ class AssetPaths {
   static const String _charactersDir = 'assets/images/characters';
   static const String _eventsDir = 'assets/images/events';
   static const String _locationsDir = 'assets/images/locations';
+  static const String _navigatorDir = 'assets/images/navigator';
 
   static const String salesMale = '$_charactersDir/sales_male.jpg';
   static const String salesFemale = '$_charactersDir/sales_female.jpg';
@@ -33,6 +34,12 @@ class AssetPaths {
   static const String locationOfficeNight = '$_locationsDir/office_night.jpg';
   static const String locationCafeMeeting = '$_locationsDir/cafe_meeting.jpg';
 
+  /// NAVIGATOR-1A — 佐倉 ひより's normal-expression portrait, cropped from
+  /// the character reference for use at small circular sizes. Resolved
+  /// through `HomeNavigatorIdentity.portraitAssetFor`, never referenced as
+  /// a literal, and never stored in a domain model or a save file.
+  static const String navigatorNormal = '$_navigatorDir/navigator_normal.webp';
+
   static const List<String> all = [
     salesMale,
     salesFemale,
@@ -53,5 +60,6 @@ class AssetPaths {
     locationMeetingRoom,
     locationOfficeNight,
     locationCafeMeeting,
+    navigatorNormal,
   ];
 }

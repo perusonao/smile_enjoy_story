@@ -21,6 +21,7 @@ import '../../game/public_demo/public_demo_workflow_state.dart';
 import '../../presentation/home/models/home_dashboard_display_data.dart';
 import '../../presentation/home/models/home_office_stage_display.dart';
 import '../../presentation/home/models/home_recommended_action.dart';
+import '../../presentation/home/widgets/home_navigator_section.dart';
 import '../../presentation/home/widgets/home_office_stage_section.dart';
 import '../asset_paths.dart';
 import 'public_demo_event_dialog.dart';
@@ -1647,6 +1648,31 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
                 // what it was written to measure.
                 const SizedBox(height: 8),
                 HomeOfficeStageSection(display: _officeStageDisplay),
+                // NAVIGATOR-1A: 佐倉 ひより sits BELOW the Office Stage, so
+                // the opening column reads KPI → Recommended Action →
+                // Office Stage → Navigator. The order is the design's and
+                // it is the same argument HOME-RUNTIME-2B made one widget
+                // above: the Recommended Action is the primary interaction
+                // and the picture is a visual layer, so neither may be
+                // pushed down by something introduced later. She is last of
+                // the three because she is the only one of them that says
+                // nothing the player has to act on.
+                //
+                // A sibling of PublicDemoHomeDashboardSection rather than a
+                // child, for the reason the Office Stage already is: the
+                // consolidation suite's group 15 scopes "HOME's only
+                // mutation path" to that section's subtree and its ceiling
+                // measures that section's height. Mounting an inert card
+                // inside it would put a widget under guards that were
+                // written to measure the read-only projection, and nothing
+                // would be gained — this card holds no projected value.
+                //
+                // Const, and that is the point: the navigator takes no
+                // state, so `setState` after a domain command cannot
+                // rebuild her into saying something different. NAVIGATOR-1A
+                // reads nothing and decides nothing.
+                const SizedBox(height: 8),
+                const HomeNavigatorSection(),
                 const SizedBox(height: 8),
                 dashboard(),
                 if (s.month == 4) ...[

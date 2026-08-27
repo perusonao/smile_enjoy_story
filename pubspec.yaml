@@ -78,6 +78,10 @@ flutter:
     - assets/images/characters/
     - assets/images/events/
     - assets/images/locations/
+    # NAVIGATOR-1A: the fixed navigator's portraits (佐倉 ひより). Same
+    # directory form as above — adding an expression later needs no
+    # pubspec change, only an AssetPaths constant.
+    - assets/images/navigator/
 
   # Bundled locally so Japanese UI text renders correctly without depending
   # on a runtime fetch of a CJK fallback font from a CDN (which fails in

@@ -28,6 +28,18 @@
 // they are one slot showing one of two things, never two stacked cards —
 // so the tests that pinned the month goal's presence now pin that role
 // split in both directions instead.
+//
+// HOME-RUNTIME-2B then added the Office Stage between the Recommended
+// Action and the legacy content, which pushes the legacy per-employee
+// `SkillSheet確認` button below the browser-chrome budget. Group 16-17's
+// first-view assertion is therefore re-aimed at the Recommended Action CTA
+// — the element that actually carries "the month's top action" after 2C,
+// and which sits at roughly half the depth the legacy button ever did — and
+// group 18/24 gained an explicit test that the legacy button is relocated
+// rather than lost. The assertions themselves (painted viewport,
+// browser-chrome budget, genuinely tappable) are unchanged in form and
+// strength; only their subject moved, and 16-17 additionally now requires
+// the Office Stage itself to be fully painted inside the same budget.
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -483,11 +495,12 @@ void main() {
     });
   });
 
-  group('16-17: the month\'s top action is back inside the first view', () {
+  group('16-17: the month\'s top action is inside the first view', () {
     for (final (:size, :contentBudget) in _targets) {
       final label = '${size.width.toInt()}x${size.height.toInt()}';
 
-      testWidgets('SkillSheet確認 is reachable with no scrolling at $label', (
+      testWidgets('the month\'s top action is reachable with no scrolling, '
+          'and the Office Stage below it is fully visible, at $label', (
         tester,
       ) async {
         await pumpDemoAt(tester, size);
@@ -505,40 +518,78 @@ void main() {
         );
         expect(scrollable.controller?.offset ?? 0, 0);
 
-        final button = actionButton('SkillSheet確認');
-        expect(button, findsOneWidget);
+        // HOME-RUNTIME-2B changed WHICH widget this assertion is made
+        // about, deliberately and once. It used to name the legacy
+        // per-employee `SkillSheet確認` button, because before
+        // HOME-RUNTIME-2C that button *was* the only way to take April's
+        // top action, and landing it above the fold was the whole point of
+        // 2A. 2C then put the same action behind the Recommended Action
+        // CTA at 302pt — half the depth — and 2B spends the space that
+        // freed up on the Office Stage, which pushes the now-redundant
+        // second copy of the action below the browser-chrome budget.
+        //
+        // So the property this group exists to protect ("the month's top
+        // action is in the first view") is asserted here against the
+        // element that actually carries it, and it holds by a far wider
+        // margin than it ever did against the legacy button. What is NOT
+        // relaxed: the action is still pinned to the painted viewport, to
+        // the browser-chrome budget, and to being genuinely tappable from
+        // where it sits — all three assertions below are the originals,
+        // re-aimed. The legacy button's continued existence, enablement
+        // and reachability are asserted further down, in group 18/24.
+        final cta = find.byKey(const Key('home-recommended-action-cta'));
+        expect(cta, findsOneWidget);
 
-        final buttonRect = tester.getRect(button);
+        final ctaRect = tester.getRect(cta);
         final viewport = tester.getRect(find.byType(ListView));
 
         // (a) It is genuinely inside the painted viewport, top and bottom —
         //     not merely present in the widget tree below the fold.
         expect(
-          buttonRect.top,
+          ctaRect.top,
           greaterThanOrEqualTo(viewport.top),
-          reason: 'button top $buttonRect vs viewport $viewport',
+          reason: 'CTA top $ctaRect vs viewport $viewport',
         );
         expect(
-          buttonRect.bottom,
+          ctaRect.bottom,
           lessThanOrEqualTo(viewport.bottom),
-          reason: 'button bottom $buttonRect vs viewport $viewport',
+          reason: 'CTA bottom $ctaRect vs viewport $viewport',
         );
 
         // (b) ...and inside the *effective* content height a mobile browser
         //     leaves once its chrome is showing, which is the height the
-        //     screenshots were taken at. See _effectiveContentBudget.
+        //     screenshots were taken at.
         expect(
-          buttonRect.bottom - viewport.top,
+          ctaRect.bottom - viewport.top,
           lessThanOrEqualTo(contentBudget),
           reason:
-              'SkillSheet確認 ends ${buttonRect.bottom - viewport.top}pt below '
+              'the CTA ends ${ctaRect.bottom - viewport.top}pt below the '
+              'AppBar; the browser-chrome content budget at $label is '
+              '${contentBudget}pt',
+        );
+
+        // (c) HOME-RUNTIME-2B's own first-view claim: the picture this
+        //     phase adds is not merely present, it is *fully* painted
+        //     inside the same budget. This is what the space reclaimed
+        //     above was spent on, so if the Office Stage ever grows past
+        //     what the first view can hold, that is a regression in this
+        //     phase and not a matter of taste.
+        final stage = tester.getRect(
+          find.byKey(const Key('home-office-stage')),
+        );
+        expect(stage.top, greaterThan(ctaRect.bottom));
+        expect(
+          stage.bottom - viewport.top,
+          lessThanOrEqualTo(contentBudget),
+          reason:
+              'the Office Stage ends ${stage.bottom - viewport.top}pt below '
               'the AppBar; the browser-chrome content budget at $label is '
               '${contentBudget}pt',
         );
 
         // The action is genuinely usable from where it sits, not just
-        // laid out there.
-        await tester.tap(button);
+        // laid out there — and it still runs April's real first step.
+        await tester.tap(cta);
         await settle(tester);
         expect(actionButton('営業開始'), findsWidgets);
       });
@@ -624,6 +675,33 @@ void main() {
   });
 
   group('18, 24: every action the cleanup touched is still reachable', () {
+    testWidgets('2B: the legacy SkillSheet確認 button still exists, still '
+        'sits below the Office Stage, and still works after scrolling', (
+      tester,
+    ) async {
+      await pumpDemoAt(tester, const Size(360, 800));
+
+      // HOME-RUNTIME-2B moved this button below the browser-chrome budget
+      // (see group 16-17) — it did NOT remove it, disable it, or change
+      // what it does. Nothing about the legacy per-employee cards is 2B's
+      // to delete; that is 2D/2E's scope. This pins the difference between
+      // "relocated" and "lost".
+      final button = actionButton('SkillSheet確認');
+      expect(button, findsOneWidget);
+      expect(tester.widget<ButtonStyleButton>(button).onPressed, isNotNull);
+
+      final stage = tester.getRect(find.byKey(const Key('home-office-stage')));
+      expect(
+        tester.getRect(button).top,
+        greaterThan(stage.bottom),
+        reason: 'the legacy employee action belongs below the Office Stage',
+      );
+
+      // Reachable and functional by ordinary scrolling.
+      await tapAndSettle(tester, 'SkillSheet確認');
+      expect(actionButton('営業開始'), findsWidgets);
+    });
+
     testWidgets('18: the internal-training action still runs the same '
         'command, with the same key and the same eligibility', (tester) async {
       await pumpDemoAt(tester, const Size(390, 844));

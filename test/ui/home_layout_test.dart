@@ -29,11 +29,17 @@ import '../game/test_helpers.dart';
 
 const _widths = [360.0, 390.0];
 
-Future<void> _pumpHome(WidgetTester tester, GameState state, double width) async {
+Future<void> _pumpHome(
+  WidgetTester tester,
+  GameState state,
+  double width,
+) async {
   tester.view.physicalSize = Size(width, 844);
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.resetPhysicalSize);
-  SharedPreferences.setMockInitialValues({'ses_playable_save_v1': jsonEncode(state.toJson())});
+  SharedPreferences.setMockInitialValues({
+    'ses_playable_save_v1': jsonEncode(state.toJson()),
+  });
   await tester.pumpWidget(SesApp(controller: GameController()));
   await tester.pumpAndSettle();
 }
@@ -52,7 +58,9 @@ GameState _busyFreeManagementState() {
   ];
   state = state.copyWith(
     engineers: [...state.engineers, ...waiters],
-    company: state.company.copyWith(engineerIds: [...state.company.engineerIds, ...waiters.map((e) => e.id)]),
+    company: state.company.copyWith(
+      engineerIds: [...state.company.engineerIds, ...waiters.map((e) => e.id)],
+    ),
     waitingStreak: {'busy-1': 5, 'busy-2': 3, 'busy-3': 2},
   );
   return state;
@@ -61,52 +69,73 @@ GameState _busyFreeManagementState() {
 void main() {
   group('A/B: 今やること is a single hero card, no overflow (free management)', () {
     for (final width in _widths) {
-      testWidgets('exactly one "今やること" card renders even with many pending tasks at ${width.toInt()}px', (tester) async {
-        final state = _busyFreeManagementState();
-        await _pumpHome(tester, state, width);
+      testWidgets(
+        'exactly one "今やること" card renders even with many pending tasks at ${width.toInt()}px',
+        (tester) async {
+          final state = _busyFreeManagementState();
+          await _pumpHome(tester, state, width);
 
-        expect(find.text('今やること'), findsOneWidget);
-        // "重要なお知らせ" holds at most 2 more — never every task at equal
-        // weight (§2, §4). The rest (if any) is reachable via "すべて見る".
-        expect(find.byType(TaskCard).evaluate().length, lessThanOrEqualTo(3));
-        expect(find.text('会社の状況'), findsOneWidget);
-        expect(tester.takeException(), isNull);
-      });
+          expect(find.text('今やること'), findsOneWidget);
+          // "重要なお知らせ" holds at most 2 more — never every task at equal
+          // weight (§2, §4). The rest (if any) is reachable via "すべて見る".
+          expect(find.byType(TaskCard).evaluate().length, lessThanOrEqualTo(3));
+          expect(find.text('会社の状況'), findsOneWidget);
+          expect(find.text('技術者'), findsOneWidget);
+          expect(tester.takeException(), isNull);
+        },
+      );
     }
   });
 
-  group('B: 今やること is a single hero card, no overflow (guided founding tutorial)', () {
-    for (final width in _widths) {
-      testWidgets('exactly one "今やること" card renders during the guided tutorial at ${width.toInt()}px', (tester) async {
-        final state = GameEngine.newGame(seed: 2);
-        await _pumpHome(tester, state, width);
+  group(
+    'B: 今やること is a single hero card, no overflow (guided founding tutorial)',
+    () {
+      for (final width in _widths) {
+        testWidgets(
+          'exactly one "今やること" card renders during the guided tutorial at ${width.toInt()}px',
+          (tester) async {
+            final state = GameEngine.newGame(seed: 2);
+            await _pumpHome(tester, state, width);
 
-        expect(find.text('今やること'), findsOneWidget);
-        expect(tester.takeException(), isNull);
-      });
-    }
-  });
+            expect(find.text('今やること'), findsOneWidget);
+            expect(tester.takeException(), isNull);
+          },
+        );
+      }
+    },
+  );
 
   group('C: Beginner Mode shows 今月の経営ポイント', () {
     for (final width in _widths) {
-      testWidgets('shown exactly once during Phase 3A at ${width.toInt()}px', (tester) async {
+      testWidgets('shown exactly once during Phase 3A at ${width.toInt()}px', (
+        tester,
+      ) async {
         var state = playThroughPrologue(11);
-        state = ProgressionEngine.reconcile(PrologueEngine.completePrologue(state));
+        state = ProgressionEngine.reconcile(
+          PrologueEngine.completePrologue(state),
+        );
         state = BeginnerModeEngine.reconcile(state);
         expect(BeginnerModeEngine.isPhase3AActive(state), isTrue);
 
         await _pumpHome(tester, state, width);
 
         expect(find.text('今月の経営ポイント'), findsOneWidget);
-        expect(find.text(BeginnerModeEngine.currentThemeLabel(state)), findsOneWidget);
+        expect(
+          find.text(BeginnerModeEngine.currentThemeLabel(state)),
+          findsOneWidget,
+        );
         expect(tester.takeException(), isNull);
       });
     }
   });
 
   group('D: Free Mode shows no Beginner-only guidance', () {
-    testWidgets('a free-management save shows no 今月の経営ポイント / 初心者経営期間 card', (tester) async {
-      final state = GameEngine.skipFoundingTutorial(GameEngine.newGame(seed: 6));
+    testWidgets('a free-management save shows no 今月の経営ポイント / 初心者経営期間 card', (
+      tester,
+    ) async {
+      final state = GameEngine.skipFoundingTutorial(
+        GameEngine.newGame(seed: 6),
+      );
       expect(BeginnerModeEngine.isBeginnerJourney(state), isFalse);
 
       await _pumpHome(tester, state, 390);
@@ -118,42 +147,55 @@ void main() {
   });
 
   group('E: no duplicate facts between BeginnerModeCard / 重要なお知らせ / 会社の状況', () {
-    testWidgets('waiting-cost fact stays gone from BeginnerModeCard; 次回入金予定 stays (no other screen shows it)', (tester) async {
-      var state = playThroughPrologue(11);
-      state = ProgressionEngine.reconcile(PrologueEngine.completePrologue(state));
-      final waiter = buildEngineer(id: 'dup-check-waiter', salary: 320000, status: EngineerStatus.waiting);
-      state = state.copyWith(
-        engineers: [...state.engineers, waiter],
-        company: state.company.copyWith(engineerIds: [...state.company.engineerIds, waiter.id]),
-        accountsReceivable: [
-          AccountsReceivable(
-            id: 'dup-check-ar',
-            clientId: state.activeAssignments.first.project.clientId,
-            projectId: state.activeAssignments.first.project.id,
-            employeeId: state.activeAssignments.first.engineerId,
-            amount: 500000,
-            generatedMonth: 1,
-            dueMonth: 2,
+    testWidgets(
+      'waiting-cost fact stays gone from BeginnerModeCard; 次回入金予定 stays (no other screen shows it)',
+      (tester) async {
+        var state = playThroughPrologue(11);
+        state = ProgressionEngine.reconcile(
+          PrologueEngine.completePrologue(state),
+        );
+        final waiter = buildEngineer(
+          id: 'dup-check-waiter',
+          salary: 320000,
+          status: EngineerStatus.waiting,
+        );
+        state = state.copyWith(
+          engineers: [...state.engineers, waiter],
+          company: state.company.copyWith(
+            engineerIds: [...state.company.engineerIds, waiter.id],
           ),
-        ],
-      );
-      state = BeginnerModeEngine.reconcile(state);
-      expect(BeginnerModeEngine.isPhase3AActive(state), isTrue);
+          accountsReceivable: [
+            AccountsReceivable(
+              id: 'dup-check-ar',
+              clientId: state.activeAssignments.first.project.clientId,
+              projectId: state.activeAssignments.first.project.id,
+              employeeId: state.activeAssignments.first.engineerId,
+              amount: 500000,
+              generatedMonth: 1,
+              dueMonth: 2,
+            ),
+          ],
+        );
+        state = BeginnerModeEngine.reconcile(state);
+        expect(BeginnerModeEngine.isPhase3AActive(state), isTrue);
 
-      await _pumpHome(tester, state, 390);
+        await _pumpHome(tester, state, 390);
 
-      // 待機社員の給与負担 used to appear both in BeginnerModeCard's own
-      // Facts row and (for the waiting case) in TaskEngine's own notices —
-      // now it lives in exactly one place: 重要なお知らせ/すべて見る via
-      // TaskCard. 次回入金予定 stays on BeginnerModeCard (Codex review on
-      // PR #22, confirmed real: no other screen shows which specific AR
-      // entry is due when) — findsOneWidget confirms it's still there, and
-      // exactly once, not duplicated a second time elsewhere.
-      expect(find.textContaining('次回入金予定'), findsOneWidget);
-      expect(find.textContaining('待機社員の給与負担'), findsNothing);
-      // 資金余命 itself still appears, but exactly once (会社の状況 only).
-      expect(find.text('資金余命'), findsOneWidget);
-      expect(tester.takeException(), isNull);
-    });
+        // 待機社員の給与負担 used to appear both in BeginnerModeCard's own
+        // Facts row and (for the waiting case) in TaskEngine's own notices —
+        // now it lives in exactly one place: 重要なお知らせ/すべて見る via
+        // TaskCard. 次回入金予定 stays on BeginnerModeCard (Codex review on
+        // PR #22, confirmed real: no other screen shows which specific AR
+        // entry is due when) — findsOneWidget confirms it's still there, and
+        // exactly once, not duplicated a second time elsewhere.
+        expect(find.textContaining('次回入金予定'), findsOneWidget);
+        expect(find.textContaining('待機社員の給与負担'), findsNothing);
+        // 技術者 label is the HOME KPI; 資金余命 itself still appears, but
+        // exactly once (会社の状況 only).
+        expect(find.text('技術者'), findsOneWidget);
+        expect(find.text('資金余命'), findsOneWidget);
+        expect(tester.takeException(), isNull);
+      },
+    );
   });
 }

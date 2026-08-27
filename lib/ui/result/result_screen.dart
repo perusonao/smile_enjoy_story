@@ -17,7 +17,8 @@ class ResultScreen extends StatelessWidget {
     final companyType = GameEngine.classifyCompanyType(state);
     final interviewSuccessRate = stats.projectInterviewCount == 0
         ? 0
-        : (stats.projectInterviewSuccess / stats.projectInterviewCount * 100).round();
+        : (stats.projectInterviewSuccess / stats.projectInterviewCount * 100)
+              .round();
 
     return Scaffold(
       appBar: AppBar(title: const Text('経営結果')),
@@ -47,7 +48,10 @@ class ResultScreen extends StatelessWidget {
                     fontWeight: FontWeight.w900,
                   ),
                 ),
-                const Text('ランク', style: TextStyle(color: Colors.white70, fontSize: 12)),
+                const Text(
+                  'ランク',
+                  style: TextStyle(color: Colors.white70, fontSize: 12),
+                ),
               ],
             ),
           ),
@@ -62,7 +66,7 @@ class ResultScreen extends StatelessWidget {
           _ResultRow('累計家賃', formatYen(stats.cumulativeRent)),
           _ResultRow('累計固定費', formatYen(stats.cumulativeFixedCost)),
           _ResultRow('営業利益', formatYen(stats.cumulativeProfit)),
-          _ResultRow('社員数', '${state.engineers.length}名'),
+          _ResultRow('技術者数', '${state.engineers.length}名'),
           _ResultRow('稼働率', '${state.utilizationPercent}%'),
           _ResultRow('待機延べ週', '${stats.waitingWeeks}週'),
           _ResultRow('採用人数', '${stats.hires}名'),
@@ -72,10 +76,12 @@ class ResultScreen extends StatelessWidget {
             width: double.infinity,
             child: OutlinedButton.icon(
               onPressed: () {
-                Clipboard.setData(ClipboardData(text: controller.playtestLogJson()));
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('プレイログをコピーしました。')),
+                Clipboard.setData(
+                  ClipboardData(text: controller.playtestLogJson()),
                 );
+                ScaffoldMessenger.of(
+                  context,
+                ).showSnackBar(const SnackBar(content: Text('プレイログをコピーしました。')));
               },
               icon: const Icon(Icons.copy_all_outlined),
               label: const Text('プレイログ(JSON)をコピー'),
@@ -114,14 +120,24 @@ class _CompanyTypeCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('会社タイプ', style: TextStyle(fontSize: 11.5, color: Colors.black54)),
+          const Text(
+            '会社タイプ',
+            style: TextStyle(fontSize: 11.5, color: Colors.black54),
+          ),
           const SizedBox(height: 2),
           Text(
             companyType.label,
-            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: SesTheme.primaryBlue),
+            style: const TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+              color: SesTheme.primaryBlue,
+            ),
           ),
           const SizedBox(height: 2),
-          Text(companyType.description, style: const TextStyle(fontSize: 12.5, color: Colors.black54)),
+          Text(
+            companyType.description,
+            style: const TextStyle(fontSize: 12.5, color: Colors.black54),
+          ),
         ],
       ),
     );

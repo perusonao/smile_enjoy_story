@@ -60,7 +60,7 @@ void main() {
     expect(delegate.crossAxisCount, 2);
 
     expect(find.text('現金'), findsOneWidget);
-    expect(find.text('社員数'), findsOneWidget);
+    expect(find.text('技術者数'), findsOneWidget);
     expect(find.text('稼働案件'), findsOneWidget);
     expect(find.text('信用'), findsOneWidget);
   });

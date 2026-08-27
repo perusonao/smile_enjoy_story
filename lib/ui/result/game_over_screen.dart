@@ -33,7 +33,11 @@ class GameOverScreen extends StatelessWidget {
                 SizedBox(height: 8),
                 Text(
                   '倒産しました',
-                  style: TextStyle(color: Colors.white, fontSize: 26, fontWeight: FontWeight.w900),
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 26,
+                    fontWeight: FontWeight.w900,
+                  ),
                 ),
               ],
             ),
@@ -41,7 +45,7 @@ class GameOverScreen extends StatelessWidget {
           const SizedBox(height: 16),
           _ResultRow('倒産週', 'Week ${state.bankruptWeek ?? state.displayWeek}'),
           _ResultRow('最終資金', formatYen(state.company.cash)),
-          _ResultRow('最終社員数', '${state.engineers.length}名'),
+          _ResultRow('最終技術者数', '${state.engineers.length}名'),
           _ResultRow('待機人数', '${state.waitingEngineerCount}名'),
           const SizedBox(height: 10),
           Container(
@@ -65,10 +69,12 @@ class GameOverScreen extends StatelessWidget {
             width: double.infinity,
             child: OutlinedButton.icon(
               onPressed: () {
-                Clipboard.setData(ClipboardData(text: controller.playtestLogJson()));
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('プレイログをコピーしました。')),
+                Clipboard.setData(
+                  ClipboardData(text: controller.playtestLogJson()),
                 );
+                ScaffoldMessenger.of(
+                  context,
+                ).showSnackBar(const SnackBar(content: Text('プレイログをコピーしました。')));
               },
               icon: const Icon(Icons.copy_all_outlined),
               label: const Text('プレイログ(JSON)をコピー'),

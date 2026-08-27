@@ -84,7 +84,7 @@ void main() {
       await _pumpScrollable(tester, const KpiSection());
 
       expect(find.text('現金'), findsOneWidget);
-      expect(find.text('社員数'), findsOneWidget);
+      expect(find.text('技術者数'), findsOneWidget);
       expect(find.text('参画中'), findsOneWidget);
       expect(find.text('売上'), findsOneWidget);
       expect(find.text('入金予定'), findsOneWidget);
@@ -97,7 +97,7 @@ void main() {
       await _pumpScrollable(tester, KpiSection(data: _sampleData));
 
       expect(find.text('¥250万'), findsOneWidget); // 現金
-      expect(find.text('2名'), findsOneWidget); // 社員数
+      expect(find.text('2名'), findsOneWidget); // 技術者数
       expect(find.text('1名'), findsOneWidget); // 参画中
       // 売上 (1 assigned engineer x ¥50万) and 入金予定 (¥50万, set directly
       // on the fixture) happen to format to the same string here.

@@ -62,7 +62,7 @@ class ResultScreen extends StatelessWidget {
           _ResultRow('累計家賃', formatYen(stats.cumulativeRent)),
           _ResultRow('累計固定費', formatYen(stats.cumulativeFixedCost)),
           _ResultRow('営業利益', formatYen(stats.cumulativeProfit)),
-          _ResultRow('社員数', '${state.engineers.length}名'),
+          _ResultRow('技術者数', '${state.engineers.length}名'),
           _ResultRow('稼働率', '${state.utilizationPercent}%'),
           _ResultRow('待機延べ週', '${stats.waitingWeeks}週'),
           _ResultRow('採用人数', '${stats.hires}名'),

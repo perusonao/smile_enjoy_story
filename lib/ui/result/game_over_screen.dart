@@ -41,7 +41,7 @@ class GameOverScreen extends StatelessWidget {
           const SizedBox(height: 16),
           _ResultRow('倒産週', 'Week ${state.bankruptWeek ?? state.displayWeek}'),
           _ResultRow('最終資金', formatYen(state.company.cash)),
-          _ResultRow('最終社員数', '${state.engineers.length}名'),
+          _ResultRow('最終技術者数', '${state.engineers.length}名'),
           _ResultRow('待機人数', '${state.waitingEngineerCount}名'),
           const SizedBox(height: 10),
           Container(

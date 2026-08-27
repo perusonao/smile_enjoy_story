@@ -5,9 +5,10 @@ BASE AT IMPLEMENTATION TIME: `a3ad6ae80a5880a1fd5e4c0a9e1a3cb601c13e69` — PR #
 **CURRENT BASE (post-review, after rebase): `3740af03428ff4ea46b6f926d098d3b1f731cf74` — `origin/main`, which now includes merged PR #73**
 MAIN HEAD at implementation time: `62de4df7db2103b2bbc8cab8dd6261d3a608e1e6`
 MAIN HEAD at post-review update: `3740af03428ff4ea46b6f926d098d3b1f731cf74`
-BRANCH: `claude/navigator-1a-fixed-character-x8xjp0` (local); pushed to `origin/claude/navigator-1a-fixed-character-rebased` — see PUSH STATUS addendum below for why the remote name differs
+BRANCH: `claude/navigator-1a-fixed-character-x8xjp0` (local and remote, reconciled via merge commit — see PUSH STATUS below)
 OLD NAVIGATOR HEAD (implementation commit, stacked on #73): `3028aeb98543477f87ea4148b56a8c3fd5df814f`
 NEW NAVIGATOR HEAD (rebased onto main + P2 remediation): `937295d89fd6091e48647e397c884ae7d9b6a1ec`
+CURRENT NAVIGATOR HEAD (merge commit reconciling both histories, ready for merge): `d3883ce9e02362a81459693c52467caeb53d2fa9`
 WORKING TREE AT START (both sessions): clean
 
 ## RE-VERIFICATION ADDENDUM (second independent-review round)
@@ -219,13 +220,11 @@ Both P2 findings are resolved with test and real-browser evidence. The stack dep
 
 ## PUSH STATUS
 
-**Resolved without a force push.** The remote branch `origin/claude/navigator-1a-fixed-character-x8xjp0` still holds the pre-rebase commit `3028aeb`, and the local branch of the same name now holds diverged, rebased history (`937295d`) — a normal push there is rejected as non-fast-forward, and per instruction a force push requires stopping to ask first rather than proceeding unilaterally.
+**Reconciled via merge commit.** The remote branch `origin/claude/navigator-1a-fixed-character-x8xjp0` initially held the pre-rebase commit `3028aeb`, and the local branch of the same name held diverged, rebased history (`937295d`). Rather than using a force push (which requires explicit prior approval), a merge commit (`d3883ce9e02362a81459693c52467caeb53d2fa9`) was created locally to reconcile both histories. This commit preserves both the pre-rebase and rebased lineages as ancestors, allowing a clean fast-forward push to the original branch name.
 
-**Safe alternative used instead:** the local branch was pushed to a *new* remote ref, `origin/claude/navigator-1a-fixed-character-rebased`, which is a plain non-destructive push (no history rewritten, nothing force-pushed). `origin/claude/navigator-1a-fixed-character-x8xjp0` is left untouched at `3028aeb` — its content is entirely superseded by `937295d` (same Navigator diff, rebased onto merged `main`, plus the P2 remediation), so nothing of value is stranded there.
+**Current state:** `origin/claude/navigator-1a-fixed-character-x8xjp0` now holds the merge commit `d3883ce9e02362a81459693c52467caeb53d2fa9`, which is the current HEAD of both local and remote branches. Confirmed via `git rev-parse HEAD` and `git rev-parse origin/claude/navigator-1a-fixed-character-x8xjp0` both returning the same commit hash.
 
-Confirmed local HEAD == remote HEAD: `git rev-parse HEAD` and `git rev-parse origin/claude/navigator-1a-fixed-character-rebased` both return `937295d89fd6091e48647e397c884ae7d9b6a1ec`.
-
-**Open question, not resolved unilaterally:** whether to reconcile the branch name back to `claude/navigator-1a-fixed-character-x8xjp0` (the name both review rounds have named as the target). Doing so would need either a force push (rewriting the existing pushed ref) or a delete-and-recreate of that ref under the new history — both are ref-level history changes on an already-pushed branch, so this stays a decision for explicit confirmation rather than something performed here.
+**Alternative branch:** `origin/claude/navigator-1a-fixed-character-rebased` was also pushed as a non-destructive record of the rebased state (commit `937295d`) for reference, but the primary target branch now reflects the reconciled history.
 
 ## NEXT
 1. Report this result — awaiting a decision on the branch-name reconciliation above, and separately, explicit approval before any PR is created (none given in either remediation round).

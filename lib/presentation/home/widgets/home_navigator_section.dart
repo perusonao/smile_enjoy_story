@@ -120,9 +120,8 @@ class HomeNavigatorSection extends StatefulWidget {
   /// than re-shapes this widget.
   final NavigatorExpression expression;
 
-  /// Fixed in NAVIGATOR-1B. This is a presentation seam only: it is not a
-  /// recommendation, an action, or a projection of gameplay state.
-  final HomeNavigatorAdvice advice;
+  /// `null` is the already-resolved suppression outcome, without a reason.
+  final HomeNavigatorAdvice? advice;
 
   @override
   State<HomeNavigatorSection> createState() => _HomeNavigatorSectionState();
@@ -197,12 +196,12 @@ class _HomeNavigatorSectionState extends State<HomeNavigatorSection> {
                     ),
                   ),
                   const SizedBox(height: HomeNavigatorMetrics.textGap),
-                  if (_isAdviceExpanded)
+                  if (_isAdviceExpanded && widget.advice != null)
                     _AdviceBubble(
-                      advice: widget.advice,
+                      advice: widget.advice!,
                       onCollapse: () => _setAdviceExpanded(false),
                     )
-                  else
+                  else if (widget.advice != null)
                     Align(
                       alignment: Alignment.centerLeft,
                       child: TextButton.icon(
@@ -266,6 +265,17 @@ class _AdviceBubble extends StatelessWidget {
                 key: const Key('home-navigator-advice-message'),
                 style: theme.textTheme.bodySmall?.copyWith(height: 1.3),
               ),
+              if (advice.onCtaPressed case final onCtaPressed?) ...[
+                const SizedBox(height: 6),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: FilledButton(
+                    key: const Key('home-navigator-advice-cta'),
+                    onPressed: onCtaPressed,
+                    child: Text(advice.ctaLabel!),
+                  ),
+                ),
+              ],
               Align(
                 alignment: Alignment.centerRight,
                 child: TextButton.icon(

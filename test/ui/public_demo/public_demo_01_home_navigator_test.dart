@@ -362,7 +362,7 @@ void main() {
       await tester.ensureVisible(find.byKey(const Key('home-navigator-open-advice')));
       await tester.tap(find.byKey(const Key('home-navigator-open-advice')));
       await tester.pumpAndSettle();
-      expect(find.text(HomeNavigatorAdvice.neutral.message), findsOneWidget);
+      expect(find.text('今は「佐藤 健のSkillSheetを確認」を進めるのがおすすめです。'), findsOneWidget);
       await tester.tap(find.byKey(const Key('home-navigator-close-advice')));
       await tester.pumpAndSettle();
       expect(stateSnapshot(tester), before);

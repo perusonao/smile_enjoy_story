@@ -27,13 +27,14 @@ Future<void> pumpNavigator(
   Size size = const Size(390, 844),
   double textScale = 1.0,
   NavigatorExpression expression = NavigatorExpression.normal,
+  HomeNavigatorAdvice? advice = HomeNavigatorAdvice.neutral,
   AssetBundle? bundle,
 }) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1.0;
   addTearDown(tester.view.reset);
 
-  Widget section = Center(child: HomeNavigatorSection(expression: expression));
+  Widget section = Center(child: HomeNavigatorSection(expression: expression, advice: advice));
   if (bundle != null) {
     section = DefaultAssetBundle(bundle: bundle, child: section);
   }
@@ -168,6 +169,19 @@ void main() {
   });
 
   group('NAVIGATOR-1B: local inline advice interaction', () {
+    testWidgets('suppressed advice exposes no local advice control', (tester) async {
+      await pumpNavigator(tester, advice: null);
+      expect(find.byKey(const Key('home-navigator-open-advice')), findsNothing);
+    });
+
+    testWidgets('an advice CTA runs only its supplied callback', (tester) async {
+      var calls = 0;
+      await pumpNavigator(tester, advice: HomeNavigatorAdvice(title: 'ひよりからのご案内', message: '既存の案内です。', ctaLabel: '続ける', onCtaPressed: () => calls++));
+      await tester.tap(find.byKey(const Key('home-navigator-open-advice')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('home-navigator-advice-cta')));
+      expect(calls, 1);
+    });
     testWidgets('starts collapsed, expands and collapses with one fixed identity', (
       tester,
     ) async {

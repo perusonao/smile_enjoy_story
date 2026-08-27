@@ -20,6 +20,7 @@ import '../../game/public_demo/public_demo_summer_bonus_plan.dart';
 import '../../game/public_demo/public_demo_workflow_state.dart';
 import '../../presentation/home/models/home_dashboard_display_data.dart';
 import '../../presentation/home/models/home_office_stage_display.dart';
+import '../../presentation/home/models/home_navigator_display.dart';
 import '../../presentation/home/models/home_recommended_action.dart';
 import '../../presentation/home/widgets/home_navigator_section.dart';
 import '../../presentation/home/widgets/home_office_stage_section.dart';
@@ -1667,12 +1668,12 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
                 // written to measure the read-only projection, and nothing
                 // would be gained — this card holds no projected value.
                 //
-                // Const, and that is the point: the navigator takes no
-                // state, so `setState` after a domain command cannot
-                // rebuild her into saying something different. NAVIGATOR-1A
-                // reads nothing and decides nothing.
+                // NAVIGATOR-1C only translates the already-resolved HOME
+                // action outcome; it does not make an independent decision.
                 const SizedBox(height: 8),
-                const HomeNavigatorSection(),
+                HomeNavigatorSection(
+                  advice: navigatorAdviceFor(_recommendedActionSlot),
+                ),
                 const SizedBox(height: 8),
                 dashboard(),
                 if (s.month == 4) ...[

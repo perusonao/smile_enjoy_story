@@ -49,17 +49,9 @@ class HomeNavigatorMetrics {
   /// Gap between the name/role line and the greeting below it.
   static const double textGap = 3;
 
-  /// What the card is expected to measure at the default text scale.
-  ///
-  /// A **target for the tests to check against, never a constraint applied
-  /// to the widget** — nothing reads this value at build time. The design
-  /// asks for "≈64pt"; the compact layout lands at the portrait's 44pt plus
-  /// 16pt of padding when the greeting fits in two lines, which is where
-  /// this number comes from.
-  static const double compactTargetHeight = 64;
-
   /// The height at which the navigator would be costing the first view more
-  /// than a fixed greeting is worth at the default text scale.
+  /// than a compact identity plus one accessible local control is worth at
+  /// the default text scale.
   ///
   /// A ceiling, not a target, in the same sense as the Office Stage's: it
   /// exists so growth shows up as a failing test rather than as a silently
@@ -67,7 +59,7 @@ class HomeNavigatorMetrics {
   /// card is *supposed* to grow past it, because the design explicitly
   /// permits the navigator to be pushed out of the first view rather than
   /// have its text truncated.
-  static const double compactCeiling = 84;
+  static const double compactCeiling = 140;
 
   static HomeNavigatorLayout of(BuildContext context) =>
       MediaQuery.sizeOf(context).width < compactWidthThreshold
@@ -107,28 +99,41 @@ class HomeNavigatorLayout {
 ///    passes anything else for. There is therefore no value HOME could
 ///    project that would change a single pixel of this widget, which is the
 ///    strongest available form of "the navigator does not read game state".
-///  * It takes no callback and builds no gesture, button, `InkWell`,
-///    `ListTile` or `IconButton`. It is inert. The Recommended Action CTA
-///    remains HOME's single mutation entry point exactly as
-///    HOME-RUNTIME-2C left it.
-///  * It says one fixed sentence. Selecting what to say from finance,
-///    sales, recruitment or the calendar is NAVIGATOR-1B and later; saying
-///    anything conditional here would put a second, weaker adviser next to
-///    the Recommended Action, which is the authority on what to do next.
+///  * Its only local interaction is an inline expand/collapse control. It
+///    takes no gameplay callback; Recommended Action remains HOME's single
+///    mutation entry point exactly as HOME-RUNTIME-2C left it.
+///  * It says fixed presentation copy. Selecting advice from finance, sales,
+///    recruitment or the calendar belongs to a later adapter, not this card.
 ///
 /// She is the existing general-affairs employee made visible, not a fourth
 /// hire — see [HomeNavigatorIdentity] for why that costs the domain
 /// nothing.
-class HomeNavigatorSection extends StatelessWidget {
+class HomeNavigatorSection extends StatefulWidget {
   const HomeNavigatorSection({
     super.key,
     this.expression = NavigatorExpression.normal,
+    this.advice = HomeNavigatorAdvice.neutral,
   });
 
   /// Which portrait to draw. NAVIGATOR-1A never passes anything but the
   /// default; the parameter exists so a later phase adds artwork rather
   /// than re-shapes this widget.
   final NavigatorExpression expression;
+
+  /// Fixed in NAVIGATOR-1B. This is a presentation seam only: it is not a
+  /// recommendation, an action, or a projection of gameplay state.
+  final HomeNavigatorAdvice advice;
+
+  @override
+  State<HomeNavigatorSection> createState() => _HomeNavigatorSectionState();
+}
+
+class _HomeNavigatorSectionState extends State<HomeNavigatorSection> {
+  bool _isAdviceExpanded = false;
+
+  void _setAdviceExpanded(bool value) {
+    setState(() => _isAdviceExpanded = value);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -146,7 +151,7 @@ class HomeNavigatorSection extends StatelessWidget {
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _NavigatorPortrait(expression: expression, layout: layout),
+            _NavigatorPortrait(expression: widget.expression, layout: layout),
             SizedBox(width: layout.horizontalGap),
             Expanded(
               child: Column(
@@ -191,10 +196,92 @@ class HomeNavigatorSection extends StatelessWidget {
                       color: theme.colorScheme.onSurfaceVariant,
                     ),
                   ),
+                  const SizedBox(height: HomeNavigatorMetrics.textGap),
+                  if (_isAdviceExpanded)
+                    _AdviceBubble(
+                      advice: widget.advice,
+                      onCollapse: () => _setAdviceExpanded(false),
+                    )
+                  else
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: TextButton.icon(
+                        key: const Key('home-navigator-open-advice'),
+                        onPressed: () => _setAdviceExpanded(true),
+                        icon: const Icon(Icons.chat_bubble_outline, size: 18),
+                        label: const Text('ひよりに相談する'),
+                        style: TextButton.styleFrom(
+                          minimumSize: const Size(48, 48),
+                          padding: const EdgeInsets.symmetric(horizontal: 8),
+                          tapTargetSize: MaterialTapTargetSize.padded,
+                        ),
+                      ),
+                    ),
                 ],
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class _AdviceBubble extends StatelessWidget {
+  const _AdviceBubble({required this.advice, required this.onCollapse});
+
+  final HomeNavigatorAdvice advice;
+  final VoidCallback onCollapse;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    return Semantics(
+      container: true,
+      label: 'ひよりからのご案内',
+      child: DecoratedBox(
+        key: const Key('home-navigator-advice-bubble'),
+        decoration: BoxDecoration(
+          color: scheme.secondaryContainer.withValues(alpha: 0.55),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: scheme.outlineVariant),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(12, 8, 6, 6),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                advice.title,
+                key: const Key('home-navigator-advice-title'),
+                style: theme.textTheme.labelLarge?.copyWith(
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                advice.message,
+                key: const Key('home-navigator-advice-message'),
+                style: theme.textTheme.bodySmall?.copyWith(height: 1.3),
+              ),
+              Align(
+                alignment: Alignment.centerRight,
+                child: TextButton.icon(
+                  key: const Key('home-navigator-close-advice'),
+                  onPressed: onCollapse,
+                  icon: const Icon(Icons.expand_less, size: 18),
+                  label: const Text('閉じる'),
+                  style: TextButton.styleFrom(
+                    minimumSize: const Size(48, 48),
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    tapTargetSize: MaterialTapTargetSize.padded,
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

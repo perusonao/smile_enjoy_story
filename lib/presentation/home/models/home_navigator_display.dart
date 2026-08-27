@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart';
+
 import '../../../ui/asset_paths.dart';
 
 /// The navigator's expression vocabulary (NAVIGATOR-1A).
@@ -74,4 +76,23 @@ class HomeNavigatorIdentity {
         NavigatorExpression.warning ||
         NavigatorExpression.celebration => null,
       };
+}
+
+/// Presentation copy for the Navigator's inline advice bubble.
+///
+/// NAVIGATOR-1B keeps this value fixed. A later presentation adapter may
+/// supply a different value that was already resolved by the existing HOME
+/// recommendation authority; this type deliberately knows nothing about
+/// game state, ranking, navigation, or callbacks.
+@immutable
+class HomeNavigatorAdvice {
+  const HomeNavigatorAdvice({required this.title, required this.message});
+
+  final String title;
+  final String message;
+
+  static const neutral = HomeNavigatorAdvice(
+    title: 'ひよりからのご案内',
+    message: '社長、お疲れさまです。\n進め方に迷ったときは、ここから確認できます。',
+  );
 }

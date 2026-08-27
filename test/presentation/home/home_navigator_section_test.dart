@@ -167,38 +167,58 @@ void main() {
     });
   });
 
-  group('the navigator is inert — 1A adds no interaction', () {
-    testWidgets('no button, gesture, tile or field exists anywhere in the '
-        'section', (tester) async {
+  group('NAVIGATOR-1B: local inline advice interaction', () {
+    testWidgets('starts collapsed, expands and collapses with one fixed identity', (
+      tester,
+    ) async {
       await pumpNavigator(tester);
-
       final section = find.byType(HomeNavigatorSection);
-      for (final interactive in <Finder>[
-        find.byWidgetPredicate((w) => w is ButtonStyleButton),
-        find.byType(InkWell),
-        find.byType(GestureDetector),
-        find.byType(ListTile),
-        find.byType(IconButton),
-        find.byType(TextField),
-        find.byType(Switch),
-        find.byType(Checkbox),
-        find.byType(Slider),
-      ]) {
-        expect(
-          find.descendant(of: section, matching: interactive),
-          findsNothing,
-          reason: 'NAVIGATOR-1A is non-interactive by design',
-        );
-      }
+      expect(find.byKey(const Key('home-navigator-open-advice')), findsOneWidget);
+      expect(find.byKey(const Key('home-navigator-advice-bubble')), findsNothing);
+      await tester.tap(find.byKey(const Key('home-navigator-open-advice')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('home-navigator-advice-bubble')), findsOneWidget);
+      expect(find.text(HomeNavigatorAdvice.neutral.title), findsOneWidget);
+      expect(find.text(HomeNavigatorAdvice.neutral.message), findsOneWidget);
+      expect(find.descendant(of: section, matching: find.text('佐倉 ひより')), findsOneWidget);
+      await tester.tap(find.byKey(const Key('home-navigator-close-advice')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('home-navigator-advice-bubble')), findsNothing);
     });
 
-    testWidgets('tapping her raises nothing', (tester) async {
+    testWidgets('repeated expansion and image failure keep advice usable', (tester) async {
       await pumpNavigator(tester);
-      await tester.tap(find.byKey(const Key('home-navigator')));
+      for (var i = 0; i < 2; i++) {
+        await tester.tap(find.byKey(const Key('home-navigator-open-advice')));
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const Key('home-navigator-close-advice')));
+        await tester.pumpAndSettle();
+      }
+      await pumpNavigator(tester, bundle: _FailingAssetBundle());
+      await tester.tap(find.byKey(const Key('home-navigator-open-advice')));
       await tester.pumpAndSettle();
-      expect(tester.takeException(), isNull);
-      expect(find.text('佐倉 ひより'), findsOneWidget);
+      expect(find.text(HomeNavigatorAdvice.neutral.message), findsOneWidget);
     });
+
+    for (final size in _sizes) {
+      for (final scale in _scales) {
+        testWidgets('expanded advice fits horizontally at '
+            '${size.width.toInt()}x${size.height.toInt()} / textScale $scale', (tester) async {
+          await pumpNavigator(tester, size: size, textScale: scale);
+          await tester.tap(find.byKey(const Key('home-navigator-open-advice')));
+          await tester.pumpAndSettle();
+          expect(tester.takeException(), isNull);
+          for (final key in const [
+            'home-navigator', 'home-navigator-advice-bubble',
+            'home-navigator-advice-message', 'home-navigator-close-advice',
+          ]) {
+            final rect = tester.getRect(find.byKey(Key(key)));
+            expect(rect.left, greaterThanOrEqualTo(0.0), reason: key);
+            expect(rect.right, lessThanOrEqualTo(size.width), reason: key);
+          }
+        });
+      }
+    }
   });
 
   group('G: a portrait that cannot be drawn degrades, never blocks', () {
@@ -333,21 +353,19 @@ void main() {
   });
 
   group('H, I: the layout budget', () {
-    testWidgets('at 360x800 the card lands on its ≈64pt target and stays '
-        'under its ceiling', (tester) async {
+    testWidgets('at 360x800 the collapsed card stays compact while retaining '
+        'an accessible advice control', (tester) async {
       await pumpNavigator(tester, size: const Size(360, 800));
 
       final height = tester
           .getRect(find.byKey(const Key('home-navigator')))
           .height;
-      expect(height, HomeNavigatorMetrics.compactTargetHeight);
       expect(height, lessThanOrEqualTo(HomeNavigatorMetrics.compactCeiling));
       expect(
-        HomeNavigatorMetrics.compactTargetHeight,
-        lessThan(HomeNavigatorMetrics.compactCeiling),
+        height,
+        greaterThan(HomeNavigatorMetrics.compact.portraitSize),
         reason:
-            'the target must leave margin under the ceiling, so the first '
-            'thing that grows does not blow the budget without warning',
+            'the card must include readable identity and an open control',
       );
     });
 

@@ -352,30 +352,33 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
-    testWidgets('she contributes no interactive widget to the screen — the '
-        'Recommended Action CTA is still the only whitelisted entry point', (
+    testWidgets('opening and closing advice is local presentation state; the '
+        'Recommended Action CTA remains the gameplay entry point', (
       tester,
     ) async {
       await pumpDemoAt(tester);
-
-      final section = find.byType(HomeNavigatorSection);
-      for (final interactive in <Finder>[
-        find.byWidgetPredicate((w) => w is ButtonStyleButton),
-        find.byType(InkWell),
-        find.byType(GestureDetector),
-        find.byType(ListTile),
-        find.byType(IconButton),
-        find.byType(TextField),
-      ]) {
-        expect(
-          find.descendant(of: section, matching: interactive),
-          findsNothing,
-        );
-      }
-
-      // The CTA above her is untouched and still dispatches.
+      final before = stateSnapshot(tester);
+      final workflowBefore = workflowSnapshot(tester);
+      await tester.ensureVisible(find.byKey(const Key('home-navigator-open-advice')));
+      await tester.tap(find.byKey(const Key('home-navigator-open-advice')));
+      await tester.pumpAndSettle();
+      expect(find.text(HomeNavigatorAdvice.neutral.message), findsOneWidget);
+      await tester.tap(find.byKey(const Key('home-navigator-close-advice')));
+      await tester.pumpAndSettle();
+      expect(stateSnapshot(tester), before);
+      expect(workflowSnapshot(tester), workflowBefore);
       expect(ctaFinder, findsOneWidget);
-      expect(tester.widget<Widget>(ctaFinder), isNotNull);
+    });
+
+    testWidgets('expanded advice leaves the existing CTA available and its '
+        'real owner dispatch still progresses workflow', (tester) async {
+      await pumpDemoAt(tester);
+      await tester.ensureVisible(find.byKey(const Key('home-navigator-open-advice')));
+      await tester.tap(find.byKey(const Key('home-navigator-open-advice')));
+      await tester.pumpAndSettle();
+      final before = workflowSnapshot(tester);
+      await tapAndSettle(tester, 'SkillSheet確認');
+      expect(workflowSnapshot(tester), isNot(before));
     });
 
     testWidgets('she shows the same fixed line after the state has genuinely '

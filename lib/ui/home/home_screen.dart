@@ -111,7 +111,7 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
         actions: [
           TextButton(onPressed: () => Navigator.pop(dialogContext, 'cancel'), child: const Text('戻る')),
-          OutlinedButton(onPressed: () => Navigator.pop(dialogContext, 'auto'), child: const Text('社員に任せて進む')),
+          OutlinedButton(onPressed: () => Navigator.pop(dialogContext, 'auto'), child: const Text('技術者に任せて進む')),
           FilledButton(onPressed: () => Navigator.pop(dialogContext, 'play'), child: const Text('面談をプレイ')),
         ],
       ),
@@ -595,7 +595,7 @@ class _CompanySummaryCard extends StatelessWidget {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceAround,
               children: [
-                Expanded(child: _Metric('社員', '${state.engineers.length}名')),
+                Expanded(child: _Metric('技術者', '${state.engineers.length}名')),
                 _divider(),
                 Expanded(child: _Metric('参画中', '${state.assignedEngineerCount}名')),
                 _divider(),

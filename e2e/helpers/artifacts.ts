@@ -167,7 +167,9 @@ function installPortableWheelFallback(page: Page): void {
 
     await page.evaluate(
       ({ x, y }) => {
-        const center = document.elementFromPoint(window.innerWidth / 2, window.innerHeight / 2);
+        const centerX = window.innerWidth / 2;
+        const centerY = window.innerHeight / 2;
+        const center = document.elementFromPoint(centerX, centerY);
         center?.dispatchEvent(
           new WheelEvent('wheel', {
             bubbles: true,
@@ -177,6 +179,35 @@ function installPortableWheelFallback(page: Page): void {
             deltaMode: WheelEvent.DOM_DELTA_PIXEL,
           }),
         );
+
+        // Flutter Web represents an accessibility-scrollable ListView as a
+        // FLT-SEMANTICS node with overflow-y: scroll. Those nodes can have
+        // scrollHeight === clientHeight until Flutter materializes the next
+        // Sliver children, so the generic scrollHeight heuristic below does
+        // not reliably discover them. Prefer the visible Flutter semantics
+        // scroller under/around the viewport and let its real DOM scroll
+        // event drive Flutter's semantics scroll action.
+        const semanticsScrollers = Array.from(document.querySelectorAll<HTMLElement>('flt-semantics'))
+          .filter((el) => {
+            const style = getComputedStyle(el);
+            if (style.overflowY !== 'scroll' && style.overflowY !== 'auto') return false;
+            const rect = el.getBoundingClientRect();
+            return rect.width > 0 && rect.height > 0 && rect.bottom > 0 && rect.top < window.innerHeight;
+          })
+          .sort((a, b) => {
+            const ar = a.getBoundingClientRect();
+            const br = b.getBoundingClientRect();
+            const aContainsCenter = ar.left <= centerX && ar.right >= centerX && ar.top <= centerY && ar.bottom >= centerY;
+            const bContainsCenter = br.left <= centerX && br.right >= centerX && br.top <= centerY && br.bottom >= centerY;
+            if (aContainsCenter !== bContainsCenter) return aContainsCenter ? -1 : 1;
+            return br.width * br.height - ar.width * ar.height;
+          });
+        const semanticsTarget = semanticsScrollers[0];
+        if (semanticsTarget) {
+          semanticsTarget.scrollBy({ left: x, top: y, behavior: 'auto' });
+          semanticsTarget.dispatchEvent(new Event('scroll', { bubbles: true }));
+          return;
+        }
 
         const scrollables = Array.from(document.querySelectorAll<HTMLElement>('*'))
           .filter((el) => el.scrollHeight > el.clientHeight + 1)

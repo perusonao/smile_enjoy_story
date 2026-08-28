@@ -13,6 +13,21 @@ HomeRecommendedActionCandidate _candidate(
 
 void main() {
   group('NAVIGATOR-1C deterministic advice adapter', () {
+    test('1D maps neutral and missing semantics to normal', () {
+      expect(
+        navigatorExpressionFor(HomeNavigatorAdviceSemantic.neutral),
+        NavigatorExpression.normal,
+      );
+      expect(navigatorExpressionFor(null), NavigatorExpression.normal);
+    });
+
+    test('1D maps caution to worried', () {
+      expect(
+        navigatorExpressionFor(HomeNavigatorAdviceSemantic.caution),
+        NavigatorExpression.worried,
+      );
+    });
+
     test('Available translates the resolved action deterministically', () {
       final slot = HomeRecommendedActionAvailable(
         _candidate(

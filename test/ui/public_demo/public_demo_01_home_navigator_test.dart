@@ -161,6 +161,41 @@ int treeIndexOf(WidgetTester tester, Finder finder) {
 }
 
 void main() {
+  group('NAVIGATOR-1D: real HOME expression and CTA ownership', () {
+    testWidgets('neutral advice renders the normal portrait', (tester) async {
+      await pumpDemoAt(tester);
+      final section = tester.widget<HomeNavigatorSection>(
+        find.byType(HomeNavigatorSection),
+      );
+      expect(section.expression, NavigatorExpression.normal);
+      final provider = tester.widget<Image>(
+        find.byKey(const Key('home-navigator-portrait')),
+      ).image as AssetImage;
+      expect(provider.assetName, AssetPaths.navigatorNormal);
+    });
+
+    testWidgets('P3: tapping the real HOME Navigator CTA invokes its existing owner once', (
+      tester,
+    ) async {
+      await pumpDemoAt(tester);
+      final before = workflowSnapshot(tester);
+      final openAdvice = find.byKey(const Key('home-navigator-open-advice'));
+      await tester.ensureVisible(openAdvice);
+      await tester.tap(openAdvice);
+      await tester.pumpAndSettle();
+      final adviceCta = find.byKey(const Key('home-navigator-advice-cta'));
+      await tester.ensureVisible(adviceCta);
+      await tester.tap(adviceCta);
+      await settle(tester);
+
+      expect(
+        workflowSnapshot(tester),
+        isNot(before),
+        reason: 'one tap must reach the existing Recommended Action owner',
+      );
+    });
+  });
+
   group('A, E: exactly one navigator, and still one after a rebuild', () {
     testWidgets('A: HOME shows the navigator exactly once', (tester) async {
       await pumpDemoAt(tester);

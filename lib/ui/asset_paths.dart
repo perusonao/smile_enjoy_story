@@ -39,6 +39,7 @@ class AssetPaths {
   /// through `HomeNavigatorIdentity.portraitAssetFor`, never referenced as
   /// a literal, and never stored in a domain model or a save file.
   static const String navigatorNormal = '$_navigatorDir/navigator_normal.webp';
+  static const String navigatorCaution = '$_navigatorDir/navigator_caution.webp';
 
   static const List<String> all = [
     salesMale,
@@ -61,5 +62,6 @@ class AssetPaths {
     locationOfficeNight,
     locationCafeMeeting,
     navigatorNormal,
+    navigatorCaution,
   ];
 }

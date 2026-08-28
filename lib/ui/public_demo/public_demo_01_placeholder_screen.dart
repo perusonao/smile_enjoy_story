@@ -1672,6 +1672,9 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
                 // action outcome; it does not make an independent decision.
                 const SizedBox(height: 8),
                 HomeNavigatorSection(
+                  expression: navigatorExpressionFor(
+                    navigatorAdviceFor(_recommendedActionSlot)?.semantic,
+                  ),
                   advice: navigatorAdviceFor(_recommendedActionSlot),
                 ),
                 const SizedBox(height: 8),

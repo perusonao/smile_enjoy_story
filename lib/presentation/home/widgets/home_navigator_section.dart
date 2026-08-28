@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../ui/asset_paths.dart';
 import '../models/home_navigator_display.dart';
 
 /// Every dimension the navigator uses, in one place.
@@ -339,27 +340,46 @@ class _RoleBadge extends StatelessWidget {
 /// missing image cannot stop HOME: the card keeps its shape, the name, the
 /// role and the greeting all still render, and nothing throws during
 /// layout.
-class _NavigatorPortrait extends StatelessWidget {
+class _NavigatorPortrait extends StatefulWidget {
   const _NavigatorPortrait({required this.expression, required this.layout});
 
   final NavigatorExpression expression;
   final HomeNavigatorLayout layout;
 
   @override
+  State<_NavigatorPortrait> createState() => _NavigatorPortraitState();
+}
+
+class _NavigatorPortraitState extends State<_NavigatorPortrait> {
+  bool _useNormalFallback = false;
+
+  void _fallbackFrom(String path) {
+    if (path == AssetPaths.navigatorNormal || _useNormalFallback) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) setState(() => _useNormalFallback = true);
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final path = HomeNavigatorIdentity.portraitAssetFor(expression);
+    final requestedPath = HomeNavigatorIdentity.portraitAssetFor(
+      widget.expression,
+    );
+    final path = _useNormalFallback
+        ? AssetPaths.navigatorNormal
+        : requestedPath;
 
     final fallback = Icon(
       Icons.person,
       key: const Key('home-navigator-portrait-fallback'),
-      size: layout.portraitSize * 0.6,
+      size: widget.layout.portraitSize * 0.6,
       color: scheme.onSurfaceVariant,
     );
 
     return SizedBox(
-      height: layout.portraitSize,
-      width: layout.portraitSize,
+      height: widget.layout.portraitSize,
+      width: widget.layout.portraitSize,
       child: DecoratedBox(
         decoration: BoxDecoration(
           color: scheme.surfaceContainerHighest,
@@ -378,8 +398,10 @@ class _NavigatorPortrait extends StatelessWidget {
                     path,
                     key: const Key('home-navigator-portrait'),
                     fit: BoxFit.cover,
-                    errorBuilder: (context, error, stackTrace) =>
-                        Center(child: fallback),
+                    errorBuilder: (context, error, stackTrace) {
+                      _fallbackFrom(path);
+                      return Center(child: fallback);
+                    },
                   ),
                 ),
         ),

@@ -92,6 +92,16 @@ class _CorruptAssetBundle extends CachingAssetBundle {
       ByteData.view(Uint8List.fromList(List<int>.filled(64, 0x7f)).buffer);
 }
 
+class _CautionOnlyFailingAssetBundle extends CachingAssetBundle {
+  @override
+  Future<ByteData> load(String key) {
+    if (key == AssetPaths.navigatorCaution) {
+      throw FlutterError('simulated asset failure: $key');
+    }
+    return rootBundle.load(key);
+  }
+}
+
 void main() {
   group('identity: she is the existing 総務 employee, given a face', () {
     test('name and role are the character reference\'s, verbatim', () {
@@ -100,19 +110,25 @@ void main() {
       expect(HomeNavigatorIdentity.role, '総務');
     });
 
-    test('NAVIGATOR-1A ships artwork for normal and declares the rest '
-        'unimplemented rather than substituting one', () {
+    test('1D ships artwork for normal and worried only', () {
       expect(
         HomeNavigatorIdentity.portraitAssetFor(NavigatorExpression.normal),
         AssetPaths.navigatorNormal,
       );
-      for (final expression in NavigatorExpression.values) {
-        if (expression == NavigatorExpression.normal) continue;
+      expect(
+        HomeNavigatorIdentity.portraitAssetFor(NavigatorExpression.worried),
+        AssetPaths.navigatorCaution,
+      );
+      for (final expression in [
+        NavigatorExpression.smile,
+        NavigatorExpression.warning,
+        NavigatorExpression.celebration,
+      ]) {
         expect(
           HomeNavigatorIdentity.portraitAssetFor(expression),
           isNull,
           reason:
-              '$expression has no 1A artwork; returning normal\'s image here '
+              '$expression has no 1D artwork; returning normal\'s image here '
               'would make the widget claim an expression it cannot draw',
         );
       }
@@ -129,7 +145,10 @@ void main() {
     });
 
     test('the portrait asset is registered for bundling', () {
-      expect(AssetPaths.all, contains(AssetPaths.navigatorNormal));
+      expect(AssetPaths.all, containsAll([
+        AssetPaths.navigatorNormal,
+        AssetPaths.navigatorCaution,
+      ]));
     });
 
     testWidgets('the registered portrait actually exists in the bundle', (
@@ -251,9 +270,17 @@ void main() {
       );
     });
 
+    testWidgets('the worried expression draws the caution portrait', (tester) async {
+      await pumpNavigator(tester, expression: NavigatorExpression.worried);
+      final provider = tester.widget<Image>(
+        find.byKey(const Key('home-navigator-portrait')),
+      ).image as AssetImage;
+      expect(provider.assetName, AssetPaths.navigatorCaution);
+    });
+
     testWidgets('an expression with no artwork falls back to the silhouette '
         'and keeps every other fact readable', (tester) async {
-      await pumpNavigator(tester, expression: NavigatorExpression.worried);
+      await pumpNavigator(tester, expression: NavigatorExpression.smile);
 
       expect(find.byKey(const Key('home-navigator-portrait')), findsNothing);
       expect(
@@ -264,6 +291,21 @@ void main() {
       expect(find.text('総務'), findsOneWidget);
       expect(find.text(HomeNavigatorIdentity.greeting), findsOneWidget);
       expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('a failed caution portrait retries the normal portrait', (tester) async {
+      await pumpNavigator(
+        tester,
+        expression: NavigatorExpression.worried,
+        bundle: _CautionOnlyFailingAssetBundle(),
+      );
+      for (var i = 0; i < 3; i++) {
+        await tester.pump();
+      }
+      final provider = tester.widget<Image>(
+        find.byKey(const Key('home-navigator-portrait')),
+      ).image as AssetImage;
+      expect(provider.assetName, AssetPaths.navigatorNormal);
     });
 
     for (final (label, bundle) in <(String, AssetBundle Function())>[

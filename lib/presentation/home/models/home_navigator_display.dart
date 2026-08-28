@@ -70,10 +70,10 @@ class HomeNavigatorIdentity {
   static String? portraitAssetFor(NavigatorExpression expression) =>
       switch (expression) {
         NavigatorExpression.normal => AssetPaths.navigatorNormal,
+        NavigatorExpression.worried => AssetPaths.navigatorCaution,
         // NAVIGATOR-1A ships one image. Callers must treat null as "draw the
         // fallback", which is what HomeNavigatorSection does.
         NavigatorExpression.smile ||
-        NavigatorExpression.worried ||
         NavigatorExpression.warning ||
         NavigatorExpression.celebration => null,
       };
@@ -85,6 +85,17 @@ class HomeNavigatorIdentity {
 /// already-resolved HOME slot; it never reads game state, ranks candidates,
 /// or reconstructs an action.
 enum HomeNavigatorAdviceSemantic { neutral, caution }
+
+/// Maps already-resolved Navigator presentation semantics to artwork.
+///
+/// This is intentionally a pure presentation mapper. It neither accepts nor
+/// reads game state, finance, workflow, calendar, save, navigation, or a
+/// Recommended Action candidate.
+NavigatorExpression navigatorExpressionFor(HomeNavigatorAdviceSemantic? semantic) =>
+    switch (semantic) {
+      HomeNavigatorAdviceSemantic.caution => NavigatorExpression.worried,
+      HomeNavigatorAdviceSemantic.neutral || null => NavigatorExpression.normal,
+    };
 
 @immutable
 class HomeNavigatorAdvice {

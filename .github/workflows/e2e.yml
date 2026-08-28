@@ -181,7 +181,8 @@ jobs:
           pr_number="$EVENT_PR_NUMBER"
           if [[ -z "$pr_number" ]]; then
             subject="$(git show -s --format=%s "$GITHUB_SHA")"
-            if [[ "$subject" =~ ^Merge\ pull\ request\ \#([0-9]+)\ from\ ]]; then
+            merge_subject_pattern='^Merge pull request #([0-9]+) from '
+            if [[ "$subject" =~ $merge_subject_pattern ]]; then
               pr_number="${BASH_REMATCH[1]}"
             fi
           fi
@@ -497,7 +498,8 @@ jobs:
           pr_number="$EVENT_PR_NUMBER"
           if [[ -z "$pr_number" ]]; then
             subject="$(git show -s --format=%s "$GITHUB_SHA")"
-            if [[ "$subject" =~ ^Merge\ pull\ request\ \#([0-9]+)\ from\ ]]; then
+            merge_subject_pattern='^Merge pull request #([0-9]+) from '
+            if [[ "$subject" =~ $merge_subject_pattern ]]; then
               pr_number="${BASH_REMATCH[1]}"
             fi
           fi

@@ -261,25 +261,40 @@ async function waitForTabBar(page: import('@playwright/test').Page, textOffender
 /** Returns through the existing bounded tab-bar recovery, then confirms the
  * recruitment root is foregrounded before a list-only candidate locator is
  * allowed to run. A visible underlying tab is not enough: Flutter can retain
- * that semantics node while ApplicantDetailScreen is still the active route. */
+ * that semantics node while ApplicantDetailScreen is still the active route.
+ *
+ * PR #80 follow-up: the old implementation performed a single check after
+ * `waitForTabBar()`. A pushed ApplicantDetailScreen can expose the underlying
+ * selected tab before the pushed route itself has disappeared, so the helper
+ * must also drain a visible AppBar Back route and then re-check the tab shell
+ * instead of either returning false immediately or clicking the underlying
+ * tab while it is not actionable. */
 async function returnToRecruitmentRoot(
   page: import('@playwright/test').Page,
   textOffenders: string[],
 ): Promise<boolean> {
-  if (!await waitForTabBar(page, textOffenders, '採用')) return false;
-
   const recruitmentTab = page.getByRole('tab', { name: '採用', exact: true });
-  if (await recruitmentTab.getAttribute('aria-selected').catch(() => null) !== 'true') {
-    await clickResilient(page, byTab(page, '採用'), '採用タブ');
+  const foregroundBack = page.getByRole('button', { name: /^Back\b/i }).first();
+
+  for (let i = 0; i < 60; i++) {
+    if (!await waitForTabBar(page, textOffenders, '採用')) return false;
+
+    if (await foregroundBack.isVisible().catch(() => false)) {
+      await foregroundBack.click({ timeout: 750 }).catch(() => {});
+      await page.waitForTimeout(300);
+      continue;
+    }
+
+    if (await recruitmentTab.getAttribute('aria-selected').catch(() => null) !== 'true') {
+      await recruitmentTab.click({ timeout: 750 }).catch(() => {});
+      await page.waitForTimeout(300);
+      continue;
+    }
+
+    if (await isVisibleTab(recruitmentTab)) return true;
     await page.waitForTimeout(300);
   }
-
-  const detailCta = page.getByRole('button', { name: /^(面接する|面接を再開する)$/ });
-  return (
-    await isVisibleTab(recruitmentTab) &&
-    await recruitmentTab.getAttribute('aria-selected').catch(() => null) === 'true' &&
-    !await detailCta.first().isVisible().catch(() => false)
-  );
+  return false;
 }
 
 // Total/per-attempt budget for `clickResilient`, matching
@@ -355,7 +370,16 @@ const byTab = (page: import('@playwright/test').Page, name: string) => () => pag
  * reading that loading frame under CI's demonstrated contention (see
  * `clickAndWaitForChange`'s doc comment) and finding zero enabled buttons
  * — which the interview-Q&A loop treats as "nothing left to do here" and
- * exits immediately, well before ever reaching "面接まとめ". */
+ * exits immediately, well before ever reaching "面接まとめ".
+ *
+ * PR #80 follow-up: ApplicantDetailScreen's interview CTA sits below a long
+ * mobile ListView. Flutter Web does not always materialize that off-screen
+ * child in the current semantics snapshot, so a pure wait can exhaust with
+ * zero buttons even though the real player can simply scroll to the CTA.
+ * While this helper is in the exact zero-action state it already waits on,
+ * scroll the foreground viewport between snapshots so the CTA can enter the
+ * semantics tree. The loop remains bounded and does not scroll once any real
+ * enabled action has appeared. */
 async function waitForAnyEnabledButton(page: import('@playwright/test').Page): Promise<ScreenSnapshot> {
   let snap = await snapshotScreen(page);
   // Same ~30s order of magnitude as `waitForTabBar` (see its own doc
@@ -363,6 +387,11 @@ async function waitForAnyEnabledButton(page: import('@playwright/test').Page): P
   // a route transition or `postFrameCallback` resolving is exactly the
   // same class of CPU-bound work, just a different screen.
   for (let i = 0; i < 40 && !snap.buttons.some((b) => b.enabled && b.name !== 'back'); i++) {
+    const viewport = page.viewportSize();
+    if (viewport) {
+      await page.mouse.move(Math.floor(viewport.width / 2), Math.floor(viewport.height / 2));
+      await page.mouse.wheel(0, Math.max(420, Math.floor(viewport.height * 0.75)));
+    }
     await page.waitForTimeout(300);
     snap = await snapshotScreen(page);
   }

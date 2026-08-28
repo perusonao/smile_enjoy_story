@@ -266,6 +266,17 @@ class _AdviceBubble extends StatelessWidget {
                 key: const Key('home-navigator-advice-message'),
                 style: theme.textTheme.bodySmall?.copyWith(height: 1.3),
               ),
+              if (advice.explanation case final explanation?) ...[
+                const SizedBox(height: 6),
+                Text(
+                  explanation,
+                  key: const Key('home-navigator-advice-explanation'),
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    height: 1.3,
+                    color: scheme.onSurfaceVariant,
+                  ),
+                ),
+              ],
               if (advice.onCtaPressed case final onCtaPressed?) ...[
                 const SizedBox(height: 6),
                 Align(

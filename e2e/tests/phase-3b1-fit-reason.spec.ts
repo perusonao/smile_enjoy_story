@@ -99,7 +99,7 @@ const AUTO_RESOLVE_CLIENT_INTERVIEW = '社員に任せる';
 // which additionally requires the match to be nested under a real
 // `dialog`/`alertdialog` a11y node (see `dialogButtonNames` in
 // game-state.ts) — never against `CLOSE` directly.
-const CLOSE = ['閉じる', 'OK', '会社状況を見る', '面談依頼を見る', '採用を見る', '社員環境を見る', 'それでも進む', '社員に任せて進む'];
+const CLOSE = ['閉じる', 'OK', '会社状況を見る', '面談依頼を見る', '採用を見る', '社員環境を見る', 'それでも進む', '技術者に任せて進む'];
 
 // --- clickResilient + friends -------------------------------------------
 // Deliberately the *same* implementation as

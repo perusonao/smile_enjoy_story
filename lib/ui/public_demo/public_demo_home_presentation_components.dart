@@ -230,10 +230,17 @@ class _FinanceRow extends StatelessWidget {
   Widget build(BuildContext context) => Padding(
     padding: const EdgeInsets.symmetric(vertical: 3),
     child: Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Expanded(child: Text(label, style: TextStyle(fontWeight: emphasis ? FontWeight.bold : FontWeight.normal))),
         const SizedBox(width: 12),
-        Text('${expense ? '-' : ''}${formatYen(amount)}', style: TextStyle(fontWeight: FontWeight.w600, color: emphasis ? SesTheme.primaryBlue : null)),
+        Flexible(
+          child: Text(
+            '${expense ? '-' : ''}${formatYen(amount)}',
+            textAlign: TextAlign.end,
+            style: TextStyle(fontWeight: FontWeight.w600, color: emphasis ? SesTheme.primaryBlue : null),
+          ),
+        ),
       ],
     ),
   );

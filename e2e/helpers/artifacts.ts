@@ -152,6 +152,44 @@ type PortableMouse = Page['mouse'] & { [PORTABLE_WHEEL_INSTALLED]?: boolean };
  * no mouse; those callers do not need scrolling, so preserve that supported
  * test seam by treating a missing mouse as a no-op here.
  */
+export interface WheelFallbackDiagnostic {
+  /** Which branch of the fallback ran. */
+  strategy: 'semantics' | 'generic' | 'window';
+  /** Total `flt-semantics` elements in the DOM at the time of the call. */
+  fltSemanticsTotal: number;
+  /** How many passed the visible + `overflow-y: scroll|auto` filter. */
+  fltSemanticsScrollable: number;
+  /** Distinct computed `overflow-y` values across all `flt-semantics`
+   * elements, with counts — this is what shows *why* the semantics branch
+   * did or did not match. */
+  fltSemanticsOverflowY: Record<string, number>;
+  targetTag: string | null;
+  targetScrollHeight: number | null;
+  targetClientHeight: number | null;
+  scrollTopBefore: number | null;
+  scrollTopAfter: number | null;
+  windowScrollYBefore: number;
+  windowScrollYAfter: number;
+  /** True when something measurably moved. `false` is the signal that this
+   * fallback invocation was inert. */
+  moved: boolean;
+}
+
+// SES_WEBKIT-SCROLL-1 Phase 1: one record per mobile-WebKit wheel-fallback
+// invocation, so a CI *log* can answer "did the fallback actually move
+// anything?" without downloading the 300 MB+ results artifact. Bounded so a
+// long run cannot grow this without limit.
+const MAX_WHEEL_DIAGNOSTICS = 400;
+const wheelDiagnostics = new WeakMap<Page, WheelFallbackDiagnostic[]>();
+
+/** Returns and clears the wheel-fallback diagnostics recorded for [page]
+ * since the last drain. Empty on Chromium, which never enters the fallback. */
+export function drainWheelDiagnostics(page: Page): WheelFallbackDiagnostic[] {
+  const recorded = wheelDiagnostics.get(page) ?? [];
+  wheelDiagnostics.set(page, []);
+  return recorded;
+}
+
 function installPortableWheelFallback(page: Page): void {
   const mouse = (page as unknown as { mouse?: PortableMouse }).mouse;
   if (!mouse || mouse[PORTABLE_WHEEL_INSTALLED]) return;
@@ -165,7 +203,11 @@ function installPortableWheelFallback(page: Page): void {
       if (!MOBILE_WEBKIT_WHEEL_UNSUPPORTED.test(String(err))) throw err;
     }
 
-    await page.evaluate(
+    // The `page.evaluate` below is unchanged in behaviour by
+    // SES_WEBKIT-SCROLL-1 Phase 1: every dispatch, every branch and the
+    // early return are exactly as before. The only additions are
+    // before/after measurements and the returned diagnostic record.
+    const diagnostic = await page.evaluate(
       ({ x, y }) => {
         const centerX = window.innerWidth / 2;
         const centerY = window.innerHeight / 2;
@@ -180,6 +222,14 @@ function installPortableWheelFallback(page: Page): void {
           }),
         );
 
+        const allSemantics = Array.from(document.querySelectorAll<HTMLElement>('flt-semantics'));
+        const overflowHistogram: Record<string, number> = {};
+        for (const el of allSemantics) {
+          const value = getComputedStyle(el).overflowY || '(empty)';
+          overflowHistogram[value] = (overflowHistogram[value] ?? 0) + 1;
+        }
+        const windowScrollYBefore = window.scrollY;
+
         // Flutter Web represents an accessibility-scrollable ListView as a
         // FLT-SEMANTICS node with overflow-y: scroll. Those nodes can have
         // scrollHeight === clientHeight until Flutter materializes the next
@@ -187,7 +237,7 @@ function installPortableWheelFallback(page: Page): void {
         // not reliably discover them. Prefer the visible Flutter semantics
         // scroller under/around the viewport and let its real DOM scroll
         // event drive Flutter's semantics scroll action.
-        const semanticsScrollers = Array.from(document.querySelectorAll<HTMLElement>('flt-semantics'))
+        const semanticsScrollers = allSemantics
           .filter((el) => {
             const style = getComputedStyle(el);
             if (style.overflowY !== 'scroll' && style.overflowY !== 'auto') return false;
@@ -204,20 +254,71 @@ function installPortableWheelFallback(page: Page): void {
           });
         const semanticsTarget = semanticsScrollers[0];
         if (semanticsTarget) {
+          const scrollTopBefore = semanticsTarget.scrollTop;
           semanticsTarget.scrollBy({ left: x, top: y, behavior: 'auto' });
           semanticsTarget.dispatchEvent(new Event('scroll', { bubbles: true }));
-          return;
+          const scrollTopAfter = semanticsTarget.scrollTop;
+          return {
+            strategy: 'semantics' as const,
+            fltSemanticsTotal: allSemantics.length,
+            fltSemanticsScrollable: semanticsScrollers.length,
+            fltSemanticsOverflowY: overflowHistogram,
+            targetTag: semanticsTarget.tagName,
+            targetScrollHeight: semanticsTarget.scrollHeight,
+            targetClientHeight: semanticsTarget.clientHeight,
+            scrollTopBefore,
+            scrollTopAfter,
+            windowScrollYBefore,
+            windowScrollYAfter: window.scrollY,
+            moved: scrollTopAfter !== scrollTopBefore || window.scrollY !== windowScrollYBefore,
+          };
         }
 
         const scrollables = Array.from(document.querySelectorAll<HTMLElement>('*'))
           .filter((el) => el.scrollHeight > el.clientHeight + 1)
           .sort((a, b) => (b.scrollHeight - b.clientHeight) - (a.scrollHeight - a.clientHeight));
         const target = scrollables[0];
-        if (target) target.scrollBy({ left: x, top: y, behavior: 'auto' });
-        else window.scrollBy(x, y);
+        if (target) {
+          const scrollTopBefore = target.scrollTop;
+          target.scrollBy({ left: x, top: y, behavior: 'auto' });
+          const scrollTopAfter = target.scrollTop;
+          return {
+            strategy: 'generic' as const,
+            fltSemanticsTotal: allSemantics.length,
+            fltSemanticsScrollable: semanticsScrollers.length,
+            fltSemanticsOverflowY: overflowHistogram,
+            targetTag: target.tagName,
+            targetScrollHeight: target.scrollHeight,
+            targetClientHeight: target.clientHeight,
+            scrollTopBefore,
+            scrollTopAfter,
+            windowScrollYBefore,
+            windowScrollYAfter: window.scrollY,
+            moved: scrollTopAfter !== scrollTopBefore || window.scrollY !== windowScrollYBefore,
+          };
+        }
+        window.scrollBy(x, y);
+        return {
+          strategy: 'window' as const,
+          fltSemanticsTotal: allSemantics.length,
+          fltSemanticsScrollable: semanticsScrollers.length,
+          fltSemanticsOverflowY: overflowHistogram,
+          targetTag: null,
+          targetScrollHeight: null,
+          targetClientHeight: null,
+          scrollTopBefore: null,
+          scrollTopAfter: null,
+          windowScrollYBefore,
+          windowScrollYAfter: window.scrollY,
+          moved: window.scrollY !== windowScrollYBefore,
+        };
       },
       { x: deltaX, y: deltaY },
     );
+
+    const recorded = wheelDiagnostics.get(page) ?? [];
+    if (recorded.length < MAX_WHEEL_DIAGNOSTICS) recorded.push(diagnostic);
+    wheelDiagnostics.set(page, recorded);
   };
   mouse[PORTABLE_WHEEL_INSTALLED] = true;
 }

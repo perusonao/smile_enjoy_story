@@ -52,7 +52,7 @@ import { test, expect } from '@playwright/test';
 import { playFoundingToFirstAssignment } from '../helpers/ses-player';
 import { playBeginnerModeThroughJune } from '../helpers/beginner-mode-player';
 import { snapshotScreen, hasText, findDoubledParticles, firstEnabledDialogButton, type ScreenSnapshot } from '../helpers/game-state';
-import { watchForErrors, captureMilestone, writeArtifacts, buildResultJson } from '../helpers/artifacts';
+import { watchForErrors, captureMilestone, writeArtifacts, buildResultJson, drainWheelDiagnostics } from '../helpers/artifacts';
 import { parseSeeds } from '../helpers/seeds';
 import fs from 'fs';
 import path from 'path';
@@ -142,10 +142,18 @@ const byTab = (page: import('@playwright/test').Page, name: string) => () => pag
 /** Dismisses every dialog currently stacked on screen, recording each one's
  * text for the doubled-particle scan — same shape as
  * beginner-mode-waiting-and-recruitment.spec.ts's own settleAndScan. */
-async function settleAndScan(page: import('@playwright/test').Page, textOffenders: string[]): Promise<ScreenSnapshot> {
+async function settleAndScan(page: import('@playwright/test').Page, textOffenders: string[], observed?: string[]): Promise<ScreenSnapshot> {
   let snap = await snapshotScreen(page);
   for (let i = 0; i < 10; i++) {
     textOffenders.push(...findDoubledParticles(snap));
+    // SES_WEBKIT-SCROLL-1 Phase 1 (observation only, no control-flow
+    // change): Home's own next-week handler lists *every* Critical task in
+    // a 「重要事項が残っています」 dialog before it will advance
+    // (home_screen.dart `_handleNextWeek`) — deliberately exhaustive, not
+    // the top-N summary the hero card shows. That makes this the one place
+    // a pending 面談依頼 can never be ranked out of view, so whatever this
+    // dismisses is worth recording before it disappears.
+    if (observed) observed.push(...snap.texts, ...snap.buttons.map((b) => b.name));
     const close = firstEnabledDialogButton(snap, CLOSE);
     if (!close) return snap;
     await clickResilient(page, byButton(page, close.name), close.name);
@@ -186,6 +194,90 @@ async function openEngineerDetail(page: import('@playwright/test').Page): Promis
   return snapshotScreen(page);
 }
 
+// --- SES_WEBKIT-SCROLL-1 Phase 1 diagnostics ----------------------------
+// Everything below is *observation only*: it adds no wait, no retry, no
+// gameplay action and no assertion. Its whole job is to put the evidence a
+// root-cause classification needs into the CI **job log**, so nobody has to
+// download the 300 MB+ Playwright results artifact to answer "was the CTA
+// there?". Every value printed is read from the same real-UI accessibility
+// snapshot the test itself acts on — never from a debug/GameState bridge
+// (see e2e/README.md "Why no debug API").
+
+/** Anything a pending 面談依頼 puts on screen. `TaskEngine.generateTasks`
+ * adds a *critical* Home task titled "{name}さんに面談依頼があります" for every
+ * `InterviewOfferStatus.pending` offer, ungated by the employee's workflow
+ * state (lib/game/engine/task_engine.dart) — so Home tells us whether the
+ * offer exists in game state even while the employee reads as 参画中 and the
+ * engineer-detail 面談依頼 card sits below the fold. That difference is
+ * exactly what separates "generated but not materialized into semantics"
+ * from "never generated". */
+const OFFER_MARKER_RE = /面談依頼/;
+
+interface ScrollDiagnostics {
+  steps: number;
+  everChanged: boolean;
+  fingerprintChanges: number;
+  foundAtStep: number | null;
+  exitReason: 'found' | 'stable' | 'maxSteps';
+  wheelInvocations: number;
+  wheelMoved: number;
+  wheelStrategies: Record<string, number>;
+  fltSemanticsTotal: number | null;
+  fltSemanticsScrollable: number | null;
+  fltSemanticsOverflowY: Record<string, number> | null;
+}
+
+interface WeekDiagnostics {
+  iteration: number;
+  weekOnHome: number | null;
+  nextWeekButton: string | null;
+  homeOfferMarkers: string[];
+  /** Offer markers seen by `settleAndScan` while dismissing whatever the
+   * week advance put on screen — including Home's exhaustive Critical-task
+   * dialog. Independent of how the hero card ranks tasks. */
+  settleOfferMarkers: string[];
+  detailOfferMarkersBeforeScroll: string[];
+  detailCtaBeforeScroll: boolean;
+  detailButtonsBeforeScroll: number;
+  detailTextsBeforeScroll: number;
+  detailOfferMarkersAfterScroll: string[];
+  detailCtaAfterScroll: boolean;
+  detailButtonsAfterScroll: number;
+  detailTextsAfterScroll: number;
+  scroll: ScrollDiagnostics;
+}
+
+const WEEK_RE = /week\s*(\d+)/i;
+
+/** ManagementHud renders its whole row as one semantics *button*, so the
+ * week number can live in `buttons` as well as `texts` — same scan
+ * beginner-mode-player.ts's own `currentWeek` already uses. */
+function readWeek(snap: ScreenSnapshot): number | null {
+  for (const t of [...snap.texts, ...snap.buttons.map((b) => b.name)]) {
+    const m = WEEK_RE.exec(t);
+    if (m) return Number(m[1]);
+  }
+  return null;
+}
+
+function offerMarkers(snap: ScreenSnapshot): string[] {
+  return [...snap.texts, ...snap.buttons.map((b) => b.name)].filter((t) => OFFER_MARKER_RE.test(t));
+}
+
+function hasCta(snap: ScreenSnapshot): boolean {
+  return snap.buttons.some((b) => b.enabled && b.name === PROCEED_TO_INTERVIEW);
+}
+
+/** The harness's complete view of one screen — exactly what every locator,
+ * `expect` and actionability check in this file can see. Printed verbatim
+ * (bounded) so the log alone shows whether a widget was materialized. */
+function dumpSnapshot(label: string, snap: ScreenSnapshot): void {
+  console.log(`[SES-DIAG] ---- ${label}: ${snap.texts.length} texts, ${snap.buttons.length} buttons ----`);
+  for (const t of snap.texts) console.log(`[SES-DIAG]   text   | ${t.replace(/\n/g, ' \\n ')}`);
+  for (const b of snap.buttons) console.log(`[SES-DIAG]   button | ${b.enabled ? 'enabled ' : 'disabled'} | ${b.name.replace(/\n/g, ' \\n ')}`);
+  console.log(`[SES-DIAG] ---- end ${label} ----`);
+}
+
 /** Scrolls the current screen's `ListView` down (bounded, polling for the
  * target rather than a fixed scroll amount) until [buttonName] shows up
  * among the enabled buttons, or the list stops changing (genuinely not
@@ -198,7 +290,7 @@ async function openEngineerDetail(page: import('@playwright/test').Page): Promis
  * completely absent, not just unscrolled-to, until this). Mouse wheel
  * events, not a Playwright `scrollIntoView` call — there's no DOM element
  * to target one at until this scroll makes it exist. */
-async function scrollUntilButtonFound(page: import('@playwright/test').Page, buttonName: string, maxSteps = 15): Promise<ScreenSnapshot> {
+async function scrollUntilButtonFound(page: import('@playwright/test').Page, buttonName: string, maxSteps = 15, diag?: ScrollDiagnostics): Promise<ScreenSnapshot> {
   // `page.mouse.wheel` scrolls whatever is under the *current* virtual mouse
   // position — which, right after a `.click()` on the previous screen,
   // still sits wherever that click landed (a different route entirely).
@@ -208,15 +300,26 @@ async function scrollUntilButtonFound(page: import('@playwright/test').Page, but
   const viewport = page.viewportSize();
   if (viewport) await page.mouse.move(viewport.width / 2, viewport.height / 2);
   await page.waitForTimeout(200);
+  // Phase 1 diagnosis: isolate this call's wheel records from any earlier
+  // ones. Draining is a no-op on Chromium, which never enters the fallback.
+  if (diag) drainWheelDiagnostics(page);
   let snap = await snapshotScreen(page);
   let everChanged = false;
   let stableStreak = 0;
   let lastFingerprint = JSON.stringify(snap.texts);
   for (let i = 0; i < maxSteps; i++) {
-    if (snap.buttons.some((b) => b.enabled && b.name === buttonName)) return snap;
+    if (snap.buttons.some((b) => b.enabled && b.name === buttonName)) {
+      if (diag) {
+        diag.steps = i;
+        diag.foundAtStep = i;
+        diag.exitReason = 'found';
+      }
+      return snap;
+    }
     await page.mouse.wheel(0, 500);
     await page.waitForTimeout(300);
     snap = await snapshotScreen(page);
+    if (diag) diag.steps = i + 1;
     const fingerprint = JSON.stringify(snap.texts);
     if (fingerprint === lastFingerprint) {
       stableStreak++;
@@ -226,14 +329,47 @@ async function scrollUntilButtonFound(page: import('@playwright/test').Page, but
       // an early read identical without the list actually being stuck) —
       // only once real scrolling has been observed at least once *and*
       // then stalls for a few reads in a row is this the bottom.
-      if (everChanged && stableStreak >= 3) break;
+      if (everChanged && stableStreak >= 3) {
+        if (diag) diag.exitReason = 'stable';
+        break;
+      }
     } else {
       everChanged = true;
       stableStreak = 0;
+      if (diag) diag.fingerprintChanges++;
     }
     lastFingerprint = fingerprint;
   }
+  if (diag) {
+    diag.everChanged = everChanged;
+    const wheel = drainWheelDiagnostics(page);
+    diag.wheelInvocations = wheel.length;
+    diag.wheelMoved = wheel.filter((w) => w.moved).length;
+    for (const w of wheel) diag.wheelStrategies[w.strategy] = (diag.wheelStrategies[w.strategy] ?? 0) + 1;
+    const last = wheel[wheel.length - 1];
+    if (last) {
+      diag.fltSemanticsTotal = last.fltSemanticsTotal;
+      diag.fltSemanticsScrollable = last.fltSemanticsScrollable;
+      diag.fltSemanticsOverflowY = last.fltSemanticsOverflowY;
+    }
+  }
   return snap;
+}
+
+function newScrollDiagnostics(): ScrollDiagnostics {
+  return {
+    steps: 0,
+    everChanged: false,
+    fingerprintChanges: 0,
+    foundAtStep: null,
+    exitReason: 'maxSteps',
+    wheelInvocations: 0,
+    wheelMoved: 0,
+    wheelStrategies: {},
+    fltSemanticsTotal: null,
+    fltSemanticsScrollable: null,
+    fltSemanticsOverflowY: null,
+  };
 }
 
 const FIT_SYMBOL = '[◎○△×]';
@@ -306,6 +442,10 @@ for (const seed of parsedSeeds.error ? [] : parsedSeeds.seeds) {
     // shortcut, the same "断る"/"面談へ進む" card a real player sees.
     let offerAccepted = false;
     let weeksWaited = 0;
+    // Phase 1 diagnosis only — collected, printed, never asserted on.
+    const weekDiagnostics: WeekDiagnostics[] = [];
+    let loopExitReason = 'maxWeeks';
+    let offerEvidenceDumped = false;
     // A `for (...; weeksWaited++)` here undercounts by one: `break` on the
     // iteration that finds the offer skips the increment clause entirely,
     // so a genuine 2-week wait was reported as 1 (and an offer found on the
@@ -317,20 +457,64 @@ for (const seed of parsedSeeds.error ? [] : parsedSeeds.seeds) {
       await settleAndScan(page, textOffenders);
       snap = await snapshotScreen(page);
       const next = snap.buttons.find((b) => b.enabled && b.name.startsWith(NEXT_WEEK_PREFIX));
+      // Home, before this iteration's week advance: `TaskEngine`'s critical
+      // 面談依頼 task shows up here whenever the offer exists in GameState.
+      const homeSnap = snap;
+      const settleObserved: string[] = [];
       if (next) {
         await clickResilient(page, byButton(page, next.name), next.name);
         await page.waitForTimeout(700);
         weeksWaited++;
       }
-      await settleAndScan(page, textOffenders);
+      await settleAndScan(page, textOffenders, settleObserved);
 
       snap = await openEngineerDetail(page);
-      snap = await scrollUntilButtonFound(page, PROCEED_TO_INTERVIEW);
+      const beforeScroll = snap;
+      const scrollDiag = newScrollDiagnostics();
+      snap = await scrollUntilButtonFound(page, PROCEED_TO_INTERVIEW, 15, scrollDiag);
+      const week: WeekDiagnostics = {
+        iteration: weekDiagnostics.length + 1,
+        weekOnHome: readWeek(homeSnap),
+        nextWeekButton: next?.name ?? null,
+        homeOfferMarkers: offerMarkers(homeSnap),
+        settleOfferMarkers: [...new Set(settleObserved.filter((t) => OFFER_MARKER_RE.test(t)))],
+        detailOfferMarkersBeforeScroll: offerMarkers(beforeScroll),
+        detailCtaBeforeScroll: hasCta(beforeScroll),
+        detailButtonsBeforeScroll: beforeScroll.buttons.length,
+        detailTextsBeforeScroll: beforeScroll.texts.length,
+        detailOfferMarkersAfterScroll: offerMarkers(snap),
+        detailCtaAfterScroll: hasCta(snap),
+        detailButtonsAfterScroll: snap.buttons.length,
+        detailTextsAfterScroll: snap.texts.length,
+        scroll: scrollDiag,
+      };
+      weekDiagnostics.push(week);
+      console.log(`[SES-DIAG] week#${week.iteration} homeWeek=${week.weekOnHome} weeksWaited=${weeksWaited} ` +
+        `homeOffer=${week.homeOfferMarkers.length > 0} settleOffer=${week.settleOfferMarkers.length > 0} ` +
+        `detailOfferText=${week.detailOfferMarkersBeforeScroll.length > 0} ` +
+        `cta(before/after)=${week.detailCtaBeforeScroll}/${week.detailCtaAfterScroll} ` +
+        `detailButtons=${week.detailButtonsBeforeScroll}->${week.detailButtonsAfterScroll} ` +
+        `scroll{steps=${scrollDiag.steps} everChanged=${scrollDiag.everChanged} changes=${scrollDiag.fingerprintChanges} ` +
+        `exit=${scrollDiag.exitReason} wheel=${scrollDiag.wheelInvocations} wheelMoved=${scrollDiag.wheelMoved} ` +
+        `strategies=${JSON.stringify(scrollDiag.wheelStrategies)} fltSemantics=${scrollDiag.fltSemanticsTotal}` +
+        `/${scrollDiag.fltSemanticsScrollable} overflowY=${JSON.stringify(scrollDiag.fltSemanticsOverflowY)}}`);
+      // The decisive dump, emitted at most once: the first week Home says an
+      // offer exists. Home and the engineer detail screen side by side is
+      // what separates "exists but unmaterialized" from "never generated".
+      if (!offerEvidenceDumped && (week.homeOfferMarkers.length > 0 || week.settleOfferMarkers.length > 0)) {
+        offerEvidenceDumped = true;
+        console.log(`[SES-DIAG] === OFFER EVIDENCE (week#${week.iteration}, homeWeek=${week.weekOnHome}) ===`);
+        console.log(`[SES-DIAG] settleOfferMarkers=${JSON.stringify(week.settleOfferMarkers)}`);
+        dumpSnapshot('home (offer task present)', homeSnap);
+        dumpSnapshot('engineer detail BEFORE scroll', beforeScroll);
+        dumpSnapshot('engineer detail AFTER scroll', snap);
+      }
       const proceed = snap.buttons.find((b) => b.enabled && b.name === PROCEED_TO_INTERVIEW);
       if (proceed) {
         await clickResilient(page, byButton(page, PROCEED_TO_INTERVIEW), PROCEED_TO_INTERVIEW);
         await page.waitForTimeout(700);
         offerAccepted = true;
+        loopExitReason = 'offerAccepted';
         break;
       }
       // No offer yet this week — pop back off the engineer's detail screen
@@ -340,7 +524,40 @@ for (const seed of parsedSeeds.error ? [] : parsedSeeds.seeds) {
       await page.waitForTimeout(400);
       await clickResilient(page, byTab(page, HOME_TAB), 'ホームタブ');
       await page.waitForTimeout(400);
-      if (!next) break; // no next-week button and no offer — genuinely stuck, don't loop forever
+      if (!next) {
+        loopExitReason = 'noNextWeekButton';
+        break; // no next-week button and no offer — genuinely stuck, don't loop forever
+      }
+    }
+    // Phase 1 diagnosis: the whole classification input, in the job log, in
+    // one place — no artifact download required. Printed unconditionally so
+    // the passing Chromium run is directly comparable to the WebKit one.
+    const lastWeek = weekDiagnostics[weekDiagnostics.length - 1];
+    console.log(`[SES-DIAG] === SUMMARY seed=${seed} ===`);
+    console.log(`[SES-DIAG] offerAccepted=${offerAccepted} weeksWaited=${weeksWaited} ` +
+      `iterations=${weekDiagnostics.length} exit=${loopExitReason} ` +
+      `homeOfferEverSeen=${weekDiagnostics.some((w) => w.homeOfferMarkers.length > 0)} ` +
+      `settleOfferEverSeen=${weekDiagnostics.some((w) => w.settleOfferMarkers.length > 0)} ` +
+      `detailOfferTextEverSeen=${weekDiagnostics.some((w) => w.detailOfferMarkersBeforeScroll.length > 0 || w.detailOfferMarkersAfterScroll.length > 0)} ` +
+      `ctaEverSeen=${weekDiagnostics.some((w) => w.detailCtaBeforeScroll || w.detailCtaAfterScroll)} ` +
+      `anyScrollEverChanged=${weekDiagnostics.some((w) => w.scroll.everChanged)} ` +
+      `totalWheelInvocations=${weekDiagnostics.reduce((n, w) => n + w.scroll.wheelInvocations, 0)} ` +
+      `totalWheelMoved=${weekDiagnostics.reduce((n, w) => n + w.scroll.wheelMoved, 0)}`);
+    for (const w of weekDiagnostics) {
+      if (w.homeOfferMarkers.length > 0) console.log(`[SES-DIAG] week#${w.iteration} homeOfferMarkers=${JSON.stringify(w.homeOfferMarkers)}`);
+      if (w.settleOfferMarkers.length > 0) console.log(`[SES-DIAG] week#${w.iteration} settleOfferMarkers=${JSON.stringify(w.settleOfferMarkers)}`);
+      if (w.detailOfferMarkersBeforeScroll.length > 0) console.log(`[SES-DIAG] week#${w.iteration} detailOfferMarkersBefore=${JSON.stringify(w.detailOfferMarkersBeforeScroll)}`);
+      if (w.detailOfferMarkersAfterScroll.length > 0) console.log(`[SES-DIAG] week#${w.iteration} detailOfferMarkersAfter=${JSON.stringify(w.detailOfferMarkersAfterScroll)}`);
+    }
+    if (!offerAccepted && lastWeek) {
+      // Nothing above proved the offer exists — dump the final state in full
+      // so the "never generated" reading can be checked against real output
+      // rather than assumed.
+      console.log('[SES-DIAG] === FINAL STATE (no offer accepted) ===');
+      console.log(`[SES-DIAG] lastWeek#${lastWeek.iteration} homeWeek=${lastWeek.weekOnHome} nextWeekButton=${lastWeek.nextWeekButton}`);
+      dumpSnapshot('engineer detail, final iteration AFTER scroll', snap);
+      console.log(`[SES-DIAG] raw aria snapshot follows (${'engineer detail, final'})`);
+      for (const line of (await page.locator('body').ariaSnapshot()).split('\n')) console.log(`[SES-DIAG] raw | ${line}`);
     }
     expect(offerAccepted, `no 面談依頼/${PROCEED_TO_INTERVIEW} appeared within ${MAX_WEEKS_TO_WAIT_FOR_OFFER} weeks (seed=${seed}) — not a stall/timeout tuning issue, see this file's determinism note`).toBe(true);
 

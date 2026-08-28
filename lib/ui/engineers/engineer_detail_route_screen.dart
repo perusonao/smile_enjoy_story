@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 
 import '../../app/game_scope.dart';
-import '../../domain/domain.dart';
+import '../../game/game.dart';
+import '../theme.dart';
 import '../widgets/confirm_dialog.dart';
-import '../widgets/labels.dart';
 import 'engineer_detail_screen.dart';
 
 /// Route shell for [EngineerDetailScreen] that keeps blocking decisions in a

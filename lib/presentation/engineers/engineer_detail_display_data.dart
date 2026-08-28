@@ -112,12 +112,12 @@ class EngineerDetailDisplayFactory {
     final pendingOfferProposal = pendingOffer == null
         ? null
         : _proposalById(state, pendingOffer.applicationId);
-    final activeProposal = _firstProposal(
+    final firstActiveProposal = _firstProposal(
       state,
       engineerId,
       (proposal) => proposal.status == ApplicationStatus.active,
     );
-    final clientInterviewApplicationId = _clientInterviewApplicationId(
+    final pendingClientInterviewProposal = _pendingClientInterviewProposal(
       state,
       engineerId,
     );
@@ -131,8 +131,8 @@ class EngineerDetailDisplayFactory {
         scheduledProposal: scheduledProposal,
         pendingOffer: pendingOffer,
         pendingOfferProposal: pendingOfferProposal,
-        activeProposal: activeProposal,
-        clientInterviewApplicationId: clientInterviewApplicationId,
+        activeProposal: pendingClientInterviewProposal ?? firstActiveProposal,
+        clientInterviewApplicationId: pendingClientInterviewProposal?.id,
         unlockedClientCount: state.unlockedClientCount,
       ),
       skillSheet: EngineerSkillSheetDisplay(
@@ -182,7 +182,7 @@ class EngineerDetailDisplayFactory {
     return null;
   }
 
-  static String? _clientInterviewApplicationId(
+  static ProjectProposal? _pendingClientInterviewProposal(
     GameState state,
     String engineerId,
   ) {
@@ -195,7 +195,7 @@ class EngineerDetailDisplayFactory {
             (session) =>
                 session.applicationId == proposal.id && session.completed,
           );
-      if (isPendingClientInterview) return proposal.id;
+      if (isPendingClientInterview) return proposal;
     }
     return null;
   }

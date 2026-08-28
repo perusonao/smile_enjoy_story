@@ -10,6 +10,7 @@ void main() {
     Engineer engineer, {
     SkillSheet? skillSheet,
     ActiveAssignment? assignment,
+    List<ProjectProposal> proposals = const [],
   }) {
     final base = GameEngine.skipFoundingTutorial(GameEngine.newGame(seed: 301));
     return base.copyWith(
@@ -17,6 +18,7 @@ void main() {
       company: base.company.copyWith(engineerIds: [engineer.id]),
       skillSheets: skillSheet == null ? const [] : [skillSheet],
       activeAssignments: assignment == null ? const [] : [assignment],
+      proposals: proposals,
     );
   }
 
@@ -124,6 +126,126 @@ void main() {
 
       expect(display.skillSheet.sheet, isNull);
       expect(display.currentStatus.state, EmployeeWorkflowState.waiting);
+    },
+  );
+
+  test(
+    'uses the pending client interview proposal for both status details and action target',
+    () {
+      final engineer = buildEngineer(
+        id: 'eng-parallel',
+        profile: buildApplicant(id: 'app-parallel', name: '並行 提案'),
+      );
+      final firstProject = buildProject(
+        id: 'project-first',
+        title: '先行の上位面談案件',
+      );
+      final pendingInterviewProject = buildProject(
+        id: 'project-interview',
+        title: '客先面談待ち案件',
+      );
+      final clientInterviewIndex = pendingInterviewProject.selectionFlow.steps
+          .indexOf(SelectionStep.clientInterview);
+      final display = EngineerDetailDisplayFactory.create(
+        stateWith(
+          engineer,
+          proposals: [
+            ProjectProposal(
+              id: 'proposal-first',
+              engineerId: engineer.id,
+              project: firstProject,
+              proposedWeek: 1,
+              stage: ProposalStage.proposed,
+              currentStepIndex: 1,
+            ),
+            ProjectProposal(
+              id: 'proposal-client-interview',
+              engineerId: engineer.id,
+              project: pendingInterviewProject,
+              proposedWeek: 2,
+              stage: ProposalStage.proposed,
+              currentStepIndex: clientInterviewIndex,
+            ),
+          ],
+        ),
+        engineer.id,
+      )!;
+
+      expect(
+        display.currentStatus.state,
+        EmployeeWorkflowState.clientInterviewActionRequired,
+      );
+      expect(display.currentStatus.activeProposal!.project.title, '客先面談待ち案件');
+      expect(
+        display.currentStatus.clientInterviewApplicationId,
+        'proposal-client-interview',
+      );
+    },
+  );
+
+  test(
+    'keeps the single pending client interview proposal as the status target',
+    () {
+      final engineer = buildEngineer(id: 'eng-single');
+      final project = buildProject(id: 'project-single', title: '単一面談案件');
+      final clientInterviewIndex = project.selectionFlow.steps.indexOf(
+        SelectionStep.clientInterview,
+      );
+
+      final display = EngineerDetailDisplayFactory.create(
+        stateWith(
+          engineer,
+          proposals: [
+            ProjectProposal(
+              id: 'proposal-single',
+              engineerId: engineer.id,
+              project: project,
+              proposedWeek: 1,
+              stage: ProposalStage.proposed,
+              currentStepIndex: clientInterviewIndex,
+            ),
+          ],
+        ),
+        engineer.id,
+      )!;
+
+      expect(display.currentStatus.activeProposal!.project.title, '単一面談案件');
+      expect(
+        display.currentStatus.clientInterviewApplicationId,
+        'proposal-single',
+      );
+    },
+  );
+
+  test(
+    'does not create a client interview action target for other active steps',
+    () {
+      final engineer = buildEngineer(id: 'eng-no-client-interview');
+      final project = buildProject(id: 'project-other-step');
+
+      final display = EngineerDetailDisplayFactory.create(
+        stateWith(
+          engineer,
+          proposals: [
+            ProjectProposal(
+              id: 'proposal-other-step',
+              engineerId: engineer.id,
+              project: project,
+              proposedWeek: 1,
+              stage: ProposalStage.proposed,
+              currentStepIndex: 1,
+            ),
+          ],
+        ),
+        engineer.id,
+      )!;
+
+      expect(
+        display.currentStatus.state,
+        EmployeeWorkflowState.waitingSelectionResult,
+      );
+      expect(display.currentStatus.clientInterviewApplicationId, isNull);
+      expect(display.currentStatus.activeProposal!.id, 'proposal-other-step');
     },
   );
 }

@@ -142,6 +142,7 @@ class PublicDemoFinanceSummarySection extends StatelessWidget {
           const SizedBox(height: 10),
           Semantics(
             label: '資金警告: ${summary.warning}',
+            excludeSemantics: true,
             child: Container(
               width: double.infinity,
               padding: const EdgeInsets.all(10),

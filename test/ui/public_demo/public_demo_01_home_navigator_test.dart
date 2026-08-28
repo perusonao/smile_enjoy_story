@@ -193,6 +193,11 @@ void main() {
         isNot(before),
         reason: 'one tap must reach the existing Recommended Action owner',
       );
+      expect(
+        currentWorkflow(tester).engineers.first.stage,
+        PublicDemoSalesStage.skillSheet,
+        reason: 'one Navigator tap advances exactly the same first workflow step as the legacy Recommended Action CTA',
+      );
     });
   });
 
@@ -397,7 +402,8 @@ void main() {
       await tester.ensureVisible(find.byKey(const Key('home-navigator-open-advice')));
       await tester.tap(find.byKey(const Key('home-navigator-open-advice')));
       await tester.pumpAndSettle();
-      expect(find.text('今は「佐藤 健のSkillSheetを確認」を進めるのがおすすめです。'), findsOneWidget);
+      expect(find.text('「佐藤 健のSkillSheetを確認」：SkillSheetの内容を確認しましょう。'), findsOneWidget);
+      expect(find.text('SkillSheetは、経験やスキルを案件へ伝えるための資料です。内容を確認して次の手続きに備えます。'), findsOneWidget);
       await tester.tap(find.byKey(const Key('home-navigator-close-advice')));
       await tester.pumpAndSettle();
       expect(stateSnapshot(tester), before);

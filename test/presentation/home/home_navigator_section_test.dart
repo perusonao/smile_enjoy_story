@@ -201,6 +201,38 @@ void main() {
       await tester.tap(find.byKey(const Key('home-navigator-advice-cta')));
       expect(calls, 1);
     });
+    testWidgets('explanation is hidden while collapsed and shown when expanded', (tester) async {
+      const explanation = 'この操作が一般的に重要な理由です。';
+      await pumpNavigator(
+        tester,
+        advice: const HomeNavigatorAdvice(
+          title: 'ひよりからのご案内',
+          message: '既に選ばれた操作です。',
+          explanation: explanation,
+        ),
+      );
+      expect(find.text(explanation), findsNothing);
+      await tester.tap(find.byKey(const Key('home-navigator-open-advice')));
+      await tester.pumpAndSettle();
+      expect(find.text(explanation), findsOneWidget);
+      expect(
+        tester.getRect(find.byKey(const Key('home-navigator-advice-explanation'))).top,
+        greaterThan(tester.getRect(find.byKey(const Key('home-navigator-advice-message'))).bottom),
+      );
+    });
+    testWidgets('an explanation remains optional', (tester) async {
+      await pumpNavigator(
+        tester,
+        advice: const HomeNavigatorAdvice(
+          title: 'ひよりからのご案内',
+          message: '説明のない既存の案内です。',
+        ),
+      );
+      await tester.tap(find.byKey(const Key('home-navigator-open-advice')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('home-navigator-advice-explanation')), findsNothing);
+      expect(tester.takeException(), isNull);
+    });
     testWidgets('starts collapsed, expands and collapses with one fixed identity', (
       tester,
     ) async {

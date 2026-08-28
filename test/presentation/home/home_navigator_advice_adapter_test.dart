@@ -28,7 +28,7 @@ void main() {
       );
     });
 
-    test('Available translates the resolved action deterministically', () {
+    test('Available translates the resolved sales-start path deterministically', () {
       final slot = HomeRecommendedActionAvailable(
         _candidate(
           HomeRecommendedActionKind.employeeSkillSheetReview,
@@ -37,9 +37,11 @@ void main() {
       );
       final first = navigatorAdviceFor(slot);
       final second = navigatorAdviceFor(slot);
-      expect(first!.message, '今は「佐藤 健のSkillSheetを確認」を進めるのがおすすめです。');
+      expect(first!.message, '「佐藤 健のSkillSheetを確認」：SkillSheetの内容を確認しましょう。');
+      expect(first.explanation, 'SkillSheetは、経験やスキルを案件へ伝えるための資料です。内容を確認して次の手続きに備えます。');
       expect(first.semantic, HomeNavigatorAdviceSemantic.neutral);
       expect(second!.message, first.message);
+      expect(second.explanation, first.explanation);
     });
 
     test('cash-shortage candidate maps to caution', () {
@@ -49,6 +51,7 @@ void main() {
         ),
       );
       expect(advice!.semantic, HomeNavigatorAdviceSemantic.caution);
+      expect(advice.explanation, '事業を続けるには、必要な対応を確認してから次の手続きを進めることが大切です。');
     });
 
     test('None is neutral and Suppressed hides advice', () {
@@ -56,6 +59,11 @@ void main() {
         navigatorAdviceFor(const HomeRecommendedActionNone()),
         same(HomeNavigatorAdvice.neutral),
       );
+      final none = navigatorAdviceFor(const HomeRecommendedActionNone())!;
+      expect(none.semantic, HomeNavigatorAdviceSemantic.neutral);
+      expect(none.explanation, isNotNull);
+      expect(none.ctaLabel, isNull);
+      expect(none.onCtaPressed, isNull);
       expect(
         navigatorAdviceFor(const HomeRecommendedActionSuppressed()),
         isNull,

@@ -1584,7 +1584,9 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
         ),
       );
   @override
-  Widget build(BuildContext c) => Theme(
+  Widget build(BuildContext c) {
+    final navigatorAdvice = navigatorAdviceFor(_recommendedActionSlot);
+    return Theme(
     data: Theme.of(c).copyWith(
       filledButtonTheme: FilledButtonThemeData(
         style: _publicDemoFilledButtonStyle(c),
@@ -1673,9 +1675,9 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
                 const SizedBox(height: 8),
                 HomeNavigatorSection(
                   expression: navigatorExpressionFor(
-                    navigatorAdviceFor(_recommendedActionSlot)?.semantic,
+                    navigatorAdvice?.semantic,
                   ),
-                  advice: navigatorAdviceFor(_recommendedActionSlot),
+                  advice: navigatorAdvice,
                 ),
                 const SizedBox(height: 8),
                 dashboard(),
@@ -1835,7 +1837,8 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
         ),
       ),
     ),
-  );
+    );
+  }
 }
 
 class _RecruitmentMediaCard extends StatelessWidget {

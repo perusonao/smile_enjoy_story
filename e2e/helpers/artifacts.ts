@@ -139,6 +139,7 @@ function extractFirstUrl(text: string): string | null {
 
 const MOBILE_WEBKIT_WHEEL_UNSUPPORTED = /Mouse wheel is not supported in mobile WebKit/i;
 const PORTABLE_WHEEL_INSTALLED = Symbol('sesPortableWheelInstalled');
+type PortableMouse = Page['mouse'] & { [PORTABLE_WHEEL_INSTALLED]?: boolean };
 
 /**
  * PR #80 follow-up: Playwright intentionally rejects `page.mouse.wheel()`
@@ -147,10 +148,13 @@ const PORTABLE_WHEEL_INSTALLED = Symbol('sesPortableWheelInstalled');
  * off-screen Flutter ListView child into the semantics tree. Keep Chromium's
  * native wheel path unchanged, but provide the equivalent browser-side wheel
  * event / DOM-scroll fallback only for that one explicit mobile-WebKit error.
+ * Event-watcher unit tests deliberately use a minimal Page-shaped mock with
+ * no mouse; those callers do not need scrolling, so preserve that supported
+ * test seam by treating a missing mouse as a no-op here.
  */
 function installPortableWheelFallback(page: Page): void {
-  const mouse = page.mouse as typeof page.mouse & { [PORTABLE_WHEEL_INSTALLED]?: boolean };
-  if (mouse[PORTABLE_WHEEL_INSTALLED]) return;
+  const mouse = (page as unknown as { mouse?: PortableMouse }).mouse;
+  if (!mouse || mouse[PORTABLE_WHEEL_INSTALLED]) return;
 
   const nativeWheel = mouse.wheel.bind(mouse);
   mouse.wheel = async (deltaX: number, deltaY: number): Promise<void> => {

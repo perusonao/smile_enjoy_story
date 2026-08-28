@@ -84,7 +84,7 @@ void main() {
       await _pumpScrollable(tester, const KpiSection());
 
       expect(find.text('現金'), findsOneWidget);
-      expect(find.text('社員数'), findsOneWidget);
+      expect(find.text('技術者数'), findsOneWidget);
       expect(find.text('参画中'), findsOneWidget);
       expect(find.text('売上'), findsOneWidget);
       expect(find.text('入金予定'), findsOneWidget);

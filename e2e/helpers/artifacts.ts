@@ -166,23 +166,79 @@ function installPortableWheelFallback(page: Page): void {
     }
 
     await page.evaluate(
-      ({ x, y }) => {
-        const center = document.elementFromPoint(window.innerWidth / 2, window.innerHeight / 2);
-        center?.dispatchEvent(
-          new WheelEvent('wheel', {
-            bubbles: true,
-            cancelable: true,
-            deltaX: x,
-            deltaY: y,
-            deltaMode: WheelEvent.DOM_DELTA_PIXEL,
-          }),
-        );
+      async ({ x, y }) => {
+        const centerX = window.innerWidth / 2;
+        const centerY = window.innerHeight / 2;
+        const frame = (): Promise<void> =>
+          new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+        const signature = (): string =>
+          Array.from(document.querySelectorAll<HTMLElement>('flt-semantics'))
+            .map((node) => {
+              const rect = node.getBoundingClientRect();
+              return `${Math.round(rect.top)},${Math.round(rect.height)},${node.getAttribute('aria-label') ?? ''},${node.scrollTop}`;
+            })
+            .join('|');
+        const moved = async (run: () => void | Promise<void>): Promise<boolean> => {
+          const before = signature();
+          await run();
+          await frame();
+          return signature() !== before;
+        };
+        const viewRoot =
+          document.querySelector<HTMLElement>('flutter-view') ??
+          document.querySelector<HTMLElement>('flt-glass-pane') ??
+          document.elementFromPoint(centerX, centerY) ??
+          document.body;
+
+        // Flutter hit-tests pointer signals using event coordinates. Supplying
+        // the viewport centre keeps the fallback out of the fixed AppBar.
+        if (await moved(() => {
+          viewRoot.dispatchEvent(new WheelEvent('wheel', {
+            bubbles: true, cancelable: true, composed: true,
+            deltaX: x, deltaY: y, deltaMode: WheelEvent.DOM_DELTA_PIXEL,
+            clientX: centerX, clientY: centerY, screenX: centerX, screenY: centerY,
+          }));
+        })) return;
+
+        // Mobile WebKit supports touch input even when Playwright's wheel API
+        // is unavailable. Use a settled swipe to avoid an unpredictable fling.
+        if (await moved(async () => {
+          const dx = Math.max(-Math.round(window.innerWidth * 0.6), Math.min(Math.round(window.innerWidth * 0.6), -x));
+          const dy = Math.max(-Math.round(window.innerHeight * 0.6), Math.min(Math.round(window.innerHeight * 0.6), -y));
+          const startX = Math.min(window.innerWidth - 4, Math.max(4, centerX - dx / 2));
+          const startY = Math.min(window.innerHeight - 4, Math.max(4, centerY - dy / 2));
+          const pointerId = 20260828;
+          const send = (type: string, clientX: number, clientY: number, buttons: number): void => {
+            viewRoot.dispatchEvent(new PointerEvent(type, {
+              bubbles: true, cancelable: true, composed: true, pointerId,
+              pointerType: 'touch', isPrimary: true, button: buttons ? 0 : -1, buttons,
+              clientX, clientY, screenX: clientX, screenY: clientY,
+              pressure: buttons ? 0.5 : 0,
+            }));
+          };
+          send('pointerdown', startX, startY, 1);
+          for (let step = 1; step <= 12; step++) {
+            send('pointermove', startX + (dx * step) / 12, startY + (dy * step) / 12, 1);
+            await frame();
+          }
+          send('pointermove', startX + dx, startY + dy, 1);
+          await frame();
+          send('pointerup', startX + dx, startY + dy, 0);
+        })) return;
+
+        // Flutter semantics scrollers report overflow-y: visible on WebKit;
+        // select them by actual scroll dimensions instead.
+        const semantics = Array.from(document.querySelectorAll<HTMLElement>('flt-semantics'))
+          .filter((el) => el.scrollHeight > el.clientHeight + 1 || el.scrollWidth > el.clientWidth + 1)
+          .sort((a, b) => (b.scrollHeight - b.clientHeight) - (a.scrollHeight - a.clientHeight));
+        for (const element of semantics) {
+          if (await moved(() => element.scrollBy({ left: x, top: y, behavior: 'auto' }))) return;
+        }
 
         const scrollables = Array.from(document.querySelectorAll<HTMLElement>('*'))
           .filter((el) => el.scrollHeight > el.clientHeight + 1)
           .sort((a, b) => (b.scrollHeight - b.clientHeight) - (a.scrollHeight - a.clientHeight));
-        const target = scrollables[0];
-        if (target) target.scrollBy({ left: x, top: y, behavior: 'auto' });
+        if (scrollables[0]) scrollables[0].scrollBy({ left: x, top: y, behavior: 'auto' });
         else window.scrollBy(x, y);
       },
       { x: deltaX, y: deltaY },

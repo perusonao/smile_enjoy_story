@@ -152,33 +152,38 @@ type PortableMouse = Page['mouse'] & { [PORTABLE_WHEEL_INSTALLED]?: boolean };
  * no mouse; those callers do not need scrolling, so preserve that supported
  * test seam by treating a missing mouse as a no-op here.
  */
+/** One attempt at one scroll strategy, and whether it demonstrably moved
+ * anything. Recorded even when it did not — an inert fallback must never
+ * look like a successful one. */
+export interface WheelStrategyAttempt {
+  strategy: 'wheelEvent' | 'pointerDrag' | 'semanticsScroll' | 'genericScroll' | 'windowScroll';
+  moved: boolean;
+  detail?: string;
+}
+
 export interface WheelFallbackDiagnostic {
-  /** Which branch of the fallback ran. */
-  strategy: 'semantics' | 'generic' | 'window';
+  /** The strategy that actually moved something, or null when every one of
+   * them was inert — the signal that this invocation achieved nothing. */
+  movedBy: WheelStrategyAttempt['strategy'] | null;
+  attempts: WheelStrategyAttempt[];
   /** Total `flt-semantics` elements in the DOM at the time of the call. */
   fltSemanticsTotal: number;
-  /** How many passed the visible + `overflow-y: scroll|auto` filter. */
+  /** How many were *programmatically* scrollable (`scrollHeight >
+   * clientHeight`), which is the property that actually matters — not the
+   * computed `overflow-y`, which on mobile WebKit is `visible` for every
+   * Flutter semantics node (measured: 20 visible + 1 hidden of 21). */
   fltSemanticsScrollable: number;
-  /** Distinct computed `overflow-y` values across all `flt-semantics`
-   * elements, with counts — this is what shows *why* the semantics branch
-   * did or did not match. */
+  /** Computed `overflow-y` histogram across all `flt-semantics` elements. */
   fltSemanticsOverflowY: Record<string, number>;
-  targetTag: string | null;
-  targetScrollHeight: number | null;
-  targetClientHeight: number | null;
-  scrollTopBefore: number | null;
-  scrollTopAfter: number | null;
   windowScrollYBefore: number;
   windowScrollYAfter: number;
-  /** True when something measurably moved. `false` is the signal that this
-   * fallback invocation was inert. */
+  /** True when any strategy moved something. */
   moved: boolean;
 }
 
-// SES_WEBKIT-SCROLL-1 Phase 1: one record per mobile-WebKit wheel-fallback
+// SES_WEBKIT-SCROLL-1: one record per mobile-WebKit wheel-fallback
 // invocation, so a CI *log* can answer "did the fallback actually move
-// anything?" without downloading the 300 MB+ results artifact. Bounded so a
-// long run cannot grow this without limit.
+// anything?" without downloading the 300 MB+ results artifact.
 const MAX_WHEEL_DIAGNOSTICS = 400;
 const wheelDiagnostics = new WeakMap<Page, WheelFallbackDiagnostic[]>();
 
@@ -188,6 +193,45 @@ export function drainWheelDiagnostics(page: Page): WheelFallbackDiagnostic[] {
   const recorded = wheelDiagnostics.get(page) ?? [];
   wheelDiagnostics.set(page, []);
   return recorded;
+}
+
+/** What one bounded scroll loop observed about its own effect. */
+export interface ScrollEffectEvidence {
+  /** How many scroll steps were actually attempted. */
+  steps: number;
+  /** Whether the accessibility snapshot ever changed across those steps —
+   * the only evidence that Flutter re-laid out and materialized anything. */
+  fingerprintChanged: boolean;
+  /** Wheel-fallback invocations recorded during the loop. Zero on Chromium,
+   * whose native wheel path produces no measurements at all. */
+  wheelInvocations: number;
+  /** How many of those demonstrably moved something. */
+  wheelMoved: number;
+}
+
+/** Fails loudly when a scroll loop is *provably* inert.
+ *
+ * SES_WEBKIT-SCROLL-1 exists because this condition went unreported: on
+ * mobile WebKit the fallback ran 150 times, moved nothing on every single
+ * one, and the spec then failed with the ordinary "CTA not found" assertion —
+ * indistinguishable from the CTA legitimately not being there. A scroll
+ * mechanism that achieves nothing is a harness defect and must say so.
+ *
+ * Deliberately conservative: it only throws where inertness can be *proven*.
+ * A loop whose snapshot never changed because the screen genuinely had
+ * nothing below the fold is not a defect, and Chromium's native wheel path
+ * reports no movement measurements at all, so neither can trip this. */
+export function assertScrollWasEffective(evidence: ScrollEffectEvidence, context: string): void {
+  if (evidence.fingerprintChanged) return;
+  if (evidence.steps === 0) return;
+  if (evidence.wheelInvocations === 0) return; // no measurements — nothing proven
+  if (evidence.wheelMoved > 0) return; // something moved; not provably inert
+  throw new Error(
+    `inert scroll while ${context}: ${evidence.steps} scroll steps and ` +
+      `${evidence.wheelInvocations} wheel-fallback invocations moved nothing at all, and the ` +
+      `accessibility snapshot never changed. The scroll mechanism is broken, so "not found" here ` +
+      `proves nothing about whether the target exists. See SES_WEBKIT-SCROLL-1.`,
+  );
 }
 
 function installPortableWheelFallback(page: Page): void {
@@ -203,24 +247,31 @@ function installPortableWheelFallback(page: Page): void {
       if (!MOBILE_WEBKIT_WHEEL_UNSUPPORTED.test(String(err))) throw err;
     }
 
-    // The `page.evaluate` below is unchanged in behaviour by
-    // SES_WEBKIT-SCROLL-1 Phase 1: every dispatch, every branch and the
-    // early return are exactly as before. The only additions are
-    // before/after measurements and the returned diagnostic record.
     const diagnostic = await page.evaluate(
-      ({ x, y }) => {
+      async ({ x, y }) => {
         const centerX = window.innerWidth / 2;
         const centerY = window.innerHeight / 2;
-        const center = document.elementFromPoint(centerX, centerY);
-        center?.dispatchEvent(
-          new WheelEvent('wheel', {
-            bubbles: true,
-            cancelable: true,
-            deltaX: x,
-            deltaY: y,
-            deltaMode: WheelEvent.DOM_DELTA_PIXEL,
-          }),
-        );
+
+        // Flutter Web paints into a canvas, so no DOM scrollbar moves when a
+        // ListView scrolls. What *does* change is the semantics tree Flutter
+        // rebuilds for the new viewport: node count, node geometry and label
+        // lengths. That makes this signature the only honest "did anything
+        // actually happen?" oracle available from inside the page — and the
+        // one every strategy below is checked against.
+        const signature = (): string => {
+          const nodes = document.querySelectorAll<HTMLElement>('flt-semantics');
+          const parts: string[] = [String(nodes.length), String(Math.round(window.scrollY))];
+          nodes.forEach((n) => {
+            const r = n.getBoundingClientRect();
+            parts.push(`${Math.round(r.top)},${Math.round(r.height)},${(n.getAttribute('aria-label') ?? '').length},${n.scrollTop}`);
+          });
+          return parts.join('|');
+        };
+        // A frame barrier, not a timeout: Flutter applies a scroll and
+        // republishes semantics on its next frame, so the oracle has to be
+        // sampled one frame later or it would read the pre-scroll tree and
+        // report every strategy inert.
+        const frame = (): Promise<void> => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
 
         const allSemantics = Array.from(document.querySelectorAll<HTMLElement>('flt-semantics'));
         const overflowHistogram: Record<string, number> = {};
@@ -229,88 +280,142 @@ function installPortableWheelFallback(page: Page): void {
           overflowHistogram[value] = (overflowHistogram[value] ?? 0) + 1;
         }
         const windowScrollYBefore = window.scrollY;
+        const attempts: { strategy: string; moved: boolean; detail?: string }[] = [];
+        let movedBy: string | null = null;
+        let last = signature();
 
-        // Flutter Web represents an accessibility-scrollable ListView as a
-        // FLT-SEMANTICS node with overflow-y: scroll. Those nodes can have
-        // scrollHeight === clientHeight until Flutter materializes the next
-        // Sliver children, so the generic scrollHeight heuristic below does
-        // not reliably discover them. Prefer the visible Flutter semantics
-        // scroller under/around the viewport and let its real DOM scroll
-        // event drive Flutter's semantics scroll action.
-        const semanticsScrollers = allSemantics
-          .filter((el) => {
-            const style = getComputedStyle(el);
-            if (style.overflowY !== 'scroll' && style.overflowY !== 'auto') return false;
-            const rect = el.getBoundingClientRect();
-            return rect.width > 0 && rect.height > 0 && rect.bottom > 0 && rect.top < window.innerHeight;
-          })
-          .sort((a, b) => {
-            const ar = a.getBoundingClientRect();
-            const br = b.getBoundingClientRect();
-            const aContainsCenter = ar.left <= centerX && ar.right >= centerX && ar.top <= centerY && ar.bottom >= centerY;
-            const bContainsCenter = br.left <= centerX && br.right >= centerX && br.top <= centerY && br.bottom >= centerY;
-            if (aContainsCenter !== bContainsCenter) return aContainsCenter ? -1 : 1;
-            return br.width * br.height - ar.width * ar.height;
-          });
-        const semanticsTarget = semanticsScrollers[0];
-        if (semanticsTarget) {
-          const scrollTopBefore = semanticsTarget.scrollTop;
-          semanticsTarget.scrollBy({ left: x, top: y, behavior: 'auto' });
-          semanticsTarget.dispatchEvent(new Event('scroll', { bubbles: true }));
-          const scrollTopAfter = semanticsTarget.scrollTop;
-          return {
-            strategy: 'semantics' as const,
-            fltSemanticsTotal: allSemantics.length,
-            fltSemanticsScrollable: semanticsScrollers.length,
-            fltSemanticsOverflowY: overflowHistogram,
-            targetTag: semanticsTarget.tagName,
-            targetScrollHeight: semanticsTarget.scrollHeight,
-            targetClientHeight: semanticsTarget.clientHeight,
-            scrollTopBefore,
-            scrollTopAfter,
-            windowScrollYBefore,
-            windowScrollYAfter: window.scrollY,
-            moved: scrollTopAfter !== scrollTopBefore || window.scrollY !== windowScrollYBefore,
+        const attempt = async (strategy: string, run: () => void | Promise<void>, detail?: string): Promise<void> => {
+          if (movedBy) return; // a previous strategy already worked
+          try {
+            await run();
+          } catch (err) {
+            attempts.push({ strategy, moved: false, detail: `threw: ${String(err)}` });
+            return;
+          }
+          await frame();
+          const now = signature();
+          const moved = now !== last;
+          attempts.push({ strategy, moved, detail });
+          last = now;
+          if (moved) movedBy = strategy;
+        };
+
+        // Flutter's PointerBinding hit-tests a wheel signal by the event's
+        // own client coordinates, never by its DOM target. The original
+        // fallback built this WheelEvent with no clientX/clientY at all, so
+        // every scroll it ever sent was aimed at (0, 0) — the AppBar, which
+        // is not scrollable — no matter which element it was dispatched on.
+        const viewRoot =
+          document.querySelector<HTMLElement>('flutter-view') ??
+          document.querySelector<HTMLElement>('flt-glass-pane') ??
+          document.elementFromPoint(centerX, centerY) ??
+          document.body;
+        await attempt('wheelEvent', () => {
+          viewRoot.dispatchEvent(
+            new WheelEvent('wheel', {
+              bubbles: true,
+              cancelable: true,
+              composed: true,
+              deltaX: x,
+              deltaY: y,
+              deltaMode: WheelEvent.DOM_DELTA_PIXEL,
+              clientX: centerX,
+              clientY: centerY,
+              screenX: centerX,
+              screenY: centerY,
+            }),
+          );
+        });
+
+        // A real finger swipe, delivered through Flutter's ordinary gesture
+        // pipeline. pointerType must be 'touch': Flutter's default
+        // MaterialScrollBehavior.dragDevices excludes PointerDeviceKind.mouse,
+        // so a mouse-typed drag is ignored by every Scrollable in the app.
+        await attempt('pointerDrag', async () => {
+          const dx = Math.max(-Math.round(window.innerWidth * 0.6), Math.min(Math.round(window.innerWidth * 0.6), -x));
+          const dy = Math.max(-Math.round(window.innerHeight * 0.6), Math.min(Math.round(window.innerHeight * 0.6), -y));
+          const startX = Math.min(window.innerWidth - 4, Math.max(4, centerX - dx / 2));
+          const startY = Math.min(window.innerHeight - 4, Math.max(4, centerY - dy / 2));
+          const pointerId = 20260828;
+          const send = (type: string, cx: number, cy: number, buttons: number): void => {
+            viewRoot.dispatchEvent(
+              new PointerEvent(type, {
+                bubbles: true,
+                cancelable: true,
+                composed: true,
+                pointerId,
+                pointerType: 'touch',
+                isPrimary: true,
+                button: buttons === 0 ? -1 : 0,
+                buttons,
+                clientX: cx,
+                clientY: cy,
+                screenX: cx,
+                screenY: cy,
+                width: 1,
+                height: 1,
+                pressure: buttons === 0 ? 0 : 0.5,
+              }),
+            );
           };
-        }
+          send('pointerdown', startX, startY, 1);
+          const steps = 12;
+          for (let i = 1; i <= steps; i++) {
+            send('pointermove', startX + (dx * i) / steps, startY + (dy * i) / steps, 1);
+            await frame();
+          }
+          // Two stationary moves before release so the release velocity is
+          // ~0. A fast release would start a fling whose final offset this
+          // helper cannot predict, making the scroll non-deterministic.
+          send('pointermove', startX + dx, startY + dy, 1);
+          await frame();
+          send('pointermove', startX + dx, startY + dy, 1);
+          await frame();
+          send('pointerup', startX + dx, startY + dy, 0);
+        });
 
-        const scrollables = Array.from(document.querySelectorAll<HTMLElement>('*'))
-          .filter((el) => el.scrollHeight > el.clientHeight + 1)
+        // Flutter marks an accessibility-scrollable ListView with a
+        // FLT-SEMANTICS node, but its computed overflow-y is NOT reliably
+        // 'scroll'/'auto': measured on mobile WebKit it is 'visible' for 20
+        // of 21 nodes and 'hidden' for the remaining one, so the previous
+        // overflow-based filter matched zero elements on every one of 150
+        // invocations. What matters is whether the node is *programmatically*
+        // scrollable, and — since even that can be true for a node nothing
+        // reacts to — whether scrolling it actually moved anything. So try
+        // each candidate and keep the first that demonstrably works.
+        const semanticsCandidates = allSemantics
+          .filter((el) => el.scrollHeight > el.clientHeight + 1 || el.scrollWidth > el.clientWidth + 1)
           .sort((a, b) => (b.scrollHeight - b.clientHeight) - (a.scrollHeight - a.clientHeight));
-        const target = scrollables[0];
-        if (target) {
-          const scrollTopBefore = target.scrollTop;
-          target.scrollBy({ left: x, top: y, behavior: 'auto' });
-          const scrollTopAfter = target.scrollTop;
-          return {
-            strategy: 'generic' as const,
-            fltSemanticsTotal: allSemantics.length,
-            fltSemanticsScrollable: semanticsScrollers.length,
-            fltSemanticsOverflowY: overflowHistogram,
-            targetTag: target.tagName,
-            targetScrollHeight: target.scrollHeight,
-            targetClientHeight: target.clientHeight,
-            scrollTopBefore,
-            scrollTopAfter,
-            windowScrollYBefore,
-            windowScrollYAfter: window.scrollY,
-            moved: scrollTopAfter !== scrollTopBefore || window.scrollY !== windowScrollYBefore,
-          };
+        for (const el of semanticsCandidates) {
+          await attempt('semanticsScroll', () => {
+            el.scrollBy({ left: x, top: y, behavior: 'auto' });
+            el.dispatchEvent(new Event('scroll', { bubbles: true }));
+          }, el.getAttribute('id') ?? el.tagName);
         }
-        window.scrollBy(x, y);
+
+        const genericCandidates = Array.from(document.querySelectorAll<HTMLElement>('*'))
+          .filter((el) => el.scrollHeight > el.clientHeight + 1)
+          .sort((a, b) => (b.scrollHeight - b.clientHeight) - (a.scrollHeight - a.clientHeight))
+          .slice(0, 5);
+        for (const el of genericCandidates) {
+          await attempt('genericScroll', () => {
+            el.scrollBy({ left: x, top: y, behavior: 'auto' });
+          }, el.tagName);
+        }
+
+        await attempt('windowScroll', () => {
+          window.scrollBy(x, y);
+        });
+
         return {
-          strategy: 'window' as const,
+          movedBy: movedBy as WheelStrategyAttempt['strategy'] | null,
+          attempts: attempts as WheelStrategyAttempt[],
           fltSemanticsTotal: allSemantics.length,
-          fltSemanticsScrollable: semanticsScrollers.length,
+          fltSemanticsScrollable: semanticsCandidates.length,
           fltSemanticsOverflowY: overflowHistogram,
-          targetTag: null,
-          targetScrollHeight: null,
-          targetClientHeight: null,
-          scrollTopBefore: null,
-          scrollTopAfter: null,
           windowScrollYBefore,
           windowScrollYAfter: window.scrollY,
-          moved: window.scrollY !== windowScrollYBefore,
+          moved: movedBy !== null,
         };
       },
       { x: deltaX, y: deltaY },

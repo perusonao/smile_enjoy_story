@@ -52,7 +52,7 @@ import { test, expect } from '@playwright/test';
 import { playFoundingToFirstAssignment } from '../helpers/ses-player';
 import { playBeginnerModeThroughJune } from '../helpers/beginner-mode-player';
 import { snapshotScreen, hasText, findDoubledParticles, firstEnabledDialogButton, type ScreenSnapshot } from '../helpers/game-state';
-import { watchForErrors, captureMilestone, writeArtifacts, buildResultJson, drainWheelDiagnostics } from '../helpers/artifacts';
+import { watchForErrors, captureMilestone, writeArtifacts, buildResultJson, drainWheelDiagnostics, assertScrollWasEffective } from '../helpers/artifacts';
 import { parseSeeds } from '../helpers/seeds';
 import fs from 'fs';
 import path from 'path';
@@ -345,13 +345,24 @@ async function scrollUntilButtonFound(page: import('@playwright/test').Page, but
     const wheel = drainWheelDiagnostics(page);
     diag.wheelInvocations = wheel.length;
     diag.wheelMoved = wheel.filter((w) => w.moved).length;
-    for (const w of wheel) diag.wheelStrategies[w.strategy] = (diag.wheelStrategies[w.strategy] ?? 0) + 1;
+    for (const w of wheel) {
+      const key = w.movedBy ?? 'none';
+      diag.wheelStrategies[key] = (diag.wheelStrategies[key] ?? 0) + 1;
+    }
     const last = wheel[wheel.length - 1];
     if (last) {
       diag.fltSemanticsTotal = last.fltSemanticsTotal;
       diag.fltSemanticsScrollable = last.fltSemanticsScrollable;
       diag.fltSemanticsOverflowY = last.fltSemanticsOverflowY;
     }
+    // A scroll that provably moved nothing must never be reported as "the
+    // button isn't there" — that conflation is what hid this defect for two
+    // PRs. Strengthens the failure, never weakens one: it can only turn a
+    // misleading pass/failure message into an accurate one.
+    assertScrollWasEffective(
+      { steps: diag.steps, fingerprintChanged: everChanged, wheelInvocations: diag.wheelInvocations, wheelMoved: diag.wheelMoved },
+      `scrolling to "${buttonName}"`,
+    );
   }
   return snap;
 }

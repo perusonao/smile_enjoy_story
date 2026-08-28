@@ -46,6 +46,15 @@ void main() {
     expect(find.bySemanticsLabel('資金警告: 資金繰りに注意が必要です。'), findsOneWidget);
   });
 
+  testWidgets('finance summary reflows large values at 360px and 2.0 text scale', (tester) async {
+    tester.view.physicalSize = const Size(360, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    await tester.pumpWidget(host(const PublicDemoFinanceSummarySection(summary: PublicDemoFinanceSummaryModel(cash: 1234567890, revenue: 987654321, payroll: 123456789, fixedCosts: 50000000, nextMonthEstimate: 765432100)), scale: 2));
+    expect(find.text('¥1,234,567,890'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('monthly primary CTA handles enabled, disabled, long label, and calls once', (tester) async {
     var calls = 0;
     await tester.pumpWidget(host(PublicDemoMonthlyPrimaryCtaSection(action: PublicDemoMonthlyPrimaryCtaModel(label: '非常に長い月次主要アクションのラベルをここに表示する', description: '今月の主要な行動を説明します。', enabled: true, onPressed: () => calls++))));

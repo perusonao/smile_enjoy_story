@@ -23,7 +23,12 @@ export default defineConfig({
   fullyParallel: false, // one Flutter Web instance at a time keeps seeded runs easy to reason about
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,
-  workers: process.env.CI ? 2 : undefined,
+  // Flutter Web route transitions and semantics-tree recomputation are CPU
+  // sensitive in Actions. Two workers let long real-UI scenarios compete on
+  // the same runner and repeatedly reproduced a stale/missing recruitment-tab
+  // semantics node even on a fresh rerun. Keep CI serialized; browser coverage
+  // remains unchanged because Chromium and WebKit are already separate jobs.
+  workers: process.env.CI ? 1 : undefined,
   timeout: 5 * 60 * 1000, // a full Founding → First Assignment playthrough, incl. slow headless software-rendered semantics start-up
   expect: { timeout: 15_000 },
   reporter: [

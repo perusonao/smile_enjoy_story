@@ -38,14 +38,15 @@ Do not mix these authorities in UI reconstruction.
 
 ### EMPLOYEE-DATA-1A — Domain model only
 
-Add persisted career facts, with no gameplay effect.
+Extend persisted employee facts, with no gameplay effect. `Engineer.careerHistory: List<CareerHistoryEntry>` is already the persisted, JSON-round-tripped authority for actual project-by-project career facts (including the Public Demo runtime). It remains the only actual-career-history authority.
 
 Suggested model shape:
 
 `EngineerCareerProfile`
 
 - `certifications: List<EngineerCertification>`
-- `projectHistory: List<EngineerProjectHistoryEntry>`
+
+Do not add `projectHistory` (or another actual-career list) to this profile. A profile model, if useful for grouping non-career facts, must only contain information with no existing authority, such as certifications.
 
 `EngineerCertification`
 
@@ -54,7 +55,7 @@ Suggested model shape:
 - optional acquired week/year
 - optional category
 
-`EngineerProjectHistoryEntry`
+Extend `CareerHistoryEntry` backward-compatibly when additional actual-career facts are required:
 
 - stable id
 - project/client display snapshot or durable project reference strategy
@@ -88,7 +89,7 @@ Do not introduce editing in this phase.
 
 ### EMPLOYEE-DATA-1C — History accumulation
 
-When an assignment actually ends, append one immutable career-history entry from the completed assignment.
+When an assignment actually ends, append one immutable `CareerHistoryEntry` from the completed assignment.
 
 Important rule: snapshot the career facts needed for history at completion time. Do not make old history change when a project master/display name is edited later.
 
@@ -107,12 +108,12 @@ These are explicitly not part of EMPLOYEE-DATA-1.
 
 ## 4. Save-data strategy
 
-Because career history is persistent player state, this work likely requires a save-schema extension when implementation reaches 1A/1C.
+Certification data may require an additive save extension. Existing career history does not require migration to a second list: it is already persistent player state.
 
 Requirements:
 
-- old saves load with `certifications=[]` and `projectHistory=[]`
-- no fabricated historical projects for old saves unless there is an authoritative existing source
+- old saves load with `certifications=[]` when that new field is absent, while preserving their existing `careerHistory` entries unchanged
+- no fabricated historical projects and no projection that drops existing `careerHistory` entries
 - current active assignment must not be silently duplicated into completed history during migration
 - unknown future enum values need a safe fallback strategy if enums are serialized by name
 
@@ -191,16 +192,16 @@ Do not increase retries or arbitrary sleep merely because the screen grows.
 
 ### Domain/save tests
 
-- empty career data is valid
+- existing `careerHistory` remains the only actual-history source and is valid when empty
 - certification round-trip
-- multiple history entries preserve order and values
-- old-save migration yields empty new fields safely
-- completed assignment creates exactly one history entry
+- multiple `CareerHistoryEntry` values preserve order, existing fields, and added optional fields
+- old saves retain all existing `careerHistory`; missing new certification/optional-entry fields receive deterministic defaults
+- completed assignment creates exactly one `CareerHistoryEntry`
 - advancing additional weeks does not duplicate the completed entry
 
 ### Presentation tests
 
-- projection returns stored certifications/history unchanged
+- projection returns stored certifications and `Engineer.careerHistory` unchanged
 - missing/empty values render a clear empty state
 - current assignment is not shown as completed history
 - SkillSheet displayed experience is not substituted for actual career facts

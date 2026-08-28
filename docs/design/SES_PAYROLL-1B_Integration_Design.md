@@ -28,9 +28,9 @@ PAYROLL-1B must make this engine the single monthly salary calculation authority
 PAYROLL-1B should only:
 
 1. Replace duplicated monthly salary summation in `FinanceEngine` with a call to `PayrollEngine.calculateMonthly()`.
-2. Reuse the same `PayrollResult` for month-end settlement in `GameEngine` where salary totals are currently recomputed.
+2. Delegate the `GameEngine` month-end settlement salary calculation to `PayrollEngine`, using the post-transition engineer roster that the advance has materialized.
 3. Preserve existing `MonthlyClosing` values and historical-save interpretation.
-4. Preserve HUD/month-end forecast values exactly.
+4. Preserve each HUD forecast and month-end settlement value for its explicitly defined roster snapshot.
 5. Preserve the March founding payroll boundary exactly.
 
 ## 4. Explicit non-goals
@@ -53,19 +53,26 @@ Those belong to later payroll/employment phases.
 
 ## 5. Proposed integration shape
 
-Create one small adapter/helper at the Finance/GameState boundary if necessary. The adapter converts current state into `PayrollInput`:
+Create one small adapter/helper that accepts an explicit payroll snapshot rather than implicitly reading whichever roster happens to be on `GameState`. It converts the supplied snapshot into `PayrollInput`:
 
-- `engineers: state.engineers`
+- `engineers: engineers` (an explicit roster argument)
 - `generalAffairsStaff: state.generalAffairsStaff`
 - `isPrologueActive: state.prologueState.active`
 - `hasStartedPrologueAssignment: state.activeAssignments.isNotEmpty` only where this exactly matches the existing founding rule; if the current code has a more precise existing predicate, preserve that predicate instead of broadening it
+
+Two call sites have intentionally different snapshot authority:
+
+- **HUD forecast:** `FinanceEngine.monthlySalaryTotal(state)` builds input from the pre-transition `state.engineers`, plus the current General Affairs/prologue facts. It forecasts the state currently visible to the player; it must not anticipate a `PendingHire` merely because the next week may be month-end.
+- **Month-end settlement:** `GameEngine.advanceWeek` builds input from its post-transition local roster (the roster after `PendingHire.joinWeek == newWeek` materialization and the normal weekly transitions), plus the same General Affairs/prologue facts. `MonthlyClosing.salaryPaid`, `accountingProfit`, cash deduction, and bankruptcy evaluation consume this settlement result.
+
+The two results are allowed to differ only when their roster snapshots differ. “HUD forecast == settlement” means equality when both are calculated for the **same** roster snapshot and non-roster inputs; it is not a promise that a pre-advance HUD forecast equals a later closing after a hire joins during that advance.
 
 Then:
 
 - `FinanceEngine.monthlySalaryTotal(state)` returns `PayrollEngine.calculateMonthly(input).totalSalary`
 - any engineer-only salary display uses `engineerSalaryTotal`
 - any General Affairs-only display uses `generalAffairsSalaryTotal`
-- month-end settlement consumes the same result rather than separately folding salaries
+- month-end settlement consumes its post-transition result rather than separately folding salaries
 
 Do not let UI widgets instantiate payroll rules directly.
 
@@ -81,7 +88,8 @@ PAYROLL-1B is accepted only if all of these stay true:
 - active March prologue pre-join engineer remains excluded
 - the same engineer becomes included at the existing April payroll/start boundary
 - General Affairs salary remains included exactly once
-- forecast/HUD payroll and actual closing payroll do not diverge because of separate formulas
+- HUD and settlement use the same payroll rule engine, while retaining their distinct pre-transition and post-transition roster authorities
+- a hire with `joinWeek == newWeek` on a month-end advance is included in settlement `MonthlyClosing.salaryPaid` exactly once
 
 ## 7. Test plan
 
@@ -93,9 +101,10 @@ Minimum cases:
 2. March prologue before assignment: engineer excluded, General Affairs included.
 3. First April assignment started: engineer included.
 4. Waiting/assigned/interview/selling status changes do not alter legacy salary total.
-5. Month-end close deducts exactly the same salary as the HUD forecast for an unchanged state.
-6. Existing monthly-closing/accounting regression suite stays green.
-7. Existing save fixtures deserialize with no migration.
+5. HUD and settlement results match when both are supplied the same roster snapshot.
+6. A `PendingHire` joining on a month-end advance is excluded from the pre-advance HUD but included once in post-transition settlement/`MonthlyClosing.salaryPaid`.
+7. Existing monthly-closing/accounting regression suite stays green.
+8. Existing save fixtures deserialize with no migration.
 
 ## 8. Implementation sequence
 
@@ -110,7 +119,8 @@ Recommended PR sequence:
 ### PAYROLL-1B.2 — Month-end settlement reuse
 
 - remove remaining duplicate salary fold/reconstruction from GameEngine
-- ensure closing records use the same calculated result
+- make the settlement adapter take `engineersById.values` (after join materialization), not `state.engineers`
+- ensure closing records use that calculated settlement result
 - strengthen accounting invariant tests
 
 If the repository currently has only one duplicated call site, 1B.1 and 1B.2 may be one PR, but keep the diff limited to payroll delegation and tests.

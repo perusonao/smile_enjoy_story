@@ -146,7 +146,7 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
           OutlinedButton(
             onPressed: () => Navigator.pop(dialogContext, 'auto'),
-            child: const Text('社員に任せて進む'),
+            child: const Text('技術者に任せて進む'),
           ),
           FilledButton(
             onPressed: () => Navigator.pop(dialogContext, 'play'),

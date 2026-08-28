@@ -6,6 +6,7 @@ export 'employee_workflow_engine.dart';
 export 'finance_engine.dart';
 export 'game_engine.dart';
 export 'matching_engine.dart';
+export 'payroll_engine.dart';
 export 'morale_engine.dart';
 export 'progression_engine.dart';
 export 'project_comparison_engine.dart';

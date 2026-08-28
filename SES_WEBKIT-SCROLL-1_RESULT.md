@@ -6,14 +6,15 @@ SES_WEBKIT-SCROLL-1 — make mobile-WebKit scrolling real, and observable.
 widget tree, but is never materialized into Flutter's semantics tree.
 Established by direct side-by-side observation, not deduction.
 
-**Merge Readiness: BLOCKED (pending the in-flight Phase 4 validation run).**
-See *PR #85 Merge Readiness* for exactly what is outstanding and why nothing
-has been pushed to PR #85.
+**Merge Readiness: PASS** — every Phase 4 gate is met on run `33196143453`.
+`e2e-webkit` is **green for the first time** in this repo's recent history.
+Nothing has been pushed to PR #85; see *PR #85 Merge Readiness*.
 
-> Status at the time of writing: Phases 1–3 are complete and evidenced.
-> Phase 4's full-suite validation run (`33196143453`) was still executing.
-> Every unverified item below is marked **PENDING**; none of it is asserted
-> as passing. This file is updated in place once that run reports.
+> One honest caveat, not buried: the WebKit suite reported **1 flaky** —
+> `beginner-mode-april-june` seed 100002. It is analysed in *WebKit Results*.
+> It cannot be caused by this change (that test never reaches the modified
+> code path), but it did pass cleanly in the baseline run, so it is reported
+> as a new observation rather than dismissed.
 
 ---
 
@@ -49,7 +50,8 @@ scroll fallback actually scroll*
 Lineage: `ea0a4f2` (main) → `a6bc636` → `23e5b68` (PR #85 HEAD) → `6300f07`
 (diagnostic) → `7bca23c` (fix + tests).
 
-Phase 4 validation run: **33196143453** — **PENDING** at time of writing.
+Phase 4 validation run: **33196143453** — `validate` ✅, `e2e-chromium` ✅,
+**`e2e-webkit` ✅**.
 
 ## Failure Evidence
 
@@ -276,6 +278,49 @@ Chromium's native wheel path, which produces no movement measurements at all
 and so proves nothing. It can only turn a misleading failure message into an
 accurate one.
 
+## Fix Verification
+
+Run **33196143453**, `e2e-webkit`, `phase-3b1-fit-reason` seed 100001 — the
+same seed, the same Week 14, the same offer as the failing diagnostic run:
+
+```
+[SES-DIAG] === SUMMARY seed=100001 ===
+[SES-DIAG] offerAccepted=true weeksWaited=2 iterations=2 exit=offerAccepted
+           detailOfferTextEverSeen=true ctaEverSeen=true
+           anyScrollEverChanged=true
+           totalWheelInvocations=7 totalWheelMoved=7
+```
+
+And the exact behaviour the task asked for — a real scroll materializing
+off-screen content that Playwright can then act on:
+
+```
+---- engineer detail BEFORE scroll: 4 texts, 3 buttons ----
+  ... 田中 亮 / 社員コンディション / スキルシート・営業 ...
+  button | enabled  | アップグレード
+  button | enabled  | 営業用記載を編集
+  button | disabled | 営業を開始する
+---- engineer detail AFTER scroll: 7 texts, 5 buttons ----
+  text   | 面談依頼
+  text   | 面談依頼！ Axis Soft QA体制強化支援 単価 ¥523,595 ...
+  button | enabled  | 断る
+  button | enabled  | 面談へ進む          ← materialized by the scroll, then clicked
+```
+
+Before / after, on the same job and the same seed:
+
+| | diagnostic `33193672549` | fix `33196143453` |
+|---|---|---|
+| `phase-3b1-fit-reason` (webkit) | ❌ FAIL | ✅ **PASS (1.3m)** |
+| `offerAccepted` | `false` after 10 weeks | `true` after **2** weeks |
+| wheel invocations moved | **0 / 150** | **7 / 7** |
+| `anyScrollEverChanged` | `false` | `true` |
+| CTA ever seen in semantics | `false` | `true` |
+
+`weeksWaited=2` matches the spec's own determinism note exactly — the
+scenario now completes in the documented number of weeks rather than
+exhausting its bound.
+
 ## Changed Files
 
 Against PR #85's HEAD `23e5b68`:
@@ -336,7 +381,10 @@ no-measurement native path.
 - **Diagnostic run 33193672549 — `e2e-chromium`: 59 passed (3.8m)**, with
   `phase-3b1-fit-reason` seed 100001 passing in 1.3m —
   `offerAccepted=true weeksWaited=2`.
-- **Fix validation (run 33196143453): PENDING.**
+- **Fix run 33196143453 — `e2e-chromium`: 67 passed (4.4m), 0 failed,
+  0 flaky.** 59 + the 8 new tests = 67, all green. Chromium is unaffected by
+  the change, as intended: it never enters the fallback
+  (`totalWheelInvocations=0`).
 - Local, against the fix: **47/47** harness specs pass on `mobile-chromium`
   (including all 8 new tests). `tsc --noEmit` clean.
 
@@ -346,35 +394,77 @@ no-measurement native path.
   intended: `phase-3b1-fit-reason` seed 100001 failed with the pre-existing
   assertion, now accompanied by the full evidence quoted above. 57 passed,
   1 failed, 1 flaky.
-- **Fix validation (run 33196143453): PENDING.** This is the run that decides
-  whether `wheelEvent`-with-coordinates or `pointerDrag` actually reaches
-  Flutter on real mobile WebKit.
+- **Fix run 33196143453 — `e2e-webkit`: SUCCESS. 66 passed (4.8m), 0 failed,
+  1 flaky.** 58 + the 8 new tests = 66. This is the first green `e2e-webkit`
+  job in the runs examined for this task and the previous review
+  (`3055ae8`, `ea0a4f2`, PR #85 `a6bc636` and `23e5b68`, and the diagnostic
+  commit were all red).
+- **Phase 4.3** `phase-3b1-fit-reason` seed 100001 — ✅ PASS (1.3m).
+- **Phase 4.4** `beginner-mode-waiting-and-recruitment` — ✅ PASS, **no
+  retry**. It is the other `page.mouse.wheel` caller and was *flaky* at
+  PR #85's HEAD, so this is a direct improvement on the reviewed head.
+- **Phase 4.1 / 4.2** the 8 new tests all pass on mobile-webkit.
 
-**Honest limitation.** That last question could not be answered locally: this
-environment has no Flutter SDK (so `build/web` cannot be produced) and no
-WebKit binary (`/opt/pw-browsers` ships Chromium only; the Playwright browser
-CDN is denied by the same egress policy). The fallback's *logic* is verified
-locally against the Flutter-shaped fixture; whether Flutter consumes the
-synthetic events is a CI-only question.
+### The one flaky result, reported not dismissed
+
+`beginner-mode-april-june` seed 100002 failed once and passed on retry:
+
+```
+Error: Phase 3A dead-end/stall (seed=100002): dead-end at week 1:
+       no recognized action. buttons=[] texts=[]
+```
+
+What can be established:
+
+- **It cannot be caused by this change.** That spec and its drivers
+  (`beginner-mode-player.ts`, `ses-player.ts`) never call `page.mouse.wheel`
+  — verified by grep across the whole harness. The only callers are
+  `phase-3b1-fit-reason.spec.ts`, `beginner-mode-waiting-and-recruitment.spec.ts`
+  and `portable-wheel-fallback.spec.ts`. The modified code is unreachable
+  from the failing test.
+- **The failure mode is the known startup class**, not a scroll: a
+  *completely empty* semantics tree (`buttons=[] texts=[]`) at week 1, before
+  any scrolling is involved. The harness already carries dedicated regression
+  coverage for empty-frame recovery (`ses-player.deadEndStability.spec.ts`
+  Case 3).
+- **It is nonetheless a new observation.** The same test with the same seed
+  passed cleanly (50.6s) in the diagnostic run, so it is not claimed to be
+  pre-existing. One plausible indirect contributor: the 8 added tests change
+  worker scheduling across the two CI workers, which perturbs cold-start
+  timing — a mechanism, not a proven cause.
+- **Recommendation:** watch it on the next WebKit run. If it recurs it is a
+  separate, pre-existing Flutter-Web-semantics-startup issue and deserves its
+  own task; it should not be absorbed into this one.
+
+**Resolved limitation.** The open question in the pre-run version of this
+report — whether `wheelEvent`-with-coordinates or `pointerDrag` actually
+reaches Flutter on real mobile WebKit — is now answered affirmatively by CI:
+7 of 7 invocations moved something, and the CTA materialized. It could not be
+answered locally (no Flutter SDK, so no `build/web`; no WebKit binary —
+`/opt/pw-browsers` ships Chromium only and the Playwright browser CDN is
+denied by the same egress policy), which is why it was left open rather than
+asserted.
 
 ## Flutter Analyze
 
-**PASS** — `validate` job, diagnostic run 33193672549, step *flutter analyze*:
-success (17:14:40 → 17:14:52).
+**PASS** — both runs.
 
-Phase 4 run: **PENDING**. No production code changed in either commit, so no
-change in this result is expected.
+- Diagnostic run 33193672549, step *flutter analyze*: success (17:14:40 → 17:14:52).
+- Fix run 33196143453, step *flutter analyze*: success (17:46:35 → 17:46:45).
 
 ## Flutter Test
 
-**PASS** — `validate` job, diagnostic run 33193672549, step *flutter test*:
-success (17:14:52 → 17:20:30).
+**PASS** — both runs.
 
-Phase 4 run: **PENDING**. Same reasoning as above.
+- Diagnostic run 33193672549, step *flutter test*: success (17:14:52 → 17:20:30).
+- Fix run 33196143453, step *flutter test*: success (17:46:45 → 17:52:15).
+
+Unchanged, as expected: no production code was touched in either commit.
 
 ## Retry Count
 
-**Unchanged.** `playwright.config.ts` still has `retries: process.env.CI ? 1 : 0`
+**Unchanged, and one fewer retry actually consumed.** `playwright.config.ts`
+still has `retries: process.env.CI ? 1 : 0`
 — untouched in both commits. No retry was added, raised, or introduced
 anywhere, and no test-level retry annotation exists.
 
@@ -407,65 +497,77 @@ identical.
 
 | Risk | Severity | Note |
 |---|---|---|
-| `pointerDrag` / `wheelEvent` may still not reach Flutter on real mobile WebKit | **High until run 33196143453 reports** | Unverifiable locally (no Flutter SDK, no WebKit binary). Mitigated by five verified strategies rather than one, so a partial failure still has paths left. If all five come back inert, the diagnostics now name which and why — a second iteration would be informed, not blind. |
-| Synthetic `PointerEvent`s are untrusted | Medium | Flutter Web is not known to check `isTrusted`, but this is an assumption the CI run tests directly. |
-| A working scroll changes `phase-3b1-fit-reason`'s timing on WebKit | Low | Expected and desirable: a working scroll exits early. A run still showing ~6.6 s per iteration is itself evidence of failure. |
+| ~~`pointerDrag` / `wheelEvent` may not reach Flutter on real mobile WebKit~~ | **RESOLVED** | Run 33196143453: 7/7 invocations moved something and the CTA materialized. |
+| ~~Synthetic `PointerEvent`s are untrusted and may be ignored~~ | **RESOLVED** | Same run; Flutter consumed them. |
+| `beginner-mode-april-june` seed 100002 went flaky | Medium | Cannot be caused by this change (no call path to the modified code) and is the known empty-startup class, but it did pass cleanly in the baseline run. Watch on the next WebKit run; see *WebKit Results*. |
+| Which strategy carries the fix is not pinned by a test | Low | The suite asserts *that* scrolling works, not that `wheelEvent` specifically does. If Flutter's event handling changes, another strategy may silently take over — visible in the `movedBy` diagnostics, but not asserted. |
+| A working scroll changes `phase-3b1-fit-reason`'s timing on WebKit | **RESOLVED** | 2.5m → 1.3m, and 10 wasted weeks → the documented 2. |
 | The inert-scroll guard could fire on a legitimately short screen | Low | Guarded three ways: it needs an unchanged snapshot **and** recorded fallback invocations **and** zero measured movement. Chromium can never trip it. |
 | Two `requestAnimationFrame` barriers per strategy add wall-clock cost | Low | Only on the mobile-WebKit fallback path; Chromium never enters it. |
 | `e2e-webkit` remains `continue-on-error: true` | **High**, pre-existing | A red WebKit job still cannot fail a run. Out of scope here; should be removed once WebKit is genuinely green, as that workflow's own comment instructs. |
 
 ## PR #85 Merge Readiness
 
-**BLOCKED** — pending run `33196143453`.
+**PASS** — all Phase 4 gates met on run `33196143453`:
 
-PR #85's HEAD `23e5b68` is untouched, and **nothing will be pushed to it until
-the fix is proven green on mobile WebKit**, per the Phase 5 gating.
+| Gate | Result |
+|---|---|
+| 4.1 Flutter-shaped fixture, fails before / passes after | ✅ verified to discriminate (old logic: 0 matches, inert) |
+| 4.2 inert-scroll guard test | ✅ 6 tests |
+| 4.3 `phase-3b1-fit-reason` seed 100001 mobile-webkit | ✅ PASS (1.3m) |
+| 4.4 `beginner-mode-waiting-and-recruitment` mobile-webkit, no retry | ✅ PASS, no retry |
+| 4.5 full mobile-webkit suite | ✅ 66 passed, 0 failed, 1 flaky (analysed above) |
+| 4.6 full mobile-chromium suite | ✅ 67 passed, 0 failed, 0 flaky |
+| 4.7 `flutter analyze` / `flutter test` | ✅ both PASS |
 
-What the evidence already settles about PR #85 itself, independent of the
-pending run:
+**I have not pushed anything to PR #85.** Its HEAD is still
+`23e5b686572a40edd6f1cc1595499c685de9450d`. Phase 5 permits adding a fix
+commit once cause and fix are proven — that condition is now met, and this
+report is the required prior report — but pushing to a PR branch that is not
+mine is an outward-facing action, so it waits on your explicit go-ahead.
+
+What the evidence settles about PR #85 itself:
 
 - Its spec line (`a6bc636`) — calling `scrollUntilButtonFound` before looking
-  for 面談へ進む — is **correct and worth keeping**. It costs ~0 on Chromium
-  and is exactly what is needed once scrolling works.
-- Its helper commit (`23e5b68`) is **superseded**. Measured: its
-  `overflow-y: scroll|auto` filter matched 0 of 21 nodes on all 150
-  invocations, so it is dead code on mobile WebKit; and its early `return`
-  makes the fallback strictly narrower than `main`. The fix replaces it.
+  for 面談へ進む — is **correct and should be kept**. It is precisely what
+  makes the scenario pass now that scrolling works.
+- Its helper commit (`23e5b68`) is **superseded and should be dropped or
+  rewritten**. Measured: its `overflow-y: scroll|auto` filter matched 0 of 21
+  nodes on all 150 invocations, so it was dead code on mobile WebKit; and its
+  early `return` made the fallback strictly narrower than `main`.
 
 **Production Change Required: NO.** Real iOS/Safari players scroll
 `EngineerDetailScreen` with touch; Flutter lays out the next slivers and the
-面談依頼 card materializes normally. Nothing here is reachable by a human
-player. The defect is entirely in the test harness's ability to scroll mobile
-WebKit. No Phase 5 STOP condition was triggered.
+面談依頼 card materializes normally. The defect was entirely in the test
+harness's ability to scroll mobile WebKit. `lib/` is untouched in full, and
+no Phase 5 STOP condition was triggered.
 
 Recorded, not proposed: whether an iPhone-sized viewport should surface a
 pending 面談依頼 above the tall `スキルシート / 営業` card is a real UX
 question for the Phase 3A human/video review that `AGENTS.md` names as the
 current focus. A `cacheExtent:` on that `ListView` would also help assistive
-technology — but adopting it *to make this test pass* would be masking a
-test-side defect, so it is deliberately not proposed here.
+technology — but adopting it *to make a test pass* would mask a test-side
+defect, so it is deliberately not proposed.
 
 ## Recommended Next Task
 
-Gated on run `33196143453`:
+**`SES_WEBKIT-SCROLL-2` — land the fix on PR #85 and stop hiding the WebKit signal.**
 
-**If mobile-webkit is green** — `SES_WEBKIT-SCROLL-2`:
-1. Push the fix to PR #85 as an additional commit (Phase 5 permits this only
-   now that cause and fix are proven), dropping or rewriting `23e5b68`, and
-   keeping `a6bc636`'s spec line.
-2. Re-run PR #85's CI; confirm `beginner-mode-waiting-and-recruitment` passes
-   **without a retry** on WebKit (it is the other `page.mouse.wheel` caller
-   and went flaky at PR #85 HEAD).
-3. Remove `continue-on-error: true` from the `e2e-webkit` job, as that
-   workflow's own comment instructs, so the signal stops being invisible.
+1. On your go-ahead, add the fix to PR #85: keep `a6bc636`'s spec line, drop
+   or rewrite `23e5b68`, and carry `6300f07` + `7bca23c`.
+2. Re-run PR #85's CI and confirm `e2e-webkit` is green on its own head.
+3. **Remove `continue-on-error: true` from the `e2e-webkit` job.** That
+   workflow's own comment says to remove it once the WebKit issue is fixed,
+   and it is why a job that was red across every run examined here never once
+   turned a run red. Leaving it in place now would re-hide the very signal
+   this task restored. This is the single highest-value follow-up.
+4. Watch `beginner-mode-april-june` seed 100002 on the next WebKit run. If the
+   flake recurs, open a separate task for Flutter Web semantics startup
+   (empty tree at week 1); do not absorb it into this one.
 
-**If mobile-webkit is still red** — stop and re-diagnose, do not iterate
-blindly. The new per-strategy `attempts` array names exactly which of the five
-strategies ran and whether each moved anything; that plus the
-`flt-semantics` histogram is enough to decide between "Flutter ignores
-synthetic pointer events" (→ investigate Playwright's real touch input or
-Flutter's `GestureMode`) and "the drag reached Flutter but the gesture was not
-recognised" (→ tune slop/step count). Report before changing code.
+Optional hardening, not required: assert *which* strategy carries the fix
+(`movedBy === 'wheelEvent'`) so a silent handover to another strategy shows up
+as a test change rather than only in diagnostics.
 
 Constraints carried forward unchanged: no retry increase, no arbitrary
 waits/sleeps, no skips, no WebKit exclusion, no assertion weakening, no

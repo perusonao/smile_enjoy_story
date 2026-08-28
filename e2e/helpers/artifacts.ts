@@ -137,6 +137,56 @@ function extractFirstUrl(text: string): string | null {
   return m ? m[0] : null;
 }
 
+const MOBILE_WEBKIT_WHEEL_UNSUPPORTED = /Mouse wheel is not supported in mobile WebKit/i;
+const PORTABLE_WHEEL_INSTALLED = Symbol('sesPortableWheelInstalled');
+
+/**
+ * PR #80 follow-up: Playwright intentionally rejects `page.mouse.wheel()`
+ * when WebKit is running with the mobile/touch context. The recruitment
+ * recovery helper uses that API only as a bounded viewport nudge to bring an
+ * off-screen Flutter ListView child into the semantics tree. Keep Chromium's
+ * native wheel path unchanged, but provide the equivalent browser-side wheel
+ * event / DOM-scroll fallback only for that one explicit mobile-WebKit error.
+ */
+function installPortableWheelFallback(page: Page): void {
+  const mouse = page.mouse as typeof page.mouse & { [PORTABLE_WHEEL_INSTALLED]?: boolean };
+  if (mouse[PORTABLE_WHEEL_INSTALLED]) return;
+
+  const nativeWheel = mouse.wheel.bind(mouse);
+  mouse.wheel = async (deltaX: number, deltaY: number): Promise<void> => {
+    try {
+      await nativeWheel(deltaX, deltaY);
+      return;
+    } catch (err) {
+      if (!MOBILE_WEBKIT_WHEEL_UNSUPPORTED.test(String(err))) throw err;
+    }
+
+    await page.evaluate(
+      ({ x, y }) => {
+        const center = document.elementFromPoint(window.innerWidth / 2, window.innerHeight / 2);
+        center?.dispatchEvent(
+          new WheelEvent('wheel', {
+            bubbles: true,
+            cancelable: true,
+            deltaX: x,
+            deltaY: y,
+            deltaMode: WheelEvent.DOM_DELTA_PIXEL,
+          }),
+        );
+
+        const scrollables = Array.from(document.querySelectorAll<HTMLElement>('*'))
+          .filter((el) => el.scrollHeight > el.clientHeight + 1)
+          .sort((a, b) => (b.scrollHeight - b.clientHeight) - (a.scrollHeight - a.clientHeight));
+        const target = scrollables[0];
+        if (target) target.scrollBy({ left: x, top: y, behavior: 'auto' });
+        else window.scrollBy(x, y);
+      },
+      { x: deltaX, y: deltaY },
+    );
+  };
+  mouse[PORTABLE_WHEEL_INSTALLED] = true;
+}
+
 /** Wires console.error / pageerror / crash / requestfailed listeners
  * (§19). Call before `page.goto`. Fatal errors (uncaught page errors, a
  * page crash) should fail the test; an unallowlisted `console.error`
@@ -144,6 +194,7 @@ function extractFirstUrl(text: string): string | null {
  * allowlist above (and the two other-noise entries) are recorded without
  * failing. */
 export function watchForErrors(page: Page): ErrorWatcher {
+  installPortableWheelFallback(page);
   const watcher: ErrorWatcher = { consoleErrors: [], consoleWarnings: [], pageErrors: [], crashed: false };
 
   // Keyed by the exact failing request URL, not a bare count: one entry per

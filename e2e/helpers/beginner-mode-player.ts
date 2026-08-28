@@ -43,7 +43,7 @@ const BEGIN_MANAGEMENT = '経営を始める';
 const HOME_TAB = 'ホーム';
 const CLOSE_LABELS = ['閉じる', 'OK', '会社状況を見る', '面談依頼を見る', '採用を見る', '社員環境を見る'];
 const PROCEED_DESPITE_CRITICAL = 'それでも進む';
-const LET_EMPLOYEE_HANDLE = '社員に任せて進む';
+const LET_EMPLOYEE_HANDLE = '技術者に任せて進む';
 const DIALOG_BACK = '戻る';
 
 // Case-insensitive: ManagementHud's own semantics label uses "WEEK N"

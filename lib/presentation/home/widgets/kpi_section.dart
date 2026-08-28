@@ -47,7 +47,7 @@ List<_KpiTileData> _tilesFor(HomeDashboardDisplayData? data) => [
   ),
   _KpiTileData(
     icon: Icons.groups_outlined,
-    label: '社員数',
+    label: '技術者数',
     value: data == null ? null : '${data.employeeCount}名',
   ),
   _KpiTileData(

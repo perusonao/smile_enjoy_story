@@ -51,9 +51,9 @@ void main() {
 
     expect(find.text('客先面談が残っています'), findsOneWidget);
     expect(find.text('面談をプレイ'), findsOneWidget);
-    expect(find.text('社員に任せて進む'), findsOneWidget);
+    expect(find.text('技術者に任せて進む'), findsOneWidget);
 
-    await tester.tap(find.text('社員に任せて進む'));
+    await tester.tap(find.text('技術者に任せて進む'));
     await tester.pumpAndSettle();
 
     // The week actually advanced — not silently stuck.

@@ -9,6 +9,7 @@ on:
       - 'lib/app/app_experience.dart'
       - 'lib/game/public_demo/**'
       - 'lib/ui/public_demo/**'
+      - 'lib/presentation/build_info.dart'
       - 'lib/main.dart'
       - '.github/workflows/public-demo-preview.yml'
 
@@ -30,7 +31,21 @@ jobs:
           cache: true
       - run: flutter pub get
       - name: Build standalone web preview
-        run: flutter build web --release --base-href /public-demo-01/
+        env:
+          EVENT_PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          pr_number="$EVENT_PR_NUMBER"
+          if [[ -z "$pr_number" ]]; then
+            subject="$(git show -s --format=%s "$GITHUB_SHA")"
+            if [[ "$subject" =~ ^Merge\ pull\ request\ \#([0-9]+)\ from\ ]]; then
+              pr_number="${BASH_REMATCH[1]}"
+            fi
+          fi
+          build_info=(--dart-define="BUILD_COMMIT_SHA=$GITHUB_SHA")
+          if [[ -n "$pr_number" ]]; then
+            build_info+=(--dart-define="BUILD_PR_NUMBER=$pr_number")
+          fi
+          flutter build web --release --base-href /public-demo-01/ "${build_info[@]}"
       - name: Add preview launcher
         run: |
           cat > build/web/PLAY_PUBLIC_DEMO.txt <<'EOF'

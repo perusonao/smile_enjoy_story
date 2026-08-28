@@ -325,6 +325,7 @@ for (const seed of parsedSeeds.error ? [] : parsedSeeds.seeds) {
       await settleAndScan(page, textOffenders);
 
       snap = await openEngineerDetail(page);
+      snap = await scrollUntilButtonFound(page, PROCEED_TO_INTERVIEW);
       const proceed = snap.buttons.find((b) => b.enabled && b.name === PROCEED_TO_INTERVIEW);
       if (proceed) {
         await clickResilient(page, byButton(page, PROCEED_TO_INTERVIEW), PROCEED_TO_INTERVIEW);

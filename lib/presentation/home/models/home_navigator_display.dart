@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 
 import '../../../ui/asset_paths.dart';
+import 'home_recommended_action.dart';
 
 /// The navigator's expression vocabulary (NAVIGATOR-1A).
 ///
@@ -80,19 +81,54 @@ class HomeNavigatorIdentity {
 
 /// Presentation copy for the Navigator's inline advice bubble.
 ///
-/// NAVIGATOR-1B keeps this value fixed. A later presentation adapter may
-/// supply a different value that was already resolved by the existing HOME
-/// recommendation authority; this type deliberately knows nothing about
-/// game state, ranking, navigation, or callbacks.
+/// This is presentation data only. NAVIGATOR-1C's adapter receives an
+/// already-resolved HOME slot; it never reads game state, ranks candidates,
+/// or reconstructs an action.
+enum HomeNavigatorAdviceSemantic { neutral, caution }
+
 @immutable
 class HomeNavigatorAdvice {
-  const HomeNavigatorAdvice({required this.title, required this.message});
+  const HomeNavigatorAdvice({
+    required this.title,
+    required this.message,
+    this.semantic = HomeNavigatorAdviceSemantic.neutral,
+    this.ctaLabel,
+    this.onCtaPressed,
+  }) : assert(
+         (ctaLabel == null) == (onCtaPressed == null),
+         'A Navigator CTA must carry both its label and its owner callback.',
+       );
 
   final String title;
   final String message;
+  final HomeNavigatorAdviceSemantic semantic;
+  final String? ctaLabel;
+  final VoidCallback? onCtaPressed;
 
   static const neutral = HomeNavigatorAdvice(
     title: 'ひよりからのご案内',
     message: '社長、お疲れさまです。\n進め方に迷ったときは、ここから確認できます。',
   );
 }
+
+/// Purely translates HOME's already-resolved recommendation outcome.
+/// It cannot inspect GameState, finance, month gates, terminal reasons, or
+/// navigation. `null` preserves the authority's suppression outcome.
+HomeNavigatorAdvice? navigatorAdviceFor(HomeRecommendedActionSlot slot) =>
+    switch (slot) {
+      HomeRecommendedActionSuppressed() => null,
+      HomeRecommendedActionNone() => HomeNavigatorAdvice.neutral,
+      HomeRecommendedActionAvailable(:final candidate) => HomeNavigatorAdvice(
+        title: 'ひよりからのご案内',
+        message: candidate.action.kind ==
+                HomeRecommendedActionKind.cashShortageResponse
+            ? '資金状況を確認して、次の対応を進めましょう。'
+            : '今は「${candidate.action.headline}」を進めるのがおすすめです。',
+        semantic:
+            candidate.action.kind == HomeRecommendedActionKind.cashShortageResponse
+            ? HomeNavigatorAdviceSemantic.caution
+            : HomeNavigatorAdviceSemantic.neutral,
+        ctaLabel: candidate.action.ctaLabel,
+        onCtaPressed: candidate.invoke,
+      ),
+    };

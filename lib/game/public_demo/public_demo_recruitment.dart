@@ -186,6 +186,97 @@ class PublicDemoApplicant {
     joinRecord: joinRecord ?? this.joinRecord,
   );
 
+  /// Complete persistence form for this workflow entity.  The record IDs are
+  /// stored explicitly so save/load keeps the provenance facts that the
+  /// gameplay guards rely on, rather than treating a stage alone as proof.
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'name': name,
+    'resumeSummary': resumeSummary,
+    'interviewScore': interviewScore,
+    'acceptanceScore': acceptanceScore,
+    'salesSkillFit': salesSkillFit,
+    'experienceMonths': experienceMonths,
+    'requestedMonthlySalary': requestedMonthlySalary,
+    'acceptedMonthlySalary': acceptedMonthlySalary,
+    'salaryMotivationDelta': salaryMotivationDelta,
+    'salaryTrustDelta': salaryTrustDelta,
+    'salaryRelationshipReason': salaryRelationshipReason,
+    'employeeMorale': employeeMorale,
+    'employeeCompanyTrust': employeeCompanyTrust,
+    'relationshipHistory': relationshipHistory.map((event) => event.toJson()).toList(),
+    'raiseDecision': raiseDecision?.name,
+    'raisedMonthlySalary': raisedMonthlySalary,
+    'raiseEffectiveMonth': raiseEffectiveMonth,
+    'stage': stage.name,
+    'bindingOffer': bindingOffer?.toJson(),
+    'interviewRecordApplicantId': interviewRecord?.applicantId,
+    'joinRecordApplicantId': joinRecord?.applicantId,
+  };
+
+  factory PublicDemoApplicant.fromJson(Map<String, dynamic> json) {
+    T required<T>(String key) {
+      final value = json[key];
+      if (value is! T) throw FormatException('Invalid applicant $key');
+      return value;
+    }
+
+    final id = required<String>('id');
+    final stageName = required<String>('stage');
+    final stage = PublicDemoApplicantStage.values.where((value) => value.name == stageName).firstOrNull;
+    if (stage == null) throw const FormatException('Invalid applicant stage');
+    final raiseName = json['raiseDecision'];
+    final raiseDecision = raiseName == null
+        ? null
+        : PublicDemoRaiseDecision.values.where((value) => value.name == raiseName).firstOrNull;
+    if (raiseName != null && (raiseName is! String || raiseDecision == null)) {
+      throw const FormatException('Invalid applicant raise decision');
+    }
+    final offerRaw = json['bindingOffer'];
+    final interviewId = json['interviewRecordApplicantId'];
+    final joinId = json['joinRecordApplicantId'];
+    if ((offerRaw != null && offerRaw is! Map) ||
+        (interviewId != null && interviewId is! String) ||
+        (joinId != null && joinId is! String)) {
+      throw const FormatException('Invalid applicant provenance');
+    }
+    if ((interviewId != null && interviewId != id) || (joinId != null && joinId != id)) {
+      throw const FormatException('Mismatched applicant provenance');
+    }
+    final historyRaw = required<List>('relationshipHistory');
+    return PublicDemoApplicant(
+      id: id,
+      name: required<String>('name'),
+      resumeSummary: required<String>('resumeSummary'),
+      interviewScore: required<int>('interviewScore'),
+      acceptanceScore: required<int>('acceptanceScore'),
+      salesSkillFit: required<int>('salesSkillFit'),
+      experienceMonths: required<int>('experienceMonths'),
+      requestedMonthlySalary: required<int>('requestedMonthlySalary'),
+      acceptedMonthlySalary: json['acceptedMonthlySalary'] as int?,
+      salaryMotivationDelta: required<int>('salaryMotivationDelta'),
+      salaryTrustDelta: required<int>('salaryTrustDelta'),
+      salaryRelationshipReason: json['salaryRelationshipReason'] as String?,
+      employeeMorale: json['employeeMorale'] as int?,
+      employeeCompanyTrust: json['employeeCompanyTrust'] as int?,
+      relationshipHistory: historyRaw.map((event) {
+        if (event is! Map) throw const FormatException('Invalid relationship event');
+        return EmployeeRelationshipEvent.fromJson(event.cast<String, dynamic>());
+      }).toList(),
+      raiseDecision: raiseDecision,
+      raisedMonthlySalary: json['raisedMonthlySalary'] as int?,
+      raiseEffectiveMonth: json['raiseEffectiveMonth'] as int?,
+      stage: stage,
+      bindingOffer: offerRaw == null
+          ? null
+          : PublicDemoBindingOffer.fromJson((offerRaw as Map).cast<String, dynamic>()),
+      interviewRecord: interviewId == null
+          ? null
+          : PublicDemoInterviewRecord._(applicantId: interviewId),
+      joinRecord: joinId == null ? null : PublicDemoJoinRecord._(applicantId: joinId),
+    );
+  }
+
   /// Whether this applicant has authoritative, domain-issued provenance for
   /// their accepted salary. [PublicDemoJoinTransaction] requires this before
   /// it will join them (WORKFLOW-STATE-1 §12A).

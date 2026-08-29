@@ -121,6 +121,65 @@ class PublicDemoEngineerSales {
     trust: trust ?? this.trust,
   );
 
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'name': name,
+    'summary': summary,
+    'interviewProfile': {
+      'skillFit': interviewProfile.skillFit,
+      'humanity': interviewProfile.humanity,
+      'morale': interviewProfile.morale,
+      'clientTrust': interviewProfile.clientTrust,
+    },
+    'stage': stage.name,
+    'lastInterviewScore': lastInterviewScore,
+    'interviewRecordEngineerId': interviewRecord?.engineerId,
+    'mental': mental,
+    'trust': trust,
+  };
+
+  factory PublicDemoEngineerSales.fromJson(Map<String, dynamic> json) {
+    T required<T>(String key) {
+      final value = json[key];
+      if (value is! T) throw FormatException('Invalid engineer $key');
+      return value;
+    }
+
+    final id = required<String>('id');
+    final stageName = required<String>('stage');
+    final stage = PublicDemoSalesStage.values.where((value) => value.name == stageName).firstOrNull;
+    final profileRaw = required<Map>('interviewProfile');
+    final profile = profileRaw.cast<String, dynamic>();
+    final recordId = json['interviewRecordEngineerId'];
+    if (stage == null || (recordId != null && recordId is! String) ||
+        (recordId != null && recordId != id)) {
+      throw const FormatException('Invalid engineer persistence data');
+    }
+    int profileValue(String key) {
+      final value = profile[key];
+      if (value is! int) throw FormatException('Invalid interview profile $key');
+      return value;
+    }
+    return PublicDemoEngineerSales(
+      id: id,
+      name: required<String>('name'),
+      summary: required<String>('summary'),
+      interviewProfile: PublicDemoInterviewProfile(
+        skillFit: profileValue('skillFit'),
+        humanity: profileValue('humanity'),
+        morale: profileValue('morale'),
+        clientTrust: profileValue('clientTrust'),
+      ),
+      stage: stage,
+      lastInterviewScore: json['lastInterviewScore'] as int?,
+      interviewRecord: recordId == null
+          ? null
+          : PublicDemoEngineerInterviewRecord._(engineerId: recordId),
+      mental: required<int>('mental'),
+      trust: required<int>('trust'),
+    );
+  }
+
   /// The single sanctioned way to attempt a genuine partner/client
   /// interview for this engineer's sales pipeline (WORKFLOW-STATE-1AB FIX7
   /// P2, replacing `recordInterviewOutcome`, which accepted `passed`/

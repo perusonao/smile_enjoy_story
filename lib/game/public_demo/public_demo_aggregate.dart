@@ -82,6 +82,95 @@ class PublicDemoAggregate {
   final PublicDemoState state;
   final PublicDemoWorkflowState workflow;
 
+  /// Complete persistence form for the sole Public Demo authoritative root.
+  Map<String, dynamic> toJson() => {
+    'state': state.toJson(),
+    'workflow': workflow.toJson(),
+  };
+
+  /// Restores a previously persisted root only when its cross-domain facts
+  /// still agree.  This does not replay, reconcile, or repair gameplay; the
+  /// caller must discard the whole save when this factory throws.
+  factory PublicDemoAggregate.fromJson(Map<String, dynamic> json) {
+    final stateRaw = json['state'];
+    final workflowRaw = json['workflow'];
+    if (stateRaw is! Map || workflowRaw is! Map) {
+      throw const FormatException('Invalid Public Demo aggregate');
+    }
+    final aggregate = PublicDemoAggregate._(
+      state: PublicDemoState.fromJson(stateRaw.cast<String, dynamic>()),
+      workflow: PublicDemoWorkflowState.fromJson(
+        workflowRaw.cast<String, dynamic>(),
+      ),
+    );
+    aggregate._validateForPersistence();
+    return aggregate;
+  }
+
+  void _validateForPersistence() {
+    if (state.month < 4 || state.month > 15 ||
+        state.salesCapacity < 0 ||
+        state.salesUsed < 0 ||
+        state.salesUsed > state.salesCapacity ||
+        state.engineersAssigned < 0 ||
+        state.engineersWaiting < 0 ||
+        state.engineersAssigned + state.engineersWaiting != state.engineerCount ||
+        (state.fiscalYearCompleted && state.month != 15)) {
+      throw const FormatException('Invalid Public Demo state invariants');
+    }
+
+    final engineerIds = workflow.engineers.map((engineer) => engineer.id).toList();
+    final applicantIds = workflow.applicants.map((applicant) => applicant.id).toList();
+    final runtimeIds = state.engineerRuntimes.map((runtime) => runtime.engineerId).toList();
+    final assignmentIds = workflow.assignments.map((assignment) => assignment.engineerId).toList();
+    if (!_areUnique(engineerIds) || !_areUnique(applicantIds) ||
+        !_areUnique(runtimeIds) || !_areUnique(assignmentIds) ||
+        state.engineerCount != engineerIds.length ||
+        runtimeIds.toSet().length != engineerIds.length ||
+        !runtimeIds.toSet().containsAll(engineerIds) ||
+        !engineerIds.toSet().containsAll(assignmentIds)) {
+      throw const FormatException('Invalid Public Demo workflow identities');
+    }
+
+    final joinedIds = workflow.joinedApplicantIds;
+    if (!_sameOrderedStrings(state.joinedApplicantIds, joinedIds)) {
+      throw const FormatException('Invalid joined-applicant projection');
+    }
+    for (final applicant in workflow.applicants) {
+      final offer = applicant.bindingOffer;
+      if (offer != null && offer.applicantId != applicant.id) {
+        throw const FormatException('Invalid applicant binding offer');
+      }
+    }
+    for (final engineer in workflow.engineers) {
+      if (engineer.interviewRecord != null &&
+          engineer.interviewRecord!.engineerId != engineer.id) {
+        throw const FormatException('Invalid engineer interview record');
+      }
+    }
+
+    final assignedIds = workflow.assignedEngineerIds(month: state.month);
+    if (state.month >= 6 &&
+        (state.engineersAssigned != assignedIds.length ||
+            state.engineersWaiting != state.engineerCount - assignedIds.length)) {
+      throw const FormatException('Invalid assignment projection');
+    }
+    if (!state.trainingSelections.keys.every(
+      (engineerId) => engineerIds.contains(engineerId) && !assignedIds.contains(engineerId),
+    )) {
+      throw const FormatException('Invalid training selection');
+    }
+  }
+
+  static bool _areUnique(Iterable<String> values) {
+    final seen = <String>{};
+    return values.every(seen.add);
+  }
+
+  static bool _sameOrderedStrings(List<String> left, List<String> right) =>
+      left.length == right.length &&
+      Iterable<int>.generate(left.length).every((index) => left[index] == right[index]);
+
   PublicDemoAggregate _copyWith({
     PublicDemoState? state,
     PublicDemoWorkflowState? workflow,

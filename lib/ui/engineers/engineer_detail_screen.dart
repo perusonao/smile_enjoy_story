@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../app/game_scope.dart';
 import '../../domain/domain.dart';
 import '../../game/game.dart';
+import '../../presentation/engineers/engineer_detail_display_data.dart';
 import '../theme.dart';
 import '../widgets/confirm_dialog.dart';
 import '../widgets/labels.dart';
@@ -19,7 +20,9 @@ import '../projects/project_comparison_screen.dart';
 List<Widget> _techSkillChips(TechSkillLevels skills) {
   final chips = <Widget>[];
   void add(String label, int level, {IconData? icon, Color color = Colors.teal}) {
-    if (level >= 2) chips.add(SkillChip('$label Lv.$level', icon: icon, color: color));
+    if (level >= 2) {
+      chips.add(SkillChip('$label Lv.$level', icon: icon, color: color));
+    }
   }
 
   add('Frontend', skills.frontend);
@@ -44,16 +47,11 @@ class EngineerDetailScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final controller = context.game;
     final state = controller.state;
-    Engineer? engineer;
-    for (final e in state.engineers) {
-      if (e.id == engineerId) {
-        engineer = e;
-        break;
-      }
-    }
-    if (engineer == null) {
+    final display = EngineerDetailDisplayFactory.create(state, engineerId);
+    if (display == null) {
       return const Scaffold(body: Center(child: Text('社員が見つかりません。')));
     }
+    final engineer = display.summary.engineer;
     if (!state.foundingProgress.has(FoundingMilestone.inspectEmployee)) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!controller.state.foundingProgress.has(FoundingMilestone.inspectEmployee)) {
@@ -70,8 +68,8 @@ class EngineerDetailScreen extends StatelessWidget {
       });
     }
     final profile = engineer.profile;
-    final workflowState = EmployeeWorkflowEngine.forEngineer(state, engineerId);
-    final assignment = state.assignmentForEngineer(engineerId);
+    final workflowState = display.currentStatus.state;
+    final assignment = display.currentAssignment?.assignment;
     final applications = state
         .applicationsForEngineer(engineerId)
         .where(
@@ -88,7 +86,7 @@ class EngineerDetailScreen extends StatelessWidget {
         )
         .toList();
     final waitingWeeks = state.waitingStreakFor(engineerId);
-    final skillSheet = state.skillSheetFor(engineerId);
+    final skillSheet = display.skillSheet.sheet;
     final interviewOffers = state.interviewOffers.where((o)=>o.employeeId==engineerId && o.status==InterviewOfferStatus.pending).toList();
     final guided = ProgressionEngine.guidedAction(state);
     final isGuideTarget = guided != null && guided.targetType == TaskTargetType.employeeDetail && guided.targetId == engineerId;
@@ -112,7 +110,7 @@ class EngineerDetailScreen extends StatelessWidget {
               onCta: !isGuideTarget
                   ? null
                   : switch (guided.stage) {
-                      FoundingStage.skillSheet => () => _editSkillSheet(context, engineer!, skillSheet),
+                      FoundingStage.skillSheet when skillSheet != null => () => _editSkillSheet(context, engineer, skillSheet),
                       FoundingStage.clientInterview when state.proposalForEngineer(engineerId)?.currentStep == SelectionStep.clientInterview =>
                         () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => ClientInterviewScreen(applicationId: state.proposalForEngineer(engineerId)!.id))),
                       _ => null,
@@ -138,7 +136,7 @@ class EngineerDetailScreen extends StatelessWidget {
           // "現在の状況" first, above skills/personality/history — a
           // first-time player needs one glance to know what this employee
           // is doing right now, not a scroll (Playable 0.4C.3 §27-32).
-          _CurrentStatusCard(state: state, engineer: engineer, workflowState: workflowState),
+          _CurrentStatusCard(display: display.currentStatus, engineer: engineer),
           const SizedBox(height: 12),
           if (workflowState == EmployeeWorkflowState.waiting)
             _WaitingWarningBanner(
@@ -151,16 +149,12 @@ class EngineerDetailScreen extends StatelessWidget {
             _ContractPreferenceHint(engineer: engineer, assignment: assignment, currentWeek: state.week),
             const SizedBox(height: 12),
           ],
-          _SectionCard(title:'スキルシート / 営業',children:[
-            _Row('会社信頼',engineer.companyTrust >= 70 ? '高い' : engineer.companyTrust >= 45 ? '普通' : '低下中'),
-            _Row(languageLabels[profile.mainLanguage] ?? profile.mainLanguage.name,'実際 ${formatExperience(profile.skillFor(profile.mainLanguage).actualExperienceMonths)} / 記載 ${formatExperience(skillSheet.displayedLanguageExperience[profile.mainLanguage] ?? 0)}'),
-            _Row('Backend','実際 Lv.${profile.techSkills.backend} / 記載 Lv.${skillSheet.displayedBackend}'),
-            _Row('Leader','実際 Lv.${profile.techSkills.leader} / 記載 Lv.${skillSheet.displayedLeader}'),
-            _Row('営業状態',engineer.salesStatus==SalesStatus.selling?'営業中（公開先 ${state.unlockedClientCount}社）':EmployeeWorkflowEngine.labels[workflowState]!),
-            _Row('参画可能','Week ${engineer.availableFromWeek}〜'),
-            const Text('会社信頼が低い社員は、現場の増員情報を持ち帰りにくくなります。',style:TextStyle(fontSize:12,color:Colors.black54)),
-            Row(children:[Expanded(child:OutlinedButton(onPressed:()=>_editSkillSheet(context,engineer!,skillSheet),child:const Text('営業用記載を編集'))),const SizedBox(width:8),Expanded(child:FilledButton(onPressed:engineer.salesStatus==SalesStatus.selling?null:()=>_confirmSalesStart(context,engineer!,skillSheet),child:const Text('営業を開始する')))]),
-          ]),
+          _SkillSheetSalesCard(engineer: engineer, display: display.skillSheet, workflowState: workflowState, unlockedClientCount: display.currentStatus.unlockedClientCount, onEdit: skillSheet == null ? null : () => _editSkillSheet(context, engineer, skillSheet), onStartSales: skillSheet == null ? null : () => _confirmSalesStart(context, engineer, skillSheet)),
+          if (display.currentAssignment != null) ...[
+            const SizedBox(height: 12),
+            _CurrentAssignmentCard(display: display.currentAssignment!),
+            const SizedBox(height: 12),
+          ],
           if(interviewOffers.isNotEmpty)...[const SizedBox(height:12),_SectionCard(title:'面談依頼',children:[
             // Null-safe lookup, not `firstWhere` (Playable Phase 3A UX
             // review, P1-2 hardening): a project can legitimately leave
@@ -264,7 +258,9 @@ class EngineerDetailScreen extends StatelessWidget {
   Future<void> _confirmSalesStart(BuildContext context,Engineer engineer,SkillSheet sheet) async {
     final state=context.game.state; final clients=sampleClients.where((c)=>state.relationFor(c.id).unlocked).map((c)=>c.name).join('\n');
     final accepted=await showDialog<bool>(context:context,builder:(c)=>AlertDialog(title:Text('${engineer.profile.name}の営業を開始します'),content:Text('公開先:\n$clients\n\n参画可能: ${engineer.availableFromWeek<=state.week?'現在':'Week ${engineer.availableFromWeek}'}\nスキルシート: ${SalesEngine.riskLabel(SalesEngine.riskFor(engineer,sheet))}\n\n条件に合う案件があると、取引先から面談依頼が届きます。'),actions:[TextButton(onPressed:()=>Navigator.pop(c,false),child:const Text('戻る')),FilledButton(onPressed:()=>Navigator.pop(c,true),child:const Text('営業開始'))]));
-    if(accepted==true&&context.mounted)context.game.startSales(engineer.id);
+    if(accepted==true&&context.mounted) {
+      context.game.startSales(engineer.id);
+    }
   }
 
   /// Contract withdrawal is a real dead end for this assignment (Playable
@@ -285,19 +281,26 @@ class EngineerDetailScreen extends StatelessWidget {
   }
 }
 
+class _SkillSheetSalesCard extends StatelessWidget {
+  const _SkillSheetSalesCard({required this.engineer,required this.display,required this.workflowState,required this.unlockedClientCount,required this.onEdit,required this.onStartSales});
+  final Engineer engineer; final EngineerSkillSheetDisplay display; final EmployeeWorkflowState workflowState; final int unlockedClientCount; final VoidCallback? onEdit; final VoidCallback? onStartSales;
+  @override Widget build(BuildContext context) { final sheet=display.sheet; if(sheet==null) { return const _SectionCard(title:'スキルシート / 営業',children:[Text('営業用スキルシートを確認できません。')]); } final p=engineer.profile.mainLanguage; return _SectionCard(title:'スキルシート / 営業',children:[_Row('会社信頼',display.companyTrust>=70?'高い':display.companyTrust>=45?'普通':'低下中'),_Row(languageLabels[p]??p.name,'実際 ${formatExperience(display.actualPrimaryLanguageMonths)} / 記載 ${formatExperience(sheet.displayedLanguageExperience[p]??0)}'),_Row('Backend','実際 Lv.${display.actualBackend} / 記載 Lv.${sheet.displayedBackend}'),_Row('Leader','実際 Lv.${display.actualLeader} / 記載 Lv.${sheet.displayedLeader}'),_Row('営業状態',display.salesStatus==SalesStatus.selling?'営業中（公開先 $unlockedClientCount社）':EmployeeWorkflowEngine.labels[workflowState]!),_Row('参画可能','Week ${display.availableFromWeek}〜'),const Text('会社信頼が低い社員は、現場の増員情報を持ち帰りにくくなります。',style:TextStyle(fontSize:12,color:Colors.black54)),Row(children:[Expanded(child:OutlinedButton(onPressed:onEdit,child:const Text('営業用記載を編集'))),const SizedBox(width:8),Expanded(child:FilledButton(onPressed:display.salesStatus==SalesStatus.selling?null:onStartSales,child:const Text('営業を開始する')))])]); }
+}
+class _CurrentAssignmentCard extends StatelessWidget { const _CurrentAssignmentCard({required this.display}); final EngineerCurrentAssignmentDisplay display; @override Widget build(BuildContext context){final a=display.assignment;return _SectionCard(title:'現在の案件',children:[_Row('案件',a.project.title),_Row('顧客',clientNameById(a.project.clientId)),_Row('契約期間','Week ${a.contractStartWeek} 〜 Week ${a.contractEndWeek}'),_Row('残り','${a.remainingWeeks}週'),_Row('月単価',formatYen(a.project.monthlyRate))]);}}
+
 /// The single "what is this employee doing right now" block, driven by
 /// [EmployeeWorkflowState] — the same derived state Home and the employee
 /// list use (Playable 0.4C.3 §12-17, §27-32). Deliberately placed right
 /// under the header so a first-time player never has to scroll to find it.
 class _CurrentStatusCard extends StatelessWidget {
-  const _CurrentStatusCard({required this.state, required this.engineer, required this.workflowState});
+  const _CurrentStatusCard({required this.display, required this.engineer});
 
-  final GameState state;
+  final EngineerCurrentStatusDisplay display;
   final Engineer engineer;
-  final EmployeeWorkflowState workflowState;
 
   @override
   Widget build(BuildContext context) {
+    final workflowState = display.state;
     final color = switch (workflowState) {
       EmployeeWorkflowState.assigned => Colors.blue,
       EmployeeWorkflowState.finalOfferPending => Colors.red,
@@ -313,41 +316,43 @@ class _CurrentStatusCard extends StatelessWidget {
     Widget? action;
     switch (workflowState) {
       case EmployeeWorkflowState.assigned:
-        final a = state.assignmentForEngineer(engineer.id)!;
+        final a = display.assignment;
+        if(a==null){detail='現在の案件情報を確認できません。';break;}
         detail = '${a.project.title}\n'
             '残り${a.remainingWeeks}週 / 単価 ${formatYen(a.project.monthlyRate)}\n'
             '月間想定粗利 ${formatYen(MatchingEngine.monthlyProfit(engineer, a.project))}';
       case EmployeeWorkflowState.assignmentScheduled:
-        final p = state.proposals.firstWhere((p) => p.engineerId == engineer.id && p.status == ApplicationStatus.accepted);
+        final p = display.scheduledProposal;
+        if(p==null){detail='参画予定の案件情報を確認できません。';break;}
         detail = '${p.project.title}\n'
             'Week ${p.assignWeek} から参画開始\n'
             '参画開始までは待機給与が発生します。';
       case EmployeeWorkflowState.finalOfferPending:
-        final o = state.offers.firstWhere((o) => o.employeeId == engineer.id && o.status == OfferStatus.pending);
-        detail = '${state.proposals.firstWhere((p) => p.id == o.applicationId).project.title}\n'
+        final o = display.pendingOffer;
+        if(o==null){detail='参画オファー情報を確認できません。';break;}
+        detail = '${display.pendingOfferProposal?.project.title ?? '案件情報を確認できません'}\n'
             '月単価 ${formatYen(o.monthlyRate)}\n'
             '下記「参画オファー比較・回答」から回答してください。';
       case EmployeeWorkflowState.clientInterviewActionRequired:
-        final p = state.proposals.firstWhere((p) =>
-            p.engineerId == engineer.id &&
-            p.status == ApplicationStatus.active &&
-            p.currentStep == SelectionStep.clientInterview);
-        detail = '${p.project.title}\n今週中に面談をプレイするか、社員に任せてください。';
-        action = FilledButton(
+        final id = display.clientInterviewApplicationId;
+        detail = '${display.activeProposal?.project.title ?? '案件情報を確認できません'}\n今週中に面談をプレイするか、社員に任せてください。';
+        if(id!=null) {
+          action = FilledButton(
           onPressed: () => Navigator.of(context).push(
-            MaterialPageRoute(builder: (_) => ClientInterviewScreen(applicationId: p.id)),
+            MaterialPageRoute(builder: (_) => ClientInterviewScreen(applicationId: id)),
           ),
           child: const Text('面談をプレイ'),
         );
+        }
       case EmployeeWorkflowState.waitingSelectionResult:
-        final p = state.proposals.firstWhere((p) => p.engineerId == engineer.id && p.status == ApplicationStatus.active);
-        detail = '${p.project.title}\n'
-            '現在: ${selectionStepLabels[p.currentStep]}\n'
+        final p = display.activeProposal;
+        detail = '${p?.project.title ?? '案件情報を確認できません'}\n'
+            '現在: ${p==null?'確認できません':selectionStepLabels[p.currentStep]}\n'
             '次の週へ進めると選考が進みます。';
       case EmployeeWorkflowState.interviewRequestPending:
         detail = '下記「面談依頼」から回答してください。';
       case EmployeeWorkflowState.selling:
-        detail = 'SkillSheet公開先 ${state.unlockedClientCount}社\n面談依頼待ちです。';
+        detail = 'SkillSheet公開先 ${display.unlockedClientCount}社\n面談依頼待ちです。';
       case EmployeeWorkflowState.waiting:
         detail = '営業を開始すると、案件の面談依頼が届くようになります。';
     }
@@ -494,7 +499,9 @@ class _ContractPreferenceHint extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final preference = MoraleEngine.contractPreference(engineer, assignment, currentWeek);
-    if (preference == ContractPreference.neutral) return const SizedBox.shrink();
+    if (preference == ContractPreference.neutral) {
+      return const SizedBox.shrink();
+    }
     return Container(
       padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(

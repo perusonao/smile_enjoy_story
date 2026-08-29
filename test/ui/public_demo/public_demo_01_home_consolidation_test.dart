@@ -807,12 +807,16 @@ void main() {
         currentState(tester).financialStatus,
         PublicDemoFinancialStatus.bankruptcy,
       );
-      final beforeRetry = currentState(tester);
-      await tapAndSettle(tester, '11月終了→12月');
-      await settle(tester);
-      expect(currentState(tester).month, beforeRetry.month);
-      expect(currentState(tester).cash, beforeRetry.cash);
-      expect(currentState(tester).financialStatus, beforeRetry.financialStatus);
+      // PLAYTEST-BLOCKER-1A: the month-close button is hidden once bankrupt,
+      // not a silent no-op. Domain-level terminal guard is proven by
+      // public_demo_financial_status_test.dart.
+      expect(
+        find.text('11月終了→12月'),
+        findsNothing,
+        reason:
+            'month-close CTA must be hidden after bankruptcy '
+            '(PLAYTEST-BLOCKER-1A)',
+      );
     });
 
     testWidgets('20: negative cash alone never produces the shortage UI', (

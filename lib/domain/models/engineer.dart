@@ -3,6 +3,7 @@ import 'career_history_entry.dart';
 import 'employee_preference.dart';
 import 'employee_relationship_event.dart';
 import 'engineer_status.dart';
+import 'engineer_certification.dart';
 import 'sales_profile.dart';
 
 /// Number of recent [EmployeeRelationshipEvent] rows kept per engineer
@@ -57,6 +58,10 @@ class Engineer {
   /// sales-facing representation and may intentionally differ from this.
   final List<CareerHistoryEntry> careerHistory;
 
+  /// Company-verified certification facts. Applicant-declared résumé claims
+  /// remain separately preserved on [Applicant.qualifications].
+  final List<EngineerCertification> certifications;
+
   const Engineer({
     required this.id,
     required this.sourceApplicantId,
@@ -77,6 +82,7 @@ class Engineer {
     this.salesStatus = SalesStatus.notSelling,
     this.availableFromWeek = 1,
     this.careerHistory = const [],
+    this.certifications = const [],
   });
 
   Engineer copyWith({
@@ -99,6 +105,7 @@ class Engineer {
     SalesStatus? salesStatus,
     int? availableFromWeek,
     List<CareerHistoryEntry>? careerHistory,
+    List<EngineerCertification>? certifications,
   }) {
     return Engineer(
       id: id ?? this.id,
@@ -120,6 +127,7 @@ class Engineer {
       salesStatus: salesStatus ?? this.salesStatus,
       availableFromWeek: availableFromWeek ?? this.availableFromWeek,
       careerHistory: careerHistory ?? this.careerHistory,
+      certifications: certifications ?? this.certifications,
     );
   }
 
@@ -143,6 +151,7 @@ class Engineer {
     'salesStatus': salesStatus.name,
     'availableFromWeek': availableFromWeek,
     'careerHistory': careerHistory.map((e) => e.toJson()).toList(),
+    'certifications': certifications.map((e) => e.toJson()).toList(),
   };
 
   factory Engineer.fromJson(Map<String, dynamic> json) {
@@ -171,6 +180,9 @@ class Engineer {
       availableFromWeek: json['availableFromWeek'] as int? ?? 1,
       careerHistory: (json['careerHistory'] as List? ?? const [])
           .map((e) => CareerHistoryEntry.fromJson(e as Map<String, dynamic>))
+          .toList(),
+      certifications: (json['certifications'] as List? ?? const [])
+          .map((e) => EngineerCertification.fromJson(e as Map<String, dynamic>))
           .toList(),
     );
   }

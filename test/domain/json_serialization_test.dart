@@ -18,6 +18,31 @@ void main() {
         salary: applicant.desiredMonthlySalary,
         employmentWeek: 3,
         status: EngineerStatus.waiting,
+        careerHistory: const [
+          CareerHistoryEntry(
+            id: 'history-1',
+            projectName: '金融基幹刷新',
+            experienceMonths: 18,
+            languages: [ProgrammingLanguage.java],
+            technologies: ['Spring Boot', 'Oracle'],
+            processes: ['基本設計', '実装'],
+            role: 'SE',
+            teamSize: 12,
+            industry: Industry.finance,
+            startWeek: 4,
+            endWeek: 75,
+            clientNameSnapshot: 'サンプル金融',
+            summary: '勘定系APIの刷新を担当',
+          ),
+        ],
+        certifications: const [
+          EngineerCertification(
+            key: 'aws-saa',
+            displayName: 'AWS Solutions Architect Associate',
+            category: EngineerCertificationCategory.cloudInfrastructure,
+            acquiredWeek: 2,
+          ),
+        ],
       );
       final restored = Engineer.fromJson(engineer.toJson());
       expect(restored.toJson(), equals(engineer.toJson()));

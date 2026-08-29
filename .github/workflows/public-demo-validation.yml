@@ -6,6 +6,7 @@ on:
     paths:
       - 'lib/game/public_demo/**'
       - 'lib/ui/public_demo/**'
+      - 'lib/presentation/build_info.dart'
       - 'test/game/public_demo/**'
       - 'test/ui/public_demo/**'
       - '.github/workflows/public-demo-validation.yml'
@@ -42,4 +43,19 @@ jobs:
       - name: Public Demo success playthrough
         run: flutter test test/ui/public_demo/public_demo_01_success_playthrough_test.dart
       - name: Build web
-        run: flutter build web --release
+        env:
+          EVENT_PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          pr_number="$EVENT_PR_NUMBER"
+          if [[ -z "$pr_number" ]]; then
+            subject="$(git show -s --format=%s "$GITHUB_SHA")"
+            merge_subject_pattern='^Merge pull request #([0-9]+) from '
+            if [[ "$subject" =~ $merge_subject_pattern ]]; then
+              pr_number="${BASH_REMATCH[1]}"
+            fi
+          fi
+          build_info=(--dart-define="BUILD_COMMIT_SHA=$GITHUB_SHA")
+          if [[ -n "$pr_number" ]]; then
+            build_info+=(--dart-define="BUILD_PR_NUMBER=$pr_number")
+          fi
+          flutter build web --release "${build_info[@]}"

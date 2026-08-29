@@ -42,15 +42,15 @@ PublicDemoState currentState(WidgetTester tester) =>
 
 PublicDemoWorkflowState currentWorkflow(WidgetTester tester) =>
     (tester.state(find.byType(PublicDemo01PlaceholderScreen)) as dynamic)
-        .workflow
+            .workflow
         as PublicDemoWorkflowState;
 
 Finder get sectionFinder => find.byType(PublicDemoHomeDashboardSection);
 
 /// The slot the owner resolved for the build currently on screen.
-HomeRecommendedActionSlot slot(WidgetTester tester) =>
-    tester.widget<PublicDemoHomeDashboardSection>(sectionFinder)
-        .recommendedAction;
+HomeRecommendedActionSlot slot(WidgetTester tester) => tester
+    .widget<PublicDemoHomeDashboardSection>(sectionFinder)
+    .recommendedAction;
 
 /// The action currently recommended, or `null` when the slot is a fallback
 /// or suppressed.
@@ -136,8 +136,8 @@ Future<void> playApril(WidgetTester tester) async {
   await dismiss(tester);
 }
 
-/// Advances to July on the no-hire route, where the recruitment-media card
-/// is rendered but the applicant pipeline is not.
+/// Advances to July on the no-hire route, where the applicant pipeline is
+/// not rendered.
 Future<void> playIntoJuly(WidgetTester tester) async {
   await tapAndSettle(tester, '4月終了→5月');
   await dismiss(tester);
@@ -356,44 +356,59 @@ void main() {
       );
     });
 
-    testWidgets('July\'s 求人媒体 is never recommended: its card is rendered '
-        'and enabled, but no month renders the applicant pipeline again', (
+    testWidgets('July does not expose recruitment media, while the domain '
+        'eligibility and July-to-August progression stay unchanged', (
       tester,
     ) async {
       await pumpDemo(tester);
+      await playApril(tester);
       await playIntoJuly(tester);
       expect(currentState(tester).month, 7);
 
-      // The card is on screen and its button is live — this is NOT the
-      // "disabled action" case.
-      final media = find.byKey(
-        const Key('public-demo-open-recruitment-media'),
+      // The UI exposes neither the card nor the button/sheet title, so the
+      // paid recruitment action is not reachable from July.
+      expect(
+        find.byKey(const Key('public-demo-recruitment-media-card')),
+        findsNothing,
       );
-      expect(media, findsOneWidget);
-      expect(tester.widget<FilledButton>(media).onPressed, isNotNull);
+      expect(
+        find.byKey(const Key('public-demo-open-recruitment-media')),
+        findsNothing,
+      );
+      expect(find.text('求人媒体を選ぶ'), findsNothing);
+
+      // This is a UI-only fix: the domain still supports July eligibility
+      // for a future flow that can process its applicants.
       expect(
         currentState(tester).canUseRecruitmentMediaInMonth(7),
         isTrue,
-        reason: 'the P3 predicate itself is satisfied in July',
+        reason: 'the domain month 4–8 range remains unchanged',
       );
 
-      // But July renders no applicant card, and neither does any later
-      // month — so anything it generates is stranded.
+      // July continues to render no applicant cards.
       expect(actionButton('経歴書確認'), findsNothing);
       expect(actionButton('採用面談'), findsNothing);
 
       // Settle the bonus so nothing else can outrank the media action.
       await tapAndSettle(tester, '夏季賞与を決める');
-      await tester.tap(find.byKey(const Key('public-demo-summer-bonus-none')));
-      await settle(tester);
+      final noBonus = find.byKey(const Key('public-demo-summer-bonus-none'));
+      expect(tester.widget<FilledButton>(noBonus).onPressed, isNotNull);
+      await tester.ensureVisible(noBonus);
+      await tester.tap(noBonus);
+      await tester.pumpAndSettle();
+      expect(find.text('選択済み：なし'), findsOneWidget);
 
-      // Even now — nothing else eligible, predicate true, button live —
-      // HOME does not send the player to spend cash on a dead end.
+      // Recommended Action remains unchanged: it never suggests recruitment.
       final action = recommended(tester);
       if (action != null) {
         expect(action.kind, isNot(HomeRecommendedActionKind.recruitmentMedia));
       }
       expect(find.text('求人媒体で候補者を追加'), findsNothing);
+
+      // July's summer-bonus confirmation and ordinary progression are
+      // unchanged by removing the unrelated recruitment entry point.
+      await tapAndSettle(tester, '7月終了→8月');
+      expect(currentState(tester).month, 8);
     });
 
     testWidgets('no candidate ever names a button that is not on screen', (
@@ -493,7 +508,10 @@ void main() {
       // anything — is enabled. A disabled CTA is never acceptable.
       final action = recommended(tester);
       if (action != null) {
-        expect(action.kind, isNot(HomeRecommendedActionKind.applicantInterview));
+        expect(
+          action.kind,
+          isNot(HomeRecommendedActionKind.applicantInterview),
+        );
         expect(
           action.kind,
           isNot(HomeRecommendedActionKind.applicantPartnerInterview),
@@ -546,9 +564,9 @@ void main() {
       await tapAndSettle(tester, 'SkillSheet確認');
       await tapAndSettle(tester, '営業開始');
       final controlState = currentState(tester);
-      final controlStages = currentWorkflow(tester).engineers
-          .map((e) => '${e.id}:${e.stage.name}')
-          .toList();
+      final controlStages = currentWorkflow(
+        tester,
+      ).engineers.map((e) => '${e.id}:${e.stage.name}').toList();
       final controlCash = controlState.cash;
       final controlSales = controlState.salesRemaining;
 
@@ -568,9 +586,9 @@ void main() {
 
       final viaCta = currentState(tester);
       expect(
-        currentWorkflow(tester).engineers
-            .map((e) => '${e.id}:${e.stage.name}')
-            .toList(),
+        currentWorkflow(
+          tester,
+        ).engineers.map((e) => '${e.id}:${e.stage.name}').toList(),
         controlStages,
         reason: 'the CTA must run the same commands, in the same order',
       );
@@ -660,9 +678,9 @@ void main() {
       await playIntoCashShortage(tester);
 
       final before = currentState(tester);
-      final stagesBefore = currentWorkflow(tester).engineers
-          .map((e) => e.stage)
-          .toList();
+      final stagesBefore = currentWorkflow(
+        tester,
+      ).engineers.map((e) => e.stage).toList();
       await tapCta(tester);
 
       final after = currentState(tester);
@@ -791,10 +809,7 @@ void main() {
       expect(ctaFinder, findsNothing);
       expect(find.byKey(const Key('home-month-goal')), findsOneWidget);
       expect(find.text('今月やること'), findsOneWidget);
-      expect(
-        find.text('翌月の発注を確認し、7月も稼働できる状態を作りましょう'),
-        findsOneWidget,
-      );
+      expect(find.text('翌月の発注を確認し、7月も稼働できる状態を作りましょう'), findsOneWidget);
     });
   });
 
@@ -847,9 +862,7 @@ void main() {
         );
       });
 
-      testWidgets('at $label nothing overflows on the 2C slot', (
-        tester,
-      ) async {
+      testWidgets('at $label nothing overflows on the 2C slot', (tester) async {
         await pumpDemo(tester, size: size);
         expect(tester.takeException(), isNull);
         await tester.drag(find.byType(ListView), const Offset(0, -400));

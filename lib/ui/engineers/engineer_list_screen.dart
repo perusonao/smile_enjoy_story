@@ -7,6 +7,7 @@ import '../theme.dart';
 import '../widgets/engineer_avatar.dart';
 import '../widgets/labels.dart';
 import '../widgets/status_chip.dart';
+import 'engineer_detail_route_screen.dart';
 import 'engineer_detail_screen.dart';
 
 String _topTechSkillLabel(TechSkillLevels t) {
@@ -297,7 +298,7 @@ class _EngineerCard extends StatelessWidget {
       borderRadius: BorderRadius.circular(12),
       onTap: () => Navigator.of(context).push(
         MaterialPageRoute(
-          builder: (_) => EngineerDetailScreen(engineerId: engineer.id),
+          builder: (_) => EngineerDetailRouteScreen(engineerId: engineer.id),
         ),
       ),
       child: Container(

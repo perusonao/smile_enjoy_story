@@ -123,6 +123,19 @@ If the current save system supports additive fields without schema bump, documen
 
 Do not encode real-world vendor/product trademark behavior into core logic unnecessarily. A certification record should primarily store a stable game key and display label.
 
+Qualification provenance has two distinct authorities:
+
+- `Applicant.qualifications` contains applicant-declared, hire-time résumé
+  claims. It is an immutable profile snapshot with claimed/sales-facing
+  provenance and is never written by game logic.
+- `Engineer.certifications` contains company-verified or future in-game-
+  acquired actual certification records. Every existing engineer starts with
+  `certifications == []`; only future acquisition mechanics may add records.
+
+Never auto-promote or copy `Applicant.qualifications` into verified
+`Engineer.certifications`. EMPLOYEE-DATA-1B must render the two provenances as
+distinct, labelled groups rather than merging or deduplicating them.
+
 Initial categories can be broad:
 
 - programming/development

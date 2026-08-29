@@ -35,6 +35,7 @@ Applicant buildApplicant({
     turnoverIntent: 30,
   ),
   int mainLanguageActualSkill = 60,
+  List<String> qualifications = const [],
 }) {
   return Applicant(
     id: id,
@@ -50,7 +51,7 @@ Applicant buildApplicant({
     desiredWorkStyle: desiredWorkStyle,
     japaneseLevel: japaneseLevel,
     englishLevel: englishLevel,
-    qualifications: const [],
+    qualifications: qualifications,
     languageSkills:
         languageSkills ??
         {
@@ -75,6 +76,8 @@ Engineer buildEngineer({
   int salary = 400000,
   int employmentWeek = 1,
   EngineerStatus status = EngineerStatus.waiting,
+  List<CareerHistoryEntry> careerHistory = const [],
+  List<EngineerCertification> certifications = const [],
 }) {
   final p = profile ?? buildApplicant();
   return Engineer(
@@ -84,6 +87,8 @@ Engineer buildEngineer({
     salary: salary,
     employmentWeek: employmentWeek,
     status: status,
+    careerHistory: careerHistory,
+    certifications: certifications,
   );
 }
 

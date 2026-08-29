@@ -11,6 +11,7 @@ export 'education.dart';
 export 'employee_preference.dart';
 export 'employee_relationship_event.dart';
 export 'engineer.dart';
+export 'engineer_certification.dart';
 export 'engineer_status.dart';
 export 'hidden_parameters.dart';
 export 'language_skill.dart';

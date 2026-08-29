@@ -3,6 +3,7 @@ import '../models/models.dart';
 import 'finance_engine.dart';
 import 'matching_engine.dart';
 import 'morale_engine.dart';
+import 'payroll_engine.dart';
 import 'progression_engine.dart';
 import 'project_interview_engine.dart';
 import 'recruitment_engine.dart';
@@ -1052,7 +1053,17 @@ class GameEngine {
 
       // 3) 給与 (待機中も満額。総務も入社日から満額、Playable 0.4C.2 §2)
       // / 4) 家賃 / 5) その他固定費 -----------------------------------------
-      final salaryPaid = engineers.fold<int>(0, (sum, e) => sum + e.salary) + (state.generalAffairsStaff?.salary ?? 0);
+      final payrollInput = PayrollInput(
+        engineers: engineers,
+        generalAffairsStaff: state.generalAffairsStaff,
+        // This settlement path is reached after the prologue-only March
+        // pre-join case. The roster above is already the post-transition
+        // month-end roster.
+        isPrologueActive: false,
+        hasStartedPrologueAssignment: false,
+      );
+      final salaryPaid =
+          PayrollEngine.calculateMonthly(payrollInput).totalSalary;
       final rentPaid = officeConfigs[state.officeType]!.monthlyRent;
       const fixedCostPaid = otherMonthlyFixedCost;
 

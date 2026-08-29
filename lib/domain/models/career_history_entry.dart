@@ -1,4 +1,5 @@
 import 'programming_language.dart';
+import 'sales_profile.dart';
 
 /// One real-world project engagement in an engineer's actual career history.
 ///
@@ -13,6 +14,11 @@ class CareerHistoryEntry {
   final List<String> processes;
   final String role;
   final int teamSize;
+  final Industry? industry;
+  final int? startWeek;
+  final int? endWeek;
+  final String? clientNameSnapshot;
+  final String summary;
 
   const CareerHistoryEntry({
     required this.id,
@@ -23,6 +29,11 @@ class CareerHistoryEntry {
     this.processes = const [],
     this.role = '',
     this.teamSize = 0,
+    this.industry,
+    this.startWeek,
+    this.endWeek,
+    this.clientNameSnapshot,
+    this.summary = '',
   });
 
   Map<String, dynamic> toJson() => {
@@ -34,6 +45,11 @@ class CareerHistoryEntry {
     'processes': processes,
     'role': role,
     'teamSize': teamSize,
+    'industry': industry?.name,
+    'startWeek': startWeek,
+    'endWeek': endWeek,
+    'clientNameSnapshot': clientNameSnapshot,
+    'summary': summary,
   };
 
   factory CareerHistoryEntry.fromJson(Map<String, dynamic> json) =>
@@ -48,5 +64,18 @@ class CareerHistoryEntry {
         processes: (json['processes'] as List? ?? const []).cast<String>(),
         role: json['role'] as String? ?? '',
         teamSize: json['teamSize'] as int? ?? 0,
+        industry: _industryFromJson(json['industry'] as String?),
+        startWeek: json['startWeek'] as int?,
+        endWeek: json['endWeek'] as int?,
+        clientNameSnapshot: json['clientNameSnapshot'] as String?,
+        summary: json['summary'] as String? ?? '',
       );
+}
+
+Industry? _industryFromJson(String? value) {
+  if (value == null) return null;
+  return Industry.values.firstWhere(
+    (industry) => industry.name == value,
+    orElse: () => Industry.other,
+  );
 }

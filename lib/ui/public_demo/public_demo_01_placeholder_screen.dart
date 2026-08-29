@@ -30,6 +30,7 @@ import 'public_demo_event_dialog.dart';
 import 'public_demo_cash_shortage_card.dart';
 import 'public_demo_growth_result_card.dart';
 import 'public_demo_home_dashboard_section.dart';
+import 'public_demo_home_presentation_components.dart';
 import 'public_demo_interview_result_dialog.dart';
 import 'public_demo_monthly_cash_flow_card.dart';
 import 'public_demo_sales_progress.dart';
@@ -59,6 +60,7 @@ class PublicDemo01PlaceholderScreen extends StatefulWidget {
 class _S extends State<PublicDemo01PlaceholderScreen> {
   static final expense = PublicDemoSalary.baselineMonthlyExpenses;
   final _scrollController = ScrollController();
+  final _monthlyCashFlowKey = GlobalKey();
 
   /// The single authoritative Public Demo 0.1 root (WORKFLOW-STATE-1AB
   /// FIX3): atomically owns both finance/monthly-close facts ([s]) and
@@ -138,6 +140,130 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
         ),
     ],
   );
+
+  /// HOME-3's employee stage is a read-only summary of the same employee
+  /// workflow cards that remain below it. The status text comes from the
+  /// existing display mapper; this summary neither changes a stage nor
+  /// creates an alternate employee/action route.
+  List<PublicDemoEmployeeStageItem> get _employeeStageItems => [
+    for (final engineer in workflow.engineers)
+      PublicDemoEmployeeStageItem(
+        name: engineer.name,
+        status: _employeeStageStatus(engineer),
+      ),
+  ];
+
+  /// The summary uses explanatory wording instead of repeating the compact
+  /// KPI/action-card labels verbatim. The source remains the same existing
+  /// workflow stage; this is only a HOME-specific presentation translation.
+  String _employeeStageStatus(PublicDemoEngineerSales engineer) =>
+      switch (engineer.stage) {
+        PublicDemoSalesStage.waiting => '営業準備前',
+        PublicDemoSalesStage.skillSheet => 'SkillSheet確認中',
+        PublicDemoSalesStage.selling => '営業中',
+        PublicDemoSalesStage.introduced => '案件紹介済',
+        PublicDemoSalesStage.partnerInterviewPassed => '上位面談通過',
+        PublicDemoSalesStage.partnerInterviewFailed => '再営業が必要',
+        PublicDemoSalesStage.clientInterviewPassed => '客先面談通過',
+        PublicDemoSalesStage.clientInterviewFailed => '再営業が必要',
+        PublicDemoSalesStage.ordered => '翌月参画予定',
+      };
+
+  /// Important Events only surfaces an already-recorded month-close fact.
+  /// It does not nominate a gameplay action: its CTA simply reveals the
+  /// authoritative detailed cash-flow card that this screen already owns.
+  List<PublicDemoImportantEventItem> get _importantEvents {
+    final flow = s.latestMonthlyCashFlow;
+    if (flow == null) return const [];
+    return [
+      PublicDemoImportantEventItem(
+        title: '${publicDemoMonthLabel(flow.month)}の月次収支',
+        summary: '入金・支出・次回入金予定を月次決算で確認できます。',
+        category: '月次',
+        ctaLabel: '収支を見る',
+        onPressed: _scrollToLatestCashFlow,
+      ),
+    ];
+  }
+
+  /// The finance summary is a display of values the existing finance and
+  /// payroll authorities already produced. The latest close owns the
+  /// historical payroll/fixed-cost figures; before the first close, the
+  /// established baseline constants are the only figures available.
+  PublicDemoFinanceSummaryModel get _financeSummary {
+    final latest = s.latestMonthlyCashFlow;
+    final warning = switch (s.financialStatus) {
+      PublicDemoFinancialStatus.cashShortage => '資金不足です。必要な対応を確認してください。',
+      PublicDemoFinancialStatus.bankruptcy ||
+      PublicDemoFinancialStatus.marchCashShortageFailure => '資金繰りの結果を確認してください。',
+      PublicDemoFinancialStatus.normal => null,
+    };
+    return PublicDemoFinanceSummaryModel(
+      cash: s.cash,
+      revenue: _homeDashboardData.revenue,
+      payroll: latest?.salaryPaid ?? PublicDemoSalary.initialTotalMonthlySalary,
+      fixedCosts:
+          latest?.fixedCostsPaid ?? PublicDemoSalary.otherMonthlyFixedCost,
+      nextMonthEstimate: s.pendingRevenue,
+      warning: warning,
+    );
+  }
+
+  /// The month-end shortcut is a second mount of the existing, already-bound
+  /// month-close handler. It never enters Recommended Action selection and
+  /// disappears when the existing finance authority blocks further closes.
+  PublicDemoMonthlyPrimaryCtaModel? get _monthlyPrimaryAction {
+    if (s.isCloseBlocked) return null;
+    return switch (s.month) {
+      4 => PublicDemoMonthlyPrimaryCtaModel(
+        label: '4月を終了して5月へ',
+        description: '今月の対応を終えたら、月末処理へ進みます。',
+        enabled: true,
+        onPressed: () => unawaited(april()),
+      ),
+      5 => PublicDemoMonthlyPrimaryCtaModel(
+        label: '5月を終了して6月へ',
+        description: '今月の対応を終えたら、月末処理へ進みます。',
+        enabled: true,
+        onPressed: () => unawaited(may()),
+      ),
+      6 => PublicDemoMonthlyPrimaryCtaModel(
+        label: '6月を終了して7月へ',
+        description: '今月の対応を終えたら、月末処理へ進みます。',
+        enabled: true,
+        onPressed: june,
+      ),
+      7 => PublicDemoMonthlyPrimaryCtaModel(
+        label: '7月を終了して8月へ',
+        description: '夏季賞与を確認してから、月末処理へ進みます。',
+        enabled: true,
+        onPressed: () => unawaited(july()),
+      ),
+      >= 8 && <= 14 => PublicDemoMonthlyPrimaryCtaModel(
+        label: '${publicDemoMonthLabel(s.month)}を終了して翌月へ',
+        description: '今月の収支を確定し、翌月へ進みます。',
+        enabled: true,
+        onPressed: closeOrdinaryMonth,
+      ),
+      15 => PublicDemoMonthlyPrimaryCtaModel(
+        label: '3月を終了して第1期を完了',
+        description: '今期最後の収支を確定します。',
+        enabled: true,
+        onPressed: closeOrdinaryMonth,
+      ),
+      _ => null,
+    };
+  }
+
+  void _scrollToLatestCashFlow() {
+    final context = _monthlyCashFlowKey.currentContext;
+    if (context == null) return;
+    Scrollable.ensureVisible(
+      context,
+      duration: const Duration(milliseconds: 250),
+      curve: Curves.easeOut,
+    );
+  }
 
   bool _summerBonusDecisionConfirmed = false;
 
@@ -740,7 +866,10 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
     crossAxisAlignment: CrossAxisAlignment.start,
     children: [
       if (s.latestMonthlyCashFlow != null) ...[
-        PublicDemoMonthlyCashFlowCard(flow: s.latestMonthlyCashFlow!),
+        KeyedSubtree(
+          key: _monthlyCashFlowKey,
+          child: PublicDemoMonthlyCashFlowCard(flow: s.latestMonthlyCashFlow!),
+        ),
         const SizedBox(height: 8),
       ],
       if (s.latestGrowthResults.isNotEmpty) ...[
@@ -900,7 +1029,6 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
         visualDensity: VisualDensity.compact,
         tapTargetSize: MaterialTapTargetSize.shrinkWrap,
       );
-
 
   // =====================================================================
   // HOME-RUNTIME-2C — Recommended Action: eligibility emission
@@ -1068,7 +1196,10 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
   /// Mirrors `ec(i)`'s stage buttons, branch for branch. The two `Ready`
   /// stages emit nothing when `readyForFieldSales` is false, exactly as the
   /// card renders no button there.
-  void _addEngineerStageCandidate(_AddCandidate add, PublicDemoEngineerSales e) {
+  void _addEngineerStageCandidate(
+    _AddCandidate add,
+    PublicDemoEngineerSales e,
+  ) {
     void emit(HomeRecommendedActionKind kind, VoidCallback invoke) =>
         add(kind, invoke, subjectName: e.name, targetId: e.id);
 
@@ -1245,8 +1376,7 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
           case PublicDemoReplacementStage.introduced:
             if (s.salesRemaining > 0) {
               emit(
-                HomeRecommendedActionKind
-                    .assignmentReplacementPartnerInterview,
+                HomeRecommendedActionKind.assignmentReplacementPartnerInterview,
                 () => replacementPartner(index),
               );
             }
@@ -1279,7 +1409,8 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
     if (!a.canRequestRaiseIn(s.month)) return;
     add(
       HomeRecommendedActionKind.raiseRequest,
-      () => unawaited(raise(workflow.applicants.indexWhere((x) => x.id == a.id))),
+      () =>
+          unawaited(raise(workflow.applicants.indexWhere((x) => x.id == a.id))),
       subjectName: a.name,
       targetId: a.id,
     );
@@ -1590,267 +1721,291 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
   Widget build(BuildContext c) {
     final navigatorAdvice = navigatorAdviceFor(_recommendedActionSlot);
     return Theme(
-    data: Theme.of(c).copyWith(
-      filledButtonTheme: FilledButtonThemeData(
-        style: _publicDemoFilledButtonStyle(c),
-      ),
-    ),
-    child: Scaffold(
-      appBar: AppBar(
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text('S.E.S. Public Demo 0.1'),
-            BuildInfoLabel(
-              buildInfo: widget.buildInfo ?? BuildInfo.fromEnvironment(),
-            ),
-          ],
+      data: Theme.of(c).copyWith(
+        filledButtonTheme: FilledButtonThemeData(
+          style: _publicDemoFilledButtonStyle(c),
         ),
       ),
-      body: SafeArea(
-        child: ListView(
-          controller: _scrollController,
-          padding: const EdgeInsets.all(16),
-          // The monthly cash-flow card (FINANCE-UX-1) made this screen's
-          // total content large enough to trip a Flutter SliverList layout
-          // quirk in this SDK: past a certain child height, ListView's
-          // sliver-based children stop being mounted at all beyond that
-          // point (not just scrolled off-screen — genuinely absent from the
-          // widget tree), independent of cacheExtent (confirmed up to
-          // 20000px, no effect). Wrapping everything in one Column keeps
-          // this a ListView (existing tests still find/scroll it by type)
-          // but gives the sliver exactly one child to lay out, which
-          // Flutter always builds in full regardless of height.
-          children: [
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // HOME-RUNTIME-2A: the FINANCE-FAILURE-1C shortage
-                // explanation is hoisted above everything else. Its
-                // authority is unchanged and still lives entirely in the
-                // card itself — it renders only when
-                // `state.financialStatus == cashShortage` and never infers
-                // that from the sign of cash. This screen decides where the
-                // card goes, not whether it applies, which is why
-                // `financialStatus` is still not projected into HOME.
-                PublicDemoCashShortageCard(state: s),
-                // HOME-RUNTIME-READ-1: the new HOME read-only display,
-                // added alongside (never in place of) the existing Public
-                // Demo UI below. It receives only the projection — no
-                // aggregate, no state, no commands, no callbacks.
-                //
-                // HOME-RUNTIME-2A: its MonthHeaderBar is now the only month
-                // display on the screen — the `N月` headline that used to
-                // restate it here is deleted.
-                PublicDemoHomeDashboardSection(
-                  data: _homeDashboardData,
-                  recommendedAction: _recommendedActionSlot,
-                ),
-                // HOME-RUNTIME-2B: the Office Stage sits BELOW the
-                // Recommended Action and above the legacy content, and the
-                // order is the design's, not an aesthetic preference.
-                // Recommended Action is the primary interaction; the Office
-                // Stage is a visual layer. Putting the picture first would
-                // have bought a better-looking screen by pushing the one
-                // thing the player is supposed to do out of the opening
-                // view — undoing exactly what HOME-RUNTIME-2A and 2C did.
-                //
-                // It is also a sibling of PublicDemoHomeDashboardSection
-                // rather than a child: that section is the read-only
-                // projection mount point whose height the consolidation
-                // suite pins to a deliberately tight ceiling, and a picture
-                // is not one of the facts that ceiling was drawn around.
-                // Keeping it outside leaves that guard measuring exactly
-                // what it was written to measure.
-                const SizedBox(height: 8),
-                HomeOfficeStageSection(display: _officeStageDisplay),
-                // NAVIGATOR-1A: 佐倉 ひより sits BELOW the Office Stage, so
-                // the opening column reads KPI → Recommended Action →
-                // Office Stage → Navigator. The order is the design's and
-                // it is the same argument HOME-RUNTIME-2B made one widget
-                // above: the Recommended Action is the primary interaction
-                // and the picture is a visual layer, so neither may be
-                // pushed down by something introduced later. She is last of
-                // the three because she is the only one of them that says
-                // nothing the player has to act on.
-                //
-                // A sibling of PublicDemoHomeDashboardSection rather than a
-                // child, for the reason the Office Stage already is: the
-                // consolidation suite's group 15 scopes "HOME's only
-                // mutation path" to that section's subtree and its ceiling
-                // measures that section's height. Mounting an inert card
-                // inside it would put a widget under guards that were
-                // written to measure the read-only projection, and nothing
-                // would be gained — this card holds no projected value.
-                //
-                // NAVIGATOR-1C only translates the already-resolved HOME
-                // action outcome; it does not make an independent decision.
-                const SizedBox(height: 8),
-                HomeNavigatorSection(
-                  expression: navigatorExpressionFor(
-                    navigatorAdvice?.semantic,
+      child: Scaffold(
+        appBar: AppBar(
+          title: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text('S.E.S. Public Demo 0.1'),
+              BuildInfoLabel(
+                buildInfo: widget.buildInfo ?? BuildInfo.fromEnvironment(),
+              ),
+            ],
+          ),
+        ),
+        body: SafeArea(
+          child: ListView(
+            controller: _scrollController,
+            padding: const EdgeInsets.all(16),
+            // The monthly cash-flow card (FINANCE-UX-1) made this screen's
+            // total content large enough to trip a Flutter SliverList layout
+            // quirk in this SDK: past a certain child height, ListView's
+            // sliver-based children stop being mounted at all beyond that
+            // point (not just scrolled off-screen — genuinely absent from the
+            // widget tree), independent of cacheExtent (confirmed up to
+            // 20000px, no effect). Wrapping everything in one Column keeps
+            // this a ListView (existing tests still find/scroll it by type)
+            // but gives the sliver exactly one child to lay out, which
+            // Flutter always builds in full regardless of height.
+            children: [
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // HOME-RUNTIME-2A: the FINANCE-FAILURE-1C shortage
+                  // explanation is hoisted above everything else. Its
+                  // authority is unchanged and still lives entirely in the
+                  // card itself — it renders only when
+                  // `state.financialStatus == cashShortage` and never infers
+                  // that from the sign of cash. This screen decides where the
+                  // card goes, not whether it applies, which is why
+                  // `financialStatus` is still not projected into HOME.
+                  PublicDemoCashShortageCard(state: s),
+                  // HOME-RUNTIME-READ-1: the new HOME read-only display,
+                  // added alongside (never in place of) the existing Public
+                  // Demo UI below. It receives only the projection — no
+                  // aggregate, no state, no commands, no callbacks.
+                  //
+                  // HOME-RUNTIME-2A: its MonthHeaderBar is now the only month
+                  // display on the screen — the `N月` headline that used to
+                  // restate it here is deleted.
+                  PublicDemoHomeDashboardSection(
+                    data: _homeDashboardData,
+                    recommendedAction: _recommendedActionSlot,
                   ),
-                  advice: navigatorAdvice,
-                ),
-                const SizedBox(height: 8),
-                dashboard(),
-                if (s.month == 4) ...[
-                  for (var i = 0; i < workflow.engineers.length; i++) ec(i),
-                  OutlinedButton(
-                    onPressed: april,
-                    child: const Text('4月終了→5月'),
-                  ),
-                ],
-                if (s.month == 5) ...[
-                  _RecruitmentMediaCard(
-                    state: s,
-                    onPressed: _openRecruitmentMedia,
-                  ),
-                  for (var i = 0; i < workflow.applicants.length; i++) ac(i),
-                  OutlinedButton(onPressed: may, child: const Text('5月終了→6月')),
-                ],
-                if (s.month == 6)
-                  for (final a in workflow.applicants.where(
-                    (a) => s.joinedApplicantIds.contains(a.id) && a.hasJoined,
-                  ))
-                    employeeConditionCard(a),
-                if (s.month == 6) ...[
-                  for (var i = 0; i < workflow.engineers.length; i++)
-                    if (s.joinedApplicantIds.contains(
-                          workflow.engineers[i].id,
-                        ) &&
-                        workflow.engineers[i].stage !=
-                            PublicDemoSalesStage.ordered &&
-                        !workflow.assignments.any(
-                          (assignment) =>
-                              assignment.engineerId == workflow.engineers[i].id,
-                        ))
-                      ec(i),
-                  for (var i = 0; i < workflow.assignments.length; i++)
-                    assignmentCard(i),
-                  OutlinedButton(onPressed: june, child: const Text('6月終了→7月')),
-                ],
-                if (s.month == 7) ...[
-                  _RecruitmentMediaCard(
-                    state: s,
-                    onPressed: _openRecruitmentMedia,
-                  ),
-                  Text('7月開始結果', style: Theme.of(c).textTheme.titleLarge),
-                  Text(
-                    '参画 ${s.engineersAssigned}名 / 待機 ${s.engineersWaiting}名',
-                  ),
-                  for (final a in workflow.assignments)
-                    ListTile(
-                      title: Text(a.engineerName),
-                      subtitle: Text(julyResult(a)),
+                  // HOME-RUNTIME-2B: the Office Stage sits BELOW the
+                  // Recommended Action and above the legacy content, and the
+                  // order is the design's, not an aesthetic preference.
+                  // Recommended Action is the primary interaction; the Office
+                  // Stage is a visual layer. Putting the picture first would
+                  // have bought a better-looking screen by pushing the one
+                  // thing the player is supposed to do out of the opening
+                  // view — undoing exactly what HOME-RUNTIME-2A and 2C did.
+                  //
+                  // It is also a sibling of PublicDemoHomeDashboardSection
+                  // rather than a child: that section is the read-only
+                  // projection mount point whose height the consolidation
+                  // suite pins to a deliberately tight ceiling, and a picture
+                  // is not one of the facts that ceiling was drawn around.
+                  // Keeping it outside leaves that guard measuring exactly
+                  // what it was written to measure.
+                  const SizedBox(height: 8),
+                  HomeOfficeStageSection(display: _officeStageDisplay),
+                  // NAVIGATOR-1A: 佐倉 ひより sits BELOW the Office Stage, so
+                  // the opening column reads KPI → Recommended Action →
+                  // Office Stage → Navigator. The order is the design's and
+                  // it is the same argument HOME-RUNTIME-2B made one widget
+                  // above: the Recommended Action is the primary interaction
+                  // and the picture is a visual layer, so neither may be
+                  // pushed down by something introduced later. She is last of
+                  // the three because she is the only one of them that says
+                  // nothing the player has to act on.
+                  //
+                  // A sibling of PublicDemoHomeDashboardSection rather than a
+                  // child, for the reason the Office Stage already is: the
+                  // consolidation suite's group 15 scopes "HOME's only
+                  // mutation path" to that section's subtree and its ceiling
+                  // measures that section's height. Mounting an inert card
+                  // inside it would put a widget under guards that were
+                  // written to measure the read-only projection, and nothing
+                  // would be gained — this card holds no projected value.
+                  //
+                  // NAVIGATOR-1C only translates the already-resolved HOME
+                  // action outcome; it does not make an independent decision.
+                  const SizedBox(height: 8),
+                  HomeNavigatorSection(
+                    expression: navigatorExpressionFor(
+                      navigatorAdvice?.semantic,
                     ),
-                  Card(
-                    child: Padding(
-                      padding: const EdgeInsets.all(12),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                            '夏季賞与',
-                            style: TextStyle(fontWeight: FontWeight.bold),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            _summerBonusDecisionConfirmed
-                                ? '選択済み：${switch (s.summerBonusSelection) {
-                                    PublicDemoSummerBonusPlan.none => 'なし',
-                                    PublicDemoSummerBonusPlan.half => '0.5か月',
-                                    PublicDemoSummerBonusPlan.one => '1か月',
-                                  }}'
-                                : '7月終了前に支給内容を選びましょう。',
-                          ),
-                          const SizedBox(height: 8),
-                          FilledButton(
-                            key: const Key('public-demo-summer-bonus-decision'),
-                            onPressed: decideSummerBonus,
-                            child: Text(
-                              _summerBonusDecisionConfirmed
-                                  ? '夏季賞与を変更'
-                                  : '夏季賞与を決める',
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
+                    advice: navigatorAdvice,
                   ),
-                  OutlinedButton(onPressed: july, child: const Text('7月終了→8月')),
-                ],
-                if (s.month >= 8 && s.month <= 14) ...[
-                  Text(
-                    '${publicDemoMonthLabel(s.month)}開始結果',
-                    style: Theme.of(c).textTheme.titleLarge,
+                  const SizedBox(height: 8),
+                  PublicDemoEmployeeStageSection(
+                    employees: _employeeStageItems,
                   ),
-                  if (s.month == 8) ...[
-                    const Text('7月分の給与を反映しました'),
-                    Text(
-                      s.summerBonusPaidAmount == 0
-                          ? '夏季賞与 なし'
-                          : '夏季賞与 ¥${s.summerBonusPaidAmount}',
+                  const SizedBox(height: 8),
+                  PublicDemoImportantEventsSection(events: _importantEvents),
+                  const SizedBox(height: 8),
+                  PublicDemoFinanceSummarySection(summary: _financeSummary),
+                  if (_monthlyPrimaryAction case final monthlyAction?) ...[
+                    const SizedBox(height: 8),
+                    PublicDemoMonthlyPrimaryCtaSection(action: monthlyAction),
+                  ],
+                  const SizedBox(height: 8),
+                  dashboard(),
+                  if (s.month == 4) ...[
+                    for (var i = 0; i < workflow.engineers.length; i++) ec(i),
+                    OutlinedButton(
+                      onPressed: april,
+                      child: const Text('4月終了→5月'),
                     ),
                   ],
-                  OutlinedButton(
-                    onPressed: closeOrdinaryMonth,
-                    child: Text(
-                      '${publicDemoMonthLabel(s.month)}終了→'
-                      '${publicDemoMonthLabel(s.month + 1)}',
+                  if (s.month == 5) ...[
+                    _RecruitmentMediaCard(
+                      state: s,
+                      onPressed: _openRecruitmentMedia,
                     ),
-                  ),
-                ],
-                if (s.month == 15 && !s.fiscalYearCompleted) ...[
-                  Text(
-                    '${publicDemoMonthLabel(s.month)}開始結果',
-                    style: Theme.of(c).textTheme.titleLarge,
-                  ),
-                  OutlinedButton(
-                    key: const Key('public-demo-march-close'),
-                    onPressed: closeOrdinaryMonth,
-                    child: const Text('3月終了→第1期終了'),
-                  ),
-                ],
-                if (s.fiscalYearCompleted) ...[
-                  Card(
-                    key: const Key('public-demo-fiscal-year-complete'),
-                    child: Padding(
-                      padding: const EdgeInsets.all(14),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            '第1期終了',
-                            style: Theme.of(c).textTheme.titleLarge,
-                          ),
-                          const SizedBox(height: 8),
-                          const Text('1年間の経営が終了しました。'),
-                          const SizedBox(height: 8),
-                          Text('最終現預金 ¥${s.cash}'),
-                        ],
+                    for (var i = 0; i < workflow.applicants.length; i++) ac(i),
+                    OutlinedButton(
+                      onPressed: may,
+                      child: const Text('5月終了→6月'),
+                    ),
+                  ],
+                  if (s.month == 6)
+                    for (final a in workflow.applicants.where(
+                      (a) => s.joinedApplicantIds.contains(a.id) && a.hasJoined,
+                    ))
+                      employeeConditionCard(a),
+                  if (s.month == 6) ...[
+                    for (var i = 0; i < workflow.engineers.length; i++)
+                      if (s.joinedApplicantIds.contains(
+                            workflow.engineers[i].id,
+                          ) &&
+                          workflow.engineers[i].stage !=
+                              PublicDemoSalesStage.ordered &&
+                          !workflow.assignments.any(
+                            (assignment) =>
+                                assignment.engineerId ==
+                                workflow.engineers[i].id,
+                          ))
+                        ec(i),
+                    for (var i = 0; i < workflow.assignments.length; i++)
+                      assignmentCard(i),
+                    OutlinedButton(
+                      onPressed: june,
+                      child: const Text('6月終了→7月'),
+                    ),
+                  ],
+                  if (s.month == 7) ...[
+                    _RecruitmentMediaCard(
+                      state: s,
+                      onPressed: _openRecruitmentMedia,
+                    ),
+                    Text('7月開始結果', style: Theme.of(c).textTheme.titleLarge),
+                    Text(
+                      '参画 ${s.engineersAssigned}名 / 待機 ${s.engineersWaiting}名',
+                    ),
+                    for (final a in workflow.assignments)
+                      ListTile(
+                        title: Text(a.engineerName),
+                        subtitle: Text(julyResult(a)),
+                      ),
+                    Card(
+                      child: Padding(
+                        padding: const EdgeInsets.all(12),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              '夏季賞与',
+                              style: TextStyle(fontWeight: FontWeight.bold),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              _summerBonusDecisionConfirmed
+                                  ? '選択済み：${switch (s.summerBonusSelection) {
+                                      PublicDemoSummerBonusPlan.none => 'なし',
+                                      PublicDemoSummerBonusPlan.half => '0.5か月',
+                                      PublicDemoSummerBonusPlan.one => '1か月',
+                                    }}'
+                                  : '7月終了前に支給内容を選びましょう。',
+                            ),
+                            const SizedBox(height: 8),
+                            FilledButton(
+                              key: const Key(
+                                'public-demo-summer-bonus-decision',
+                              ),
+                              onPressed: decideSummerBonus,
+                              child: Text(
+                                _summerBonusDecisionConfirmed
+                                    ? '夏季賞与を変更'
+                                    : '夏季賞与を決める',
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
-                  ),
-                ],
-                if (s.month >= 7)
-                  for (final a in workflow.applicants.where(
-                    (a) => s.joinedApplicantIds.contains(a.id) && a.hasJoined,
-                  ))
-                    employeeConditionCard(a),
-                if (s.month >= 6)
-                  for (final runtime in s.engineerRuntimes)
-                    internalTrainingCard(
-                      engineerId: runtime.engineerId,
-                      engineerName: _engineerName(runtime.engineerId),
+                    OutlinedButton(
+                      onPressed: july,
+                      child: const Text('7月終了→8月'),
                     ),
-              ],
-            ),
-          ],
+                  ],
+                  if (s.month >= 8 && s.month <= 14) ...[
+                    Text(
+                      '${publicDemoMonthLabel(s.month)}開始結果',
+                      style: Theme.of(c).textTheme.titleLarge,
+                    ),
+                    if (s.month == 8) ...[
+                      const Text('7月分の給与を反映しました'),
+                      Text(
+                        s.summerBonusPaidAmount == 0
+                            ? '夏季賞与 なし'
+                            : '夏季賞与 ¥${s.summerBonusPaidAmount}',
+                      ),
+                    ],
+                    OutlinedButton(
+                      onPressed: closeOrdinaryMonth,
+                      child: Text(
+                        '${publicDemoMonthLabel(s.month)}終了→'
+                        '${publicDemoMonthLabel(s.month + 1)}',
+                      ),
+                    ),
+                  ],
+                  if (s.month == 15 && !s.fiscalYearCompleted) ...[
+                    Text(
+                      '${publicDemoMonthLabel(s.month)}開始結果',
+                      style: Theme.of(c).textTheme.titleLarge,
+                    ),
+                    OutlinedButton(
+                      key: const Key('public-demo-march-close'),
+                      onPressed: closeOrdinaryMonth,
+                      child: const Text('3月終了→第1期終了'),
+                    ),
+                  ],
+                  if (s.fiscalYearCompleted) ...[
+                    Card(
+                      key: const Key('public-demo-fiscal-year-complete'),
+                      child: Padding(
+                        padding: const EdgeInsets.all(14),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              '第1期終了',
+                              style: Theme.of(c).textTheme.titleLarge,
+                            ),
+                            const SizedBox(height: 8),
+                            const Text('1年間の経営が終了しました。'),
+                            const SizedBox(height: 8),
+                            Text('最終現預金 ¥${s.cash}'),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                  if (s.month >= 7)
+                    for (final a in workflow.applicants.where(
+                      (a) => s.joinedApplicantIds.contains(a.id) && a.hasJoined,
+                    ))
+                      employeeConditionCard(a),
+                  if (s.month >= 6)
+                    for (final runtime in s.engineerRuntimes)
+                      internalTrainingCard(
+                        engineerId: runtime.engineerId,
+                        engineerName: _engineerName(runtime.engineerId),
+                      ),
+                ],
+              ),
+            ],
+          ),
         ),
       ),
-    ),
     );
   }
 }

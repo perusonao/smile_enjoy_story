@@ -1163,9 +1163,6 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
 
     // ---- month 7: the summer-bonus decision --------------------------
     //
-    // July's 求人媒体 card is rendered and enabled here too, but it is
-    // deliberately NOT a candidate — see
-    // [_addRecruitmentMediaCandidate]'s doc for why.
     if (s.month == 7) {
       // The bonus button is rendered (and enabled) all month and doubles
       // as `夏季賞与を変更` once decided. Only the *undecided* case is
@@ -1420,22 +1417,9 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
   /// month, but its button is disabled once the month's single use is
   /// spent, so only the usable case is a candidate.
   ///
-  /// Called from the month-5 branch only, and deliberately not from
-  /// month 7, even though `build` renders the same card there.
-  /// `_RecruitmentMediaCard` and `ac(i)` are rendered together in May, so a
-  /// May hire can be reviewed, interviewed, offered and sold; in July the
-  /// card is rendered *without* the applicant list, and no later month
-  /// renders it either, so applicants generated in July can never be
-  /// advanced. Recommending it there would spend the player's cash (up to
-  /// ¥100,000 on the engineer medium) on candidates that are structurally
-  /// unusable — a dead end AGENTS.md's Failure Recovery rule forbids, and
-  /// the opposite of what this slot exists to do.
-  ///
-  /// This is a recommendation decision only. July's card, its button and
-  /// its command are untouched: a player who wants to use it still can,
-  /// exactly as before this phase. Whether that July card should exist at
-  /// all — or whether July should render the applicant pipeline — is a
-  /// pre-existing product question, outside HOME-RUNTIME-2C.
+  /// Called from the month-5 branch only, where `_RecruitmentMediaCard` and
+  /// `ac(i)` are rendered together. This keeps recruitment's user-visible
+  /// entry point on the only month that renders its applicant pipeline.
   void _addRecruitmentMediaCandidate(_AddCandidate add) {
     if (!s.canUseRecruitmentMediaInMonth(s.month)) return;
     add(
@@ -1882,10 +1866,6 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
                     ),
                   ],
                   if (s.month == 7) ...[
-                    _RecruitmentMediaCard(
-                      state: s,
-                      onPressed: _openRecruitmentMedia,
-                    ),
                     Text('7月開始結果', style: Theme.of(c).textTheme.titleLarge),
                     Text(
                       '参画 ${s.engineersAssigned}名 / 待機 ${s.engineersWaiting}名',

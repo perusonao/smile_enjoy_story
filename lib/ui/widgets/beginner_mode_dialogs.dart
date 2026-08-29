@@ -1,5 +1,5 @@
 import '../../game/game.dart';
-import '../asset_paths.dart';
+import '../../presentation/events/event_image_mapper.dart';
 import '../theme.dart';
 import 'expense_breakdown_sheet.dart';
 import 'founding_dialogs.dart';
@@ -13,7 +13,10 @@ import 'founding_dialogs.dart';
 /// Returns `null` if there's nothing sensible to show yet — defensive only;
 /// callers only invoke this for milestones [BeginnerModeEngine.pendingMilestones]
 /// already confirmed are true.
-FoundingEventDialog? buildBeginnerModeDialog(BeginnerMilestone milestone, GameState state) {
+FoundingEventDialog? buildBeginnerModeDialog(
+  BeginnerMilestone milestone,
+  GameState state,
+) {
   switch (milestone) {
     case BeginnerMilestone.managementPhaseStarted:
     case BeginnerMilestone.revenueVsCashExplained:
@@ -49,7 +52,9 @@ FoundingEventDialog? buildBeginnerModeDialog(BeginnerMilestone milestone, GameSt
       );
 
     case BeginnerMilestone.firstCollectionCelebrated:
-      final closing = state.monthlyClosings.where((c) => c.cashCollected > 0).firstOrNull;
+      final closing = state.monthlyClosings
+          .where((c) => c.cashCollected > 0)
+          .firstOrNull;
       if (closing == null) return null;
       return FoundingEventDialog(
         title: '🎉 初入金！',
@@ -74,7 +79,9 @@ FoundingEventDialog? buildBeginnerModeDialog(BeginnerMilestone milestone, GameSt
       // (§ the Phase 3A brief's own instruction on this point). Phase 3B
       // itself is not implemented yet, so this stays a look-back, not a
       // preview of what's next.
-      final runwayLevel = FinanceEngine.classifyRunway(FinanceEngine.cashRunwayMonths(state));
+      final runwayLevel = FinanceEngine.classifyRunway(
+        FinanceEngine.cashRunwayMonths(state),
+      );
       return FoundingEventDialog(
         title: '🎉 初心者経営・前半クリア！',
         body:
@@ -86,7 +93,7 @@ FoundingEventDialog? buildBeginnerModeDialog(BeginnerMilestone milestone, GameSt
             '売上の発生・入金・月末支払い・資金繰りの基本を、実際に経営しながら経験しました。\n'
             'この感覚を活かして、これからも会社を経営していきましょう。',
         celebration: true,
-        imageAssetPath: AssetPaths.eventCompanyManagement,
+        imageAssetPath: EventImageMapper.imageAssetForCategory('会社経営'),
         category: '会社経営',
       );
   }

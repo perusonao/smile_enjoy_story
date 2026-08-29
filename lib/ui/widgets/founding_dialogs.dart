@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../game/game.dart';
-import '../asset_paths.dart';
+import '../../presentation/events/event_image_mapper.dart';
 import 'first_contract_celebration.dart';
 import 'labels.dart';
 
@@ -9,8 +9,8 @@ import 'labels.dart';
 /// contextual explanation, §13-14, §19-20, §25, §37, §39, §47).
 ///
 /// Also the common presentation for image-backed event modals (画像付き
-/// イベントモーダル Phase 1): setting [imageAssetPath] (always an
-/// [AssetPaths] constant — never a hardcoded `'assets/images/...'` string)
+/// イベントモーダル Phase 1): setting [imageAssetPath] (selected by
+/// [EventImageMapper] — never a hardcoded `'assets/images/...'` string)
 /// puts a full-width photo above [category]/[title] in
 /// [showFoundingEventDialog]. Both [imageAssetPath] and [category] are
 /// optional and default to `null`, so every existing plain-text dialog
@@ -30,7 +30,8 @@ class FoundingEventDialog {
   /// cramming numbers into the plain-text body.
   final Widget? extra;
 
-  /// An [AssetPaths] event image shown full-width above the title, or
+  /// An event image selected by [EventImageMapper] shown full-width above the
+  /// title, or
   /// `null` for a plain text-only dialog (the pre-Phase-1 default look).
   final String? imageAssetPath;
 
@@ -57,14 +58,25 @@ class FoundingEventDialog {
 /// `null` if there's nothing sensible to show (defensive — callers only
 /// invoke this for events [ProgressionEngine.pendingEvents] already
 /// confirmed are true).
-FoundingEventDialog? buildFoundingEventDialog(OneTimeEvent event, GameState state) {
+FoundingEventDialog? buildFoundingEventDialog(
+  OneTimeEvent event,
+  GameState state,
+) {
   switch (event) {
     case OneTimeEvent.interviewOfferCelebration:
-      final offer = state.interviewOffers.where((o) => o.status == InterviewOfferStatus.pending).firstOrNull
-          ?? state.interviewOffers.firstOrNull;
+      final offer =
+          state.interviewOffers
+              .where((o) => o.status == InterviewOfferStatus.pending)
+              .firstOrNull ??
+          state.interviewOffers.firstOrNull;
       if (offer == null) return null;
-      final employee = state.engineers.where((e) => e.id == offer.employeeId).firstOrNull;
-      final project = state.openProjects.where((e) => e.project.id == offer.projectId).firstOrNull?.project;
+      final employee = state.engineers
+          .where((e) => e.id == offer.employeeId)
+          .firstOrNull;
+      final project = state.openProjects
+          .where((e) => e.project.id == offer.projectId)
+          .firstOrNull
+          ?.project;
       // Always source the sender from InterviewOffer.clientId — the
       // authoritative, always-populated field — never from a re-derived
       // `project?.clientId`, which silently goes empty the moment the
@@ -76,17 +88,22 @@ FoundingEventDialog? buildFoundingEventDialog(OneTimeEvent event, GameState stat
       final senderLabel = clientName != null ? '$clientNameから' : '案件担当者から';
       return FoundingEventDialog(
         title: '🎉 面談依頼が届きました！',
-        body: '$senderLabel\n'
+        body:
+            '$senderLabel\n'
             '${employee?.profile.name ?? '社員'}さんへ面談依頼があります。\n\n'
             '案件:\n${project?.title ?? '（詳細は面談依頼画面でご確認ください）'}',
         primaryLabel: '面談依頼を見る',
         celebration: true,
-        imageAssetPath: AssetPaths.eventClientContact,
+        imageAssetPath: EventImageMapper.imageAssetForCategory('取引先からの連絡'),
         category: '取引先からの連絡',
       );
     case OneTimeEvent.firstAssignmentCelebration:
       final assignment = state.activeAssignments.firstOrNull;
-      final employee = assignment == null ? null : state.engineers.where((e) => e.id == assignment.engineerId).firstOrNull;
+      final employee = assignment == null
+          ? null
+          : state.engineers
+                .where((e) => e.id == assignment.engineerId)
+                .firstOrNull;
       if (assignment == null || employee == null) return null;
       // Title/body left empty on purpose: for a player who reaches their
       // first assignment without playing the Founding Prologue (自由に開始),
@@ -99,48 +116,54 @@ FoundingEventDialog? buildFoundingEventDialog(OneTimeEvent event, GameState stat
         body: '',
         primaryLabel: '会社状況を見る',
         celebration: true,
-        extra: FirstContractCelebration(assignment: assignment, employee: employee),
+        extra: FirstContractCelebration(
+          assignment: assignment,
+          employee: employee,
+        ),
       );
     case OneTimeEvent.recruitmentUnlockCelebration:
-      return const FoundingEventDialog(
+      return FoundingEventDialog(
         title: '🎉 新機能解放: 採用',
         body: '会社を拡大するため、新しいエンジニアを採用できるようになりました。',
         primaryLabel: '採用を見る',
         celebration: true,
-        imageAssetPath: AssetPaths.eventRecruitmentApplication,
+        imageAssetPath: EventImageMapper.imageAssetForCategory('採用・応募'),
         category: '採用・応募',
       );
     case OneTimeEvent.clientInterviewCelebration:
-      return const FoundingEventDialog(
+      return FoundingEventDialog(
         title: '初めての客先面談が終わりました',
-        body: '営業では不合格になることもあります。\n'
+        body:
+            '営業では不合格になることもあります。\n'
             'SkillSheetを見直すか、次の面談依頼を待ちましょう。',
         primaryLabel: 'OK',
-        imageAssetPath: AssetPaths.eventClientInterview,
+        imageAssetPath: EventImageMapper.imageAssetForCategory('案件面談'),
         category: '案件面談',
       );
     case OneTimeEvent.recruitmentInterviewCelebration:
-      return const FoundingEventDialog(
+      return FoundingEventDialog(
         title: '初めての採用面接が終わりました',
         body: '採用面接の結果をもとに、内定を出すか判断できます。',
         primaryLabel: 'OK',
-        imageAssetPath: AssetPaths.eventRecruitmentApplication,
+        imageAssetPath: EventImageMapper.imageAssetForCategory('採用・応募'),
         category: '採用・応募',
       );
     case OneTimeEvent.welfareUnlockCelebration:
-      return const FoundingEventDialog(
+      return FoundingEventDialog(
         title: '🎉 新機能解放: 社員環境 / 福利厚生',
-        body: '会社は社員に案件を用意するだけではありません。\n'
+        body:
+            '会社は社員に案件を用意するだけではありません。\n'
             'PC、健康診断、賞与などへ投資すると、Moraleや会社へのTrustに影響します。',
         primaryLabel: '社員環境を見る',
         celebration: true,
-        imageAssetPath: AssetPaths.eventCompanyManagement,
+        imageAssetPath: EventImageMapper.imageAssetForCategory('会社経営'),
         category: '会社経営',
       );
     case OneTimeEvent.firstOfferTutorial:
       return const FoundingEventDialog(
         title: '参画オファーとは',
-        body: '選考を通過すると、正式な参画オファーが届きます。\n'
+        body:
+            '選考を通過すると、正式な参画オファーが届きます。\n'
             '回答期限までに受諾するか辞退するか判断してください。',
       );
     case OneTimeEvent.firstArTutorial:
@@ -149,33 +172,43 @@ FoundingEventDialog? buildFoundingEventDialog(OneTimeEvent event, GameState stat
       final client = FinanceEngine.clientById(ar.clientId);
       return FoundingEventDialog(
         title: '売上が発生しました',
-        body: 'ただし売上はすぐ現金になるとは限りません。\n\n'
+        body:
+            'ただし売上はすぐ現金になるとは限りません。\n\n'
             '${client.name}の支払サイト: ${client.paymentTermDays}日\n'
             '今回の売上は ${GameCalendar.monthEndLabel(ar.dueMonth)} に入金されます。',
       );
     case OneTimeEvent.fieldLeadTutorial:
       return const FoundingEventDialog(
         title: 'Field Lead とは',
-        body: '現場に参画している社員から、増員予定などの案件情報が届くことがあります。\n'
+        body:
+            '現場に参画している社員から、増員予定などの案件情報が届くことがあります。\n'
             '会社への信頼が高い社員ほど、情報を持ち帰りやすくなります。',
       );
     case OneTimeEvent.contractRenewalTutorial:
       return const FoundingEventDialog(
         title: '契約更新の判断',
-        body: '契約終了の4週間前になると、延長するか撤退するかを判断できます。\n'
+        body:
+            '契約終了の4週間前になると、延長するか撤退するかを判断できます。\n'
             '本人の希望と異なる判断をすると、モチベーションや信頼に影響することがあります。',
       );
     case OneTimeEvent.clientUnlockTutorial:
       return const FoundingEventDialog(
         title: '新規取引先が増えました',
-        body: '実績や信頼を積むことで、取引可能な会社が増えていきます。\n'
+        body:
+            '実績や信頼を積むことで、取引可能な会社が増えていきます。\n'
             '取引先が増えるほど、案件の選択肢も広がります。',
       );
   }
 }
 
-const TextStyle _celebrationTitleStyle = TextStyle(fontSize: 20, fontWeight: FontWeight.bold);
-const TextStyle _plainTitleStyle = TextStyle(fontSize: 17, fontWeight: FontWeight.bold);
+const TextStyle _celebrationTitleStyle = TextStyle(
+  fontSize: 20,
+  fontWeight: FontWeight.bold,
+);
+const TextStyle _plainTitleStyle = TextStyle(
+  fontSize: 17,
+  fontWeight: FontWeight.bold,
+);
 final TextStyle _categoryStyle = TextStyle(
   fontSize: 12,
   fontWeight: FontWeight.bold,
@@ -200,7 +233,10 @@ final TextStyle _categoryStyle = TextStyle(
 /// stays outside the scrollable area regardless, so the primary CTA is
 /// always reachable even when the image pushes the text below the fold on
 /// a short viewport (§3: "画像が大きすぎてCTAが画面外へ押し出されないように").
-Future<bool> showFoundingEventDialog(BuildContext context, FoundingEventDialog dialog) async {
+Future<bool> showFoundingEventDialog(
+  BuildContext context,
+  FoundingEventDialog dialog,
+) async {
   final hasImage = dialog.imageAssetPath != null;
   // Only the image layout needs an explicit style here — it moved the
   // title out of AlertDialog.title (which supplied its own default text
@@ -208,7 +244,9 @@ Future<bool> showFoundingEventDialog(BuildContext context, FoundingEventDialog d
   // no-image path keeps its pre-existing behavior exactly (`null` = the
   // theme's own AlertDialog title style) so none of the plain tutorial
   // dialogs change appearance.
-  final imageTitleStyle = dialog.celebration ? _celebrationTitleStyle : _plainTitleStyle;
+  final imageTitleStyle = dialog.celebration
+      ? _celebrationTitleStyle
+      : _plainTitleStyle;
   final result = await showDialog<bool>(
     context: context,
     builder: (dialogContext) => AlertDialog(
@@ -234,11 +272,17 @@ Future<bool> showFoundingEventDialog(BuildContext context, FoundingEventDialog d
       // explicit semanticLabel so the dialog keeps an accessible name
       // built from the same category/title text a sighted player sees.
       semanticLabel: hasImage
-          ? [if (dialog.category != null) dialog.category!, dialog.title].where((s) => s.isNotEmpty).join(' — ')
+          ? [
+              if (dialog.category != null) dialog.category!,
+              dialog.title,
+            ].where((s) => s.isNotEmpty).join(' — ')
           : null,
       title: hasImage || dialog.title.isEmpty
           ? null
-          : Text(dialog.title, style: dialog.celebration ? _celebrationTitleStyle : null),
+          : Text(
+              dialog.title,
+              style: dialog.celebration ? _celebrationTitleStyle : null,
+            ),
       content: SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -251,11 +295,15 @@ Future<bool> showFoundingEventDialog(BuildContext context, FoundingEventDialog d
           // would fight `IntrinsicWidth` the way AspectRatio did (see
           // _EventImage's own doc comment). The inner Column below (title/
           // body text) keeps its own .start, so text still left-aligns.
-          crossAxisAlignment: hasImage ? CrossAxisAlignment.stretch : CrossAxisAlignment.start,
+          crossAxisAlignment: hasImage
+              ? CrossAxisAlignment.stretch
+              : CrossAxisAlignment.start,
           children: [
             if (hasImage) _EventImage(assetPath: dialog.imageAssetPath!),
             Padding(
-              padding: hasImage ? const EdgeInsets.fromLTRB(20, 16, 20, 4) : EdgeInsets.zero,
+              padding: hasImage
+                  ? const EdgeInsets.fromLTRB(20, 16, 20, 4)
+                  : EdgeInsets.zero,
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -269,7 +317,10 @@ Future<bool> showFoundingEventDialog(BuildContext context, FoundingEventDialog d
                     const SizedBox(height: 8),
                   ],
                   if (dialog.body.isNotEmpty) Text(dialog.body),
-                  if (dialog.extra != null) ...[if (dialog.body.isNotEmpty) const SizedBox(height: 14), dialog.extra!],
+                  if (dialog.extra != null) ...[
+                    if (dialog.body.isNotEmpty) const SizedBox(height: 14),
+                    dialog.extra!,
+                  ],
                 ],
               ),
             ),

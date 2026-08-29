@@ -279,21 +279,44 @@ void main() {
         await tester.pumpAndSettle();
 
         // Dialog is open.
+        final dialogFinder = find.byKey(
+          const Key('public-demo-cash-shortage-dialog'),
+        );
         expect(
-          find.byKey(const Key('public-demo-cash-shortage-dialog')),
+          dialogFinder,
           findsOneWidget,
           reason: 'cash shortage dialog must appear on tap',
         );
 
-        // Dialog contains key information:
-        // - cash is negative (label '現在の現預金' is present)
-        expect(find.text('現在の現預金'), findsOneWidget);
-        // - shortage amount shown
-        expect(find.text('不足額'), findsOneWidget);
-        // - pending AR shown
-        expect(find.text('次回入金予定（売掛金）'), findsOneWidget);
-        // - bankruptcy warning text
-        expect(find.textContaining('倒産'), findsWidgets);
+        // Dialog contains key information — scoped to the dialog so that
+        // labels shared with the background PublicDemoCashShortageCard
+        // (which remains in the widget tree while the dialog is open) do
+        // not produce false "too many" failures.
+        expect(
+          find.descendant(
+            of: dialogFinder,
+            matching: find.text('現在の現預金'),
+          ),
+          findsOneWidget,
+        );
+        expect(
+          find.descendant(of: dialogFinder, matching: find.text('不足額')),
+          findsOneWidget,
+        );
+        expect(
+          find.descendant(
+            of: dialogFinder,
+            matching: find.text('次回入金予定（売掛金）'),
+          ),
+          findsOneWidget,
+        );
+        expect(
+          find.descendant(
+            of: dialogFinder,
+            matching: find.textContaining('倒産'),
+          ),
+          findsWidgets,
+        );
 
         // Dismiss the dialog.
         await tester.tap(

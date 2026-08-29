@@ -21,13 +21,13 @@ class HomeOfficeStageMetrics {
   /// The scene (background + figures) height at each mode. Declared as
   /// plain constants so the component-height totals below stay
   /// compile-time constants too.
-  static const double compactSceneHeight = 128;
-  static const double normalSceneHeight = 152;
+  static const double compactSceneHeight = 108;
+  static const double normalSceneHeight = 120;
 
   /// 360x800 — the smaller of the two required targets.
   static const HomeOfficeStageLayout compact = HomeOfficeStageLayout(
     sceneHeight: compactSceneHeight,
-    portraitSize: 62,
+    portraitSize: 54,
     nameFontSize: 10,
     horizontalGap: 8,
   );
@@ -35,7 +35,7 @@ class HomeOfficeStageMetrics {
   /// 390x844.
   static const HomeOfficeStageLayout normal = HomeOfficeStageLayout(
     sceneHeight: normalSceneHeight,
-    portraitSize: 74,
+    portraitSize: 62,
     nameFontSize: 11,
     horizontalGap: 10,
   );
@@ -159,7 +159,7 @@ class HomeOfficeStageSection extends StatelessWidget {
               child: Align(
                 alignment: Alignment.centerLeft,
                 child: Text(
-                  'オフィス',
+                  '社員の様子',
                   style: theme.textTheme.labelLarge?.copyWith(
                     fontWeight: FontWeight.bold,
                   ),

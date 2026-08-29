@@ -168,37 +168,43 @@ void main() {
         find.byType(HomeNavigatorSection),
       );
       expect(section.expression, NavigatorExpression.normal);
-      final provider = tester.widget<Image>(
-        find.byKey(const Key('home-navigator-portrait')),
-      ).image as AssetImage;
+      final provider =
+          tester
+                  .widget<Image>(
+                    find.byKey(const Key('home-navigator-portrait')),
+                  )
+                  .image
+              as AssetImage;
       expect(provider.assetName, AssetPaths.navigatorNormal);
     });
 
-    testWidgets('P3: tapping the real HOME Navigator CTA invokes its existing owner once', (
-      tester,
-    ) async {
-      await pumpDemoAt(tester);
-      final before = workflowSnapshot(tester);
-      final openAdvice = find.byKey(const Key('home-navigator-open-advice'));
-      await tester.ensureVisible(openAdvice);
-      await tester.tap(openAdvice);
-      await tester.pumpAndSettle();
-      final adviceCta = find.byKey(const Key('home-navigator-advice-cta'));
-      await tester.ensureVisible(adviceCta);
-      await tester.tap(adviceCta);
-      await settle(tester);
+    testWidgets(
+      'P3: tapping the real HOME Navigator CTA invokes its existing owner once',
+      (tester) async {
+        await pumpDemoAt(tester);
+        final before = workflowSnapshot(tester);
+        final openAdvice = find.byKey(const Key('home-navigator-open-advice'));
+        await tester.ensureVisible(openAdvice);
+        await tester.tap(openAdvice);
+        await tester.pumpAndSettle();
+        final adviceCta = find.byKey(const Key('home-navigator-advice-cta'));
+        await tester.ensureVisible(adviceCta);
+        await tester.tap(adviceCta);
+        await settle(tester);
 
-      expect(
-        workflowSnapshot(tester),
-        isNot(before),
-        reason: 'one tap must reach the existing Recommended Action owner',
-      );
-      expect(
-        currentWorkflow(tester).engineers.first.stage,
-        PublicDemoSalesStage.skillSheet,
-        reason: 'one Navigator tap advances exactly the same first workflow step as the legacy Recommended Action CTA',
-      );
-    });
+        expect(
+          workflowSnapshot(tester),
+          isNot(before),
+          reason: 'one tap must reach the existing Recommended Action owner',
+        );
+        expect(
+          currentWorkflow(tester).engineers.first.stage,
+          PublicDemoSalesStage.skillSheet,
+          reason:
+              'one Navigator tap advances exactly the same first workflow step as the legacy Recommended Action CTA',
+        );
+      },
+    );
   });
 
   group('A, E: exactly one navigator, and still one after a rebuild', () {
@@ -268,92 +274,96 @@ void main() {
     });
   });
 
-  group('C, D: KPI → Recommended Action → Office Stage → Navigator', () {
-    for (final size in const [Size(360, 800), Size(390, 844)]) {
-      final label = '${size.width.toInt()}x${size.height.toInt()}';
+  group(
+    'C, D: company status → Navigator → Recommended Action → Employee Status',
+    () {
+      for (final size in const [Size(360, 800), Size(390, 844)]) {
+        final label = '${size.width.toInt()}x${size.height.toInt()}';
 
-      testWidgets('C: at $label the navigator is below the Recommended '
-          'Action', (tester) async {
-        await pumpDemoAt(tester, size: size);
+        testWidgets('C: at $label the navigator explains the resolved action '
+            'before the Recommended Action card', (tester) async {
+          await pumpDemoAt(tester, size: size);
 
-        expect(
-          tester.getRect(navigatorFinder).top,
-          greaterThan(
-            tester.getRect(find.byType(RecommendedActionSection)).bottom,
-          ),
+          expect(
+            tester.getRect(navigatorFinder).bottom,
+            lessThanOrEqualTo(
+              tester.getRect(find.byType(RecommendedActionSection)).top,
+            ),
+          );
+          expect(
+            find.byKey(const Key('home-navigator-rationale')),
+            findsOneWidget,
+          );
+          expect(find.textContaining('SkillSheet'), findsWidgets);
+        });
+
+        testWidgets(
+          'D: at $label the office strip follows the Recommended Action',
+          (tester) async {
+            await pumpDemoAt(tester, size: size);
+
+            final stage = tester.getRect(stageFinder);
+            final action = tester.getRect(
+              find.byType(RecommendedActionSection),
+            );
+            expect(
+              stage.top,
+              greaterThanOrEqualTo(action.bottom),
+              reason: 'Employee Status follows the primary action',
+            );
+          },
         );
-        expect(
-          tester.getRect(navigatorFinder).top,
-          greaterThan(tester.getRect(ctaFinder).bottom),
-        );
-        expect(
-          treeIndexOf(tester, find.byType(HomeNavigatorSection)),
-          greaterThan(
-            treeIndexOf(tester, find.byType(PublicDemoHomeDashboardSection)),
-          ),
-        );
-      });
 
-      testWidgets('D: at $label the navigator is below the Office Stage', (
-        tester,
-      ) async {
-        await pumpDemoAt(tester, size: size);
-
-        final stage = tester.getRect(stageFinder);
-        final navigator = tester.getRect(navigatorFinder);
-        expect(
-          navigator.top,
-          greaterThanOrEqualTo(stage.bottom),
-          reason: 'the picture of the office comes before the person',
-        );
-        expect(
-          treeIndexOf(tester, find.byType(HomeNavigatorSection)),
-          greaterThan(treeIndexOf(tester, find.byType(HomeOfficeStageSection))),
-        );
-      });
-
-      testWidgets('at $label the full order holds in one reading: dashboard '
-          'section, then Office Stage, then navigator', (tester) async {
-        await pumpDemoAt(tester, size: size);
-
-        final dashboard = treeIndexOf(
+        testWidgets('at $label the full hierarchy holds in one reading', (
           tester,
-          find.byType(PublicDemoHomeDashboardSection),
+        ) async {
+          await pumpDemoAt(tester, size: size);
+
+          final dashboard = treeIndexOf(
+            tester,
+            find.byType(PublicDemoHomeDashboardSection),
+          );
+          final stage = treeIndexOf(
+            tester,
+            find.byType(HomeOfficeStageSection),
+          );
+          final navigator = treeIndexOf(
+            tester,
+            find.byType(HomeNavigatorSection),
+          );
+          final action = treeIndexOf(
+            tester,
+            find.byType(RecommendedActionSection),
+          );
+          expect(dashboard, lessThan(navigator));
+          expect(navigator, lessThan(action));
+          expect(action, lessThan(stage));
+        });
+      }
+
+      testWidgets('the navigator belongs inside the dashboard hierarchy, '
+          'but not inside the Employee Status office strip', (tester) async {
+        await pumpDemoAt(tester);
+
+        expect(
+          find.descendant(
+            of: find.byType(PublicDemoHomeDashboardSection),
+            matching: find.byType(HomeNavigatorSection),
+          ),
+          findsOneWidget,
+          reason:
+              'Hiyori belongs between company status and the action she explains',
         );
-        final stage = treeIndexOf(tester, find.byType(HomeOfficeStageSection));
-        final navigator = treeIndexOf(
-          tester,
-          find.byType(HomeNavigatorSection),
+        expect(
+          find.descendant(
+            of: find.byType(HomeOfficeStageSection),
+            matching: find.byType(HomeNavigatorSection),
+          ),
+          findsNothing,
         );
-        expect(dashboard, lessThan(stage));
-        expect(stage, lessThan(navigator));
       });
-    }
-
-    testWidgets('the navigator is a sibling of the read-only dashboard '
-        'section, never inside it', (tester) async {
-      await pumpDemoAt(tester);
-
-      expect(
-        find.descendant(
-          of: find.byType(PublicDemoHomeDashboardSection),
-          matching: find.byType(HomeNavigatorSection),
-        ),
-        findsNothing,
-        reason:
-            'group 15 scopes HOME\'s mutation guard and the block ceiling to '
-            'that section\'s subtree; the navigator carries no projected '
-            'value and must not be measured by them',
-      );
-      expect(
-        find.descendant(
-          of: find.byType(HomeOfficeStageSection),
-          matching: find.byType(HomeNavigatorSection),
-        ),
-        findsNothing,
-      );
-    });
-  });
+    },
+  );
 
   group('F: introducing the navigator changed no game state', () {
     testWidgets('the state on arrival is the untouched April opening', (
@@ -399,11 +409,19 @@ void main() {
       await pumpDemoAt(tester);
       final before = stateSnapshot(tester);
       final workflowBefore = workflowSnapshot(tester);
-      await tester.ensureVisible(find.byKey(const Key('home-navigator-open-advice')));
+      await tester.ensureVisible(
+        find.byKey(const Key('home-navigator-open-advice')),
+      );
       await tester.tap(find.byKey(const Key('home-navigator-open-advice')));
       await tester.pumpAndSettle();
-      expect(find.text('「佐藤 健のSkillSheetを確認」：SkillSheetの内容を確認しましょう。'), findsOneWidget);
-      expect(find.text('SkillSheetは、経験やスキルを案件へ伝えるための資料です。内容を確認して次の手続きに備えます。'), findsOneWidget);
+      expect(
+        find.text('「佐藤 健のSkillSheetを確認」：SkillSheetの内容を確認しましょう。'),
+        findsNWidgets(2),
+      );
+      expect(
+        find.text('SkillSheetは、経験やスキルを案件へ伝えるための資料です。内容を確認して次の手続きに備えます。'),
+        findsOneWidget,
+      );
       await tester.tap(find.byKey(const Key('home-navigator-close-advice')));
       await tester.pumpAndSettle();
       expect(stateSnapshot(tester), before);
@@ -414,7 +432,9 @@ void main() {
     testWidgets('expanded advice leaves the existing CTA available and its '
         'real owner dispatch still progresses workflow', (tester) async {
       await pumpDemoAt(tester);
-      await tester.ensureVisible(find.byKey(const Key('home-navigator-open-advice')));
+      await tester.ensureVisible(
+        find.byKey(const Key('home-navigator-open-advice')),
+      );
       await tester.tap(find.byKey(const Key('home-navigator-open-advice')));
       await tester.pumpAndSettle();
       final before = workflowSnapshot(tester);
@@ -512,8 +532,8 @@ void main() {
           // larger scale, but never permits the order to change.
           expect(
             treeIndexOf(tester, find.byType(HomeNavigatorSection)),
-            greaterThan(
-              treeIndexOf(tester, find.byType(HomeOfficeStageSection)),
+            lessThan(
+              treeIndexOf(tester, find.byType(RecommendedActionSection)),
             ),
           );
           expect(tester.takeException(), isNull);

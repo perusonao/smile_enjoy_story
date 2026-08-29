@@ -179,6 +179,24 @@ class _HomeNavigatorSectionState extends State<HomeNavigatorSection> {
                       _RoleBadge(layout: layout),
                     ],
                   ),
+                  if (widget.advice != null) ...[
+                    const SizedBox(height: HomeNavigatorMetrics.textGap),
+                    Semantics(
+                      label: 'おすすめの理由: ${widget.advice!.message}',
+                      child: Text(
+                        widget.advice!.message,
+                        key: const Key('home-navigator-rationale'),
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          fontSize: layout.messageFontSize,
+                          height: 1.25,
+                          fontWeight: FontWeight.w600,
+                          color: theme.colorScheme.onSurface,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
                   const SizedBox(height: HomeNavigatorMetrics.textGap),
                   // No maxLines and no ellipsis, deliberately. The greeting
                   // is fixed and short, so at the default scale it settles
@@ -209,7 +227,7 @@ class _HomeNavigatorSectionState extends State<HomeNavigatorSection> {
                         key: const Key('home-navigator-open-advice'),
                         onPressed: () => _setAdviceExpanded(true),
                         icon: const Icon(Icons.chat_bubble_outline, size: 18),
-                        label: const Text('ひよりに相談する'),
+                        label: const Text('詳しく見る'),
                         style: TextButton.styleFrom(
                           minimumSize: const Size(48, 48),
                           padding: const EdgeInsets.symmetric(horizontal: 8),

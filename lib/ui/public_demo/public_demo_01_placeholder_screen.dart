@@ -23,7 +23,6 @@ import '../../presentation/home/models/home_office_stage_display.dart';
 import '../../presentation/home/models/home_navigator_display.dart';
 import '../../presentation/home/models/home_recommended_action.dart';
 import '../../presentation/build_info.dart';
-import '../../presentation/home/widgets/home_navigator_section.dart';
 import '../../presentation/home/widgets/home_office_stage_section.dart';
 import '../asset_paths.dart';
 import 'public_demo_event_dialog.dart';
@@ -1761,53 +1760,10 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
                   PublicDemoHomeDashboardSection(
                     data: _homeDashboardData,
                     recommendedAction: _recommendedActionSlot,
+                    navigatorAdvice: navigatorAdvice,
                   ),
-                  // HOME-RUNTIME-2B: the Office Stage sits BELOW the
-                  // Recommended Action and above the legacy content, and the
-                  // order is the design's, not an aesthetic preference.
-                  // Recommended Action is the primary interaction; the Office
-                  // Stage is a visual layer. Putting the picture first would
-                  // have bought a better-looking screen by pushing the one
-                  // thing the player is supposed to do out of the opening
-                  // view — undoing exactly what HOME-RUNTIME-2A and 2C did.
-                  //
-                  // It is also a sibling of PublicDemoHomeDashboardSection
-                  // rather than a child: that section is the read-only
-                  // projection mount point whose height the consolidation
-                  // suite pins to a deliberately tight ceiling, and a picture
-                  // is not one of the facts that ceiling was drawn around.
-                  // Keeping it outside leaves that guard measuring exactly
-                  // what it was written to measure.
                   const SizedBox(height: 8),
                   HomeOfficeStageSection(display: _officeStageDisplay),
-                  // NAVIGATOR-1A: 佐倉 ひより sits BELOW the Office Stage, so
-                  // the opening column reads KPI → Recommended Action →
-                  // Office Stage → Navigator. The order is the design's and
-                  // it is the same argument HOME-RUNTIME-2B made one widget
-                  // above: the Recommended Action is the primary interaction
-                  // and the picture is a visual layer, so neither may be
-                  // pushed down by something introduced later. She is last of
-                  // the three because she is the only one of them that says
-                  // nothing the player has to act on.
-                  //
-                  // A sibling of PublicDemoHomeDashboardSection rather than a
-                  // child, for the reason the Office Stage already is: the
-                  // consolidation suite's group 15 scopes "HOME's only
-                  // mutation path" to that section's subtree and its ceiling
-                  // measures that section's height. Mounting an inert card
-                  // inside it would put a widget under guards that were
-                  // written to measure the read-only projection, and nothing
-                  // would be gained — this card holds no projected value.
-                  //
-                  // NAVIGATOR-1C only translates the already-resolved HOME
-                  // action outcome; it does not make an independent decision.
-                  const SizedBox(height: 8),
-                  HomeNavigatorSection(
-                    expression: navigatorExpressionFor(
-                      navigatorAdvice?.semantic,
-                    ),
-                    advice: navigatorAdvice,
-                  ),
                   const SizedBox(height: 8),
                   PublicDemoEmployeeStageSection(
                     employees: _employeeStageItems,

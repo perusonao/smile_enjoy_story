@@ -79,9 +79,9 @@ void main() {
       await pumpDemo(tester, size: const Size(360, 800));
 
       final order = [
+        find.byType(HomeNavigatorSection),
         find.byType(RecommendedActionSection),
         find.byType(HomeOfficeStageSection),
-        find.byType(HomeNavigatorSection),
         find.byType(PublicDemoEmployeeStageSection),
         find.byType(PublicDemoImportantEventsSection),
         find.byType(PublicDemoFinanceSummarySection),
@@ -171,8 +171,7 @@ void main() {
           await pumpDemo(tester, size: Size(width, 844), textScale: 1.3);
 
           for (final text in [
-            '社員の状況',
-            '重要なお知らせ',
+            '社員ステージ',
             '資金サマリー',
             '今月の主要行動',
             '今月売上',

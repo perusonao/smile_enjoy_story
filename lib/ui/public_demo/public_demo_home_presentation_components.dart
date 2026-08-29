@@ -74,7 +74,7 @@ class PublicDemoEmployeeStageSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => _HomeSectionCard(
-    title: '社員の状況',
+    title: '社員ステージ',
     child: employees.isEmpty
         ? const Text('表示できる社員はいません')
         : Column(
@@ -116,21 +116,29 @@ class PublicDemoImportantEventsSection extends StatelessWidget {
   final List<PublicDemoImportantEventItem> events;
 
   @override
-  Widget build(BuildContext context) => _HomeSectionCard(
-    title: '重要なお知らせ',
-    accent: true,
-    child: events.isEmpty
-        ? const Text('現在、対応が必要なイベントはありません')
-        : Column(
-            children: [
-              for (final event in events.take(2))
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 12),
-                  child: _ImportantEventCard(event: event),
-                ),
-            ],
-          ),
-  );
+  Widget build(BuildContext context) {
+    // An absence of meaningful events is not dashboard content. Keep a
+    // keyed, zero-footprint marker for tests/accessibility tooling without
+    // spending a full card on an empty state.
+    if (events.isEmpty) {
+      return const SizedBox(key: Key('public-demo-important-events-empty'));
+    }
+
+    return _HomeSectionCard(
+      cardKey: const Key('public-demo-important-events'),
+      title: '重要イベント',
+      accent: true,
+      child: Column(
+        children: [
+          for (final event in events.take(2))
+            Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: _ImportantEventCard(event: event),
+            ),
+        ],
+      ),
+    );
+  }
 }
 
 class PublicDemoFinanceSummarySection extends StatelessWidget {
@@ -140,16 +148,12 @@ class PublicDemoFinanceSummarySection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => _HomeSectionCard(
+    cardKey: const Key('public-demo-finance-summary'),
     title: '資金サマリー',
     child: Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _FinanceRow('現金残高', summary.cash, emphasis: true),
-        _FinanceRow('今月売上', summary.revenue),
-        _FinanceRow('直近給与', summary.payroll, expense: true),
-        _FinanceRow('直近固定費', summary.fixedCosts, expense: true),
-        _FinanceRow('次回入金予定', summary.nextMonthEstimate),
         if (summary.warning != null) ...[
-          const SizedBox(height: 10),
           Semantics(
             label: '資金警告: ${summary.warning}',
             child: Container(
@@ -165,7 +169,15 @@ class PublicDemoFinanceSummarySection extends StatelessWidget {
               ),
             ),
           ),
+          const SizedBox(height: 10),
         ],
+        const Text('直近の支出予定', style: TextStyle(fontWeight: FontWeight.w600)),
+        _FinanceRow('給与', summary.payroll, emphasis: true, expense: true),
+        _FinanceRow('固定費', summary.fixedCosts, emphasis: true, expense: true),
+        const Divider(height: 18),
+        _FinanceRow('現金残高', summary.cash, subdued: true),
+        _FinanceRow('今月売上', summary.revenue, subdued: true),
+        _FinanceRow('次回入金予定', summary.nextMonthEstimate, subdued: true),
       ],
     ),
   );
@@ -245,11 +257,13 @@ class _FinanceRow extends StatelessWidget {
     this.amount, {
     this.emphasis = false,
     this.expense = false,
+    this.subdued = false,
   });
   final String label;
   final int amount;
   final bool emphasis;
   final bool expense;
+  final bool subdued;
 
   @override
   Widget build(BuildContext context) => Padding(
@@ -261,6 +275,9 @@ class _FinanceRow extends StatelessWidget {
           label,
           style: TextStyle(
             fontWeight: emphasis ? FontWeight.bold : FontWeight.normal,
+            color: subdued
+                ? Theme.of(context).colorScheme.onSurfaceVariant
+                : null,
           ),
         ),
         Align(
@@ -269,7 +286,11 @@ class _FinanceRow extends StatelessWidget {
             '${expense ? '-' : ''}${formatYen(amount)}',
             style: TextStyle(
               fontWeight: FontWeight.w600,
-              color: emphasis ? SesTheme.primaryBlue : null,
+              color: emphasis
+                  ? SesTheme.primaryBlue
+                  : subdued
+                  ? Theme.of(context).colorScheme.onSurfaceVariant
+                  : null,
             ),
           ),
         ),
@@ -299,16 +320,19 @@ class _StatusChip extends StatelessWidget {
 
 class _HomeSectionCard extends StatelessWidget {
   const _HomeSectionCard({
+    this.cardKey,
     required this.title,
     required this.child,
     this.accent = false,
   });
+  final Key? cardKey;
   final String title;
   final Widget child;
   final bool accent;
 
   @override
   Widget build(BuildContext context) => Card(
+    key: cardKey,
     child: Padding(
       padding: const EdgeInsets.all(14),
       child: Column(

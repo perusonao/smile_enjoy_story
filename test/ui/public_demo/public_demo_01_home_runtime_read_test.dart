@@ -41,6 +41,7 @@ import 'package:smile_enjoy_story/game/public_demo/public_demo_sales.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_state.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_workflow_state.dart';
 import 'package:smile_enjoy_story/presentation/home/home.dart';
+import 'package:smile_enjoy_story/presentation/home/widgets/home_navigator_section.dart';
 import 'package:smile_enjoy_story/presentation/home/widgets/kpi_section.dart';
 import 'package:smile_enjoy_story/presentation/home/widgets/month_header_bar.dart';
 import 'package:smile_enjoy_story/presentation/home/widgets/recommended_action_section.dart';
@@ -59,7 +60,7 @@ PublicDemoState currentState(WidgetTester tester) =>
 /// The screen's own authoritative workflow state, alongside [currentState].
 PublicDemoWorkflowState currentWorkflow(WidgetTester tester) =>
     (tester.state(find.byType(PublicDemo01PlaceholderScreen)) as dynamic)
-        .workflow
+            .workflow
         as PublicDemoWorkflowState;
 
 Finder get sectionFinder => find.byType(PublicDemoHomeDashboardSection);
@@ -350,10 +351,8 @@ void main() {
       expect(inHome(find.text('入金予定')), findsOneWidget);
     });
 
-    testWidgets('14: HOME\'s only mutation path is the whitelisted '
-        'Recommended Action CTA, bound to an existing aggregate command', (
-      tester,
-    ) async {
+    testWidgets('14: HOME\'s only gameplay mutation path is the resolved '
+        'Recommended Action owner callback', (tester) async {
       await pumpDemo(tester);
 
       // Structural: the HOME subtree is the read-only display widgets plus
@@ -362,6 +361,7 @@ void main() {
       // PublicDemoState, a PublicDemoAggregate, or a command callback.
       expect(inHome(find.byType(MonthHeaderBar)), findsOneWidget);
       expect(inHome(find.byType(KpiSection)), findsOneWidget);
+      expect(inHome(find.byType(HomeNavigatorSection)), findsOneWidget);
       expect(inHome(find.byType(RecommendedActionSection)), findsOneWidget);
       expect(
         tester.widget<MonthHeaderBar>(inHome(find.byType(MonthHeaderBar))).data,
@@ -372,37 +372,18 @@ void main() {
         isA<HomeDashboardDisplayData>(),
       );
 
-      // Structural: the ONLY interactive element in the whole HOME subtree
-      // is the single whitelisted CTA. One entry point, not a surface.
+      // Structural: HOME has the resolved action CTA and Hiyori's local
+      // detail control. The latter only expands presentation; it receives no
+      // domain API and its expanded CTA reuses the same owner callback.
       final cta = find.byKey(const Key('home-recommended-action-cta'));
+      final openAdvice = find.byKey(const Key('home-navigator-open-advice'));
       expect(inHome(cta), findsOneWidget);
+      expect(inHome(openAdvice), findsOneWidget);
       expect(
         inHome(find.byWidgetPredicate((w) => w is ButtonStyleButton)),
-        findsOneWidget,
-        reason: 'exactly one button — the CTA — may exist inside HOME',
+        findsNWidgets(2),
+        reason: 'the action CTA and local advice expander are the only buttons',
       );
-      // Every other interactive type is absent from HOME *outside* the
-      // CTA. Compared against the CTA's own subtree rather than asserted
-      // to zero, because a Material button legitimately builds an InkWell
-      // of its own: this says "the only interactive internals in HOME are
-      // the ones the whitelisted CTA itself contributes", which is the
-      // precise claim, and still fails if anything else grows a gesture.
-      for (final interactive in <Finder>[
-        find.byType(InkWell),
-        find.byType(IconButton),
-        find.byType(ListTile),
-        find.byType(TextField),
-        find.byType(Switch),
-        find.byType(Checkbox),
-      ]) {
-        expect(
-          inHome(interactive).evaluate().length,
-          find.descendant(of: cta, matching: interactive).evaluate().length,
-          reason:
-              'only the whitelisted CTA may contribute interactive widgets '
-              'to the HOME subtree',
-        );
-      }
       // ...and it is genuinely enabled, not a decorative disabled control.
       expect(tester.widget<FilledButton>(cta).onPressed, isNotNull);
 

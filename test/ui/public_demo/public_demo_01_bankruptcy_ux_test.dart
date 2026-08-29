@@ -263,8 +263,6 @@ void main() {
 
         // The Recommended Action CTA for cashShortage should be visible.
         // Its label comes from HomeRecommendedActionKind.cashShortageResponse.
-        final ctaFinder = find.byKey(const Key('public-demo-monthly-primary-cta'));
-        // The cash shortage CTA is in HOME's recommended action section.
         // Look for the '資金不足を確認' label (the action button text).
         final cashShortageCtaFinder = find.text('資金不足を確認');
         expect(cashShortageCtaFinder, findsOneWidget,

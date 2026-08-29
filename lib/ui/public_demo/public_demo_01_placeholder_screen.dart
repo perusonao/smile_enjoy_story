@@ -391,19 +391,6 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
     );
   }
 
-  /// The HOME-RUNTIME-2C P0 CTA — replaced by [_showCashShortageExplanation]
-  /// in PLAYTEST-BLOCKER-1A. Kept as a private utility for callers that only
-  /// want the scroll side-effect (e.g. after restart), but the Recommended
-  /// Action binding now uses the dialog instead.
-  void _scrollToShortageCard() {
-    if (!_scrollController.hasClients) return;
-    _scrollController.animateTo(
-      0,
-      duration: const Duration(milliseconds: 250),
-      curve: Curves.easeOut,
-    );
-  }
-
   /// PLAYTEST-BLOCKER-1A: shows a compact dialog that always produces
   /// perceptible feedback regardless of scroll position. The player sees
   /// the current cash, the shortage amount, the pending AR, and a plain

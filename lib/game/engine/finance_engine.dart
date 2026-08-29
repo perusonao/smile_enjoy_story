@@ -34,6 +34,18 @@ class FinanceEngine {
     return _fallbackClient;
   }
 
+  /// 支払サイト days → the absolute month (see [GameCalendar.absoluteMonth])
+  /// cash for revenue recognized in [generatedMonth] actually arrives, under
+  /// the prototype's month-granularity simplification (§14-15): a 30-day
+  /// term collects at the next month's close, 60-day at the one after that.
+  static int dueMonthFor({
+    required int generatedMonth,
+    required int paymentTermDays,
+  }) {
+    final monthsOut = paymentTermDays <= 30 ? 1 : 2;
+    return generatedMonth + monthsOut;
+  }
+
   /// Full monthly salary for every current engineer, regardless of
   /// status — waiting engineers draw 100% salary too (§7) — *except* the
   /// one engineer the Founding Prologue can materialize before they've

@@ -9,12 +9,19 @@ void main() {
     double textScaleFactor = 1,
   }) {
     return MediaQuery(
-      data: MediaQueryData(size: size, textScaler: TextScaler.linear(textScaleFactor)),
-      child: MaterialApp(home: Scaffold(body: Center(child: dialog))),
+      data: MediaQueryData(
+        size: size,
+        textScaler: TextScaler.linear(textScaleFactor),
+      ),
+      child: MaterialApp(
+        home: Scaffold(body: Center(child: dialog)),
+      ),
     );
   }
 
-  testWidgets('renders required content and fires action exactly once', (tester) async {
+  testWidgets('renders required content and fires action exactly once', (
+    tester,
+  ) async {
     var calls = 0;
 
     await tester.pumpWidget(
@@ -40,7 +47,43 @@ void main() {
     expect(calls, 1);
   });
 
-  testWidgets('renders image, badge, description and info section', (tester) async {
+  testWidgets('uses title as semantic label when category is absent', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      host(
+        dialog: const GameEventModal(title: 'イベントタイトル', actions: []),
+      ),
+    );
+
+    expect(
+      tester.widget<AlertDialog>(find.byType(AlertDialog)).semanticLabel,
+      'イベントタイトル',
+    );
+  });
+
+  testWidgets('prefixes semantic label with category when present', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      host(
+        dialog: const GameEventModal(
+          category: '採用・応募',
+          title: '新しい応募が届きました',
+          actions: [],
+        ),
+      ),
+    );
+
+    expect(
+      tester.widget<AlertDialog>(find.byType(AlertDialog)).semanticLabel,
+      '採用・応募: 新しい応募が届きました',
+    );
+  });
+
+  testWidgets('renders image, badge, description and info section', (
+    tester,
+  ) async {
     const imageKey = Key('event-image');
 
     await tester.pumpWidget(
@@ -52,7 +95,12 @@ void main() {
           title: '新しい応募が届きました',
           description: '採用候補者から応募が届いています。',
           infoSection: const Text('次の行動'),
-          actions: const [SizedBox(height: 52, child: FilledButton(onPressed: null, child: Text('確認')))],
+          actions: const [
+            SizedBox(
+              height: 52,
+              child: FilledButton(onPressed: null, child: Text('確認')),
+            ),
+          ],
         ),
       ),
     );
@@ -75,7 +123,12 @@ void main() {
         dialog: GameEventModal(
           title: longTitle,
           description: '説明文です。',
-          actions: const [SizedBox(height: 52, child: FilledButton(onPressed: null, child: Text('確認')))],
+          actions: const [
+            SizedBox(
+              height: 52,
+              child: FilledButton(onPressed: null, child: Text('確認')),
+            ),
+          ],
         ),
       ),
     );
@@ -86,7 +139,9 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('three actions stay reachable at 360x800 with large text', (tester) async {
+  testWidgets('three actions stay reachable at 360x800 with large text', (
+    tester,
+  ) async {
     await tester.pumpWidget(
       host(
         size: const Size(360, 800),
@@ -96,9 +151,18 @@ void main() {
           description: List.filled(20, '長い説明文です。').join(),
           infoSection: const Text('判断に必要な追加情報です。'),
           actions: const [
-            SizedBox(height: 52, child: FilledButton(onPressed: null, child: Text('選択肢1'))),
-            SizedBox(height: 52, child: FilledButton(onPressed: null, child: Text('選択肢2'))),
-            SizedBox(height: 52, child: FilledButton(onPressed: null, child: Text('選択肢3'))),
+            SizedBox(
+              height: 52,
+              child: FilledButton(onPressed: null, child: Text('選択肢1')),
+            ),
+            SizedBox(
+              height: 52,
+              child: FilledButton(onPressed: null, child: Text('選択肢2')),
+            ),
+            SizedBox(
+              height: 52,
+              child: FilledButton(onPressed: null, child: Text('選択肢3')),
+            ),
           ],
         ),
       ),

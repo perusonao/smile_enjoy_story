@@ -57,7 +57,10 @@ class GameEventModal extends StatelessWidget {
                 children: [
                   if (category != null) ...[
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 4,
+                      ),
                       decoration: BoxDecoration(
                         color: scheme.primaryContainer,
                         borderRadius: BorderRadius.circular(6),
@@ -141,10 +144,21 @@ class _EventImage extends StatelessWidget {
               asset,
               key: imageKey,
               fit: BoxFit.cover,
+              // PR #36's iOS rendering investigation evaluated and rejected
+              // cacheWidth, filterQuality.low, and gaplessPlayback here:
+              // these small bundled images would only be requested at an
+              // upscale decode size, low filtering made that upscale softer,
+              // and each showDialog call creates a fresh Image element so
+              // gapless provider swaps cannot help. Event callers instead use
+              // _precacheEventImage in public_demo_01_placeholder_screen.dart,
+              // which is the established fix for first-frame image pop-in.
               errorBuilder: (context, error, stackTrace) => Container(
                 color: scheme.surfaceContainerHighest,
                 alignment: Alignment.center,
-                child: const Icon(Icons.notifications_active_outlined, size: 48),
+                child: const Icon(
+                  Icons.notifications_active_outlined,
+                  size: 48,
+                ),
               ),
             ),
           ),

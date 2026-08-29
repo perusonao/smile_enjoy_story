@@ -186,16 +186,16 @@ void main() {
             'negative-cash close, so this fiscal year is already bankrupt',
       );
 
-      // Terminal guard: once bankrupt, the still-rendered ordinary-month
-      // close button is a no-op (FINANCE-FAILURE-1A+1B §22/23 test X) —
-      // month, cash, and financial status all stay exactly as they were.
-      final beforeRetry = currentState(tester);
-      await tapAndSettle(tester, '11月終了→12月');
-      final afterRetry = currentState(tester);
-      expect(afterRetry.month, beforeRetry.month);
-      expect(afterRetry.cash, beforeRetry.cash);
-      expect(afterRetry.financialStatus, beforeRetry.financialStatus);
-      expect(find.text('1年目 12月'), findsNothing);
+      // PLAYTEST-BLOCKER-1A: once bankrupt the month-close button is hidden,
+      // not a silent no-op. The domain-level terminal guard (§22/23 test X)
+      // is proven by public_demo_financial_status_test.dart.
+      expect(
+        find.text('11月終了→12月'),
+        findsNothing,
+        reason:
+            'month-close CTA must be hidden after bankruptcy '
+            '(PLAYTEST-BLOCKER-1A)',
+      );
     },
   );
 }

@@ -532,19 +532,16 @@ void main() {
       );
       expectHomeMatchesAuthority(tester, at: 'bankruptcy');
 
-      final beforeRetry = currentState(tester);
-      final homeBeforeRetry = homeData(tester);
-      await tapAndSettle(tester, '11月終了→12月');
-      await settle(tester);
-      final afterRetry = currentState(tester);
-      expect(afterRetry.month, beforeRetry.month);
-      expect(afterRetry.cash, beforeRetry.cash);
-      expect(afterRetry.financialStatus, beforeRetry.financialStatus);
-      expect(afterRetry.fiscalYearCompleted, isFalse);
+      // PLAYTEST-BLOCKER-1A: the month-close button is hidden once bankrupt,
+      // not a silent no-op — the player sees the terminal card and restart.
+      // Domain-level terminal guard is proven by
+      // public_demo_financial_status_test.dart.
       expect(
-        homeData(tester),
-        homeBeforeRetry,
-        reason: 'a no-op close must not move HOME either',
+        find.text('11月終了→12月'),
+        findsNothing,
+        reason:
+            'month-close CTA must be hidden after bankruptcy '
+            '(PLAYTEST-BLOCKER-1A)',
       );
     });
 

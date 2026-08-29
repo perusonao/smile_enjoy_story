@@ -159,18 +159,39 @@ void main() {
     );
 
     // F: read-only navigation still works — cash and employee names
-    // remain visible, and the page still scrolls. (A dedicated
-    // bankruptcy result card/message is 1C UI scope — FINANCE-FAILURE-1A
-    // +1B is domain-first: see this file's class doc.)
+    // remain visible, and the page still scrolls.
     expect(find.textContaining('現預金'), findsWidgets);
     expect(find.text('佐藤 健'), findsWidgets);
 
-    // Terminal guard: retrying the still-rendered close button (§22/23
-    // test X) does not mutate cash, month, or financial status again —
-    // no duplicate AR collection, no duplicate expenses.
-    await tapAndSettle(tester, '12月終了→1月');
-    state = currentState(tester);
-    expect(state.month, 12);
+    // PLAYTEST-BLOCKER-1A: the bankruptcy terminal card is shown so
+    // the player understands the game ended due to bankruptcy, not
+    // because a button stopped working.
+    expect(
+      find.byKey(const Key('public-demo-bankruptcy-card')),
+      findsOneWidget,
+      reason: 'bankruptcy terminal card must be visible',
+    );
+
+    // PLAYTEST-BLOCKER-1A: the month-close button is absent — hidden,
+    // not a silent no-op — once the terminal state is reached.
+    // Domain-level terminal guard (§22/23 test X) remains proven by
+    // public_demo_financial_status_test.dart.
+    expect(
+      find.text('12月終了→1月'),
+      findsNothing,
+      reason: 'legacy no-op close button must not be visible after bankruptcy',
+    );
+
+    // Restart action is present (tested in depth in
+    // public_demo_01_bankruptcy_ux_test.dart).
+    expect(
+      find.byKey(const Key('public-demo-restart-button')),
+      findsOneWidget,
+      reason: 'restart button must be visible for the player to continue',
+    );
+
+    // Finance state is stable and was not mutated by reaching the
+    // terminal state (matches domain-level test X contract).
     expect(state.cash, cashBeforeAnyPostTerminalTap);
     expect(state.financialStatus, PublicDemoFinancialStatus.bankruptcy);
     expect(state.trainingSelections, trainingSelectionsBefore);

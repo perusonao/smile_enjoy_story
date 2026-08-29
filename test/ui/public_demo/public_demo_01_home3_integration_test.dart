@@ -1,0 +1,203 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:smile_enjoy_story/game/public_demo/public_demo_state.dart';
+import 'package:smile_enjoy_story/presentation/home/widgets/home_navigator_section.dart';
+import 'package:smile_enjoy_story/presentation/home/widgets/home_office_stage_section.dart';
+import 'package:smile_enjoy_story/presentation/home/widgets/recommended_action_section.dart';
+import 'package:smile_enjoy_story/ui/public_demo/public_demo_01_placeholder_screen.dart';
+import 'package:smile_enjoy_story/ui/public_demo/public_demo_home_presentation_components.dart';
+
+PublicDemoState currentState(WidgetTester tester) =>
+    (tester.state(find.byType(PublicDemo01PlaceholderScreen)) as dynamic).s
+        as PublicDemoState;
+
+Future<void> pumpDemo(
+  WidgetTester tester, {
+  required Size size,
+  double textScale = 1,
+}) async {
+  tester.view.physicalSize = size;
+  tester.view.devicePixelRatio = 1;
+  addTearDown(tester.view.reset);
+  await tester.pumpWidget(
+    MaterialApp(
+      home: MediaQuery(
+        data: MediaQueryData(textScaler: TextScaler.linear(textScale)),
+        child: const PublicDemo01PlaceholderScreen(),
+      ),
+    ),
+  );
+  await tester.pumpAndSettle();
+}
+
+Future<void> settleDialogImage(WidgetTester tester) async {
+  for (var i = 0; i < 10; i++) {
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 100)),
+    );
+    await tester.pump();
+  }
+  await tester.pumpAndSettle();
+}
+
+Future<void> scrollToVisible(WidgetTester tester, Finder target) async {
+  final viewportHeight = tester.view.physicalSize.height;
+  for (
+    var i = 0;
+    i < 8 && tester.getRect(target).bottom > viewportHeight;
+    i++
+  ) {
+    await tester.drag(find.byType(ListView), const Offset(0, -300));
+    await tester.pumpAndSettle();
+  }
+  expect(tester.getRect(target).bottom, lessThanOrEqualTo(viewportHeight));
+}
+
+Future<void> tapAndDismissMonthEnd(WidgetTester tester) async {
+  final cta = find.byKey(const Key('public-demo-monthly-primary-cta'));
+  await scrollToVisible(tester, cta);
+  await tester.tap(cta);
+  await settleDialogImage(tester);
+  await tester.tap(find.widgetWithText(FilledButton, '確認'));
+  await tester.pumpAndSettle();
+}
+
+int treeIndexOf(WidgetTester tester, Finder finder) {
+  final target = finder.evaluate().single;
+  final all = find
+      .byWidgetPredicate((_) => true)
+      .evaluate()
+      .toList(growable: false);
+  return all.indexOf(target);
+}
+
+void main() {
+  group('HOME-3 current-main integration', () {
+    testWidgets('composes the authoritative HOME sections in reading order', (
+      tester,
+    ) async {
+      await pumpDemo(tester, size: const Size(360, 800));
+
+      final order = [
+        find.byType(RecommendedActionSection),
+        find.byType(HomeOfficeStageSection),
+        find.byType(HomeNavigatorSection),
+        find.byType(PublicDemoEmployeeStageSection),
+        find.byType(PublicDemoImportantEventsSection),
+        find.byType(PublicDemoFinanceSummarySection),
+        find.byType(PublicDemoMonthlyPrimaryCtaSection),
+      ];
+      for (final section in order) {
+        expect(section, findsOneWidget);
+      }
+      for (var i = 1; i < order.length; i++) {
+        expect(
+          treeIndexOf(tester, order[i - 1]),
+          lessThan(treeIndexOf(tester, order[i])),
+        );
+      }
+
+      final finance = tester.widget<PublicDemoFinanceSummarySection>(
+        find.byType(PublicDemoFinanceSummarySection),
+      );
+      expect(finance.summary.cash, currentState(tester).cash);
+      expect(
+        finance.summary.nextMonthEstimate,
+        currentState(tester).pendingRevenue,
+      );
+      expect(find.text('佐藤 健'), findsWidgets);
+      expect(
+        find.descendant(
+          of: find.byType(PublicDemoEmployeeStageSection),
+          matching: find.text('営業準備前'),
+        ),
+        findsNWidgets(2),
+      );
+    });
+
+    testWidgets('the primary Recommended Action remains initially reachable', (
+      tester,
+    ) async {
+      await pumpDemo(tester, size: const Size(360, 800));
+
+      final cta = find.byKey(const Key('home-recommended-action-cta'));
+      expect(cta, findsOneWidget);
+      final rect = tester.getRect(cta);
+      expect(rect.left, greaterThanOrEqualTo(0));
+      expect(rect.right, lessThanOrEqualTo(360));
+      expect(rect.bottom, lessThanOrEqualTo(800));
+    });
+
+    testWidgets(
+      'the month-end shortcut dispatches its existing April handler once',
+      (tester) async {
+        await pumpDemo(tester, size: const Size(360, 800));
+        expect(currentState(tester).month, 4);
+
+        await tapAndDismissMonthEnd(tester);
+
+        expect(currentState(tester).month, 5);
+        expect(
+          find.text('5月を終了して6月へ'),
+          findsOneWidget,
+          reason: 'a single tap must not advance two monthly closes',
+        );
+      },
+    );
+
+    testWidgets('the event shortcut is presentation-only and preserves state', (
+      tester,
+    ) async {
+      await pumpDemo(tester, size: const Size(390, 844));
+      await tapAndDismissMonthEnd(tester);
+      final before = currentState(tester).toJson();
+
+      final eventCta = find.widgetWithText(TextButton, '収支を見る');
+      await scrollToVisible(tester, eventCta);
+      await tester.tap(eventCta);
+      await tester.pumpAndSettle();
+
+      expect(currentState(tester).toJson(), before);
+      expect(
+        find.byKey(const Key('public-demo-monthly-cash-flow-card')),
+        findsOneWidget,
+      );
+    });
+
+    for (final width in [360.0, 390.0]) {
+      testWidgets(
+        'at ${width.toInt()}px with increased text scale, HOME-3 has no horizontal overflow or clipped labels',
+        (tester) async {
+          await pumpDemo(tester, size: Size(width, 844), textScale: 1.3);
+
+          for (final text in [
+            '社員の状況',
+            '重要なお知らせ',
+            '資金サマリー',
+            '今月の主要行動',
+            '今月売上',
+            '次回入金予定',
+          ]) {
+            final label = find.text(text);
+            await tester.ensureVisible(label);
+            final rect = tester.getRect(label);
+            expect(rect.left, greaterThanOrEqualTo(0), reason: text);
+            expect(rect.right, lessThanOrEqualTo(width), reason: text);
+          }
+
+          final cta = find.byKey(const Key('public-demo-monthly-primary-cta'));
+          await tester.ensureVisible(cta);
+          final ctaRect = tester.getRect(cta);
+          expect(ctaRect.left, greaterThanOrEqualTo(0));
+          expect(ctaRect.right, lessThanOrEqualTo(width));
+
+          for (var i = 0; i < 8; i++) {
+            await tester.drag(find.byType(ListView), const Offset(0, -400));
+            await tester.pumpAndSettle();
+            expect(tester.takeException(), isNull);
+          }
+        },
+      );
+    }
+  });
+}

@@ -82,16 +82,26 @@ class PublicDemoEmployeeStageSection extends StatelessWidget {
               for (final employee in employees)
                 Padding(
                   padding: const EdgeInsets.only(bottom: 8),
-                  child: Row(
+                  child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Icon(Icons.person_outline, size: 20),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(employee.name, overflow: TextOverflow.ellipsis),
+                      Row(
+                        children: [
+                          const Icon(Icons.person_outline, size: 20),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              employee.name,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
                       ),
-                      const SizedBox(width: 8),
-                      _StatusChip(label: employee.status),
+                      const SizedBox(height: 3),
+                      Padding(
+                        padding: const EdgeInsets.only(left: 28),
+                        child: _StatusChip(label: employee.status),
+                      ),
                     ],
                   ),
                 ),
@@ -133,11 +143,11 @@ class PublicDemoFinanceSummarySection extends StatelessWidget {
     title: '資金サマリー',
     child: Column(
       children: [
-        _FinanceRow('現預金', summary.cash, emphasis: true),
-        _FinanceRow('売上', summary.revenue),
-        _FinanceRow('給与', summary.payroll, expense: true),
-        _FinanceRow('固定費', summary.fixedCosts, expense: true),
-        _FinanceRow('翌月見込み', summary.nextMonthEstimate),
+        _FinanceRow('現金残高', summary.cash, emphasis: true),
+        _FinanceRow('今月売上', summary.revenue),
+        _FinanceRow('直近給与', summary.payroll, expense: true),
+        _FinanceRow('直近固定費', summary.fixedCosts, expense: true),
+        _FinanceRow('次回入金予定', summary.nextMonthEstimate),
         if (summary.warning != null) ...[
           const SizedBox(height: 10),
           Semantics(
@@ -149,7 +159,10 @@ class PublicDemoFinanceSummarySection extends StatelessWidget {
                 color: Colors.red.shade50,
                 borderRadius: BorderRadius.circular(8),
               ),
-              child: Text(summary.warning!, style: TextStyle(color: Colors.red.shade900)),
+              child: Text(
+                summary.warning!,
+                style: TextStyle(color: Colors.red.shade900),
+              ),
             ),
           ),
         ],
@@ -190,7 +203,9 @@ class _ImportantEventCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = event.isHighPriority ? Colors.red.shade700 : SesTheme.primaryBlue;
+    final color = event.isHighPriority
+        ? Colors.red.shade700
+        : SesTheme.primaryBlue;
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(12),
@@ -204,13 +219,19 @@ class _ImportantEventCard extends StatelessWidget {
         children: [
           _StatusChip(label: event.category, color: color),
           const SizedBox(height: 6),
-          Text(event.title, style: const TextStyle(fontWeight: FontWeight.bold)),
+          Text(
+            event.title,
+            style: const TextStyle(fontWeight: FontWeight.bold),
+          ),
           const SizedBox(height: 3),
           Text(event.summary),
           const SizedBox(height: 8),
           Align(
             alignment: Alignment.centerRight,
-            child: TextButton(onPressed: event.onPressed, child: Text(event.ctaLabel)),
+            child: TextButton(
+              onPressed: event.onPressed,
+              child: Text(event.ctaLabel),
+            ),
           ),
         ],
       ),
@@ -219,7 +240,12 @@ class _ImportantEventCard extends StatelessWidget {
 }
 
 class _FinanceRow extends StatelessWidget {
-  const _FinanceRow(this.label, this.amount, {this.emphasis = false, this.expense = false});
+  const _FinanceRow(
+    this.label,
+    this.amount, {
+    this.emphasis = false,
+    this.expense = false,
+  });
   final String label;
   final int amount;
   final bool emphasis;
@@ -228,11 +254,25 @@ class _FinanceRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Padding(
     padding: const EdgeInsets.symmetric(vertical: 3),
-    child: Row(
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Expanded(child: Text(label, style: TextStyle(fontWeight: emphasis ? FontWeight.bold : FontWeight.normal))),
-        const SizedBox(width: 12),
-        Text('${expense ? '-' : ''}${formatYen(amount)}', style: TextStyle(fontWeight: FontWeight.w600, color: emphasis ? SesTheme.primaryBlue : null)),
+        Text(
+          label,
+          style: TextStyle(
+            fontWeight: emphasis ? FontWeight.bold : FontWeight.normal,
+          ),
+        ),
+        Align(
+          alignment: Alignment.centerRight,
+          child: Text(
+            '${expense ? '-' : ''}${formatYen(amount)}',
+            style: TextStyle(
+              fontWeight: FontWeight.w600,
+              color: emphasis ? SesTheme.primaryBlue : null,
+            ),
+          ),
+        ),
       ],
     ),
   );
@@ -246,13 +286,23 @@ class _StatusChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Container(
     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-    decoration: BoxDecoration(color: (color ?? SesTheme.primaryBlue).withValues(alpha: .12), borderRadius: BorderRadius.circular(12)),
-    child: Text(label, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: color)),
+    decoration: BoxDecoration(
+      color: (color ?? SesTheme.primaryBlue).withValues(alpha: .12),
+      borderRadius: BorderRadius.circular(12),
+    ),
+    child: Text(
+      label,
+      style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: color),
+    ),
   );
 }
 
 class _HomeSectionCard extends StatelessWidget {
-  const _HomeSectionCard({required this.title, required this.child, this.accent = false});
+  const _HomeSectionCard({
+    required this.title,
+    required this.child,
+    this.accent = false,
+  });
   final String title;
   final Widget child;
   final bool accent;
@@ -264,7 +314,13 @@ class _HomeSectionCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(title, style: TextStyle(fontWeight: FontWeight.bold, color: accent ? SesTheme.primaryBlue : null)),
+          Text(
+            title,
+            style: TextStyle(
+              fontWeight: FontWeight.bold,
+              color: accent ? SesTheme.primaryBlue : null,
+            ),
+          ),
           const SizedBox(height: 10),
           child,
         ],

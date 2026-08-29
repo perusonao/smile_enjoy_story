@@ -270,6 +270,11 @@ void main() {
 
         // C: tap the Recommended Action — it must open a dialog with
         // perceptible feedback (not just a potentially-inert scroll).
+        // ensureVisible first: the button may sit below the 600px test
+        // viewport even after _scrollToTop, so the tap must land inside
+        // the visible area for the callback to fire.
+        await tester.ensureVisible(cashShortageCtaFinder);
+        await tester.pumpAndSettle();
         await tester.tap(cashShortageCtaFinder);
         await tester.pumpAndSettle();
 

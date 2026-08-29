@@ -22,6 +22,7 @@ import '../../presentation/home/models/home_dashboard_display_data.dart';
 import '../../presentation/home/models/home_office_stage_display.dart';
 import '../../presentation/home/models/home_navigator_display.dart';
 import '../../presentation/home/models/home_recommended_action.dart';
+import '../../presentation/build_info.dart';
 import '../../presentation/home/widgets/home_navigator_section.dart';
 import '../../presentation/home/widgets/home_office_stage_section.dart';
 import '../asset_paths.dart';
@@ -48,7 +49,9 @@ typedef _AddCandidate =
     });
 
 class PublicDemo01PlaceholderScreen extends StatefulWidget {
-  const PublicDemo01PlaceholderScreen({super.key});
+  const PublicDemo01PlaceholderScreen({super.key, this.buildInfo});
+
+  final BuildInfo? buildInfo;
   @override
   State<PublicDemo01PlaceholderScreen> createState() => _S();
 }
@@ -1593,7 +1596,18 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
       ),
     ),
     child: Scaffold(
-      appBar: AppBar(title: const Text('S.E.S. Public Demo 0.1')),
+      appBar: AppBar(
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text('S.E.S. Public Demo 0.1'),
+            BuildInfoLabel(
+              buildInfo: widget.buildInfo ?? BuildInfo.fromEnvironment(),
+            ),
+          ],
+        ),
+      ),
       body: SafeArea(
         child: ListView(
           controller: _scrollController,

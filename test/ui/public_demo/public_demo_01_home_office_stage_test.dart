@@ -360,8 +360,8 @@ void main() {
       }
     });
 
-    testWidgets('M: adding the Office Stage did not add a second mutation '
-        'path — HOME still has exactly one CTA', (tester) async {
+    testWidgets('M: Employee Status adds no mutation path — HOME has the '
+        'resolved CTA plus Hiyori\'s local detail control', (tester) async {
       await pumpDemoAt(tester);
 
       final home = find.byType(PublicDemoHomeDashboardSection);
@@ -370,7 +370,7 @@ void main() {
           of: home,
           matching: find.byWidgetPredicate((w) => w is ButtonStyleButton),
         ),
-        findsOneWidget,
+        findsNWidgets(2),
       );
       // And the visual layer contributes none of its own.
       expect(

@@ -431,7 +431,7 @@ void main() {
       await pumpStage(tester, displayOf(3));
       expect(find.textContaining('参画'), findsNothing);
       expect(find.textContaining('待機'), findsNothing);
-      expect(find.text('オフィス'), findsOneWidget);
+      expect(find.text('社員の様子'), findsOneWidget);
     });
 
     test('the display is a pure value: equal rosters compare equal', () {

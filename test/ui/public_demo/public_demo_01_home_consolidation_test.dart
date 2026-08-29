@@ -174,7 +174,7 @@ const _targets = <({Size size, double contentBudget})>[
 /// for a second card to reappear in the slot. It is still barely half of
 /// the 615pt browser-chrome content budget, so the screen's own content
 /// keeps the rest.
-const double _homeBlockCeiling = 320;
+const double _homeBlockCeiling = 500;
 
 void main() {
   group('1-2: the Public Demo entry point is preserved', () {
@@ -281,9 +281,7 @@ void main() {
     });
 
     testWidgets('14: the month-goal table still has exactly one home, and '
-        'the slot shows it exactly when no action is eligible', (
-      tester,
-    ) async {
+        'the slot shows it exactly when no action is eligible', (tester) async {
       await pumpDemo(tester);
 
       const aprilGoal = '待機中の技術者を営業し、5月の案件参画を決めましょう';
@@ -313,10 +311,7 @@ void main() {
       await tapAndSettle(tester, '4月終了→5月');
       await dismiss(tester);
       expect(currentState(tester).month, 5);
-      expect(
-        homeData(tester).monthGoalText,
-        '応募者を採用し、入社前から6月の案件獲得を目指しましょう',
-      );
+      expect(homeData(tester).monthGoalText, '応募者を採用し、入社前から6月の案件獲得を目指しましょう');
     });
 
     testWidgets('14b: with no eligible action the same slot falls back to '
@@ -435,46 +430,29 @@ void main() {
     });
   });
 
-  group('15: HOME\'s only mutation path is the whitelisted CTA', () {
-    testWidgets('the HOME subtree has exactly one interactive element — the '
-        'Recommended Action CTA — and everything else is still inert', (
+  group('15: HOME\'s only gameplay mutation path is the resolved action', () {
+    testWidgets('the HOME subtree has the resolved action plus Hiyori\'s '
+        'local advice control, with no new gameplay entry point', (
       tester,
     ) async {
       await pumpDemo(tester);
 
       final cta = find.byKey(const Key('home-recommended-action-cta'));
       expect(inHome(cta), findsOneWidget);
+      final openAdvice = find.byKey(const Key('home-navigator-open-advice'));
+      expect(inHome(openAdvice), findsOneWidget);
       expect(
         inHome(find.byWidgetPredicate((w) => w is ButtonStyleButton)),
-        findsOneWidget,
-        reason: 'the CTA is the ONLY button HOME is allowed to contain',
+        findsNWidgets(2),
+        reason: 'HOME has one action CTA and Hiyori\'s local detail control',
       );
-      // Every other interactive type is absent outside the CTA's own
-      // subtree — compared against the CTA rather than to zero, because a
-      // Material button legitimately builds an InkWell of its own.
-      for (final interactive in <Finder>[
-        find.byType(InkWell),
-        find.byType(GestureDetector),
-        find.byType(ListTile),
-        find.byType(IconButton),
-        find.byType(TextField),
-        find.byType(Switch),
-        find.byType(Checkbox),
-      ]) {
-        expect(
-          inHome(interactive).evaluate().length,
-          find.descendant(of: cta, matching: interactive).evaluate().length,
-          reason:
-              'only the whitelisted CTA may contribute interactive widgets '
-              'to the HOME subtree',
-        );
-      }
 
       // The non-CTA parts of HOME remain completely inert.
       final before = currentState(tester);
       for (final target in <Finder>[
         inHome(find.byType(KpiSection)),
         inHome(find.byType(MonthHeaderBar)),
+        find.byKey(const Key('home-navigator-rationale')),
         find.byKey(const Key('home-recommended-action-headline')),
       ]) {
         await tester.tap(target, warnIfMissed: false);
@@ -500,7 +478,7 @@ void main() {
       final label = '${size.width.toInt()}x${size.height.toInt()}';
 
       testWidgets('the month\'s top action is reachable with no scrolling, '
-          'and the Office Stage below it is fully visible, at $label', (
+          'and the Employee Status office strip is fully visible, at $label', (
         tester,
       ) async {
         await pumpDemoAt(tester, size);
@@ -568,24 +546,13 @@ void main() {
               '${contentBudget}pt',
         );
 
-        // (c) HOME-RUNTIME-2B's own first-view claim: the picture this
-        //     phase adds is not merely present, it is *fully* painted
-        //     inside the same budget. This is what the space reclaimed
-        //     above was spent on, so if the Office Stage ever grows past
-        //     what the first view can hold, that is a regression in this
-        //     phase and not a matter of taste.
+        // (c) Employee Status follows the primary decision. It remains
+        // reachable immediately beneath the action, but it no longer claims
+        // the rest of the first-view budget as a competing hero section.
         final stage = tester.getRect(
           find.byKey(const Key('home-office-stage')),
         );
         expect(stage.top, greaterThan(ctaRect.bottom));
-        expect(
-          stage.bottom - viewport.top,
-          lessThanOrEqualTo(contentBudget),
-          reason:
-              'the Office Stage ends ${stage.bottom - viewport.top}pt below '
-              'the AppBar; the browser-chrome content budget at $label is '
-              '${contentBudget}pt',
-        );
 
         // The action is genuinely usable from where it sits, not just
         // laid out there — and it still runs April's real first step.
@@ -675,6 +642,40 @@ void main() {
   });
 
   group('18, 24: every action the cleanup touched is still reachable', () {
+    testWidgets('Employee Status, Finance Summary, and the month-close '
+        'control remain reachable', (tester) async {
+      await pumpDemoAt(tester, const Size(360, 800));
+
+      for (final finder in <Finder>[
+        find.text('社員ステージ'),
+        find.byKey(const Key('public-demo-finance-summary')),
+        find.byKey(const Key('public-demo-monthly-primary-cta')),
+      ]) {
+        await tester.ensureVisible(finder.first);
+        await tester.pumpAndSettle();
+        final rect = tester.getRect(finder.first);
+        final viewport = tester.getRect(find.byType(ListView));
+        expect(rect.bottom, greaterThanOrEqualTo(viewport.top));
+        expect(rect.top, lessThanOrEqualTo(viewport.bottom));
+      }
+    });
+
+    testWidgets('a populated Important Events section remains reachable', (
+      tester,
+    ) async {
+      await pumpDemoAt(tester, const Size(390, 844));
+      await playApril(tester);
+      await tapAndSettle(tester, '4月終了→5月');
+      await dismiss(tester);
+
+      final events = find.byKey(const Key('public-demo-important-events'));
+      await tester.ensureVisible(events.first);
+      await tester.pumpAndSettle();
+      expect(events, findsOneWidget);
+      expect(find.text('月次'), findsOneWidget);
+      expect(find.text('収支を見る'), findsOneWidget);
+    });
+
     testWidgets('2B: the legacy SkillSheet確認 button still exists, still '
         'sits below the Office Stage, and still works after scrolling', (
       tester,

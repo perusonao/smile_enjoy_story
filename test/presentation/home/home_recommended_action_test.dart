@@ -9,8 +9,10 @@
 // pinned against the real screen in
 // `test/ui/public_demo/public_demo_01_home_recommended_action_test.dart`.
 
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:smile_enjoy_story/presentation/home/models/home_recommended_action.dart';
+import 'package:smile_enjoy_story/presentation/home/widgets/recommended_action_section.dart';
 
 HomeRecommendedActionCandidate candidate(
   HomeRecommendedActionKind kind, {
@@ -27,6 +29,46 @@ HomeRecommendedActionCandidate candidate(
 );
 
 void main() {
+  group('recommended action layout', () {
+    for (final size in const [Size(360, 800), Size(390, 844)]) {
+      testWidgets('a two-line action headline and CTA fit at $size', (
+        tester,
+      ) async {
+        tester.view.physicalSize = size;
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.reset);
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Scaffold(
+              body: RecommendedActionSection(
+                slot: HomeRecommendedActionAvailable(
+                  candidate(
+                    HomeRecommendedActionKind.employeeSkillSheetReview,
+                    subjectName: '非常に長い氏名を持つ社員の推薦アクション表示テスト担当者',
+                  ),
+                ),
+                monthGoalText: '',
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        final headline = tester.getRect(
+          find.byKey(const Key('home-recommended-action-headline')),
+        );
+        final cta = tester.getRect(
+          find.byKey(const Key('home-recommended-action-cta')),
+        );
+        expect(headline.height, greaterThan(20));
+        expect(headline.right, lessThanOrEqualTo(size.width));
+        expect(cta.right, lessThanOrEqualTo(size.width));
+        expect(cta.height, greaterThanOrEqualTo(48));
+        expect(tester.takeException(), isNull);
+      });
+    }
+  });
+
   group('presentation priority', () {
     test('every kind has a distinct priority, so the order is total', () {
       final priorities = HomeRecommendedActionKind.values
@@ -35,7 +77,8 @@ void main() {
       expect(
         priorities.toSet().length,
         priorities.length,
-        reason: 'two kinds sharing a rank would make selection depend on '
+        reason:
+            'two kinds sharing a rank would make selection depend on '
             'emission order across unrelated pipelines',
       );
     });
@@ -44,7 +87,10 @@ void main() {
       int rank(HomeRecommendedActionKind k) => k.presentationPriority;
 
       // P0 outranks everything.
-      expect(rank(HomeRecommendedActionKind.cashShortageResponse), lessThan(10));
+      expect(
+        rank(HomeRecommendedActionKind.cashShortageResponse),
+        lessThan(10),
+      );
 
       // P1: the deadline/response pair, below P0 and above every P2.
       for (final k in [
@@ -97,7 +143,8 @@ void main() {
         expect(
           descending[i - 1].presentationPriority,
           lessThan(descending[i].presentationPriority),
-          reason: '${descending[i - 1].name} must outrank ${descending[i].name}',
+          reason:
+              '${descending[i - 1].name} must outrank ${descending[i].name}',
         );
       }
 
@@ -121,11 +168,14 @@ void main() {
       }
     });
 
-    test('the month close and internal training are not recommendable at all', () {
-      final names = HomeRecommendedActionKind.values.map((k) => k.name);
-      expect(names, isNot(contains('monthClose')));
-      expect(names, isNot(contains('internalTraining')));
-    });
+    test(
+      'the month close and internal training are not recommendable at all',
+      () {
+        final names = HomeRecommendedActionKind.values.map((k) => k.name);
+        expect(names, isNot(contains('monthClose')));
+        expect(names, isNot(contains('internalTraining')));
+      },
+    );
   });
 
   group('selection', () {
@@ -133,19 +183,22 @@ void main() {
       expect(selectHomeRecommendedAction(const []), isNull);
     });
 
-    test('the highest-priority candidate wins regardless of emission order', () {
-      final low = candidate(HomeRecommendedActionKind.recruitmentMedia);
-      final high = candidate(HomeRecommendedActionKind.cashShortageResponse);
-      final mid = candidate(HomeRecommendedActionKind.employeeBeginSelling);
+    test(
+      'the highest-priority candidate wins regardless of emission order',
+      () {
+        final low = candidate(HomeRecommendedActionKind.recruitmentMedia);
+        final high = candidate(HomeRecommendedActionKind.cashShortageResponse);
+        final mid = candidate(HomeRecommendedActionKind.employeeBeginSelling);
 
-      for (final order in [
-        [low, high, mid],
-        [high, mid, low],
-        [mid, low, high],
-      ]) {
-        expect(selectHomeRecommendedAction(order), same(high));
-      }
-    });
+        for (final order in [
+          [low, high, mid],
+          [high, mid, low],
+          [mid, low, high],
+        ]) {
+          expect(selectHomeRecommendedAction(order), same(high));
+        }
+      },
+    );
 
     test('ties break on emission order, and only on emission order', () {
       final first = candidate(
@@ -232,12 +285,35 @@ void main() {
       // The HOME shortcut and the control it leads to are on screen
       // together; a player must be able to tell them apart.
       const legacy = {
-        'SkillSheet確認', '営業開始', '案件紹介', '上位会社面談', '客先面談', '受注',
-        '再営業', '経歴書確認', '採用面談', '合格・給与提示', '入社前SkillSheet',
-        '入社前営業', '6月受注', '7月分の発注を確認', '受注する', '次案件の営業開始',
-        '上位会社面談（1枠）', '客先面談（0枠）', '別案件へ', '7月分を受注',
-        '昇給要求を確認', '夏季賞与を決める', '夏季賞与を変更', '求人媒体を選ぶ',
-        '今月は利用済み', 'この方法で募集する', '研修する', '確認', '給与を提示',
+        'SkillSheet確認',
+        '営業開始',
+        '案件紹介',
+        '上位会社面談',
+        '客先面談',
+        '受注',
+        '再営業',
+        '経歴書確認',
+        '採用面談',
+        '合格・給与提示',
+        '入社前SkillSheet',
+        '入社前営業',
+        '6月受注',
+        '7月分の発注を確認',
+        '受注する',
+        '次案件の営業開始',
+        '上位会社面談（1枠）',
+        '客先面談（0枠）',
+        '別案件へ',
+        '7月分を受注',
+        '昇給要求を確認',
+        '夏季賞与を決める',
+        '夏季賞与を変更',
+        '求人媒体を選ぶ',
+        '今月は利用済み',
+        'この方法で募集する',
+        '研修する',
+        '確認',
+        '給与を提示',
       };
       for (final kind in HomeRecommendedActionKind.values) {
         expect(

@@ -60,9 +60,10 @@ class RecommendedActionSection extends StatelessWidget {
 
 /// The recommended action: an eyebrow, the subject line, and the CTA.
 ///
-/// Three short lines on purpose. The player has to answer "who is this
-/// about / what am I doing / where do I tap" in one glance, and every extra
-/// element in this card is height taken from the employee cards below it.
+/// The visual priority is intentional: this is HOME's one resolved next
+/// action, not another equal-weight summary card.  The card answers "what
+/// should I do now?" with a visible headline and a full-width, touch-safe
+/// CTA while leaving the decision itself entirely with its owner.
 class _ActionCard extends StatelessWidget {
   const _ActionCard({required this.candidate});
 
@@ -79,25 +80,25 @@ class _ActionCard extends StatelessWidget {
       margin: EdgeInsets.zero,
       color: colorScheme.primaryContainer,
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+        padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           mainAxisSize: MainAxisSize.min,
           children: [
             Text(
               '次にやること',
-              style: theme.textTheme.labelSmall?.copyWith(
+              style: theme.textTheme.labelMedium?.copyWith(
                 fontWeight: FontWeight.bold,
                 color: colorScheme.onPrimaryContainer,
               ),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
             ),
-            const SizedBox(height: 2),
+            const SizedBox(height: 4),
             Text(
               action.headline,
               key: const Key('home-recommended-action-headline'),
-              style: theme.textTheme.titleSmall?.copyWith(
+              style: theme.textTheme.titleMedium?.copyWith(
                 fontWeight: FontWeight.bold,
                 color: colorScheme.onPrimaryContainer,
               ),
@@ -107,23 +108,25 @@ class _ActionCard extends StatelessWidget {
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
             ),
-            const SizedBox(height: 6),
-            Align(
-              alignment: Alignment.centerRight,
-              child: FilledButton(
+            const SizedBox(height: 12),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
                 key: const Key('home-recommended-action-cta'),
-                // Compact: this button sits in a summary card, so it must
-                // not set the height of the first view the way a full-size
-                // stage button would.
                 style: theme.filledButtonTheme.style?.copyWith(
+                  minimumSize: const WidgetStatePropertyAll(Size(0, 48)),
                   padding: const WidgetStatePropertyAll(
-                    EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                   ),
-                  visualDensity: VisualDensity.compact,
-                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                 ),
                 onPressed: candidate.invoke,
-                child: Text(action.ctaLabel),
+                icon: const Icon(Icons.arrow_forward),
+                label: Text(
+                  action.ctaLabel,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.center,
+                ),
               ),
             ),
           ],

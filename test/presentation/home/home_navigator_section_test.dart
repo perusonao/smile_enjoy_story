@@ -34,7 +34,9 @@ Future<void> pumpNavigator(
   tester.view.devicePixelRatio = 1.0;
   addTearDown(tester.view.reset);
 
-  Widget section = Center(child: HomeNavigatorSection(expression: expression, advice: advice));
+  Widget section = Center(
+    child: HomeNavigatorSection(expression: expression, advice: advice),
+  );
   if (bundle != null) {
     section = DefaultAssetBundle(bundle: bundle, child: section);
   }
@@ -145,10 +147,10 @@ void main() {
     });
 
     test('the portrait asset is registered for bundling', () {
-      expect(AssetPaths.all, containsAll([
-        AssetPaths.navigatorNormal,
-        AssetPaths.navigatorCaution,
-      ]));
+      expect(
+        AssetPaths.all,
+        containsAll([AssetPaths.navigatorNormal, AssetPaths.navigatorCaution]),
+      );
     });
 
     testWidgets('the registered portrait actually exists in the bundle', (
@@ -188,38 +190,61 @@ void main() {
   });
 
   group('NAVIGATOR-1B: local inline advice interaction', () {
-    testWidgets('suppressed advice exposes no local advice control', (tester) async {
+    testWidgets('suppressed advice exposes no local advice control', (
+      tester,
+    ) async {
       await pumpNavigator(tester, advice: null);
       expect(find.byKey(const Key('home-navigator-open-advice')), findsNothing);
     });
 
-    testWidgets('an advice CTA runs only its supplied callback', (tester) async {
+    testWidgets('an advice CTA runs only its supplied callback', (
+      tester,
+    ) async {
       var calls = 0;
-      await pumpNavigator(tester, advice: HomeNavigatorAdvice(title: 'ひよりからのご案内', message: '既存の案内です。', ctaLabel: '続ける', onCtaPressed: () => calls++));
+      await pumpNavigator(
+        tester,
+        advice: HomeNavigatorAdvice(
+          title: 'ひよりからのご案内',
+          message: '既存の案内です。',
+          ctaLabel: '続ける',
+          onCtaPressed: () => calls++,
+        ),
+      );
       await tester.tap(find.byKey(const Key('home-navigator-open-advice')));
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const Key('home-navigator-advice-cta')));
       expect(calls, 1);
     });
-    testWidgets('explanation is hidden while collapsed and shown when expanded', (tester) async {
-      const explanation = 'この操作が一般的に重要な理由です。';
-      await pumpNavigator(
-        tester,
-        advice: const HomeNavigatorAdvice(
-          title: 'ひよりからのご案内',
-          message: '既に選ばれた操作です。',
-          explanation: explanation,
-        ),
-      );
-      expect(find.text(explanation), findsNothing);
-      await tester.tap(find.byKey(const Key('home-navigator-open-advice')));
-      await tester.pumpAndSettle();
-      expect(find.text(explanation), findsOneWidget);
-      expect(
-        tester.getRect(find.byKey(const Key('home-navigator-advice-explanation'))).top,
-        greaterThan(tester.getRect(find.byKey(const Key('home-navigator-advice-message'))).bottom),
-      );
-    });
+    testWidgets(
+      'explanation is hidden while collapsed and shown when expanded',
+      (tester) async {
+        const explanation = 'この操作が一般的に重要な理由です。';
+        await pumpNavigator(
+          tester,
+          advice: const HomeNavigatorAdvice(
+            title: 'ひよりからのご案内',
+            message: '既に選ばれた操作です。',
+            explanation: explanation,
+          ),
+        );
+        expect(find.text(explanation), findsNothing);
+        await tester.tap(find.byKey(const Key('home-navigator-open-advice')));
+        await tester.pumpAndSettle();
+        expect(find.text(explanation), findsOneWidget);
+        expect(
+          tester
+              .getRect(
+                find.byKey(const Key('home-navigator-advice-explanation')),
+              )
+              .top,
+          greaterThan(
+            tester
+                .getRect(find.byKey(const Key('home-navigator-advice-message')))
+                .bottom,
+          ),
+        );
+      },
+    );
     testWidgets('an explanation remains optional', (tester) async {
       await pumpNavigator(
         tester,
@@ -230,28 +255,52 @@ void main() {
       );
       await tester.tap(find.byKey(const Key('home-navigator-open-advice')));
       await tester.pumpAndSettle();
-      expect(find.byKey(const Key('home-navigator-advice-explanation')), findsNothing);
+      expect(
+        find.byKey(const Key('home-navigator-advice-explanation')),
+        findsNothing,
+      );
       expect(tester.takeException(), isNull);
     });
-    testWidgets('starts collapsed, expands and collapses with one fixed identity', (
+    testWidgets(
+      'starts collapsed, expands and collapses with one fixed identity',
+      (tester) async {
+        await pumpNavigator(tester);
+        final section = find.byType(HomeNavigatorSection);
+        expect(
+          find.byKey(const Key('home-navigator-open-advice')),
+          findsOneWidget,
+        );
+        expect(
+          find.byKey(const Key('home-navigator-advice-bubble')),
+          findsNothing,
+        );
+        await tester.tap(find.byKey(const Key('home-navigator-open-advice')));
+        await tester.pumpAndSettle();
+        expect(
+          find.byKey(const Key('home-navigator-advice-bubble')),
+          findsOneWidget,
+        );
+        expect(find.text(HomeNavigatorAdvice.neutral.title), findsOneWidget);
+        expect(
+          find.text(HomeNavigatorAdvice.neutral.message),
+          findsNWidgets(2),
+        );
+        expect(
+          find.descendant(of: section, matching: find.text('佐倉 ひより')),
+          findsOneWidget,
+        );
+        await tester.tap(find.byKey(const Key('home-navigator-close-advice')));
+        await tester.pumpAndSettle();
+        expect(
+          find.byKey(const Key('home-navigator-advice-bubble')),
+          findsNothing,
+        );
+      },
+    );
+
+    testWidgets('repeated expansion and image failure keep advice usable', (
       tester,
     ) async {
-      await pumpNavigator(tester);
-      final section = find.byType(HomeNavigatorSection);
-      expect(find.byKey(const Key('home-navigator-open-advice')), findsOneWidget);
-      expect(find.byKey(const Key('home-navigator-advice-bubble')), findsNothing);
-      await tester.tap(find.byKey(const Key('home-navigator-open-advice')));
-      await tester.pumpAndSettle();
-      expect(find.byKey(const Key('home-navigator-advice-bubble')), findsOneWidget);
-      expect(find.text(HomeNavigatorAdvice.neutral.title), findsOneWidget);
-      expect(find.text(HomeNavigatorAdvice.neutral.message), findsOneWidget);
-      expect(find.descendant(of: section, matching: find.text('佐倉 ひより')), findsOneWidget);
-      await tester.tap(find.byKey(const Key('home-navigator-close-advice')));
-      await tester.pumpAndSettle();
-      expect(find.byKey(const Key('home-navigator-advice-bubble')), findsNothing);
-    });
-
-    testWidgets('repeated expansion and image failure keep advice usable', (tester) async {
       await pumpNavigator(tester);
       for (var i = 0; i < 2; i++) {
         await tester.tap(find.byKey(const Key('home-navigator-open-advice')));
@@ -262,20 +311,48 @@ void main() {
       await pumpNavigator(tester, bundle: _FailingAssetBundle());
       await tester.tap(find.byKey(const Key('home-navigator-open-advice')));
       await tester.pumpAndSettle();
-      expect(find.text(HomeNavigatorAdvice.neutral.message), findsOneWidget);
+      expect(find.text(HomeNavigatorAdvice.neutral.message), findsNWidgets(2));
     });
+
+    for (final size in _sizes) {
+      testWidgets(
+        'the default one-line rationale stays inside $size for long advice',
+        (tester) async {
+          const longMessage = '非常に長い推奨理由でも、ひよりの要点は一行で安全に表示され、詳しい内容は展開後に確認できます。';
+          await pumpNavigator(
+            tester,
+            size: size,
+            advice: const HomeNavigatorAdvice(
+              title: 'ひよりからのご案内',
+              message: longMessage,
+              explanation: longMessage,
+            ),
+          );
+          final rationale = tester.getRect(
+            find.byKey(const Key('home-navigator-rationale')),
+          );
+          expect(rationale.left, greaterThanOrEqualTo(0));
+          expect(rationale.right, lessThanOrEqualTo(size.width));
+          expect(tester.takeException(), isNull);
+        },
+      );
+    }
 
     for (final size in _sizes) {
       for (final scale in _scales) {
         testWidgets('expanded advice fits horizontally at '
-            '${size.width.toInt()}x${size.height.toInt()} / textScale $scale', (tester) async {
+            '${size.width.toInt()}x${size.height.toInt()} / textScale $scale', (
+          tester,
+        ) async {
           await pumpNavigator(tester, size: size, textScale: scale);
           await tester.tap(find.byKey(const Key('home-navigator-open-advice')));
           await tester.pumpAndSettle();
           expect(tester.takeException(), isNull);
           for (final key in const [
-            'home-navigator', 'home-navigator-advice-bubble',
-            'home-navigator-advice-message', 'home-navigator-close-advice',
+            'home-navigator',
+            'home-navigator-advice-bubble',
+            'home-navigator-advice-message',
+            'home-navigator-close-advice',
           ]) {
             final rect = tester.getRect(find.byKey(Key(key)));
             expect(rect.left, greaterThanOrEqualTo(0.0), reason: key);
@@ -302,11 +379,17 @@ void main() {
       );
     });
 
-    testWidgets('the worried expression draws the caution portrait', (tester) async {
+    testWidgets('the worried expression draws the caution portrait', (
+      tester,
+    ) async {
       await pumpNavigator(tester, expression: NavigatorExpression.worried);
-      final provider = tester.widget<Image>(
-        find.byKey(const Key('home-navigator-portrait')),
-      ).image as AssetImage;
+      final provider =
+          tester
+                  .widget<Image>(
+                    find.byKey(const Key('home-navigator-portrait')),
+                  )
+                  .image
+              as AssetImage;
       expect(provider.assetName, AssetPaths.navigatorCaution);
     });
 
@@ -325,7 +408,9 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
-    testWidgets('a failed caution portrait retries the normal portrait', (tester) async {
+    testWidgets('a failed caution portrait retries the normal portrait', (
+      tester,
+    ) async {
       await pumpNavigator(
         tester,
         expression: NavigatorExpression.worried,
@@ -334,9 +419,13 @@ void main() {
       for (var i = 0; i < 3; i++) {
         await tester.pump();
       }
-      final provider = tester.widget<Image>(
-        find.byKey(const Key('home-navigator-portrait')),
-      ).image as AssetImage;
+      final provider =
+          tester
+                  .widget<Image>(
+                    find.byKey(const Key('home-navigator-portrait')),
+                  )
+                  .image
+              as AssetImage;
       expect(provider.assetName, AssetPaths.navigatorNormal);
     });
 
@@ -452,8 +541,7 @@ void main() {
       expect(
         height,
         greaterThan(HomeNavigatorMetrics.compact.portraitSize),
-        reason:
-            'the card must include readable identity and an open control',
+        reason: 'the card must include readable identity and an open control',
       );
     });
 

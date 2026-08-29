@@ -46,13 +46,17 @@ void main() {
   );
 
   testWidgets(
-    'important events renders empty, one, two, long text, and calls CTA once',
+    'important events hides its empty state, renders populated events, and calls CTA once',
     (tester) async {
       var calls = 0;
       await tester.pumpWidget(
         host(const PublicDemoImportantEventsSection(events: [])),
       );
-      expect(find.text('現在、対応が必要なイベントはありません'), findsOneWidget);
+      expect(
+        find.byKey(const Key('public-demo-important-events-empty')),
+        findsOneWidget,
+      );
+      expect(find.byType(Card), findsNothing);
       final events = [
         PublicDemoImportantEventItem(
           title: '長い重要イベントのタイトルでも画面からはみ出さずに内容を確認できます',
@@ -73,6 +77,11 @@ void main() {
       await tester.pumpWidget(
         host(PublicDemoImportantEventsSection(events: events)),
       );
+      expect(
+        find.byKey(const Key('public-demo-important-events')),
+        findsOneWidget,
+      );
+      expect(find.text('重要イベント'), findsOneWidget);
       expect(find.text('優先'), findsOneWidget);
       expect(find.text('月末処理'), findsOneWidget);
       await tester.tap(find.text('確認する'));

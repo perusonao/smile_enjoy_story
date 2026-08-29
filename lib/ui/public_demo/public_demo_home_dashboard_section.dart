@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 
 import '../../presentation/home/models/home_dashboard_display_data.dart';
+import '../../presentation/home/models/home_navigator_display.dart';
 import '../../presentation/home/models/home_recommended_action.dart';
+import '../../presentation/home/widgets/home_navigator_section.dart';
 import '../../presentation/home/widgets/kpi_section.dart';
 import '../../presentation/home/widgets/month_header_bar.dart';
 import '../../presentation/home/widgets/recommended_action_section.dart';
@@ -64,6 +66,7 @@ class PublicDemoHomeDashboardSection extends StatelessWidget {
     super.key,
     required this.data,
     required this.recommendedAction,
+    required this.navigatorAdvice,
   });
 
   /// The read-only projection to display. Rebuilt from authoritative state
@@ -75,6 +78,11 @@ class PublicDemoHomeDashboardSection extends StatelessWidget {
   /// Rebuilt on every build for the same reason [data] is.
   final HomeRecommendedActionSlot recommendedAction;
 
+  /// Hiyori's already-resolved presentation advice. Its optional CTA is the
+  /// same owner-bound callback carried by [recommendedAction]; this section
+  /// only places it above the action it explains.
+  final HomeNavigatorAdvice? navigatorAdvice;
+
   @override
   Widget build(BuildContext context) {
     return Column(
@@ -84,7 +92,12 @@ class PublicDemoHomeDashboardSection extends StatelessWidget {
         MonthHeaderBar(data: data),
         const SizedBox(height: 8),
         KpiSection.compact(data: data),
-        const SizedBox(height: 6),
+        const SizedBox(height: 8),
+        HomeNavigatorSection(
+          expression: navigatorExpressionFor(navigatorAdvice?.semantic),
+          advice: navigatorAdvice,
+        ),
+        const SizedBox(height: 8),
         RecommendedActionSection(
           slot: recommendedAction,
           monthGoalText: data.monthGoalText,

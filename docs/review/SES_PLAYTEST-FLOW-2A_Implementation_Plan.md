@@ -14,9 +14,9 @@
 | UI SSOT | UI must not become a new source of truth; all business logic stays in domain engines |
 | Finance recalc | Do not recalculate finance values in widgets; read from `GameState` or engine functions only |
 | Game balance | Do not change engineer skills, salary levels, or assignment match thresholds |
-| Starting cash | `startingCash = 3500000` — unchanged |
+| Starting cash | Main Beginner Mode `startingCash = 3500000` — unchanged; Public Demo `PublicDemoState.aprilStart() cash = 3000000` — unchanged |
 | Fixed costs | `otherMonthlyFixedCost = 100000`, navigator salary, engineer salaries — unchanged |
-| Revenue/payment timing | `dueMonthFor()` logic and AR recognition timing — unchanged |
+| Revenue/payment timing | `dueMonthFor()` logic and AR recognition timing — unchanged; Public Demo uses fixed 30-day term only |
 | Sales/interview/recruitment authority | No changes to who can initiate, approve, or gate these actions |
 | Terminal/bankruptcy | Do not weaken or bypass terminal/bankruptcy behavior |
 | E2E settings | Do not modify retry/sleep/skip/timeout settings |
@@ -751,3 +751,349 @@ FLOW-2A extends `weeklyMilestones`. SAVE-1B may add save/restore logic referenci
 ---
 
 ## PLAYTEST-FLOW-2A PLAN READY
+
+---
+
+## Public Demo Architecture Consistency Review
+
+**Review date:** 2026-08-30  
+**Reviewed at SHA:** `817f3b634c5293da1e277b7e88c795268880b66b`  
+**Trigger:** PUBLIC-DEMO-E2E-1 (no Playwright coverage) + PLAYTEST-SURVIVAL-1B (fragile fiscal survival route) require verifying that each FLOW-2A fix targets the actual playtest runtime, not the separate Main Beginner Mode.
+
+---
+
+### 1. Actual Public Demo Runtime — Architecture Map
+
+| Dimension | Public Demo 0.1 (Actual Playtest Runtime) | Main Beginner Mode |
+|-----------|------------------------------------------|-------------------|
+| **Entry route** | `PublicDemoAggregate.initial()` → `PublicDemoState.aprilStart()` | `GameState` seeded by `PrologueEngine.completePrologue()` |
+| **Root aggregate** | `PublicDemoAggregate` (single atomic root in `PublicDemo01PlaceholderScreen`) | `GameState` + `GameEngine` |
+| **State machine** | `PublicDemoWorkflowState` (engineer/applicant sales stages) | `UnlockEngine` + `ProgressionEngine` + `FoundingProgress` |
+| **Screen/widget** | `PublicDemo01PlaceholderScreen` (single stateful widget; one `PublicDemoAggregate` field) | Multiple game screens via `GameEngine` |
+| **Month model** | `month: int` (4=April … 15=March); no `week` concept | `week: int` (1–48); month derived via `Calendar.absoluteMonth(week)` |
+| **Starting cash** | **`cash: 3000000`** — set in `PublicDemoState.aprilStart()` | `startingCash = 3500000` — set in `GameState` |
+| **April engineer seed** | `engineerCount: 2, engineersWaiting: 2, engineersAssigned: 0` — **both waiting** | Candidate B (`Suzuki Aoi`) set to `status=assigned, salesStatus=SalesStatus.assigned` by `PrologueEngine.enterAprilWeek1()` |
+| **Suzuki Aoi identity** | `eng-02`, `PublicDemoSalesStage.waiting`, `actualSkill: 52`, `isReadyForFieldSales: false` (52 < 60) | Candidate B, `status=assigned`, `salesStatus=SalesStatus.assigned`, `backend: 2` |
+| **Sato Ken identity** | `eng-01`, `PublicDemoSalesStage.waiting`, `actualSkill: 78`, `isReadyForFieldSales: true` | Candidate A, `status=assigned` (same first project) |
+| **Engineer skills** | Java: actualSkill 78 (eng-01); JavaScript: actualSkill 52 (eng-02); capability from `PublicDemoEngineerRuntime` | `backend: 4` (Candidate A); `backend: 2` (Candidate B); from `SalesEngine` skill sheet |
+| **Sales eligibility** | `isReadyForFieldSales = actualCapability >= 60` on `PublicDemoEngineerRuntime`; checked at `HomeRecommendedActionKind` emit in `PublicDemo01PlaceholderScreen` | `SalesEngine.startSales()` via `GameEngine`; no explicit capability gate on starting sales |
+| **Sales pipeline stages** | `PublicDemoSalesStage`: `waiting → skillSheet → selling → introduced → partnerInterviewFailed/Passed → clientInterviewFailed/Passed → ordered` | `SalesStatus`: `notSelling → selling → interviewing → assigned` |
+| **Assignment state machine** | `PublicDemoWorkflowState.assignOrderedForMay()` builds roster at May close; `PublicDemoNextOrderStatus` for June decisions; `PublicDemoReplacementStage` for replacements | `ContractDecision` + `remainingWeeks` on each `Assignment` |
+| **Month progression** | `PublicDemoAggregate.closeApril/closeMay/closeJune/closeJuly/closeOrdinaryMonth/completeFiscalYear()` | `GameEngine.advanceWeek()` x4 per month; `MonthlyClosing` at week 4/8/12/… |
+| **AR / revenue timing** | Fixed 30-day term only: `pendingRevenue` → cash at next month-end close | `dueMonthFor(generatedMonth, paymentTermDays)` supports 30-day (+1 month) and 60-day (+2 months) |
+| **Hiyori source** | `lib/presentation/home/models/home_navigator_display.dart` `_guidanceCopyFor(HomeRecommendedActionKind)` | `BeginnerModeEngine` milestone dialogs (separate system; Hiyori not used) |
+| **Recommended-action source** | `HomeRecommendedActionKind` + `HomeRecommendedActionCandidate` emitted by `PublicDemo01PlaceholderScreen`; sorted by `presentationPriority` | `TaskEngine` (generates `HomeTask` list for main game HOME) |
+| **TaskEngine** | **NOT USED by Public Demo** | Main Beginner Mode only |
+| **BeginnerModeEngine** | **NOT USED by Public Demo** | Main Beginner Mode only |
+| **BeginnerModeState / BeginnerMilestone** | **NOT USED by Public Demo** | Main Beginner Mode only |
+| **FoundingProgress / OneTimeEvent** | **NOT USED by Public Demo** | Main Beginner Mode only |
+| **engineer_detail_screen.dart** | NOT the Public Demo engineer UI (`lib/ui/engineers/engineer_detail_screen.dart` belongs to main game) | Main game engineer detail screen |
+
+---
+
+### 2. Starting Cash Authority — Discrepancy Resolved
+
+| Source | Value | Authority |
+|--------|-------|-----------|
+| `GameState.startingCash` (Main Beginner Mode) | **¥3,500,000** | Main Beginner Mode game |
+| `PublicDemoState.aprilStart()` (Public Demo) | **¥3,000,000** | Public Demo 0.1 — the **actual playtest runtime** |
+
+**Resolution:** The external playtest uses the Public Demo. The authoritative starting cash for the playtest is **¥3,000,000**, confirmed at `lib/game/public_demo/public_demo_state.dart` line: `cash: 3000000`. The ¥3,500,000 figure in the original plan body was incorrect — it was sourced from `GameState` (Main Beginner Mode only) and must not be used in any Public Demo implementation context. Neither value is to be changed; both are documented for clarity.
+
+---
+
+### 3. Blocker Classification by Runtime Target
+
+#### F-01 (P0): Suzuki Aoi Cannot Progress Into Sales in April
+
+**PUBLIC DEMO: YES — but with a completely different root cause than the plan identified.**  
+**MAIN BEGINNER MODE ONLY: NO**  
+**Plan status: WRONG TARGET for all four proposed file changes.**
+
+**Actual Public Demo root cause (newly identified):**
+
+In Public Demo April, `eng-02` (Suzuki Aoi) starts `PublicDemoSalesStage.waiting` with `actualSkill: 52`. The `isReadyForFieldSales` property on `PublicDemoEngineerRuntime` requires `actualCapability >= 60`. Aoi's capability is 52 — below the threshold.
+
+`HomeRecommendedActionKind.employeeSkillSheetReview` (priority 26) is only emitted by `PublicDemo01PlaceholderScreen` when `stage == waiting && readyForFieldSales`. Aoi does not meet `readyForFieldSales`. She receives **no recommended action at all** in the April home screen.
+
+`PublicDemoWorkflowState.startSkillSheetReview()` can still be called for any `waiting` engineer — there is no domain guard on capability. The skill sheet review itself is not blocked. The player is blocked only at the **recommended-action emit level** — Aoi's card is on screen but the home shortcut is silent.
+
+Further: `beginSelling()` in the workflow requires `from: {skillSheet, partnerInterviewFailed, clientInterviewFailed}`. Even if the player manually starts Aoi's skill sheet review, `beginSelling` is reachable from `skillSheet`. But `employeeBeginSelling` recommended action (priority 25) is emitted only when `stage == skillSheet && readyForFieldSales`. Aoi would still not appear in the recommended action after completing skill sheet review.
+
+The player has no explanation of WHY Aoi is not surfaced for sales, and no path forward is communicated. This is the actual F-01 blocker in Public Demo.
+
+**Correct Public Demo F-01 fix targets:**
+1. `PublicDemo01PlaceholderScreen` — the emit site for `HomeRecommendedActionCandidate`s; add a candidate for `stage == waiting && !readyForFieldSales` → emit a new kind or the `recruitmentMedia`/internal-training path with explanation
+2. `lib/presentation/home/models/home_recommended_action.dart` — add `HomeRecommendedActionKind.employeeGrowthNeeded` (or equivalent) at a suitable priority band for engineers not yet field-sales-ready
+3. `lib/presentation/home/models/home_navigator_display.dart` — add Hiyori guidance explaining WHY Aoi is not ready (capability below threshold) and what the player can do (internal training, or wait for growth from first assignment of Sato Ken)
+
+**Plan's proposed targets vs actual — verdict:**
+
+| Plan proposed file | Actual target? | Verdict |
+|-------------------|----------------|---------|
+| `lib/game/engine/task_engine.dart` | NOT USED by Public Demo | **WRONG TARGET** |
+| `lib/ui/engineers/engineer_detail_screen.dart` | Main game only; not Public Demo engineer UI | **WRONG TARGET** |
+| `lib/game/engine/beginner_mode_engine.dart` | NOT USED by Public Demo | **WRONG TARGET** |
+| `lib/game/models/beginner_mode_state.dart` | NOT USED by Public Demo | **WRONG TARGET** |
+
+**Note on design classification:** F-01 is also NOT Type B (incomplete gameplay) in Public Demo. The domain CAN run `startSkillSheetReview` for Aoi — no domain block exists. It is Type C (UI/presentation gap): the recommended-action emit in `PublicDemo01PlaceholderScreen` silently excludes below-threshold engineers with no explanation. The design decision to gate `employeeSkillSheetReview` on `readyForFieldSales` may be intentional game balance — the fix is to surface WHY and offer a path forward (growth), not to lower the threshold.
+
+---
+
+#### F-03 (P1): Player Cannot Understand First Revenue/Payment Timing Before Making Decisions
+
+**PUBLIC DEMO: YES — different mechanism.**  
+**MAIN BEGINNER MODE ONLY: NO**  
+**Plan status: WRONG TARGET for all proposed file changes.**
+
+**Public Demo payment model:**
+- Fixed 30-day term only (no 60-day option in `PublicDemoState`)
+- April revenue (`pendingRevenue` credited at April close) → cash at May month-end close
+- `advanceToMay()` does not pay out `pendingRevenue`; it is paid by `PublicDemoMonthlyClose.closeMay()` at May close
+- The player makes April decisions (start Sato Ken's sales pipeline, decide assignment) without knowing that April revenue arrives in May, not April
+
+**Correct Public Demo F-03 fix targets:**
+1. `lib/presentation/home/models/home_navigator_display.dart` — add/extend Hiyori guidance at the order-confirmation point (when `HomeRecommendedActionKind.employeeAcceptOrder` or `assignmentAcceptNextOrder` is shown) to explain "4月の売上は5月に入金されます"
+2. `PublicDemo01PlaceholderScreen` — the assignment-confirmation callback (the point where the player accepts an order and a revenue relationship is created) is the correct hook; add an inline explanatory dialog after first order confirmation
+
+**Plan's proposed targets vs actual — verdict:**
+
+| Plan proposed file | Actual target? | Verdict |
+|-------------------|----------------|---------|
+| `lib/game/engine/beginner_mode_engine.dart` (`firstAssignmentCelebration`) | NOT USED by Public Demo | **WRONG TARGET** |
+| `lib/game/models/founding_progress.dart` (`OneTimeEvent`) | NOT USED by Public Demo | **WRONG TARGET** |
+
+---
+
+#### F-05 (P1): August–March Risks Becoming Mostly "Advance Month"
+
+**PUBLIC DEMO: YES — same symptom, different mechanism.**  
+**MAIN BEGINNER MODE ONLY: NO**  
+**Plan status: WRONG TARGET for all proposed file changes.**
+
+**Public Demo month 8–15 mechanics:**
+- `advanceToNextOrdinaryMonth()` (months 8–14): only ordinary expenses settle; `engineersAssigned/Waiting` carry forward unchanged from June; no new assignment UI
+- `completeFiscalYear()` (month 15 = March): same
+- Recommended actions in months 8–14 are limited to: training selections, growth results review, `assignmentConfirmNextOrder` (for any undecided June assignments), `recruitmentMedia` (months 4–8 only), raise decisions
+- If all June assignments were accepted and no raise requests exist, the home recommended action slot can be `HomeRecommendedActionNone` for months 8–14 — the player truly has nothing to do
+
+**Correct Public Demo F-05 fix targets:**
+1. `HomeRecommendedActionKind` — consider adding engagement prompts specific to months 8–14 (e.g., reviewing growth results, planning next year's headcount)
+2. `lib/presentation/home/models/home_navigator_display.dart` — add month-range-specific Hiyori messages for the August–March stretch acknowledging the operational state
+3. `PublicDemo01PlaceholderScreen` — the emit site for recommended actions; adding month-specific candidates for the quiet months
+
+**Plan's proposed targets vs actual — verdict:**
+
+| Plan proposed file | Actual target? | Verdict |
+|-------------------|----------------|---------|
+| `lib/game/models/beginner_mode_state.dart` (new milestones) | NOT USED by Public Demo | **WRONG TARGET** |
+| `lib/game/engine/beginner_mode_engine.dart` (milestone dialogs) | NOT USED by Public Demo | **WRONG TARGET** |
+
+---
+
+#### F-06 (P1): June Next-Month-Order Decision Does Not Communicate Consequence
+
+**PUBLIC DEMO: YES (partially).**  
+**MAIN BEGINNER MODE ONLY: NO**  
+**Plan status: PARTIAL — two of four steps are correct; two are wrong target.**
+
+**Verification:**
+
+| Plan proposed step | File | Actual target? | Verdict |
+|-------------------|------|----------------|---------|
+| F-06-A: Update contract task subtitle | `lib/game/engine/task_engine.dart` | NOT USED by Public Demo | **WRONG TARGET** |
+| F-06-B: Strengthen `contractRenewalTutorial` dialog | `founding_progress.dart` rendering | NOT USED by Public Demo | **WRONG TARGET** |
+| F-06-C: Raise `assignmentConfirmNextOrder` priority P3→P2 | `lib/presentation/home/models/home_recommended_action.dart` | **YES — Public Demo** | **CORRECT TARGET** |
+| F-06-D: Update Hiyori explanation for `assignmentConfirmNextOrder` | `lib/presentation/home/models/home_navigator_display.dart` | **YES — Public Demo** | **CORRECT TARGET** |
+
+**Note on F-06-C priority rationale:** `assignmentConfirmNextOrder` at priority 50 (P3) is below all pipeline-continuation actions. During June when an assignment's `nextOrderStatus == undecided`, the player is not prompted to decide until after completing all P2 pipeline work. If Sato Ken's June replacement pipeline is also in progress, `assignmentConfirmNextOrder` can be buried. Raising to 35 (P2, alongside `assignmentBeginReplacementSelling`) is correct.
+
+---
+
+#### F-07 (P1): Hiyori Guidance Explains WHAT But Not WHY
+
+**PUBLIC DEMO: YES — confirmed correct target.**  
+**MAIN BEGINNER MODE ONLY: NO**  
+**Plan status: CORRECT TARGET — no revision needed.**
+
+`lib/presentation/home/models/home_navigator_display.dart` is exclusively Public Demo. The `explanation` field rewrites are appropriate and do not touch any domain logic.
+
+---
+
+### 4. Revised Blocker Target Summary
+
+| Blocker | Public Demo? | Main Beginner Mode Only? | All Plan Targets Correct? |
+|---------|-------------|-------------------------|--------------------------|
+| F-01 | YES — different root cause | NO | **WRONG TARGET** (all 4 files) |
+| F-03 | YES — different mechanism | NO | **WRONG TARGET** (all 2 files) |
+| F-05 | YES — same symptom | NO | **WRONG TARGET** (all 2 files) |
+| F-06 | PARTIAL | NO | **PARTIAL** (2 correct, 2 wrong) |
+| F-07 | YES | NO | **CORRECT** |
+
+---
+
+### 5. Revised Implementation Targets
+
+All file changes must target the actual Public Demo runtime. The following replaces the per-blocker implementation steps for F-01, F-03, F-05, and the wrong-target steps in F-06.
+
+#### F-01 — Revised Correct Targets
+
+**File 1: `PublicDemo01PlaceholderScreen` (TBD exact path — `lib/ui/` or `lib/presentation/`)**  
+Add emit logic for engineers where `stage == waiting && !isReadyForFieldSales`:
+```dart
+// NEW emit for below-threshold waiting engineers
+if (engineer.stage == PublicDemoSalesStage.waiting &&
+    !runtime.isReadyForFieldSales) {
+    candidates.add(HomeRecommendedActionCandidate(
+        action: HomeRecommendedAction(
+            kind: HomeRecommendedActionKind.employeeGrowthNeeded,
+            subjectName: engineer.name,
+            targetId: engineer.id,
+        ),
+        invoke: () { /* open engineer card to show growth status */ },
+    ));
+}
+```
+
+**File 2: `lib/presentation/home/models/home_recommended_action.dart`**  
+Add new kind:
+```dart
+/// An engineer exists but is not yet ready for field sales. Player should
+/// understand why and what action is available (training, or wait for Sato
+/// Ken's assignment to complete growth).
+employeeGrowthNeeded(
+    presentationPriority: 28, // P2, below employeeSkillSheetReview=26
+    ctaLabel: '成長状況を確認',
+    headline: '{name}の営業準備状況',
+),
+```
+
+**File 3: `lib/presentation/home/models/home_navigator_display.dart`**  
+Add `case HomeRecommendedActionKind.employeeGrowthNeeded:` with WHY copy:
+```dart
+explanation: '${name}さんは現在、案件参画に必要なスキルレベルに達していません。'
+    'スキルが向上すると営業活動が開始できます。'
+    '内部研修の活用や、他の社員の参画実績を積むことで成長を促せます。'
+```
+
+#### F-03 — Revised Correct Targets
+
+**File: `lib/presentation/home/models/home_navigator_display.dart`**  
+Add to `case HomeRecommendedActionKind.employeeAcceptOrder:` (or the first order-acceptance kind):
+```dart
+explanation: '発注を受けると、4月分の売上が月末に計上されます。'
+    '支払いサイト30日のため、実際の入金は翌月（5月末）です。'
+    'それまでの給与・家賃は手元の現金から支払われます。資金繰りを確認しておきましょう。'
+```
+
+**File: `PublicDemo01PlaceholderScreen`**  
+After the first `recordOrder` callback, show a one-time dialog with the payment timing explanation (equivalent to F-03-A in Main Beginner Mode, but targeting Public Demo's order confirmation flow).
+
+#### F-05 — Revised Correct Targets
+
+**File: `lib/presentation/home/models/home_recommended_action.dart`**  
+No new `HomeRecommendedActionKind` values are strictly needed if training is already on-screen. The `HomeRecommendedActionNone` fallback already shows a month goal. The fix may be in improving that fallback content rather than adding new recommended action kinds.
+
+**File: `lib/presentation/home/models/home_navigator_display.dart`**  
+Add month-range-aware Hiyori messages for months 8–14. The navigator display could inspect `state.month` (passed to `_guidanceCopyFor`) to provide:
+- Months 8–10: "現在の参画状況は順調ですか？成長結果を確認しましょう。"
+- Months 11–13: "下半期も引き続き参画が続きます。資金繰りを定期的に確認してください。"
+- Month 14 (February): "来月で今期が終わります。通期の振り返りを準備しましょう。"
+
+**Constraint check:** `home_navigator_display.dart` does NOT read `PublicDemoState` directly (per file design); the month value must be passed into `_guidanceCopyFor()` as a parameter, or the display model must be extended. Verify this does not violate SSOT rules at implementation time.
+
+#### F-06 — Retain Only Correct-Target Steps
+
+Retain F-06-C (priority change in `home_recommended_action.dart`) and F-06-D/F-07-A (Hiyori copy in `home_navigator_display.dart`).
+
+Remove F-06-A (`task_engine.dart` subtitle) and F-06-B (`contractRenewalTutorial` dialog) — these are Main Beginner Mode only and not applicable to the playtest.
+
+---
+
+### 6. Revised Expected Changed Files
+
+| File | Blocker(s) | Change Type | Runtime |
+|------|-----------|-------------|---------|
+| `PublicDemo01PlaceholderScreen` (TBD exact path) | F-01, F-03 | Emit logic + one-time order dialog | **Public Demo** |
+| `lib/presentation/home/models/home_recommended_action.dart` | F-01, F-06-C | New kind + priority | **Public Demo** |
+| `lib/presentation/home/models/home_navigator_display.dart` | F-01, F-03, F-05, F-06-D, F-07 | Explanation copy + new cases | **Public Demo** |
+| ~~`lib/game/engine/task_engine.dart`~~ | ~~F-01, F-06-A~~ | ~~REMOVED~~ | ~~Main Beginner Mode only~~ |
+| ~~`lib/ui/engineers/engineer_detail_screen.dart`~~ | ~~F-01~~ | ~~REMOVED~~ | ~~Main Beginner Mode only~~ |
+| ~~`lib/game/engine/beginner_mode_engine.dart`~~ | ~~F-01, F-03, F-05~~ | ~~REMOVED~~ | ~~Main Beginner Mode only~~ |
+| ~~`lib/game/models/beginner_mode_state.dart`~~ | ~~F-01, F-05~~ | ~~REMOVED~~ | ~~Main Beginner Mode only~~ |
+| ~~`lib/game/models/founding_progress.dart`~~ | ~~F-03~~ | ~~REMOVED~~ | ~~Main Beginner Mode only~~ |
+
+**Total revised confirmed files: 3 Public Demo files + 1 TBD screen path**
+
+---
+
+### 7. Revised PR Split
+
+The previous three-PR split must be revised. All implementation targets are now in the Public Demo layer.
+
+#### REVISED NEXT IMPLEMENTATION PR #1: F-01 — Aoi Growth-Needed State + Hiyori WHY (F-07 combined)
+
+**Scope:**
+- `PublicDemo01PlaceholderScreen` — add `employeeGrowthNeeded` candidate emit for `stage == waiting && !isReadyForFieldSales`
+- `lib/presentation/home/models/home_recommended_action.dart` — add `HomeRecommendedActionKind.employeeGrowthNeeded` at priority 28
+- `lib/presentation/home/models/home_navigator_display.dart` — add `employeeGrowthNeeded` case + rewrite ALL existing `explanation` strings with WHY/consequence copy (F-07 combined here since same file, same pass)
+
+**Why F-01 + F-07 combined:** Both touch `home_navigator_display.dart`; doing F-07's full copy pass while also adding the new F-01 case avoids a two-PR conflict on the same file.
+
+**Tests to add:**
+- `PublicDemo01PlaceholderScreen` widget test: April home shows `employeeGrowthNeeded` for Aoi (actualSkill 52); does NOT show `employeeSkillSheetReview` for Aoi
+- `home_recommended_action.dart`: new kind sorted correctly relative to `employeeSkillSheetReview`
+- Hiyori explanation strings contain WHY keywords for each existing kind
+
+#### REVISED NEXT IMPLEMENTATION PR #2: F-03 + F-06 — Payment Timing + Contract Consequence
+
+**Scope:**
+- `PublicDemo01PlaceholderScreen` — add one-time order-acceptance dialog explaining April→May payment timing
+- `lib/presentation/home/models/home_navigator_display.dart` — add payment timing copy to `employeeAcceptOrder` explanation (F-03); update `assignmentConfirmNextOrder` explanation with idle-cost consequence (F-06-D)
+- `lib/presentation/home/models/home_recommended_action.dart` — raise `assignmentConfirmNextOrder` priority from 50 (P3) to 35 (P2) (F-06-C)
+
+**Tests to add:**
+- One-time dialog appears after first `recordOrder()` call; not repeated on subsequent orders
+- `assignmentConfirmNextOrder` appears above P3 items in home slot when active
+- Hiyori explanation for `assignmentConfirmNextOrder` contains consequence language
+
+#### REVISED NEXT IMPLEMENTATION PR #3: F-05 — August–March Month Engagement
+
+**Scope:**
+- `lib/presentation/home/models/home_navigator_display.dart` — add month-range Hiyori messages for months 8–14 (requires verifying whether `month` can be passed to `_guidanceCopyFor` without SSOT violation; if not, create a new `HomeNavigatorMonthContext` value object the presenter can supply)
+- `PublicDemo01PlaceholderScreen` — if fallback month goal text needs improvement for quiet months, update the `HomeRecommendedActionNone` display
+
+**Tests to add:**
+- Month 8 Hiyori message is different from month 4 Hiyori message
+- Month 14 (February) Hiyori message includes year-end language
+- `HomeRecommendedActionNone` fallback does not show an impossible CTA
+
+---
+
+### 8. PLAYTEST-SAVE-1B Conflict Risk — Revised
+
+PLAYTEST-SAVE-1B touches Public Demo persistence (`PublicDemoAggregate.toJson/fromJson`, `PublicDemoState`, `PublicDemoWorkflowState`). FLOW-2A's revised targets touch only presentation/UI files.
+
+| File | FLOW-2A (revised) | SAVE-1B likely | Conflict risk |
+|------|-------------------|----------------|---------------|
+| `PublicDemoState` | No | Yes | **None** |
+| `PublicDemoWorkflowState` | No | Yes | **None** |
+| `PublicDemoAggregate` | No | Yes | **None** |
+| `PublicDemo01PlaceholderScreen` | Yes (new emit + dialog) | Possible (save/restore hooks) | **Low–Medium** |
+| `home_recommended_action.dart` | Yes (new kind) | Unlikely | **Low** |
+| `home_navigator_display.dart` | Yes (copy changes) | Unlikely | **Low** |
+
+**Revised conflict risk: LOW overall.** The previous plan's Medium risk on `beginner_mode_state.dart` enum additions is entirely eliminated — those files are no longer touched by FLOW-2A.
+
+---
+
+### 9. Actions Required Before Implementation Begins
+
+1. **Locate `PublicDemo01PlaceholderScreen` exact path** — the file was referenced but not read; all F-01/F-03 emit logic changes depend on it. Likely in `lib/ui/home/` or `lib/presentation/home/`.
+2. **Verify `_guidanceCopyFor()` parameter surface** — confirm whether `home_navigator_display.dart` can receive `state.month` without violating the "no domain objects in presentation" rule. If not, design a `HomeNavigatorMonthContext` value before implementing F-05.
+3. **Confirm `employeeGrowthNeeded` design authority** — the `isReadyForFieldSales` threshold (60) is a game-balance value. Adding a recommended action for below-threshold engineers is a presentation fix, not a threshold change. Confirm this does not require design sign-off before implementation.
+4. **PUBLIC-DEMO-E2E-1 coverage** — every acceptance test in this plan requires a Public Demo Playwright test fixture. Since there is currently no Playwright coverage for Public Demo, the E2E acceptance tests must be written as part of implementation (not post-implementation). Treat each REVISED PR as requiring at least one Playwright happy-path test covering its own changes.
+
+---
+
+PLAYTEST-FLOW-2A PUBLIC DEMO TARGET VERIFIED

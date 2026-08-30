@@ -53,6 +53,45 @@ void main() {
     expect(codec.fromJson(normalized), isNull);
     expect(codec.fromJson(inconsistent), isNull);
   });
+
+  test('rejects negative cash paired with normal financial authority', () {
+    final encoded = codec.toJson(PublicDemoAggregate.initial());
+    final contradictory = _copyEnvelope(
+      encoded,
+      state: {
+        'cash': -1,
+        'monthOpeningCash': -1,
+        'financialStatus': 'normal',
+      },
+    );
+
+    expect(codec.fromJson(contradictory), isNull);
+  });
+
+  test('rejects an interview record that was not backed by pass outcome facts', () {
+    final encoded = codec.toJson(PublicDemoAggregate.initial());
+    final aggregate = (encoded['aggregate'] as Map<String, dynamic>);
+    final workflow = (aggregate['workflow'] as Map<String, dynamic>);
+    final engineers = (workflow['engineers'] as List)
+        .map((entry) => Map<String, dynamic>.from(entry as Map))
+        .toList();
+    engineers[0] = {
+      ...engineers[0],
+      'stage': 'ordered',
+      'interviewRecordEngineerId': engineers[0]['id'],
+      // Deliberately leave lastInterviewScore null: a matching id alone must
+      // never mint genuine interview authority during restoration.
+    };
+    final contradictory = {
+      ...encoded,
+      'aggregate': {
+        ...aggregate,
+        'workflow': {...workflow, 'engineers': engineers},
+      },
+    };
+
+    expect(codec.fromJson(contradictory), isNull);
+  });
 }
 
 PublicDemoAggregate _advancedAggregate() {

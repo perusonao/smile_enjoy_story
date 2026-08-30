@@ -18,6 +18,7 @@ import '../../game/public_demo/public_demo_financial_status.dart';
 import '../../game/public_demo/public_demo_raise.dart';
 import '../../game/public_demo/public_demo_summer_bonus_plan.dart';
 import '../../game/public_demo/public_demo_workflow_state.dart';
+import '../../game/persistence/public_demo_save_service.dart';
 import '../../presentation/home/models/home_dashboard_display_data.dart';
 import '../../presentation/home/models/home_office_stage_display.dart';
 import '../../presentation/home/models/home_navigator_display.dart';
@@ -50,9 +51,14 @@ typedef _AddCandidate =
     });
 
 class PublicDemo01PlaceholderScreen extends StatefulWidget {
-  const PublicDemo01PlaceholderScreen({super.key, this.buildInfo});
+  const PublicDemo01PlaceholderScreen({
+    super.key,
+    this.buildInfo,
+    this.saveService = const PublicDemoSaveService(),
+  });
 
   final BuildInfo? buildInfo;
+  final PublicDemoSaveService saveService;
   @override
   State<PublicDemo01PlaceholderScreen> createState() => _S();
 }
@@ -73,6 +79,61 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
   /// without the paired workflow change, or vice versa, for any command
   /// that requires both — see [PublicDemoAggregate]'s own class doc.
   PublicDemoAggregate _game = PublicDemoAggregate.initial();
+  Future<void> _persistenceTail = Future<void>.value();
+  bool _isRestoring = true;
+  bool _isRestarting = false;
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_restoreAggregate());
+  }
+
+  /// Restores only a complete aggregate accepted by the persistence boundary.
+  /// UI-local screen state intentionally remains at its normal fresh values.
+  Future<void> _restoreAggregate() async {
+    PublicDemoAggregate? restored;
+    try {
+      // Browser localStorage-backed SharedPreferences is available
+      // immediately in the supported runtime. Treat an unavailable bridge as
+      // the same safe fallback as an I/O failure rather than leaving the
+      // Public Demo permanently non-interactive.
+      restored = await widget.saveService.load().timeout(
+        const Duration(milliseconds: 100),
+        onTimeout: () => null,
+      );
+    } catch (_) {
+      restored = null;
+    }
+    if (!mounted) return;
+    setState(() {
+      _game = restored ?? PublicDemoAggregate.initial();
+      _isRestoring = false;
+    });
+  }
+
+  /// Serializes all storage operations in aggregate commit order. Capturing
+  /// [next] before enqueueing means a delayed callback can never read a newer
+  /// or older screen value by accident.
+  Future<T> _enqueuePersistence<T>(Future<T> Function() operation) {
+    final result = _persistenceTail.then<T>((_) => operation());
+    _persistenceTail = result.then<void>(
+      (_) {},
+      onError: (Object _, StackTrace _) {},
+    );
+    return result;
+  }
+
+  /// The sole authoritative mutation boundary for this screen. A successful
+  /// command replaces the complete aggregate, then queues that exact result.
+  void _commitAggregate(PublicDemoAggregate next) {
+    if (identical(next, _game)) return;
+    setState(() => _game = next);
+    final captured = next;
+    unawaited(
+      _enqueuePersistence<void>(() => widget.saveService.save(captured)),
+    );
+  }
 
   /// Read-only view of [_game]'s finance side. Never assigned directly —
   /// see [_game].
@@ -299,7 +360,7 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
       ).showSnackBar(SnackBar(content: Text(message)));
       return;
     }
-    setState(() => _game = result.aggregate!);
+    _commitAggregate(result.aggregate!);
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text('応募者${result.generatedApplicants.length}名を追加しました。'),
@@ -322,7 +383,7 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
       workflow.assignedEngineerIds(month: s.month);
 
   void _selectInternalTraining(String engineerId) {
-    setState(() => _game = _game.selectInternalTraining(engineerId));
+    _commitAggregate(_game.selectInternalTraining(engineerId));
   }
 
   // HOME-RUNTIME-2C: the engineer/applicant stage commands below were
@@ -333,30 +394,30 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
   // single site that emits the candidate and renders the button together,
   // so the two can never drift apart. No command, guard, or key changed.
   void _startSkillSheetReview(String engineerId) =>
-      setState(() => _game = _game.startSkillSheetReview(engineerId));
+      _commitAggregate(_game.startSkillSheetReview(engineerId));
 
   void _beginSelling(String engineerId) =>
-      setState(() => _game = _game.beginSelling(engineerId));
+      _commitAggregate(_game.beginSelling(engineerId));
 
   void _introduceProject(String engineerId) =>
-      setState(() => _game = _game.introduceProject(engineerId));
+      _commitAggregate(_game.introduceProject(engineerId));
 
   void _reviewResume(String applicantId) =>
-      setState(() => _game = _game.reviewResume(applicantId));
+      _commitAggregate(_game.reviewResume(applicantId));
 
   void _beginPreEntrySkillSheet(String applicantId) =>
-      setState(() => _game = _game.beginPreEntrySkillSheet(applicantId));
+      _commitAggregate(_game.beginPreEntrySkillSheet(applicantId));
 
   void _beginPreEntrySelling(String applicantId) =>
-      setState(() => _game = _game.beginPreEntrySelling(applicantId));
+      _commitAggregate(_game.beginPreEntrySelling(applicantId));
 
   void _introducePreEntryProject(String applicantId) =>
-      setState(() => _game = _game.introducePreEntryProject(applicantId));
+      _commitAggregate(_game.introducePreEntryProject(applicantId));
 
   /// Records the engineer's order, then shows the order event. Extracted
   /// verbatim from the `受注` button's own closure.
   Future<void> _recordEngineerOrder(PublicDemoEngineerSales e) async {
-    setState(() => _game = _game.recordOrder(e.id));
+    _commitAggregate(_game.recordOrder(e.id));
     if (!mounted) return;
     await _precacheEventImage(AssetPaths.eventOrderDecision);
     if (!mounted) return;
@@ -375,7 +436,7 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
   /// Records the applicant's June order, then shows the order event.
   /// Extracted verbatim from the `6月受注` button's own closure.
   Future<void> _recordApplicantJuneOrder(PublicDemoApplicant a) async {
-    setState(() => _game = _game.recordJuneOrder(a.id));
+    _commitAggregate(_game.recordJuneOrder(a.id));
     if (!mounted) return;
     await _precacheEventImage(AssetPaths.eventOrderDecision);
     if (!mounted) return;
@@ -515,8 +576,8 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
               width: double.infinity,
               child: FilledButton(
                 key: const Key('public-demo-restart-button'),
-                onPressed: _restartGame,
-                child: const Text('最初からやり直す'),
+                onPressed: _isRestarting ? null : _restartGame,
+                child: Text(_isRestarting ? '再開準備中…' : '最初からやり直す'),
               ),
             ),
           ],
@@ -525,14 +586,30 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
     );
   }
 
-  /// Resets Public Demo 0.1 to its defined initial state.
-  /// This is the only UX-safe exit from a terminal financial state
-  /// (PLAYTEST-BLOCKER-1A). No finance authority or game-balance parameter
-  /// is changed — this delegates entirely to [PublicDemoAggregate.initial].
-  void _restartGame() {
+  /// Clears Public Demo storage only after every earlier queued save. The
+  /// terminal aggregate remains visible until clear succeeds; otherwise a
+  /// failed browser write cannot silently turn into a pretend fresh session.
+  Future<void> _restartGame() async {
+    if (_isRestoring || _isRestarting) return;
+    setState(() => _isRestarting = true);
+    var cleared = false;
+    try {
+      cleared = await _enqueuePersistence<bool>(widget.saveService.clear);
+    } catch (_) {
+      cleared = false;
+    }
+    if (!mounted) return;
+    if (!cleared) {
+      setState(() => _isRestarting = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('保存データを削除できませんでした。現在のプレイを続けます。')),
+      );
+      return;
+    }
     setState(() {
       _game = PublicDemoAggregate.initial();
       _summerBonusDecisionConfirmed = false;
+      _isRestarting = false;
     });
     _resetMonthScroll();
   }
@@ -549,12 +626,12 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
     });
   }
 
-  void ars(int i, PublicDemoReplacementStage x) => setState(() {
-    _game = _game.withAssignmentUpdate(
+  void ars(int i, PublicDemoReplacementStage x) => _commitAggregate(
+    _game.withAssignmentUpdate(
       workflow.assignments[i].engineerId,
       replacementStage: x,
-    );
-  });
+    ),
+  );
   // Best-effort decode of an event-modal image before its dialog opens, so
   // the first painted frame already has pixels instead of a blank
   // AspectRatio box that pops in and shifts the dialog's layout once decode
@@ -595,9 +672,9 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
     // interview profile/capability — `r` above is computed identically,
     // from the same (unchanged-in-between) `state`, purely for this
     // dialog's own display text; it is never passed in as the outcome.
-    setState(() {
-      _game = _game.recordEngineerInterviewResult(engineerId: e.id, type: t);
-    });
+    _commitAggregate(
+      _game.recordEngineerInterviewResult(engineerId: e.id, type: t),
+    );
     if (!mounted) return;
     final partner = t == PublicDemoInterviewType.partner;
     await _precacheEventImage(AssetPaths.eventClientInterview);
@@ -650,7 +727,7 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
       ),
     );
     if (!mounted) return;
-    setState(() => _game = _game.closeApril(monthlyExpenses: expense));
+    _commitAggregate(_game.closeApril(monthlyExpenses: expense));
     _resetMonthScroll();
   }
 
@@ -662,7 +739,7 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
     // could reach independently of that check.
     final result = _game.completeInterview(workflow.applicants[i].id);
     if (!result.isCompleted) return;
-    setState(() => _game = result.aggregate);
+    _commitAggregate(result.aggregate);
   }
 
   Future<void> offer(int i) async {
@@ -676,13 +753,13 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
     // evaluate (`result` is already a pure PublicDemoSalaryOffer). Whether
     // it becomes authoritative — and whether a BindingOffer is minted at
     // all — is decided entirely inside PublicDemoOfferAcceptance.accept.
-    setState(() {
-      _game = _game.acceptOffer(
+    _commitAggregate(
+      _game.acceptOffer(
         applicantId: a.id,
         offer: result,
         fiscalCloseId: PublicDemoFiscalCloseId.forMonth(s.month),
-      );
-    });
+      ),
+    );
   }
 
   Future<void> pi(int i) async {
@@ -693,9 +770,7 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
     // WORKFLOW-STATE-1AB FIX5 P1: the domain derives pass/fail itself from
     // this applicant's own authoritative salesSkillFit — `passed` above is
     // computed identically, purely for this dialog's own display text.
-    setState(() {
-      _game = _game.recordPreEntryPartnerInterviewResult(a.id);
-    });
+    _commitAggregate(_game.recordPreEntryPartnerInterviewResult(a.id));
     if (!mounted) return;
     await _precacheEventImage(AssetPaths.eventClientInterview);
     if (!mounted) return;
@@ -722,9 +797,7 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
     // WORKFLOW-STATE-1AB FIX5 P1: the domain derives pass/fail itself from
     // this applicant's own authoritative salesSkillFit — `passed` above is
     // computed identically, purely for this dialog's own display text.
-    setState(() {
-      _game = _game.recordPreEntryClientInterviewResult(a.id);
-    });
+    _commitAggregate(_game.recordPreEntryClientInterviewResult(a.id));
     if (!mounted) return;
     await _precacheEventImage(AssetPaths.eventClientInterview);
     if (!mounted) return;
@@ -781,42 +854,42 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
     // command — there is no `assignments`/`joinedApplicants` parameter for
     // this widget to supply; both are derived entirely from the
     // aggregate's own authoritative facts.
-    setState(() => _game = _game.closeMay(week: 9, monthlyExpenses: expense));
+    _commitAggregate(_game.closeMay(week: 9, monthlyExpenses: expense));
     _resetMonthScroll();
   }
 
   void decideOrder(int i) {
     final a = workflow.assignments[i];
-    setState(() {
-      _game = _game.withAssignmentUpdate(
+    _commitAggregate(
+      _game.withAssignmentUpdate(
         a.engineerId,
         nextOrderStatus: a.willOfferNextMonthFor(capabilityFor(a.engineerId))
             ? PublicDemoNextOrderStatus.offered
             : PublicDemoNextOrderStatus.notOffered,
-      );
-    });
+      ),
+    );
   }
 
   void acceptOrder(int i) {
-    setState(() {
-      _game = _game.withAssignmentUpdate(
+    _commitAggregate(
+      _game.withAssignmentUpdate(
         workflow.assignments[i].engineerId,
         nextOrderStatus: PublicDemoNextOrderStatus.accepted,
-      );
-    });
+      ),
+    );
   }
 
   void replacementPartner(int i) {
     if (s.salesRemaining <= 0) return;
     final a = workflow.assignments[i];
-    setState(() {
-      _game = _game.consumeSlotAndSetReplacementStage(
+    _commitAggregate(
+      _game.consumeSlotAndSetReplacementStage(
         a.engineerId,
         a.replacementPartnerScoreFor(capabilityFor(a.engineerId)) >= 60
             ? PublicDemoReplacementStage.partnerPassed
             : PublicDemoReplacementStage.partnerFailed,
-      );
-    });
+      ),
+    );
   }
 
   void replacementClient(int i) {
@@ -838,8 +911,8 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
         )
         .length;
     final joinedHires = workflow.applicants.where(accepted);
-    setState(
-      () => _game = _game.closeJune(
+    _commitAggregate(
+      _game.closeJune(
         assignedInJuly: assigned,
         monthlyExpenses: PublicDemoSalaryFinance.monthlyExpenses(
           baselineExpenses: expense,
@@ -857,14 +930,14 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
       builder: (context) => PublicDemoRaiseDialog(applicant: a),
     );
     if (!mounted || decision == null) return;
-    setState(() {
-      _game = _game.applyRaiseDecision(
+    _commitAggregate(
+      _game.applyRaiseDecision(
         a.id,
         decisionMonth: s.month,
         week: s.month * 4,
         decision: decision,
-      );
-    });
+      ),
+    );
   }
 
   int get _julyMonthlyExpenses => PublicDemoSalaryFinance.monthlyExpenses(
@@ -883,8 +956,8 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
       ),
     );
     if (!mounted || decision == null) return;
+    _commitAggregate(_game.selectSummerBonus(decision));
     setState(() {
-      _game = _game.selectSummerBonus(decision);
       _summerBonusDecisionConfirmed = true;
     });
   }
@@ -894,9 +967,7 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
       await decideSummerBonus();
       return;
     }
-    setState(
-      () => _game = _game.closeJuly(monthlyExpenses: _julyMonthlyExpenses),
-    );
+    _commitAggregate(_game.closeJuly(monthlyExpenses: _julyMonthlyExpenses));
     _resetMonthScroll();
   }
 
@@ -912,10 +983,8 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
   /// a dedicated per-month handler, since September onward has no
   /// month-specific event the way July's bonus does.
   void closeOrdinaryMonth() {
-    setState(
-      () => _game = _game.closeOrdinaryMonth(
-        monthlyExpenses: _ordinaryMonthlyExpenses,
-      ),
+    _commitAggregate(
+      _game.closeOrdinaryMonth(monthlyExpenses: _ordinaryMonthlyExpenses),
     );
     _resetMonthScroll();
   }
@@ -1858,240 +1927,282 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
             ],
           ),
         ),
-        body: SafeArea(
-          child: ListView(
-            controller: _scrollController,
-            padding: const EdgeInsets.all(16),
-            // The monthly cash-flow card (FINANCE-UX-1) made this screen's
-            // total content large enough to trip a Flutter SliverList layout
-            // quirk in this SDK: past a certain child height, ListView's
-            // sliver-based children stop being mounted at all beyond that
-            // point (not just scrolled off-screen — genuinely absent from the
-            // widget tree), independent of cacheExtent (confirmed up to
-            // 20000px, no effect). Wrapping everything in one Column keeps
-            // this a ListView (existing tests still find/scroll it by type)
-            // but gives the sliver exactly one child to lay out, which
-            // Flutter always builds in full regardless of height.
-            children: [
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // HOME-RUNTIME-2A: the FINANCE-FAILURE-1C shortage
-                  // explanation is hoisted above everything else. Its
-                  // authority is unchanged and still lives entirely in the
-                  // card itself — it renders only when
-                  // `state.financialStatus == cashShortage` and never infers
-                  // that from the sign of cash. This screen decides where the
-                  // card goes, not whether it applies, which is why
-                  // `financialStatus` is still not projected into HOME.
-                  PublicDemoCashShortageCard(state: s),
-                  // PLAYTEST-BLOCKER-1A: when a terminal financial state is
-                  // reached (bankruptcy or March cash-shortage failure),
-                  // show a prominent card that communicates the game-over
-                  // reason, the final cash, and a safe restart action.
-                  // This card is the player's primary signal that the
-                  // playthrough has ended — without it the only cue was a
-                  // month-close button that silently became a no-op.
-                  if (s.isFinanciallyTerminal) _bankruptcyTerminalCard(),
-                  // HOME-RUNTIME-READ-1: the new HOME read-only display,
-                  // added alongside (never in place of) the existing Public
-                  // Demo UI below. It receives only the projection — no
-                  // aggregate, no state, no commands, no callbacks.
-                  //
-                  // HOME-RUNTIME-2A: its MonthHeaderBar is now the only month
-                  // display on the screen — the `N月` headline that used to
-                  // restate it here is deleted.
-                  PublicDemoHomeDashboardSection(
-                    data: _homeDashboardData,
-                    recommendedAction: _recommendedActionSlot,
-                    navigatorAdvice: navigatorAdvice,
-                  ),
-                  const SizedBox(height: 8),
-                  HomeOfficeStageSection(display: _officeStageDisplay),
-                  const SizedBox(height: 8),
-                  PublicDemoEmployeeStageSection(
-                    employees: _employeeStageItems,
-                  ),
-                  const SizedBox(height: 8),
-                  PublicDemoImportantEventsSection(events: _importantEvents),
-                  const SizedBox(height: 8),
-                  PublicDemoFinanceSummarySection(summary: _financeSummary),
-                  if (_monthlyPrimaryAction case final monthlyAction?) ...[
-                    const SizedBox(height: 8),
-                    PublicDemoMonthlyPrimaryCtaSection(action: monthlyAction),
-                  ],
-                  const SizedBox(height: 8),
-                  dashboard(),
-                  if (s.month == 4) ...[
-                    for (var i = 0; i < workflow.engineers.length; i++) ec(i),
-                    OutlinedButton(
-                      onPressed: april,
-                      child: const Text('4月終了→5月'),
-                    ),
-                  ],
-                  if (s.month == 5) ...[
-                    _RecruitmentMediaCard(
-                      state: s,
-                      onPressed: _openRecruitmentMedia,
-                    ),
-                    for (var i = 0; i < workflow.applicants.length; i++) ac(i),
-                    OutlinedButton(
-                      onPressed: may,
-                      child: const Text('5月終了→6月'),
-                    ),
-                  ],
-                  if (s.month == 6)
-                    for (final a in workflow.applicants.where(
-                      (a) => s.joinedApplicantIds.contains(a.id) && a.hasJoined,
-                    ))
-                      employeeConditionCard(a),
-                  if (s.month == 6) ...[
-                    for (var i = 0; i < workflow.engineers.length; i++)
-                      if (s.joinedApplicantIds.contains(
-                            workflow.engineers[i].id,
-                          ) &&
-                          workflow.engineers[i].stage !=
-                              PublicDemoSalesStage.ordered &&
-                          !workflow.assignments.any(
-                            (assignment) =>
-                                assignment.engineerId ==
-                                workflow.engineers[i].id,
+        body: Stack(
+          children: [
+            AbsorbPointer(
+              absorbing: _isRestoring || _isRestarting,
+              child: SafeArea(
+                child: ListView(
+                  controller: _scrollController,
+                  padding: const EdgeInsets.all(16),
+                  // The monthly cash-flow card (FINANCE-UX-1) made this screen's
+                  // total content large enough to trip a Flutter SliverList layout
+                  // quirk in this SDK: past a certain child height, ListView's
+                  // sliver-based children stop being mounted at all beyond that
+                  // point (not just scrolled off-screen — genuinely absent from the
+                  // widget tree), independent of cacheExtent (confirmed up to
+                  // 20000px, no effect). Wrapping everything in one Column keeps
+                  // this a ListView (existing tests still find/scroll it by type)
+                  // but gives the sliver exactly one child to lay out, which
+                  // Flutter always builds in full regardless of height.
+                  children: [
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // HOME-RUNTIME-2A: the FINANCE-FAILURE-1C shortage
+                        // explanation is hoisted above everything else. Its
+                        // authority is unchanged and still lives entirely in the
+                        // card itself — it renders only when
+                        // `state.financialStatus == cashShortage` and never infers
+                        // that from the sign of cash. This screen decides where the
+                        // card goes, not whether it applies, which is why
+                        // `financialStatus` is still not projected into HOME.
+                        PublicDemoCashShortageCard(state: s),
+                        // PLAYTEST-BLOCKER-1A: when a terminal financial state is
+                        // reached (bankruptcy or March cash-shortage failure),
+                        // show a prominent card that communicates the game-over
+                        // reason, the final cash, and a safe restart action.
+                        // This card is the player's primary signal that the
+                        // playthrough has ended — without it the only cue was a
+                        // month-close button that silently became a no-op.
+                        if (s.isFinanciallyTerminal) _bankruptcyTerminalCard(),
+                        // HOME-RUNTIME-READ-1: the new HOME read-only display,
+                        // added alongside (never in place of) the existing Public
+                        // Demo UI below. It receives only the projection — no
+                        // aggregate, no state, no commands, no callbacks.
+                        //
+                        // HOME-RUNTIME-2A: its MonthHeaderBar is now the only month
+                        // display on the screen — the `N月` headline that used to
+                        // restate it here is deleted.
+                        PublicDemoHomeDashboardSection(
+                          data: _homeDashboardData,
+                          recommendedAction: _recommendedActionSlot,
+                          navigatorAdvice: navigatorAdvice,
+                        ),
+                        const SizedBox(height: 8),
+                        HomeOfficeStageSection(display: _officeStageDisplay),
+                        const SizedBox(height: 8),
+                        PublicDemoEmployeeStageSection(
+                          employees: _employeeStageItems,
+                        ),
+                        const SizedBox(height: 8),
+                        PublicDemoImportantEventsSection(
+                          events: _importantEvents,
+                        ),
+                        const SizedBox(height: 8),
+                        PublicDemoFinanceSummarySection(
+                          summary: _financeSummary,
+                        ),
+                        if (_monthlyPrimaryAction
+                            case final monthlyAction?) ...[
+                          const SizedBox(height: 8),
+                          PublicDemoMonthlyPrimaryCtaSection(
+                            action: monthlyAction,
+                          ),
+                        ],
+                        const SizedBox(height: 8),
+                        dashboard(),
+                        if (s.month == 4) ...[
+                          for (var i = 0; i < workflow.engineers.length; i++)
+                            ec(i),
+                          OutlinedButton(
+                            onPressed: april,
+                            child: const Text('4月終了→5月'),
+                          ),
+                        ],
+                        if (s.month == 5) ...[
+                          _RecruitmentMediaCard(
+                            state: s,
+                            onPressed: _openRecruitmentMedia,
+                          ),
+                          for (var i = 0; i < workflow.applicants.length; i++)
+                            ac(i),
+                          OutlinedButton(
+                            onPressed: may,
+                            child: const Text('5月終了→6月'),
+                          ),
+                        ],
+                        if (s.month == 6)
+                          for (final a in workflow.applicants.where(
+                            (a) =>
+                                s.joinedApplicantIds.contains(a.id) &&
+                                a.hasJoined,
                           ))
-                        ec(i),
-                    for (var i = 0; i < workflow.assignments.length; i++)
-                      assignmentCard(i),
-                    OutlinedButton(
-                      onPressed: june,
-                      child: const Text('6月終了→7月'),
-                    ),
-                  ],
-                  if (s.month == 7) ...[
-                    Text('7月開始結果', style: Theme.of(c).textTheme.titleLarge),
-                    Text(
-                      '参画 ${s.engineersAssigned}名 / 待機 ${s.engineersWaiting}名',
-                    ),
-                    for (final a in workflow.assignments)
-                      ListTile(
-                        title: Text(a.engineerName),
-                        subtitle: Text(julyResult(a)),
-                      ),
-                    Card(
-                      child: Padding(
-                        padding: const EdgeInsets.all(12),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Text(
-                              '夏季賞与',
-                              style: TextStyle(fontWeight: FontWeight.bold),
+                            employeeConditionCard(a),
+                        if (s.month == 6) ...[
+                          for (var i = 0; i < workflow.engineers.length; i++)
+                            if (s.joinedApplicantIds.contains(
+                                  workflow.engineers[i].id,
+                                ) &&
+                                workflow.engineers[i].stage !=
+                                    PublicDemoSalesStage.ordered &&
+                                !workflow.assignments.any(
+                                  (assignment) =>
+                                      assignment.engineerId ==
+                                      workflow.engineers[i].id,
+                                ))
+                              ec(i),
+                          for (var i = 0; i < workflow.assignments.length; i++)
+                            assignmentCard(i),
+                          OutlinedButton(
+                            onPressed: june,
+                            child: const Text('6月終了→7月'),
+                          ),
+                        ],
+                        if (s.month == 7) ...[
+                          Text(
+                            '7月開始結果',
+                            style: Theme.of(c).textTheme.titleLarge,
+                          ),
+                          Text(
+                            '参画 ${s.engineersAssigned}名 / 待機 ${s.engineersWaiting}名',
+                          ),
+                          for (final a in workflow.assignments)
+                            ListTile(
+                              title: Text(a.engineerName),
+                              subtitle: Text(julyResult(a)),
                             ),
-                            const SizedBox(height: 4),
-                            Text(
-                              _summerBonusDecisionConfirmed
-                                  ? '選択済み：${switch (s.summerBonusSelection) {
-                                      PublicDemoSummerBonusPlan.none => 'なし',
-                                      PublicDemoSummerBonusPlan.half => '0.5か月',
-                                      PublicDemoSummerBonusPlan.one => '1か月',
-                                    }}'
-                                  : '7月終了前に支給内容を選びましょう。',
-                            ),
-                            const SizedBox(height: 8),
-                            FilledButton(
-                              key: const Key(
-                                'public-demo-summer-bonus-decision',
+                          Card(
+                            child: Padding(
+                              padding: const EdgeInsets.all(12),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const Text(
+                                    '夏季賞与',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    _summerBonusDecisionConfirmed
+                                        ? '選択済み：${switch (s.summerBonusSelection) {
+                                            PublicDemoSummerBonusPlan.none => 'なし',
+                                            PublicDemoSummerBonusPlan.half => '0.5か月',
+                                            PublicDemoSummerBonusPlan.one => '1か月',
+                                          }}'
+                                        : '7月終了前に支給内容を選びましょう。',
+                                  ),
+                                  const SizedBox(height: 8),
+                                  FilledButton(
+                                    key: const Key(
+                                      'public-demo-summer-bonus-decision',
+                                    ),
+                                    onPressed: decideSummerBonus,
+                                    child: Text(
+                                      _summerBonusDecisionConfirmed
+                                          ? '夏季賞与を変更'
+                                          : '夏季賞与を決める',
+                                    ),
+                                  ),
+                                ],
                               ),
-                              onPressed: decideSummerBonus,
+                            ),
+                          ),
+                          OutlinedButton(
+                            onPressed: july,
+                            child: const Text('7月終了→8月'),
+                          ),
+                        ],
+                        if (s.month >= 8 && s.month <= 14) ...[
+                          Text(
+                            '${publicDemoMonthLabel(s.month)}開始結果',
+                            style: Theme.of(c).textTheme.titleLarge,
+                          ),
+                          if (s.month == 8) ...[
+                            const Text('7月分の給与を反映しました'),
+                            Text(
+                              s.summerBonusPaidAmount == 0
+                                  ? '夏季賞与 なし'
+                                  : '夏季賞与 ¥${s.summerBonusPaidAmount}',
+                            ),
+                          ],
+                          // PLAYTEST-BLOCKER-1A: hide the close button once a
+                          // terminal state is reached — a no-op button that looks
+                          // active is the UX failure this PR fixes.
+                          if (!s.isCloseBlocked)
+                            OutlinedButton(
+                              onPressed: closeOrdinaryMonth,
                               child: Text(
-                                _summerBonusDecisionConfirmed
-                                    ? '夏季賞与を変更'
-                                    : '夏季賞与を決める',
+                                '${publicDemoMonthLabel(s.month)}終了→'
+                                '${publicDemoMonthLabel(s.month + 1)}',
                               ),
                             ),
-                          ],
-                        ),
-                      ),
-                    ),
-                    OutlinedButton(
-                      onPressed: july,
-                      child: const Text('7月終了→8月'),
-                    ),
-                  ],
-                  if (s.month >= 8 && s.month <= 14) ...[
-                    Text(
-                      '${publicDemoMonthLabel(s.month)}開始結果',
-                      style: Theme.of(c).textTheme.titleLarge,
-                    ),
-                    if (s.month == 8) ...[
-                      const Text('7月分の給与を反映しました'),
-                      Text(
-                        s.summerBonusPaidAmount == 0
-                            ? '夏季賞与 なし'
-                            : '夏季賞与 ¥${s.summerBonusPaidAmount}',
-                      ),
-                    ],
-                    // PLAYTEST-BLOCKER-1A: hide the close button once a
-                    // terminal state is reached — a no-op button that looks
-                    // active is the UX failure this PR fixes.
-                    if (!s.isCloseBlocked)
-                      OutlinedButton(
-                        onPressed: closeOrdinaryMonth,
-                        child: Text(
-                          '${publicDemoMonthLabel(s.month)}終了→'
-                          '${publicDemoMonthLabel(s.month + 1)}',
-                        ),
-                      ),
-                  ],
-                  if (s.month == 15 && !s.fiscalYearCompleted) ...[
-                    Text(
-                      '${publicDemoMonthLabel(s.month)}開始結果',
-                      style: Theme.of(c).textTheme.titleLarge,
-                    ),
-                    // PLAYTEST-BLOCKER-1A: hide the March close button when
-                    // a terminal state has already been reached (entering
-                    // March already bankrupt due to February closure).
-                    if (!s.isCloseBlocked)
-                      OutlinedButton(
-                        key: const Key('public-demo-march-close'),
-                        onPressed: closeOrdinaryMonth,
-                        child: const Text('3月終了→第1期終了'),
-                      ),
-                  ],
-                  if (s.fiscalYearCompleted) ...[
-                    Card(
-                      key: const Key('public-demo-fiscal-year-complete'),
-                      child: Padding(
-                        padding: const EdgeInsets.all(14),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              '第1期終了',
-                              style: Theme.of(c).textTheme.titleLarge,
+                        ],
+                        if (s.month == 15 && !s.fiscalYearCompleted) ...[
+                          Text(
+                            '${publicDemoMonthLabel(s.month)}開始結果',
+                            style: Theme.of(c).textTheme.titleLarge,
+                          ),
+                          // PLAYTEST-BLOCKER-1A: hide the March close button when
+                          // a terminal state has already been reached (entering
+                          // March already bankrupt due to February closure).
+                          if (!s.isCloseBlocked)
+                            OutlinedButton(
+                              key: const Key('public-demo-march-close'),
+                              onPressed: closeOrdinaryMonth,
+                              child: const Text('3月終了→第1期終了'),
                             ),
-                            const SizedBox(height: 8),
-                            const Text('1年間の経営が終了しました。'),
-                            const SizedBox(height: 8),
-                            Text('最終現預金 ¥${s.cash}'),
-                          ],
-                        ),
-                      ),
+                        ],
+                        if (s.fiscalYearCompleted) ...[
+                          Card(
+                            key: const Key('public-demo-fiscal-year-complete'),
+                            child: Padding(
+                              padding: const EdgeInsets.all(14),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    '第1期終了',
+                                    style: Theme.of(c).textTheme.titleLarge,
+                                  ),
+                                  const SizedBox(height: 8),
+                                  const Text('1年間の経営が終了しました。'),
+                                  const SizedBox(height: 8),
+                                  Text('最終現預金 ¥${s.cash}'),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ],
+                        if (s.month >= 7)
+                          for (final a in workflow.applicants.where(
+                            (a) =>
+                                s.joinedApplicantIds.contains(a.id) &&
+                                a.hasJoined,
+                          ))
+                            employeeConditionCard(a),
+                        if (s.month >= 6)
+                          for (final runtime in s.engineerRuntimes)
+                            internalTrainingCard(
+                              engineerId: runtime.engineerId,
+                              engineerName: _engineerName(runtime.engineerId),
+                            ),
+                      ],
                     ),
                   ],
-                  if (s.month >= 7)
-                    for (final a in workflow.applicants.where(
-                      (a) => s.joinedApplicantIds.contains(a.id) && a.hasJoined,
-                    ))
-                      employeeConditionCard(a),
-                  if (s.month >= 6)
-                    for (final runtime in s.engineerRuntimes)
-                      internalTrainingCard(
-                        engineerId: runtime.engineerId,
-                        engineerName: _engineerName(runtime.engineerId),
-                      ),
-                ],
+                ),
               ),
-            ],
-          ),
+            ),
+            if (_isRestoring)
+              const Positioned.fill(
+                child: ColoredBox(
+                  color: Color(0xDFFFFFFF),
+                  child: Center(
+                    child: Column(
+                      key: Key('public-demo-restoring'),
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        CircularProgressIndicator(),
+                        SizedBox(height: 12),
+                        Text('セーブデータを確認中…'),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+          ],
         ),
       ),
     );

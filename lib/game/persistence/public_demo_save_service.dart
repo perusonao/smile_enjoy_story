@@ -17,8 +17,12 @@ class PublicDemoSaveService {
 
   Future<void> save(PublicDemoAggregate aggregate) async {
     try {
-      final preferences = await SharedPreferences.getInstance();
-      await preferences.setString(key, codec.encode(aggregate));
+      final preferences = await SharedPreferences.getInstance().timeout(
+        const Duration(milliseconds: 100),
+      );
+      await preferences
+          .setString(key, codec.encode(aggregate))
+          .timeout(const Duration(milliseconds: 100));
     } catch (_) {
       // Persistence remains best-effort, exactly like normal SaveService.
     }
@@ -26,7 +30,9 @@ class PublicDemoSaveService {
 
   Future<PublicDemoAggregate?> load() async {
     try {
-      final preferences = await SharedPreferences.getInstance();
+      final preferences = await SharedPreferences.getInstance().timeout(
+        const Duration(milliseconds: 100),
+      );
       final raw = preferences.getString(key);
       return raw == null ? null : codec.decode(raw);
     } catch (_) {
@@ -34,12 +40,22 @@ class PublicDemoSaveService {
     }
   }
 
-  Future<void> clear() async {
+  /// Removes the isolated Public Demo aggregate.
+  ///
+  /// Unlike save/load, restart needs to know whether this completed: replacing
+  /// an in-memory terminal session after a failed clear would falsely claim a
+  /// fresh start while the old authoritative aggregate can still return on a
+  /// later launch.
+  Future<bool> clear() async {
     try {
-      final preferences = await SharedPreferences.getInstance();
-      await preferences.remove(key);
+      final preferences = await SharedPreferences.getInstance().timeout(
+        const Duration(milliseconds: 100),
+      );
+      return await preferences
+          .remove(key)
+          .timeout(const Duration(milliseconds: 100));
     } catch (_) {
-      // Persistence cleanup must not break gameplay.
+      return false;
     }
   }
 }

@@ -25,6 +25,7 @@ import '../../presentation/home/models/home_recommended_action.dart';
 import '../../presentation/build_info.dart';
 import '../../presentation/home/widgets/home_office_stage_section.dart';
 import '../asset_paths.dart';
+import '../theme.dart';
 import 'public_demo_event_dialog.dart';
 import 'public_demo_cash_shortage_card.dart';
 import 'public_demo_growth_result_card.dart';
@@ -390,17 +391,150 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
     );
   }
 
-  /// The HOME-RUNTIME-2C P0 CTA. Purely a scroll: the FINANCE-FAILURE-1C
-  /// shortage card at the top of this screen *is* the response, and this
-  /// only brings the player back to it. It touches no state and no command,
-  /// so no finance authority moves into the recommendation path.
-  void _scrollToShortageCard() {
-    if (!_scrollController.hasClients) return;
-    _scrollController.animateTo(
-      0,
-      duration: const Duration(milliseconds: 250),
-      curve: Curves.easeOut,
+  /// PLAYTEST-BLOCKER-1A: shows a compact dialog that always produces
+  /// perceptible feedback regardless of scroll position. The player sees
+  /// the current cash, the shortage amount, the pending AR, and a plain
+  /// explanation of what the next monthly close decides and what to review.
+  ///
+  /// This replaces the former inert scroll-to-zero behaviour that appeared
+  /// completely inert when the player was already at the top of the screen.
+  /// No finance authority moves into this path — it reads [s] read-only and
+  /// shows the same values already on the shortage card.
+  Future<void> _showCashShortageExplanation() async {
+    if (!mounted) return;
+    final deficit = s.cash < 0 ? -s.cash : 0;
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        key: const Key('public-demo-cash-shortage-dialog'),
+        title: Row(
+          children: [
+            Icon(Icons.warning_amber_rounded, color: Colors.red.shade700),
+            const SizedBox(width: 8),
+            const Flexible(child: Text('資金不足')),
+          ],
+        ),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _dialogRow('現在の現預金', formatYen(s.cash)),
+              _dialogRow('不足額', formatYen(deficit)),
+              _dialogRow('次回入金予定（売掛金）', formatYen(s.pendingRevenue)),
+              const SizedBox(height: 12),
+              const Text(
+                '次回の月次決算で現預金が0円以上になれば回復します。'
+                'このまま赤字が続くと倒産となります。',
+              ),
+              const SizedBox(height: 8),
+              Text(
+                '営業・案件参画を強化して翌月の収益を増やしましょう。',
+                style: Theme.of(ctx).textTheme.bodySmall,
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          FilledButton(
+            key: const Key('public-demo-cash-shortage-dialog-dismiss'),
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('確認'),
+          ),
+        ],
+      ),
     );
+  }
+
+  /// Shared label/value row used inside [_showCashShortageExplanation].
+  Widget _dialogRow(String label, String value) => Padding(
+    padding: const EdgeInsets.symmetric(vertical: 2),
+    child: Row(
+      children: [
+        Expanded(child: Text(label)),
+        Text(value, style: const TextStyle(fontWeight: FontWeight.w600)),
+      ],
+    ),
+  );
+
+  /// PLAYTEST-BLOCKER-1A: a prominent card that communicates the terminal
+  /// financial state (bankruptcy or March cash-shortage failure) and
+  /// provides the only safe exit — restarting the playthrough.
+  ///
+  /// Reads [s] read-only. Does not infer the terminal condition from cash
+  /// sign; the authoritative [PublicDemoFinancialStatus.isTerminal] check
+  /// is the entry guard on [PublicDemoState.isFinanciallyTerminal].
+  Widget _bankruptcyTerminalCard() {
+    final isBankruptcy =
+        s.financialStatus == PublicDemoFinancialStatus.bankruptcy;
+    final title = isBankruptcy ? '倒産' : '3月資金不足';
+    final reason = isBankruptcy
+        ? '資金不足の状態で月次決算を迎え、再度赤字となったため倒産が確定しました。'
+        : '3月の月次決算が赤字となり、今期は終了しました。';
+
+    return Card(
+      key: const Key('public-demo-bankruptcy-card'),
+      color: Colors.red.shade50,
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.business_outlined, color: Colors.red.shade800),
+                const SizedBox(width: 8),
+                Text(
+                  title,
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 18,
+                    color: Colors.red.shade800,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'このプレイスルーは終了しました。',
+              style: TextStyle(fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 4),
+            Text(reason),
+            const SizedBox(height: 10),
+            Text(
+              '最終現預金: ${formatYen(s.cash)}',
+              style: const TextStyle(fontWeight: FontWeight.w600),
+            ),
+            if (s.latestMonthlyCashFlow != null)
+              Text(
+                '最終決算月: ${publicDemoMonthLabel(s.latestMonthlyCashFlow!.month)}',
+              ),
+            const SizedBox(height: 16),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton(
+                key: const Key('public-demo-restart-button'),
+                onPressed: _restartGame,
+                child: const Text('最初からやり直す'),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Resets Public Demo 0.1 to its defined initial state.
+  /// This is the only UX-safe exit from a terminal financial state
+  /// (PLAYTEST-BLOCKER-1A). No finance authority or game-balance parameter
+  /// is changed — this delegates entirely to [PublicDemoAggregate.initial].
+  void _restartGame() {
+    setState(() {
+      _game = PublicDemoAggregate.initial();
+      _summerBonusDecisionConfirmed = false;
+    });
+    _resetMonthScroll();
   }
 
   @override
@@ -1119,12 +1253,14 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
 
     // ---- P0: the shortage card, which build() renders above HOME in
     // every month while this status holds. FINANCE AUTHORITY is untouched:
-    // this reads the authoritative status to decide *where to point the
-    // player*, and the CTA only scrolls.
+    // this reads the authoritative status to decide what to show the
+    // player. PLAYTEST-BLOCKER-1A: the CTA now opens a dialog that
+    // produces visible feedback regardless of scroll position — the former
+    // scroll-to-zero was inert when the player was already at the top.
     if (s.financialStatus == PublicDemoFinancialStatus.cashShortage) {
       add(
         HomeRecommendedActionKind.cashShortageResponse,
-        _scrollToShortageCard,
+        () => unawaited(_showCashShortageExplanation()),
       );
     }
 
@@ -1749,6 +1885,14 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
                   // card goes, not whether it applies, which is why
                   // `financialStatus` is still not projected into HOME.
                   PublicDemoCashShortageCard(state: s),
+                  // PLAYTEST-BLOCKER-1A: when a terminal financial state is
+                  // reached (bankruptcy or March cash-shortage failure),
+                  // show a prominent card that communicates the game-over
+                  // reason, the final cash, and a safe restart action.
+                  // This card is the player's primary signal that the
+                  // playthrough has ended — without it the only cue was a
+                  // month-close button that silently became a no-op.
+                  if (s.isFinanciallyTerminal) _bankruptcyTerminalCard(),
                   // HOME-RUNTIME-READ-1: the new HOME read-only display,
                   // added alongside (never in place of) the existing Public
                   // Demo UI below. It receives only the projection — no
@@ -1885,24 +2029,32 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
                             : '夏季賞与 ¥${s.summerBonusPaidAmount}',
                       ),
                     ],
-                    OutlinedButton(
-                      onPressed: closeOrdinaryMonth,
-                      child: Text(
-                        '${publicDemoMonthLabel(s.month)}終了→'
-                        '${publicDemoMonthLabel(s.month + 1)}',
+                    // PLAYTEST-BLOCKER-1A: hide the close button once a
+                    // terminal state is reached — a no-op button that looks
+                    // active is the UX failure this PR fixes.
+                    if (!s.isCloseBlocked)
+                      OutlinedButton(
+                        onPressed: closeOrdinaryMonth,
+                        child: Text(
+                          '${publicDemoMonthLabel(s.month)}終了→'
+                          '${publicDemoMonthLabel(s.month + 1)}',
+                        ),
                       ),
-                    ),
                   ],
                   if (s.month == 15 && !s.fiscalYearCompleted) ...[
                     Text(
                       '${publicDemoMonthLabel(s.month)}開始結果',
                       style: Theme.of(c).textTheme.titleLarge,
                     ),
-                    OutlinedButton(
-                      key: const Key('public-demo-march-close'),
-                      onPressed: closeOrdinaryMonth,
-                      child: const Text('3月終了→第1期終了'),
-                    ),
+                    // PLAYTEST-BLOCKER-1A: hide the March close button when
+                    // a terminal state has already been reached (entering
+                    // March already bankrupt due to February closure).
+                    if (!s.isCloseBlocked)
+                      OutlinedButton(
+                        key: const Key('public-demo-march-close'),
+                        onPressed: closeOrdinaryMonth,
+                        child: const Text('3月終了→第1期終了'),
+                      ),
                   ],
                   if (s.fiscalYearCompleted) ...[
                     Card(

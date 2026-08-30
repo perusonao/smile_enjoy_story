@@ -196,19 +196,19 @@ void main() {
             'close, so this fiscal year is already bankrupt',
       );
 
-      // G (FINANCE-FAILURE-1A+1B terminal guard, §22/23 test X): the
-      // still-rendered close button is now a no-op — no duplicate AR
-      // collection, no duplicate expenses, no fiscal success created
-      // afterward, and the carry-forward/Growth facts above stay exactly as
-      // they were.
-      final beforeRetry = currentState(tester);
-      await tapAndSettle(tester, '12月終了→1月');
-      state = currentState(tester);
-      expect(state.month, beforeRetry.month);
-      expect(state.cash, beforeRetry.cash);
-      expect(state.financialStatus, beforeRetry.financialStatus);
-      expect(state.fiscalYearCompleted, isFalse, reason: 'G');
-      expect(state.engineersAssigned, beforeRetry.engineersAssigned);
+      // G (PLAYTEST-BLOCKER-1A + FINANCE-FAILURE-1A+1B): once bankrupt the
+      // month-close button is hidden, not a silent no-op — the player sees
+      // the terminal card and restart, not an inert button. The domain-level
+      // guard (§22/23 test X — no duplicate AR, no duplicate expenses, no
+      // false fiscal success) is proven by public_demo_financial_status_test
+      // .dart and is not re-derived here.
+      expect(
+        find.text('12月終了→1月'),
+        findsNothing,
+        reason:
+            'month-close CTA must be hidden after bankruptcy '
+            '(PLAYTEST-BLOCKER-1A)',
+      );
     },
   );
 }

@@ -1763,10 +1763,19 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
                       ),
                     ),
                     const SizedBox(height: 2),
-                    const Text(
-                      'まだ営業を始められません。社内研修で実力を伸ばし、基準に届くと営業準備（SkillSheet確認）を始められます。',
-                      style: TextStyle(fontSize: 12),
-                    ),
+                    // P1 (PR #115 review): this used to promise that
+                    // training would eventually unlock 営業準備
+                    // （SkillSheet確認） here. It doesn't — this card, and the
+                    // stage buttons above, only render in the specific
+                    // month(s) each engineer's sales stage is worked (April
+                    // for founding engineers, the join month for hires); once
+                    // that month closes without meeting
+                    // fieldSalesCapabilityRequirement, no later month offers
+                    // this action again, no matter how much further capability
+                    // training raises. State the lock plainly instead of
+                    // implying a path back to it that this build cannot
+                    // actually provide.
+                    const Text('まだ営業を始められません。', style: TextStyle(fontSize: 12)),
                   ],
                 ),
               ),

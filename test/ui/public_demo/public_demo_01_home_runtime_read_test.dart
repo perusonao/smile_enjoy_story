@@ -211,7 +211,7 @@ void main() {
 
       // 4. cash — verbatim from the authority, never re-derived.
       expect(home.cash, state.cash);
-      expect(home.cash, 3000000);
+      expect(home.cash, 4000000);
       expect(inHome(find.text(yen(state.cash))), findsOneWidget);
 
       // 5. revenue — the production formula applied to the authoritative
@@ -508,6 +508,8 @@ void main() {
       await settle(tester);
       await tapAndSettle(tester, '9月終了→10月');
       await settle(tester);
+      await tapAndSettle(tester, '10月終了→11月');
+      await settle(tester);
 
       // 15. The FINANCE-FAILURE-1C card is neither removed nor bypassed.
       expect(
@@ -524,7 +526,7 @@ void main() {
       expect(homeData(tester).cash, currentState(tester).cash);
 
       // 16. Bankruptcy is still reached, and the terminal guard still holds.
-      await tapAndSettle(tester, '10月終了→11月');
+      await tapAndSettle(tester, '11月終了→12月');
       await settle(tester);
       expect(
         currentState(tester).financialStatus,
@@ -537,7 +539,7 @@ void main() {
       // Domain-level terminal guard is proven by
       // public_demo_financial_status_test.dart.
       expect(
-        find.text('11月終了→12月'),
+        find.text('12月終了→1月'),
         findsNothing,
         reason:
             'month-close CTA must be hidden after bankruptcy '

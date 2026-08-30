@@ -146,7 +146,7 @@ class PublicDemoState {
 
   factory PublicDemoState.aprilStart() => PublicDemoState(
     month: 4,
-    cash: 3000000,
+    cash: 4000000,
     engineerCount: 2,
     adminCount: 1,
     salesCapacity: 4,

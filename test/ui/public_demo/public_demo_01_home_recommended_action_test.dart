@@ -148,7 +148,7 @@ Future<void> playIntoJuly(WidgetTester tester) async {
 }
 
 /// Drives the structurally-insolvent trajectory the existing suites pin —
-/// CASH SHORTAGE closing September — using nothing but the real screen and
+/// CASH SHORTAGE closing October — using nothing but the real screen and
 /// the real domain commands behind it. `PublicDemoAggregate` deliberately
 /// exposes no reconstruction shortcut ("test fixtures needing a specific
 /// intermediate aggregate state build it by chaining these same real
@@ -170,6 +170,8 @@ Future<void> playIntoCashShortage(WidgetTester tester) async {
   await tapAndSettle(tester, '8月終了→9月');
   await settle(tester);
   await tapAndSettle(tester, '9月終了→10月');
+  await settle(tester);
+  await tapAndSettle(tester, '10月終了→11月');
   await settle(tester);
 }
 
@@ -668,7 +670,7 @@ void main() {
       // §13's Failure-Recovery rule: not a dead end. The KPI and the
       // month-close CTA are both still there.
       expect(find.byKey(const Key('home-kpi-compact')), findsOneWidget);
-      expect(actionButton('10月終了→11月'), findsWidgets);
+      expect(actionButton('11月終了→12月'), findsWidgets);
     });
 
     testWidgets('the shortage CTA changes nothing authoritative', (
@@ -699,7 +701,7 @@ void main() {
         'action, and no consolation month goal either', (tester) async {
       await pumpDemo(tester);
       await playIntoCashShortage(tester);
-      await tapAndSettle(tester, '10月終了→11月');
+      await tapAndSettle(tester, '11月終了→12月');
       await settle(tester);
 
       expect(
@@ -724,7 +726,7 @@ void main() {
         'slot names an outcome, never its reason', (tester) async {
       await pumpDemo(tester);
       await playIntoCashShortage(tester);
-      await tapAndSettle(tester, '10月終了→11月');
+      await tapAndSettle(tester, '11月終了→12月');
       await settle(tester);
       expect(
         currentState(tester).financialStatus,

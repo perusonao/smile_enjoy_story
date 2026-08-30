@@ -84,8 +84,10 @@ PublicDemoAggregate _bankruptAggregate() {
       .aggregate!
       .closeJune(assignedInJuly: 0, monthlyExpenses: 800000)
       .confirmSummerBonusDecision(PublicDemoSummerBonusPlan.none)
-      .closeJuly(monthlyExpenses: 800000)
-      .closeOrdinaryMonth(monthlyExpenses: 800000);
+      .closeJuly(monthlyExpenses: 800000);
+  for (var i = 0; i < 3; i++) {
+    aggregate = aggregate.closeOrdinaryMonth(monthlyExpenses: 800000);
+  }
   assert(
     aggregate.state.financialStatus == PublicDemoFinancialStatus.bankruptcy,
   );

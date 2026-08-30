@@ -284,7 +284,7 @@ void main() {
         // PublicDemoAggregate.initial's starting cash) rather than
         // constructing one directly.
         final poor = PublicDemoAggregate.initial().closeApril(
-          monthlyExpenses: 2999999,
+          monthlyExpenses: 3999999,
         );
         expect(poor.state.cash, 1);
 

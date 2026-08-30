@@ -90,7 +90,6 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
   }
 
   /// Restores only a complete aggregate accepted by the persistence boundary.
-  /// UI-local screen state intentionally remains at its normal fresh values.
   Future<void> _restoreAggregate() async {
     PublicDemoAggregate? restored;
     try {
@@ -325,8 +324,6 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
       curve: Curves.easeOut,
     );
   }
-
-  bool _summerBonusDecisionConfirmed = false;
 
   Future<void> _openRecruitmentMedia() async {
     final selected = await showModalBottomSheet<PublicDemoRecruitmentMedium>(
@@ -608,7 +605,6 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
     }
     setState(() {
       _game = PublicDemoAggregate.initial();
-      _summerBonusDecisionConfirmed = false;
       _isRestarting = false;
     });
     _resetMonthScroll();
@@ -956,14 +952,11 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
       ),
     );
     if (!mounted || decision == null) return;
-    _commitAggregate(_game.selectSummerBonus(decision));
-    setState(() {
-      _summerBonusDecisionConfirmed = true;
-    });
+    _commitAggregate(_game.confirmSummerBonusDecision(decision));
   }
 
   Future<void> july() async {
-    if (!_summerBonusDecisionConfirmed) {
+    if (!s.summerBonusDecisionConfirmed) {
       await decideSummerBonus();
       return;
     }
@@ -1371,7 +1364,7 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
       // The bonus button is rendered (and enabled) all month and doubles
       // as `夏季賞与を変更` once decided. Only the *undecided* case is
       // recommendable — re-deciding is not the next thing to do.
-      if (!_summerBonusDecisionConfirmed) {
+      if (!s.summerBonusDecisionConfirmed) {
         add(
           HomeRecommendedActionKind.summerBonusDecision,
           () => unawaited(decideSummerBonus()),
@@ -2076,7 +2069,7 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
                                   ),
                                   const SizedBox(height: 4),
                                   Text(
-                                    _summerBonusDecisionConfirmed
+                                    s.summerBonusDecisionConfirmed
                                         ? '選択済み：${switch (s.summerBonusSelection) {
                                             PublicDemoSummerBonusPlan.none => 'なし',
                                             PublicDemoSummerBonusPlan.half => '0.5か月',
@@ -2091,7 +2084,7 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
                                     ),
                                     onPressed: decideSummerBonus,
                                     child: Text(
-                                      _summerBonusDecisionConfirmed
+                                      s.summerBonusDecisionConfirmed
                                           ? '夏季賞与を変更'
                                           : '夏季賞与を決める',
                                     ),

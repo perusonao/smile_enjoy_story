@@ -9,23 +9,35 @@ import 'package:smile_enjoy_story/game/public_demo/public_demo_summer_bonus_plan
 void main() {
   const codec = PublicDemoSaveCodec();
 
-  test('round-trips a gameplay-critical aggregate without reinterpretation', () {
-    final original = _advancedAggregate();
+  test(
+    'round-trips a gameplay-critical aggregate without reinterpretation',
+    () {
+      final original = _advancedAggregate();
 
-    final restored = codec.decode(codec.encode(original));
+      final restored = codec.decode(codec.encode(original));
 
-    expect(restored, isNotNull);
-    expect(codec.toJson(restored!), codec.toJson(original));
-    expect(restored.state.month, 6);
-    expect(restored.state.pendingRevenue, original.state.pendingRevenue);
-    expect(restored.state.trainingSelections, original.state.trainingSelections);
-    expect(restored.workflow.assignments, hasLength(1));
-    expect(restored.workflow.applicants.single.hasJoined, isTrue);
-    expect(restored.workflow.engineers.first.hasGenuineInterviewRecord, isTrue);
-  });
+      expect(restored, isNotNull);
+      expect(codec.toJson(restored!), codec.toJson(original));
+      expect(restored.state.month, 7);
+      expect(restored.state.pendingRevenue, original.state.pendingRevenue);
+      expect(restored.state.summerBonusDecisionConfirmed, isTrue);
+      expect(
+        restored.state.trainingSelections,
+        original.state.trainingSelections,
+      );
+      expect(restored.workflow.assignments, hasLength(1));
+      expect(restored.workflow.applicants.single.hasJoined, isTrue);
+      expect(
+        restored.workflow.engineers.first.hasGenuineInterviewRecord,
+        isTrue,
+      );
+    },
+  );
 
   test('preserves an applicant decline before May roster pruning', () {
-    var aggregate = PublicDemoAggregate.initial().closeApril(monthlyExpenses: 0);
+    var aggregate = PublicDemoAggregate.initial().closeApril(
+      monthlyExpenses: 0,
+    );
     final interviewed = aggregate.completeInterview('app-02');
     aggregate = interviewed.aggregate.acceptOffer(
       applicantId: 'app-02',
@@ -58,40 +70,39 @@ void main() {
     final encoded = codec.toJson(PublicDemoAggregate.initial());
     final contradictory = _copyEnvelope(
       encoded,
-      state: {
-        'cash': -1,
-        'monthOpeningCash': -1,
-        'financialStatus': 'normal',
-      },
+      state: {'cash': -1, 'monthOpeningCash': -1, 'financialStatus': 'normal'},
     );
 
     expect(codec.fromJson(contradictory), isNull);
   });
 
-  test('rejects an interview record that was not backed by pass outcome facts', () {
-    final encoded = codec.toJson(PublicDemoAggregate.initial());
-    final aggregate = (encoded['aggregate'] as Map<String, dynamic>);
-    final workflow = (aggregate['workflow'] as Map<String, dynamic>);
-    final engineers = (workflow['engineers'] as List)
-        .map((entry) => Map<String, dynamic>.from(entry as Map))
-        .toList();
-    engineers[0] = {
-      ...engineers[0],
-      'stage': 'ordered',
-      'interviewRecordEngineerId': engineers[0]['id'],
-      // Deliberately leave lastInterviewScore null: a matching id alone must
-      // never mint genuine interview authority during restoration.
-    };
-    final contradictory = {
-      ...encoded,
-      'aggregate': {
-        ...aggregate,
-        'workflow': {...workflow, 'engineers': engineers},
-      },
-    };
+  test(
+    'rejects an interview record that was not backed by pass outcome facts',
+    () {
+      final encoded = codec.toJson(PublicDemoAggregate.initial());
+      final aggregate = (encoded['aggregate'] as Map<String, dynamic>);
+      final workflow = (aggregate['workflow'] as Map<String, dynamic>);
+      final engineers = (workflow['engineers'] as List)
+          .map((entry) => Map<String, dynamic>.from(entry as Map))
+          .toList();
+      engineers[0] = {
+        ...engineers[0],
+        'stage': 'ordered',
+        'interviewRecordEngineerId': engineers[0]['id'],
+        // Deliberately leave lastInterviewScore null: a matching id alone must
+        // never mint genuine interview authority during restoration.
+      };
+      final contradictory = {
+        ...encoded,
+        'aggregate': {
+          ...aggregate,
+          'workflow': {...workflow, 'engineers': engineers},
+        },
+      };
 
-    expect(codec.fromJson(contradictory), isNull);
-  });
+      expect(codec.fromJson(contradictory), isNull);
+    },
+  );
 }
 
 PublicDemoAggregate _advancedAggregate() {
@@ -121,7 +132,9 @@ PublicDemoAggregate _advancedAggregate() {
   );
   aggregate = aggregate.closeMay(week: 9, monthlyExpenses: 0);
   aggregate = aggregate.selectInternalTraining('app-01');
-  return aggregate.selectSummerBonus(PublicDemoSummerBonusPlan.none);
+  return aggregate
+      .closeJune(assignedInJuly: 0, monthlyExpenses: 0)
+      .confirmSummerBonusDecision(PublicDemoSummerBonusPlan.none);
 }
 
 Map<String, dynamic> _copyEnvelope(

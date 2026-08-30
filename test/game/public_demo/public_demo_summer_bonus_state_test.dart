@@ -8,6 +8,7 @@ void main() {
     test('April starts with no unpaid bonus', () {
       final state = PublicDemoState.aprilStart();
       expect(state.summerBonusSelection, PublicDemoSummerBonusPlan.none);
+      expect(state.summerBonusDecisionConfirmed, isFalse);
       expect(state.summerBonusPaid, isFalse);
       expect(state.summerBonusPaidMonth, isNull);
       expect(state.summerBonusPaidAmount, isNull);
@@ -30,19 +31,37 @@ void main() {
       expect(none.summerBonusSelection, PublicDemoSummerBonusPlan.none);
     });
 
-    test('selection changes neither financial nor runtime and growth state', () {
-      final before = PublicDemoState.aprilStart().copyWith(
-        growthAppliedMonths: const [4],
-        trainingSelections: const {
-          'eng-01': PublicDemoGrowthSource.internalTraining,
-        },
+    test('confirms a selected plan and explicit none independently', () {
+      final july = PublicDemoState.aprilStart().copyWith(month: 7);
+      final one = july.confirmSummerBonusDecision(
+        PublicDemoSummerBonusPlan.one,
       );
-      final after = before.selectSummerBonus(PublicDemoSummerBonusPlan.one);
-      expect(after.cash, before.cash);
-      expect(after.engineerRuntimes, same(before.engineerRuntimes));
-      expect(after.growthAppliedMonths, before.growthAppliedMonths);
-      expect(after.trainingSelections, before.trainingSelections);
+      final none = july.confirmSummerBonusDecision(
+        PublicDemoSummerBonusPlan.none,
+      );
+
+      expect(one.summerBonusSelection, PublicDemoSummerBonusPlan.one);
+      expect(one.summerBonusDecisionConfirmed, isTrue);
+      expect(none.summerBonusSelection, PublicDemoSummerBonusPlan.none);
+      expect(none.summerBonusDecisionConfirmed, isTrue);
     });
+
+    test(
+      'selection changes neither financial nor runtime and growth state',
+      () {
+        final before = PublicDemoState.aprilStart().copyWith(
+          growthAppliedMonths: const [4],
+          trainingSelections: const {
+            'eng-01': PublicDemoGrowthSource.internalTraining,
+          },
+        );
+        final after = before.selectSummerBonus(PublicDemoSummerBonusPlan.one);
+        expect(after.cash, before.cash);
+        expect(after.engineerRuntimes, same(before.engineerRuntimes));
+        expect(after.growthAppliedMonths, before.growthAppliedMonths);
+        expect(after.trainingSelections, before.trainingSelections);
+      },
+    );
 
     test('records a July payment only once without changing cash', () {
       final before = PublicDemoState.aprilStart();
@@ -64,35 +83,43 @@ void main() {
       final paid = PublicDemoState.aprilStart()
           .selectSummerBonus(PublicDemoSummerBonusPlan.half)
           .markSummerBonusPaid(month: 7, amount: 1);
-      expect(
-        paid.selectSummerBonus(PublicDemoSummerBonusPlan.one),
-        same(paid),
-      );
+      expect(paid.selectSummerBonus(PublicDemoSummerBonusPlan.one), same(paid));
     });
 
     test('old JSON and malformed selection safely fall back', () {
       final old = PublicDemoState.aprilStart().toJson()
         ..remove('summerBonusSelection')
+        ..remove('summerBonusDecisionConfirmed')
         ..remove('summerBonusPaid')
         ..remove('summerBonusPaidMonth')
         ..remove('summerBonusPaidAmount');
-      expect(PublicDemoState.fromJson(old).summerBonusSelection,
-          PublicDemoSummerBonusPlan.none);
+      expect(
+        PublicDemoState.fromJson(old).summerBonusSelection,
+        PublicDemoSummerBonusPlan.none,
+      );
+      expect(
+        PublicDemoState.fromJson(old).summerBonusDecisionConfirmed,
+        isFalse,
+      );
 
       for (final raw in ['two', 'unknown', 1, null]) {
         final malformed = PublicDemoState.aprilStart().toJson()
           ..['summerBonusSelection'] = raw;
-        expect(PublicDemoState.fromJson(malformed).summerBonusSelection,
-            PublicDemoSummerBonusPlan.none);
+        expect(
+          PublicDemoState.fromJson(malformed).summerBonusSelection,
+          PublicDemoSummerBonusPlan.none,
+        );
       }
     });
 
     test('new JSON round trips and normalizes stale or malformed payments', () {
       final paid = PublicDemoState.aprilStart()
-          .selectSummerBonus(PublicDemoSummerBonusPlan.one)
+          .copyWith(month: 7)
+          .confirmSummerBonusDecision(PublicDemoSummerBonusPlan.one)
           .markSummerBonusPaid(month: 7, amount: 200000);
       final restored = PublicDemoState.fromJson(paid.toJson());
       expect(restored.summerBonusSelection, PublicDemoSummerBonusPlan.one);
+      expect(restored.summerBonusDecisionConfirmed, isTrue);
       expect(restored.summerBonusPaid, isTrue);
       expect(restored.summerBonusPaidAmount, 200000);
 

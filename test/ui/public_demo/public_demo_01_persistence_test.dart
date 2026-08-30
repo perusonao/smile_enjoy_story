@@ -9,6 +9,7 @@ import 'package:smile_enjoy_story/game/public_demo/public_demo_aggregate.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_financial_status.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_recruitment_medium.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_state.dart';
+import 'package:smile_enjoy_story/game/public_demo/public_demo_summer_bonus_plan.dart';
 import 'package:smile_enjoy_story/ui/public_demo/public_demo_01_placeholder_screen.dart';
 
 class _RecordingSaveService extends PublicDemoSaveService {
@@ -82,12 +83,47 @@ PublicDemoAggregate _bankruptAggregate() {
       .recruit(PublicDemoRecruitmentMedium.free)
       .aggregate!
       .closeJune(assignedInJuly: 0, monthlyExpenses: 800000)
+      .confirmSummerBonusDecision(PublicDemoSummerBonusPlan.none)
       .closeJuly(monthlyExpenses: 800000)
       .closeOrdinaryMonth(monthlyExpenses: 800000);
   assert(
     aggregate.state.financialStatus == PublicDemoFinancialStatus.bankruptcy,
   );
   return aggregate;
+}
+
+PublicDemoAggregate _freshJulyAggregate() => PublicDemoAggregate.initial()
+    .closeApril(monthlyExpenses: 0)
+    .closeMay(week: 9, monthlyExpenses: 0)
+    .closeJune(assignedInJuly: 0, monthlyExpenses: 0);
+
+Future<void> _confirmAndReloadWithoutBonusDialog(
+  WidgetTester tester,
+  PublicDemoSummerBonusPlan plan,
+) async {
+  final service = _RecordingSaveService(restored: _freshJulyAggregate());
+  await _mount(tester, service);
+
+  await _tapAction(tester, '夏季賞与を決める');
+  await tester.tap(find.byKey(Key('public-demo-summer-bonus-${plan.name}')));
+  await tester.pump();
+
+  expect(_screenState(tester).summerBonusDecisionConfirmed, isTrue);
+  expect(_screenState(tester).summerBonusSelection, plan);
+  expect(service.saved.single.state.summerBonusDecisionConfirmed, isTrue);
+
+  await tester.pumpWidget(const SizedBox.shrink());
+  await tester.pump();
+  await _mount(tester, service);
+
+  expect(_screenState(tester).summerBonusDecisionConfirmed, isTrue);
+  await _tapAction(tester, '7月終了→8月');
+
+  expect(
+    find.byKey(Key('public-demo-summer-bonus-${plan.name}')),
+    findsNothing,
+  );
+  expect(_screenState(tester).month, 8);
 }
 
 void main() {
@@ -121,6 +157,38 @@ void main() {
     expect(_screenState(tester).toJson(), aggregate.state.toJson());
     expect(find.byKey(const Key('public-demo-restoring')), findsNothing);
     expect(service.saved, isEmpty);
+  });
+
+  testWidgets(
+    'a confirmed non-none July bonus survives reload without reopening the dialog',
+    (tester) => _confirmAndReloadWithoutBonusDialog(
+      tester,
+      PublicDemoSummerBonusPlan.one,
+    ),
+  );
+
+  testWidgets(
+    'a confirmed none July bonus survives reload without reopening the dialog',
+    (tester) => _confirmAndReloadWithoutBonusDialog(
+      tester,
+      PublicDemoSummerBonusPlan.none,
+    ),
+  );
+
+  testWidgets('a fresh July aggregate still opens the bonus dialog', (
+    tester,
+  ) async {
+    await _mount(
+      tester,
+      _RecordingSaveService(restored: _freshJulyAggregate()),
+    );
+
+    await _tapAction(tester, '7月終了→8月');
+
+    expect(
+      find.byKey(const Key('public-demo-summer-bonus-none')),
+      findsOneWidget,
+    );
   });
 
   testWidgets('corrupt and incompatible payloads both fall back safely', (
@@ -192,6 +260,7 @@ void main() {
 
       expect(service.clearCalls, 1);
       expect(service.restored, isNull);
+      expect(_screenState(tester).summerBonusDecisionConfirmed, isFalse);
       expect(
         _screenState(tester).toJson(),
         PublicDemoAggregate.initial().state.toJson(),

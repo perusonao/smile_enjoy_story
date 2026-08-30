@@ -65,6 +65,42 @@ class PublicDemoWorkflowState {
   final List<PublicDemoEngineerSales> engineers;
   final List<PublicDemoAssignment> assignments;
 
+  /// Complete workflow persistence representation.  This is intentionally
+  /// separate from the production constructor: an assignment roster is only
+  /// restored from a validated aggregate save, never supplied by gameplay
+  /// callers.
+  Map<String, dynamic> toJson() => {
+    'applicants': applicants.map((applicant) => applicant.toJson()).toList(),
+    'engineers': engineers.map((engineer) => engineer.toJson()).toList(),
+    'assignments': assignments.map((assignment) => assignment.toJson()).toList(),
+  };
+
+  factory PublicDemoWorkflowState.fromJson(Map<String, dynamic> json) {
+    List requiredList(String key) {
+      final value = json[key];
+      if (value is! List) throw FormatException('Invalid workflow $key');
+      return value;
+    }
+
+    List<T> decodeList<T>(List raw, T Function(Map<String, dynamic>) decode) =>
+        raw.map((entry) {
+          if (entry is! Map) throw const FormatException('Invalid workflow entry');
+          return decode(entry.cast<String, dynamic>());
+        }).toList();
+
+    return PublicDemoWorkflowState._(
+      applicants: List.unmodifiable(
+        decodeList(requiredList('applicants'), PublicDemoApplicant.fromJson),
+      ),
+      engineers: List.unmodifiable(
+        decodeList(requiredList('engineers'), PublicDemoEngineerSales.fromJson),
+      ),
+      assignments: List.unmodifiable(
+        decodeList(requiredList('assignments'), PublicDemoAssignment.fromJson),
+      ),
+    );
+  }
+
   // WORKFLOW-STATE-1AB FIX4 P1-2: the FIX3 `.restore(...)` reconstruction
   // factory (applicants/engineers/assignments accepted verbatim) was itself
   // still a PUBLIC production-reachable API — commenting it "restore-only"

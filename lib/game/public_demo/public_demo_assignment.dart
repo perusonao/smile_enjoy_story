@@ -55,6 +55,49 @@ class PublicDemoAssignment {
     fieldEvaluation: fieldEvaluation ?? this.fieldEvaluation,
   );
 
+  Map<String, dynamic> toJson() => {
+    'engineerId': engineerId,
+    'engineerName': engineerName,
+    'projectName': projectName,
+    'deliveryPressure': deliveryPressure,
+    'budgetHealth': budgetHealth,
+    'humanity': humanity,
+    'nextOrderStatus': nextOrderStatus.name,
+    'replacementStage': replacementStage.name,
+    'fieldEvaluation': fieldEvaluation,
+  };
+
+  factory PublicDemoAssignment.fromJson(Map<String, dynamic> json) {
+    T required<T>(String key) {
+      final value = json[key];
+      if (value is! T) throw FormatException('Invalid assignment $key');
+      return value;
+    }
+
+    final nextOrderName = required<String>('nextOrderStatus');
+    final replacementName = required<String>('replacementStage');
+    final nextOrder = PublicDemoNextOrderStatus.values
+        .where((value) => value.name == nextOrderName)
+        .firstOrNull;
+    final replacement = PublicDemoReplacementStage.values
+        .where((value) => value.name == replacementName)
+        .firstOrNull;
+    if (nextOrder == null || replacement == null) {
+      throw const FormatException('Invalid assignment state');
+    }
+    return PublicDemoAssignment(
+      engineerId: required<String>('engineerId'),
+      engineerName: required<String>('engineerName'),
+      projectName: required<String>('projectName'),
+      deliveryPressure: required<int>('deliveryPressure'),
+      budgetHealth: required<int>('budgetHealth'),
+      humanity: required<int>('humanity'),
+      nextOrderStatus: nextOrder,
+      replacementStage: replacement,
+      fieldEvaluation: required<int>('fieldEvaluation'),
+    );
+  }
+
   /// Assignment fallback for any ordered employee, including a post-join hire.
   factory PublicDemoAssignment.forOrderedEngineer({
     required String engineerId,

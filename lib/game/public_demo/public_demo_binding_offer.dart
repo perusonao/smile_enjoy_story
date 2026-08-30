@@ -30,6 +30,29 @@ class PublicDemoBindingOffer {
   /// Which fiscal close produced this binding offer.
   final PublicDemoFiscalCloseId fiscalCloseId;
 
+  /// Persistence representation for the immutable offer fact.  This is not
+  /// a gameplay constructor: the save codec validates the containing
+  /// aggregate before it can become authoritative again.
+  Map<String, dynamic> toJson() => {
+    'applicantId': applicantId,
+    'acceptedMonthlySalary': acceptedMonthlySalary,
+    'fiscalCloseMonth': fiscalCloseId.internalMonth,
+  };
+
+  factory PublicDemoBindingOffer.fromJson(Map<String, dynamic> json) {
+    final applicantId = json['applicantId'];
+    final salary = json['acceptedMonthlySalary'];
+    final month = json['fiscalCloseMonth'];
+    if (applicantId is! String || salary is! int || month is! int) {
+      throw const FormatException('Invalid PublicDemoBindingOffer save data');
+    }
+    return PublicDemoBindingOffer._(
+      applicantId: applicantId,
+      acceptedMonthlySalary: salary,
+      fiscalCloseId: PublicDemoFiscalCloseId.forMonth(month),
+    );
+  }
+
   @override
   String toString() =>
       'PublicDemoBindingOffer(applicantId: $applicantId, '

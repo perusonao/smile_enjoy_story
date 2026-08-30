@@ -3,6 +3,7 @@ import 'dart:async' show unawaited;
 import 'package:flutter/material.dart';
 import '../../game/public_demo/public_demo_aggregate.dart';
 import '../../game/public_demo/public_demo_assignment.dart';
+import '../../game/public_demo/public_demo_engineer_runtime.dart';
 import '../../game/public_demo/public_demo_fiscal_close_id.dart';
 import '../../game/public_demo/public_demo_interview.dart';
 import '../../game/public_demo/public_demo_internal_training_transaction.dart';
@@ -1652,6 +1653,9 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
 
   Widget ec(int i) {
     final e = workflow.engineers[i];
+    final capability = capabilityFor(e.id);
+    final fieldSalesRequirement =
+        PublicDemoEngineerRuntime.fieldSalesCapabilityRequirement;
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(12),
@@ -1675,6 +1679,35 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
             Text(e.summary),
             PublicDemoSalesProgress(currentStep: engineerStep(e)),
             const SizedBox(height: 8),
+            if (!readyForFieldSales(e.id) &&
+                (e.stage == PublicDemoSalesStage.waiting ||
+                    e.stage == PublicDemoSalesStage.skillSheet))
+              Container(
+                key: Key('public-demo-field-sales-lock-${e.id}'),
+                width: double.infinity,
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.secondaryContainer,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '営業開始には実力 $fieldSalesRequirement 以上が必要です（現在 $capability）。',
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    const Text(
+                      'まだ営業を始められません。社内研修で実力を伸ばし、基準に届くと営業準備（SkillSheet確認）を始められます。',
+                      style: TextStyle(fontSize: 12),
+                    ),
+                  ],
+                ),
+              ),
             if (e.stage == PublicDemoSalesStage.waiting &&
                 readyForFieldSales(e.id)) ...[
               const Text('営業準備OK', style: TextStyle(fontSize: 12)),

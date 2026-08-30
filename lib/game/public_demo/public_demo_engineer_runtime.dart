@@ -12,6 +12,10 @@ import 'public_demo_recruitment.dart';
 /// this object from assignment, waiting, or training without mutating project
 /// state or the sales-facing representation.
 class PublicDemoEngineerRuntime {
+  /// Minimum current capability required to enter the Public Demo field-sales
+  /// flow. Presentation may show this rule, but must not duplicate it.
+  static const int fieldSalesCapabilityRequirement = 60;
+
   const PublicDemoEngineerRuntime({
     required this.engineerId,
     required this.primaryLanguage,
@@ -37,7 +41,8 @@ class PublicDemoEngineerRuntime {
   int get actualCapability => languageSkills[primaryLanguage]?.actualSkill ?? 0;
 
   /// This is deliberately derived from the runtime capability, not persisted.
-  bool get isReadyForFieldSales => actualCapability >= 60;
+  bool get isReadyForFieldSales =>
+      actualCapability >= fieldSalesCapabilityRequirement;
 
   /// Creates the single runtime representation used after a Public Demo hire
   /// joins. Experienced applicants retain the pre-JUNIOR-3 values exactly.

@@ -108,23 +108,35 @@ class PublicDemoAggregate {
   }
 
   void _validateForPersistence() {
-    if (state.month < 4 || state.month > 15 ||
+    if (state.month < 4 ||
+        state.month > 15 ||
         state.salesCapacity < 0 ||
         state.salesUsed < 0 ||
         state.salesUsed > state.salesCapacity ||
         state.engineersAssigned < 0 ||
         state.engineersWaiting < 0 ||
-        state.engineersAssigned + state.engineersWaiting != state.engineerCount ||
+        state.engineersAssigned + state.engineersWaiting !=
+            state.engineerCount ||
         (state.fiscalYearCompleted && state.month != 15)) {
       throw const FormatException('Invalid Public Demo state invariants');
     }
 
-    final engineerIds = workflow.engineers.map((engineer) => engineer.id).toList();
-    final applicantIds = workflow.applicants.map((applicant) => applicant.id).toList();
-    final runtimeIds = state.engineerRuntimes.map((runtime) => runtime.engineerId).toList();
-    final assignmentIds = workflow.assignments.map((assignment) => assignment.engineerId).toList();
-    if (!_areUnique(engineerIds) || !_areUnique(applicantIds) ||
-        !_areUnique(runtimeIds) || !_areUnique(assignmentIds) ||
+    final engineerIds = workflow.engineers
+        .map((engineer) => engineer.id)
+        .toList();
+    final applicantIds = workflow.applicants
+        .map((applicant) => applicant.id)
+        .toList();
+    final runtimeIds = state.engineerRuntimes
+        .map((runtime) => runtime.engineerId)
+        .toList();
+    final assignmentIds = workflow.assignments
+        .map((assignment) => assignment.engineerId)
+        .toList();
+    if (!_areUnique(engineerIds) ||
+        !_areUnique(applicantIds) ||
+        !_areUnique(runtimeIds) ||
+        !_areUnique(assignmentIds) ||
         state.engineerCount != engineerIds.length ||
         runtimeIds.toSet().length != engineerIds.length ||
         !runtimeIds.toSet().containsAll(engineerIds) ||
@@ -152,11 +164,13 @@ class PublicDemoAggregate {
     final assignedIds = workflow.assignedEngineerIds(month: state.month);
     if (state.month >= 6 &&
         (state.engineersAssigned != assignedIds.length ||
-            state.engineersWaiting != state.engineerCount - assignedIds.length)) {
+            state.engineersWaiting !=
+                state.engineerCount - assignedIds.length)) {
       throw const FormatException('Invalid assignment projection');
     }
     if (!state.trainingSelections.keys.every(
-      (engineerId) => engineerIds.contains(engineerId) && !assignedIds.contains(engineerId),
+      (engineerId) =>
+          engineerIds.contains(engineerId) && !assignedIds.contains(engineerId),
     )) {
       throw const FormatException('Invalid training selection');
     }
@@ -169,7 +183,9 @@ class PublicDemoAggregate {
 
   static bool _sameOrderedStrings(List<String> left, List<String> right) =>
       left.length == right.length &&
-      Iterable<int>.generate(left.length).every((index) => left[index] == right[index]);
+      Iterable<int>.generate(
+        left.length,
+      ).every((index) => left[index] == right[index]);
 
   PublicDemoAggregate _copyWith({
     PublicDemoState? state,
@@ -518,6 +534,13 @@ class PublicDemoAggregate {
 
   PublicDemoAggregate selectSummerBonus(PublicDemoSummerBonusPlan plan) =>
       _copyWith(state: state.selectSummerBonus(plan));
+
+  /// Commits the player's explicit July bonus decision into the authoritative
+  /// aggregate.  The decision fact is separate from the selected plan so a
+  /// confirmed `none` survives persistence just like a paid bonus plan.
+  PublicDemoAggregate confirmSummerBonusDecision(
+    PublicDemoSummerBonusPlan plan,
+  ) => _copyWith(state: state.confirmSummerBonusDecision(plan));
 
   // ---------------------------------------------------------------------
   // Month-end transitions

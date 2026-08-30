@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:smile_enjoy_story/presentation/build_info.dart';
 import 'package:smile_enjoy_story/ui/public_demo/public_demo_01_placeholder_screen.dart';
 
@@ -63,6 +64,7 @@ void main() {
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.resetPhysicalSize);
       addTearDown(tester.view.resetDevicePixelRatio);
+      SharedPreferences.setMockInitialValues({});
 
       await tester.pumpWidget(
         MaterialApp(
@@ -71,6 +73,7 @@ void main() {
           ),
         ),
       );
+      await tester.pump();
 
       expect(find.text('S.E.S. Public Demo 0.1'), findsOneWidget);
       expect(find.text('Deploy: PR #95 · c4beb9e'), findsOneWidget);

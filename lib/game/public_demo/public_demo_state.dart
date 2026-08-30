@@ -51,6 +51,7 @@ class PublicDemoState {
     Map<String, PublicDemoGrowthSource> trainingSelections = const {},
     PublicDemoSummerBonusPlan summerBonusSelection =
         PublicDemoSummerBonusPlan.none,
+    bool summerBonusDecisionConfirmed = false,
     bool summerBonusPaid = false,
     int? summerBonusPaidMonth,
     int? summerBonusPaidAmount,
@@ -78,6 +79,7 @@ class PublicDemoState {
     growthAppliedMonths: growthAppliedMonths,
     trainingSelections: _trainingSelectionsOnly(trainingSelections),
     summerBonusSelection: summerBonusSelection,
+    summerBonusDecisionConfirmed: summerBonusDecisionConfirmed,
     summerBonusPaid: _hasValidSummerBonusPayment(
       paid: summerBonusPaid,
       month: summerBonusPaidMonth,
@@ -128,6 +130,7 @@ class PublicDemoState {
     required this.growthAppliedMonths,
     required this.trainingSelections,
     required this.summerBonusSelection,
+    required this.summerBonusDecisionConfirmed,
     required this.summerBonusPaid,
     required this.summerBonusPaidMonth,
     required this.summerBonusPaidAmount,
@@ -188,6 +191,12 @@ class PublicDemoState {
   /// The player's intended July summer bonus. Selection and payment are
   /// deliberately separate: BONUS-2A will calculate and deduct the payment.
   final PublicDemoSummerBonusPlan summerBonusSelection;
+
+  /// Whether the player has explicitly completed the July bonus decision.
+  /// This is distinct from [summerBonusSelection] because `none` is both a
+  /// valid confirmed decision and the fresh-state default.
+  final bool summerBonusDecisionConfirmed;
+
   final bool summerBonusPaid;
   final int? summerBonusPaidMonth;
   final int? summerBonusPaidAmount;
@@ -355,6 +364,20 @@ class PublicDemoState {
       return this;
     }
     return copyWith(summerBonusSelection: plan);
+  }
+
+  /// Records an explicit July bonus decision, including a confirmed `none`.
+  /// The selected plan remains editable until payment, but the completed
+  /// decision fact is preserved for the July-close gate and persistence.
+  PublicDemoState confirmSummerBonusDecision(PublicDemoSummerBonusPlan plan) {
+    if (month != 7 || fiscalYearCompleted || summerBonusPaid) return this;
+    if (plan != PublicDemoSummerBonusPlan.none && isFinanciallyRestricted) {
+      return this;
+    }
+    return copyWith(
+      summerBonusSelection: plan,
+      summerBonusDecisionConfirmed: true,
+    );
   }
 
   /// Records a completed July payment without applying any cash movement.
@@ -688,6 +711,7 @@ class PublicDemoState {
     List<int>? growthAppliedMonths,
     Map<String, PublicDemoGrowthSource>? trainingSelections,
     PublicDemoSummerBonusPlan? summerBonusSelection,
+    bool? summerBonusDecisionConfirmed,
     bool? summerBonusPaid,
     Object? summerBonusPaidMonth = _unset,
     Object? summerBonusPaidAmount = _unset,
@@ -713,6 +737,7 @@ class PublicDemoState {
     growthAppliedMonths: growthAppliedMonths,
     trainingSelections: trainingSelections,
     summerBonusSelection: summerBonusSelection,
+    summerBonusDecisionConfirmed: summerBonusDecisionConfirmed,
     summerBonusPaid: summerBonusPaid,
     summerBonusPaidMonth: summerBonusPaidMonth,
     summerBonusPaidAmount: summerBonusPaidAmount,
@@ -741,6 +766,7 @@ class PublicDemoState {
     List<int>? growthAppliedMonths,
     Map<String, PublicDemoGrowthSource>? trainingSelections,
     PublicDemoSummerBonusPlan? summerBonusSelection,
+    bool? summerBonusDecisionConfirmed,
     bool? summerBonusPaid,
     Object? summerBonusPaidMonth = _unset,
     Object? summerBonusPaidAmount = _unset,
@@ -767,6 +793,8 @@ class PublicDemoState {
     growthAppliedMonths: growthAppliedMonths ?? this.growthAppliedMonths,
     trainingSelections: trainingSelections ?? this.trainingSelections,
     summerBonusSelection: summerBonusSelection ?? this.summerBonusSelection,
+    summerBonusDecisionConfirmed:
+        summerBonusDecisionConfirmed ?? this.summerBonusDecisionConfirmed,
     summerBonusPaid: summerBonusPaid ?? this.summerBonusPaid,
     summerBonusPaidMonth: identical(summerBonusPaidMonth, _unset)
         ? this.summerBonusPaidMonth
@@ -807,6 +835,7 @@ class PublicDemoState {
       (engineerId, source) => MapEntry(engineerId, source.name),
     ),
     'summerBonusSelection': summerBonusSelection.name,
+    'summerBonusDecisionConfirmed': summerBonusDecisionConfirmed,
     'summerBonusPaid': summerBonusPaid,
     'summerBonusPaidMonth': summerBonusPaidMonth,
     'summerBonusPaidAmount': summerBonusPaidAmount,
@@ -854,6 +883,9 @@ class PublicDemoState {
     summerBonusSelection: _summerBonusPlanFromJson(
       json['summerBonusSelection'],
     ),
+    summerBonusDecisionConfirmed: json['summerBonusDecisionConfirmed'] is bool
+        ? json['summerBonusDecisionConfirmed'] as bool
+        : false,
     summerBonusPaid: json['summerBonusPaid'] is bool
         ? json['summerBonusPaid'] as bool
         : false,

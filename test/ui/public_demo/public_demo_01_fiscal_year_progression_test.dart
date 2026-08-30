@@ -114,7 +114,7 @@ void main() {
         findsNothing,
       );
 
-      // August through October: each still closes via the new shared
+      // August through November: each still closes via the new shared
       // ordinary month button and lands on the next calendar label.
       //
       // FINANCE-FAILURE-1A+1B: this playthrough deliberately never renews
@@ -124,8 +124,8 @@ void main() {
       // structural deficit, not a bug. Under the pre-FINANCE-FAILURE
       // contract that deficit accumulated as unlimited free debt all the
       // way to a false fiscal "success"; the approved contract instead
-      // enters CASH SHORTAGE (closing September) and then BANKRUPTCY
-      // (closing October) — see public_demo_monthly_close_ordinary_month_
+      // enters CASH SHORTAGE (closing October) and then BANKRUPTCY
+      // (closing November) — see public_demo_monthly_close_ordinary_month_
       // test.dart's own fiscal-year test for the same trajectory verified
       // at the pure-domain level with a solvent fixture, and
       // public_demo_financial_status_test.dart for the shortage/bankruptcy
@@ -136,6 +136,7 @@ void main() {
         ('8月終了→9月', '9月'),
         ('9月終了→10月', '10月'),
         ('10月終了→11月', '11月'),
+        ('11月終了→12月', '12月'),
       ];
       for (final (buttonLabel, nextMonthLabel) in closes) {
         await tapAndSettle(tester, buttonLabel);
@@ -145,7 +146,7 @@ void main() {
           findsNothing,
           reason: 'month $nextMonthLabel',
         );
-        if (nextMonthLabel == '10月') {
+        if (nextMonthLabel == '11月') {
           expect(
             currentState(tester).financialStatus,
             PublicDemoFinancialStatus.cashShortage,
@@ -177,12 +178,12 @@ void main() {
           );
         }
       }
-      expect(find.text('1年目 11月'), findsOneWidget);
+      expect(find.text('1年目 12月'), findsOneWidget);
       expect(
         currentState(tester).financialStatus,
         PublicDemoFinancialStatus.bankruptcy,
         reason:
-            'closing October (11月終了) is the second consecutive '
+            'closing November (12月終了) is the second consecutive '
             'negative-cash close, so this fiscal year is already bankrupt',
       );
 
@@ -190,7 +191,7 @@ void main() {
       // not a silent no-op. The domain-level terminal guard (§22/23 test X)
       // is proven by public_demo_financial_status_test.dart.
       expect(
-        find.text('11月終了→12月'),
+        find.text('12月終了→1月'),
         findsNothing,
         reason:
             'month-close CTA must be hidden after bankruptcy '

@@ -17,9 +17,8 @@ import 'package:smile_enjoy_story/ui/public_demo/public_demo_01_placeholder_scre
 // assignment forward past June (see the June `受注する` step below), so
 // Revenue (500,000/month) never covers the founding team's fixed
 // 800,000/month payroll+overhead — a real structural deficit. Under the
-// approved contract this reaches CASH SHORTAGE (closing October) and then
-// BANKRUPTCY (closing November), before the fiscal year would otherwise
-// complete in March. That terminal state is exactly as good a fixture for
+// approved contract this reaches CASH SHORTAGE (closing February) and then
+// BANKRUPTCY (closing March). That terminal state is exactly as good a fixture for
 // (E)/(F)'s actual concern — is a mutation CTA hidden, and is read-only
 // content still reachable, once Public Demo 0.1 is terminal — as fiscal
 // success would have been, and additionally exercises the terminal guard
@@ -126,18 +125,27 @@ void main() {
     await tester.pumpAndSettle();
     await tapAndSettle(tester, '7月終了→8月');
 
-    // FINANCE-FAILURE-1A+1B: closing August through November reaches
+    // FINANCE-FAILURE-1A+1B: closing August through March reaches
     // BANKRUPTCY — see this file's class doc for the trajectory. Closing
-    // November (11月終了→12月) is the close that actually produces it: a
+    // March (3月終了→第1期終了) is the close that actually produces it: a
     // real, committed transaction (cash/AR/expenses all settle, month
     // still advances to 12月), not a rollback.
-    const closes = ['8月終了→9月', '9月終了→10月', '10月終了→11月', '11月終了→12月'];
+    const closes = [
+      '8月終了→9月',
+      '9月終了→10月',
+      '10月終了→11月',
+      '11月終了→12月',
+      '12月終了→1月',
+      '1月終了→2月',
+      '2月終了→3月',
+      '3月終了→第1期終了',
+    ];
     for (final label in closes) {
       await tapAndSettle(tester, label);
     }
 
     var state = currentState(tester);
-    expect(state.month, 12);
+    expect(state.month, 15);
     expect(state.fiscalYearCompleted, isFalse);
     expect(state.financialStatus, PublicDemoFinancialStatus.bankruptcy);
     final cashBeforeAnyPostTerminalTap = state.cash;
@@ -177,7 +185,7 @@ void main() {
     // Domain-level terminal guard (§22/23 test X) remains proven by
     // public_demo_financial_status_test.dart.
     expect(
-      find.text('12月終了→1月'),
+      find.text('3月終了→第1期終了'),
       findsNothing,
       reason: 'legacy no-op close button must not be visible after bankruptcy',
     );

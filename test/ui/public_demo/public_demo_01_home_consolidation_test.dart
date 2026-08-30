@@ -254,7 +254,7 @@ void main() {
       await pumpDemo(tester);
       final state = currentState(tester);
 
-      expect(state.cash, 3000000);
+      expect(state.cash, 4000000);
       expect(find.text(yen(state.cash)), findsOneWidget);
       expect(kpiTileValue('cash', yen(state.cash)), findsOneWidget);
       // The training row's raw-yen "研修後の現預金 ¥2970000" preview — the
@@ -781,6 +781,8 @@ void main() {
       await settle(tester);
       await tapAndSettle(tester, '9月終了→10月');
       await settle(tester);
+      await tapAndSettle(tester, '10月終了→11月');
+      await settle(tester);
 
       expect(
         currentState(tester).financialStatus,
@@ -801,7 +803,7 @@ void main() {
       );
 
       // 21: bankruptcy is still reached, and is still terminal.
-      await tapAndSettle(tester, '10月終了→11月');
+      await tapAndSettle(tester, '11月終了→12月');
       await settle(tester);
       expect(
         currentState(tester).financialStatus,
@@ -811,7 +813,7 @@ void main() {
       // not a silent no-op. Domain-level terminal guard is proven by
       // public_demo_financial_status_test.dart.
       expect(
-        find.text('11月終了→12月'),
+        find.text('12月終了→1月'),
         findsNothing,
         reason:
             'month-close CTA must be hidden after bankruptcy '

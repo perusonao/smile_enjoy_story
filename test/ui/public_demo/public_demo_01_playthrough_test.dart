@@ -115,13 +115,13 @@ void main() {
     expect(find.text('エンジニア求人'), findsOneWidget);
     expect(find.text('費用: ¥0 / 応募: 1名'), findsOneWidget);
     expect(find.text('費用: ¥100000 / 応募: 2名'), findsOneWidget);
-    expect(find.text('利用後の現預金: ¥2100000'), findsOneWidget);
+    expect(find.text('利用後の現預金: ¥3100000'), findsOneWidget);
 
     await tester.tap(
       find.byKey(const Key('public-demo-recruitment-medium-engineer')),
     );
     await tester.pumpAndSettle();
-    expect(find.text('現預金 ¥2100000'), findsWidgets);
+    expect(find.text('現預金 ¥3100000'), findsWidgets);
     expect(
       find.byKey(const Key('public-demo-open-recruitment-media')),
       findsOneWidget,

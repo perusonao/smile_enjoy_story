@@ -28,7 +28,7 @@ import 'package:smile_enjoy_story/game/public_demo/public_demo_workflow_snapshot
 /// exposes no way to inject an arbitrary [PublicDemoState]/
 /// [PublicDemoWorkflowState] (see its own class doc), so
 /// [_reachShortageAggregate] below builds a genuine shortage the same way
-/// production code would: closing April through July with zero orders,
+/// production code would: closing April through September with zero orders,
 /// which is exactly enough real deficit (Revenue never exceeds the
 /// founding team's fixed payroll+overhead when nobody is assigned) to
 /// reach CASH SHORTAGE by August with no fixture shortcut.
@@ -505,7 +505,9 @@ void main() {
           .closeApril(monthlyExpenses: 800000)
           .closeMay(week: 9, monthlyExpenses: 800000)
           .closeJune(assignedInJuly: 0, monthlyExpenses: 800000)
-          .closeJuly(monthlyExpenses: 800000);
+          .closeJuly(monthlyExpenses: 800000)
+          .closeOrdinaryMonth(monthlyExpenses: 800000)
+          .closeOrdinaryMonth(monthlyExpenses: 800000);
       expect(
         game.state.financialStatus,
         PublicDemoFinancialStatus.cashShortage,
@@ -623,7 +625,7 @@ void main() {
 }
 
 /// Reaches a genuine CASH SHORTAGE the same way a real, order-free
-/// playthrough would: April through July all close with zero engineer
+/// playthrough would: April through September all close with zero engineer
 /// orders, so Revenue never covers the founding team's fixed
 /// 800,000/month payroll+overhead. No fixture shortcut — every field on
 /// the returned aggregate is exactly what production code would produce.
@@ -643,7 +645,9 @@ PublicDemoAggregate _reachShortageAggregate() {
   assert(recruited.isSuccess);
   game = recruited.aggregate!
       .closeJune(assignedInJuly: 0, monthlyExpenses: 800000)
-      .closeJuly(monthlyExpenses: 800000);
+      .closeJuly(monthlyExpenses: 800000)
+      .closeOrdinaryMonth(monthlyExpenses: 800000)
+      .closeOrdinaryMonth(monthlyExpenses: 800000);
   assert(game.state.financialStatus == PublicDemoFinancialStatus.cashShortage);
   assert(game.workflow.applicants.isNotEmpty);
   return game;

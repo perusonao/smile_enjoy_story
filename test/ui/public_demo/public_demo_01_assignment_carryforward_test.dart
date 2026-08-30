@@ -20,9 +20,8 @@ import 'package:smile_enjoy_story/ui/public_demo/public_demo_01_placeholder_scre
 // FINANCE-FAILURE-1A+1B: with only Sato billable (500,000/month Revenue)
 // against the founding team's fixed 800,000/month payroll+overhead, this
 // playthrough has a real structural deficit and — under the approved
-// contract — reaches CASH SHORTAGE (closing October) and then BANKRUPTCY
-// (closing November) before the fiscal year would otherwise complete in
-// March. See public_demo_01_completion_lock_ui_test.dart's own class doc
+// contract — reaches CASH SHORTAGE (closing February) and then BANKRUPTCY
+// (closing March). See public_demo_01_completion_lock_ui_test.dart's own class doc
 // for the identical trajectory (same setup: one order, carried forward once
 // in June).
 //
@@ -164,12 +163,20 @@ void main() {
       expect(state.pendingRevenue, 500000, reason: 'D (September)');
 
       // Close the remaining ordinary months up through the close that
-      // produces BANKRUPTCY (closing November) — see this file's class doc.
+      // produces BANKRUPTCY (closing March) — see this file's class doc.
       // The carry-forward/Revenue-Growth-agreement contract under test holds
       // through every one of these, including the bankruptcy-producing close
       // itself: it is a real, committed transaction (AR/expenses/cash all
       // settle, month still advances), not a rollback.
-      const remainingCloses = ['9月終了→10月', '10月終了→11月', '11月終了→12月'];
+      const remainingCloses = [
+        '9月終了→10月',
+        '10月終了→11月',
+        '11月終了→12月',
+        '12月終了→1月',
+        '1月終了→2月',
+        '2月終了→3月',
+        '3月終了→第1期終了',
+      ];
       for (final label in remainingCloses) {
         await tapAndSettle(tester, label);
         state = currentState(tester);
@@ -186,13 +193,13 @@ void main() {
           reason: 'F holds through month ${state.month}',
         );
       }
-      expect(state.month, 12);
+      expect(state.month, 15);
       expect(state.fiscalYearCompleted, isFalse);
       expect(
         state.financialStatus,
         PublicDemoFinancialStatus.bankruptcy,
         reason:
-            'closing November is the second consecutive negative-cash '
+            'closing March is the second consecutive negative-cash '
             'close, so this fiscal year is already bankrupt',
       );
 
@@ -203,7 +210,7 @@ void main() {
       // false fiscal success) is proven by public_demo_financial_status_test
       // .dart and is not re-derived here.
       expect(
-        find.text('12月終了→1月'),
+        find.text('3月終了→第1期終了'),
         findsNothing,
         reason:
             'month-close CTA must be hidden after bankruptcy '

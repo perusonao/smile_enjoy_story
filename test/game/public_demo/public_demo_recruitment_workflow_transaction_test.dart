@@ -61,7 +61,7 @@ void main() {
       // constructing one directly — there is no production API that
       // accepts a caller-supplied PublicDemoState any more.
       final poor = PublicDemoAggregate.initial().closeApril(
-        monthlyExpenses: 2999999,
+        monthlyExpenses: 3999999,
       );
       expect(poor.state.cash, 1);
 

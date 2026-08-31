@@ -39,6 +39,7 @@ import 'public_demo_interview_result_dialog.dart';
 import 'public_demo_month_guard_warning_dialog.dart';
 import 'public_demo_monthly_cash_flow_card.dart';
 import 'public_demo_sales_progress.dart';
+import 'public_demo_skill_sheet_sheet.dart';
 import 'public_demo_salary_offer_dialog.dart';
 import 'public_demo_raise_dialog.dart';
 import 'public_demo_summer_bonus_dialog.dart';
@@ -608,67 +609,35 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
   void _startSkillSheetReview(String engineerId) =>
       _commitAggregate(_game.startSkillSheetReview(engineerId));
 
-  /// PUBLIC-DEMO-UX-1A: the Public Demo now follows the main game's
-  /// SkillSheet concept instead of treating the review button as a silent
-  /// workflow acknowledgement. The dialog is deliberately read-only here:
-  /// it only displays facts the Public Demo already owns, and the existing
-  /// authoritative stage transition is committed only after an explicit
-  /// confirmation. Back/cancel therefore leaves the workflow untouched.
+  /// SKILLSHEET-UX-2A Phase A: the mobile-first SkillSheet sheet
+  /// ([PublicDemoSkillSheetSheet]) that replaced PUBLIC-DEMO-UX-1A's
+  /// AlertDialog. Still deliberately read-only: it only displays facts the
+  /// Public Demo already owns (via [PublicDemoSkillSheetDisplayFactory]),
+  /// and the existing authoritative stage transition is committed only
+  /// after an explicit confirmation. Back/cancel/dismiss therefore leaves
+  /// the workflow untouched — see [PublicDemoSkillSheetSheet]'s doc comment
+  /// for the preserved key/return-value contract.
   Future<void> _openSkillSheetReview(PublicDemoEngineerSales engineer) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        key: Key('public-demo-skill-sheet-${engineer.id}'),
-        title: Text('${engineer.name}\n営業用SkillSheet'),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                '取引先へ提示する営業用プロフィールです。内容を確認してから営業開始へ進みます。',
-              ),
-              const SizedBox(height: 12),
-              const Text(
-                '経歴・スキル要約',
-                style: TextStyle(fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 4),
-              Text(engineer.summary),
-              const Divider(height: 24),
-              const Text(
-                '営業・面談プロフィール',
-                style: TextStyle(fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 6),
-              _dialogRow('案件スキル適合', '${engineer.interviewProfile.skillFit}'),
-              _dialogRow('ヒューマンスキル', '${engineer.interviewProfile.humanity}'),
-              _dialogRow('モチベーション', '${engineer.interviewProfile.morale}'),
-              _dialogRow('取引先からの信頼', '${engineer.interviewProfile.clientTrust}'),
-              const SizedBox(height: 12),
-              Text(
-                'Public Demoでは現在の営業用情報を閲覧できます。',
-                style: Theme.of(dialogContext).textTheme.bodySmall,
-              ),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(
-            key: Key('public-demo-skill-sheet-cancel-${engineer.id}'),
-            onPressed: () => Navigator.pop(dialogContext, false),
-            child: const Text('戻る'),
-          ),
-          FilledButton(
-            key: Key('public-demo-skill-sheet-confirm-${engineer.id}'),
-            onPressed: () => Navigator.pop(dialogContext, true),
-            child: const Text('内容を確認'),
-          ),
-        ],
-      ),
+    final confirmed = await PublicDemoSkillSheetSheet.show(
+      context,
+      engineer: engineer,
+      statusLabel: engineerStatus(engineer),
+      runtime: s.runtimeForOrNull(engineer.id),
+      currentAssignment: _assignmentForOrNull(engineer.id),
     );
     if (!mounted || confirmed != true) return;
     _startSkillSheetReview(engineer.id);
+  }
+
+  /// Mirrors [_engineerName]'s lookup shape. Deliberately loop-based rather
+  /// than a `firstWhereOrNull` helper — no assumption made about which
+  /// collection-extension packages/imports are already in scope elsewhere
+  /// in this file.
+  PublicDemoAssignment? _assignmentForOrNull(String engineerId) {
+    for (final assignment in workflow.assignments) {
+      if (assignment.engineerId == engineerId) return assignment;
+    }
+    return null;
   }
 
   void _beginSelling(String engineerId) =>

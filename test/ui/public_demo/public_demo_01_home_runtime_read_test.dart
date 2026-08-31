@@ -261,7 +261,7 @@ void main() {
       // turns into a real assignment, so both the month label and the
       // assigned count move.
       await playApril(tester);
-      await tapAndSettle(tester, '4月終了→5月');
+      await tapAndSettle(tester, '4月を終了して5月へ');
       await dismiss(tester);
 
       var state = currentState(tester);
@@ -298,7 +298,7 @@ void main() {
       // 10 + 11. Closing May commits payroll/AR (cash and pendingRevenue
       // move) and lands the new employee, all through the existing
       // mutation -> setState -> build path.
-      await tapAndSettle(tester, '5月終了→6月');
+      await tapAndSettle(tester, '5月を終了して6月へ');
       await settle(tester);
 
       state = currentState(tester);
@@ -330,9 +330,9 @@ void main() {
     testWidgets('13: pendingRevenue is never folded into cash', (tester) async {
       await pumpDemo(tester);
       await playApril(tester);
-      await tapAndSettle(tester, '4月終了→5月');
+      await tapAndSettle(tester, '4月を終了して5月へ');
       await dismiss(tester);
-      await tapAndSettle(tester, '5月終了→6月');
+      await tapAndSettle(tester, '5月を終了して6月へ');
       await settle(tester);
 
       final state = currentState(tester);
@@ -486,7 +486,7 @@ void main() {
       // ...and a real mutation must move it, without anything having to
       // publish or invalidate a cached snapshot.
       await playApril(tester);
-      await tapAndSettle(tester, '4月終了→5月');
+      await tapAndSettle(tester, '4月を終了して5月へ');
       await dismiss(tester);
       expect(homeData(tester), isNot(first));
       expectHomeMatchesAuthority(tester, at: 'May');
@@ -503,24 +503,24 @@ void main() {
       // public_demo_01_fiscal_year_progression_test.dart already pins:
       // CASH SHORTAGE closing September, BANKRUPTCY closing October.
       await playApril(tester);
-      await tapAndSettle(tester, '4月終了→5月');
+      await tapAndSettle(tester, '4月を終了して5月へ');
       await dismiss(tester);
-      await tapAndSettle(tester, '5月終了→6月');
+      await tapAndSettle(tester, '5月を終了して6月へ');
       await settle(tester);
-      await tapAndSettle(tester, '6月終了→7月');
+      await tapAndSettle(tester, '6月を終了して7月へ');
       await settle(tester);
-      await tapAndSettle(tester, '7月終了→8月');
+      await tapAndSettle(tester, '7月を終了して8月へ');
       await tester.tap(find.byKey(const Key('public-demo-summer-bonus-none')));
       await tester.pumpAndSettle();
-      await tapAndSettle(tester, '7月終了→8月');
+      await tapAndSettle(tester, '7月を終了して8月へ');
       await settle(tester);
       expectHomeMatchesAuthority(tester, at: 'August');
 
-      await tapAndSettle(tester, '8月終了→9月');
+      await tapAndSettle(tester, '8月を終了して翌月へ');
       await settle(tester);
-      await tapAndSettle(tester, '9月終了→10月');
+      await tapAndSettle(tester, '9月を終了して翌月へ');
       await settle(tester);
-      await tapAndSettle(tester, '10月終了→11月');
+      await tapAndSettle(tester, '10月を終了して翌月へ');
       await settle(tester);
 
       // 15. The FINANCE-FAILURE-1C card is neither removed nor bypassed.
@@ -538,7 +538,7 @@ void main() {
       expect(homeData(tester).cash, currentState(tester).cash);
 
       // 16. Bankruptcy is still reached, and the terminal guard still holds.
-      await tapAndSettle(tester, '11月終了→12月');
+      await tapAndSettle(tester, '11月を終了して翌月へ');
       await settle(tester);
       expect(
         currentState(tester).financialStatus,
@@ -551,7 +551,7 @@ void main() {
       // Domain-level terminal guard is proven by
       // public_demo_financial_status_test.dart.
       expect(
-        find.text('12月終了→1月'),
+        find.text('12月を終了して翌月へ'),
         findsNothing,
         reason:
             'month-close CTA must be hidden after bankruptcy '

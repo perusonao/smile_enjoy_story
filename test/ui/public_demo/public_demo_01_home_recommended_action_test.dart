@@ -148,11 +148,11 @@ Future<void> playApril(WidgetTester tester) async {
 /// Advances to July on the no-hire route, where the applicant pipeline is
 /// not rendered.
 Future<void> playIntoJuly(WidgetTester tester) async {
-  await tapAndSettle(tester, '4月終了→5月');
+  await tapAndSettle(tester, '4月を終了して5月へ');
   await dismiss(tester);
-  await tapAndSettle(tester, '5月終了→6月');
+  await tapAndSettle(tester, '5月を終了して6月へ');
   await settle(tester);
-  await tapAndSettle(tester, '6月終了→7月');
+  await tapAndSettle(tester, '6月を終了して7月へ');
   await settle(tester);
 }
 
@@ -165,22 +165,22 @@ Future<void> playIntoJuly(WidgetTester tester) async {
 /// reaching past it.
 Future<void> playIntoCashShortage(WidgetTester tester) async {
   await playApril(tester);
-  await tapAndSettle(tester, '4月終了→5月');
+  await tapAndSettle(tester, '4月を終了して5月へ');
   await dismiss(tester);
-  await tapAndSettle(tester, '5月終了→6月');
+  await tapAndSettle(tester, '5月を終了して6月へ');
   await settle(tester);
-  await tapAndSettle(tester, '6月終了→7月');
+  await tapAndSettle(tester, '6月を終了して7月へ');
   await settle(tester);
-  await tapAndSettle(tester, '7月終了→8月');
+  await tapAndSettle(tester, '7月を終了して8月へ');
   await tester.tap(find.byKey(const Key('public-demo-summer-bonus-none')));
   await tester.pumpAndSettle();
-  await tapAndSettle(tester, '7月終了→8月');
+  await tapAndSettle(tester, '7月を終了して8月へ');
   await settle(tester);
-  await tapAndSettle(tester, '8月終了→9月');
+  await tapAndSettle(tester, '8月を終了して翌月へ');
   await settle(tester);
-  await tapAndSettle(tester, '9月終了→10月');
+  await tapAndSettle(tester, '9月を終了して翌月へ');
   await settle(tester);
-  await tapAndSettle(tester, '10月終了→11月');
+  await tapAndSettle(tester, '10月を終了して翌月へ');
   await settle(tester);
 }
 
@@ -350,7 +350,7 @@ void main() {
       tester,
     ) async {
       await pumpDemo(tester);
-      await tapAndSettle(tester, '4月終了→5月');
+      await tapAndSettle(tester, '4月を終了して5月へ');
       await dismiss(tester);
       expect(currentState(tester).month, 5);
 
@@ -418,7 +418,7 @@ void main() {
 
       // July's summer-bonus confirmation and ordinary progression are
       // unchanged by removing the unrelated recruitment entry point.
-      await tapAndSettle(tester, '7月終了→8月');
+      await tapAndSettle(tester, '7月を終了して8月へ');
       expect(currentState(tester).month, 8);
     });
 
@@ -441,13 +441,13 @@ void main() {
       }
 
       await checkCurrentBuild();
-      await tapAndSettle(tester, '4月終了→5月');
+      await tapAndSettle(tester, '4月を終了して5月へ');
       await dismiss(tester);
       await checkCurrentBuild();
-      await tapAndSettle(tester, '5月終了→6月');
+      await tapAndSettle(tester, '5月を終了して6月へ');
       await settle(tester);
       await checkCurrentBuild();
-      await tapAndSettle(tester, '6月終了→7月');
+      await tapAndSettle(tester, '6月を終了して7月へ');
       await settle(tester);
       await checkCurrentBuild();
     });
@@ -460,7 +460,7 @@ void main() {
     testWidgets('an exhausted sales slot removes the interview action '
         'instead of offering it disabled', (tester) async {
       await pumpDemo(tester);
-      await tapAndSettle(tester, '4月終了→5月');
+      await tapAndSettle(tester, '4月を終了して5月へ');
       await dismiss(tester);
       expect(currentState(tester).month, 5);
 
@@ -551,13 +551,13 @@ void main() {
         await tapAndSettle(tester, tap);
         checkBuild();
       }
-      await tapAndSettle(tester, '4月終了→5月');
+      await tapAndSettle(tester, '4月を終了して5月へ');
       await dismiss(tester);
       checkBuild();
-      await tapAndSettle(tester, '5月終了→6月');
+      await tapAndSettle(tester, '5月を終了して6月へ');
       await settle(tester);
       checkBuild();
-      await tapAndSettle(tester, '6月終了→7月');
+      await tapAndSettle(tester, '6月を終了して7月へ');
       await settle(tester);
       checkBuild();
     });
@@ -679,7 +679,7 @@ void main() {
       // §13's Failure-Recovery rule: not a dead end. The KPI and the
       // month-close CTA are both still there.
       expect(find.byKey(const Key('home-kpi-compact')), findsOneWidget);
-      expect(actionButton('11月終了→12月'), findsWidgets);
+      expect(actionButton('11月を終了して翌月へ'), findsWidgets);
     });
 
     testWidgets('the shortage CTA changes nothing authoritative', (
@@ -710,7 +710,7 @@ void main() {
         'action, and no consolation month goal either', (tester) async {
       await pumpDemo(tester);
       await playIntoCashShortage(tester);
-      await tapAndSettle(tester, '11月終了→12月');
+      await tapAndSettle(tester, '11月を終了して翌月へ');
       await settle(tester);
 
       expect(
@@ -735,7 +735,7 @@ void main() {
         'slot names an outcome, never its reason', (tester) async {
       await pumpDemo(tester);
       await playIntoCashShortage(tester);
-      await tapAndSettle(tester, '11月終了→12月');
+      await tapAndSettle(tester, '11月を終了して翌月へ');
       await settle(tester);
       expect(
         currentState(tester).financialStatus,
@@ -809,9 +809,9 @@ void main() {
   group('7: with nothing eligible the slot states the month goal', () {
     testWidgets('June on the no-hire route falls back', (tester) async {
       await pumpDemo(tester);
-      await tapAndSettle(tester, '4月終了→5月');
+      await tapAndSettle(tester, '4月を終了して5月へ');
       await dismiss(tester);
-      await tapAndSettle(tester, '5月終了→6月');
+      await tapAndSettle(tester, '5月を終了して6月へ');
       await settle(tester);
 
       expect(currentState(tester).month, 6);

@@ -214,12 +214,12 @@ void main() {
       await playApril(tester);
       assertRosterMatchesAuthority('April, order won');
 
-      await tapAndSettle(tester, '4月終了→5月');
+      await tapAndSettle(tester, '4月を終了して5月へ');
       await dismiss(tester);
       expect(currentState(tester).month, 5);
       assertRosterMatchesAuthority('May');
 
-      await tapAndSettle(tester, '5月終了→6月');
+      await tapAndSettle(tester, '5月を終了して6月へ');
       expect(currentState(tester).month, 6);
       assertRosterMatchesAuthority('June');
     });

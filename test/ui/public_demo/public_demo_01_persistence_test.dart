@@ -140,7 +140,7 @@ Future<void> _confirmAndReloadWithoutBonusDialog(
   await _mount(tester, service);
 
   expect(_screenState(tester).summerBonusDecisionConfirmed, isTrue);
-  await _tapAction(tester, '7月終了→8月');
+  await _tapAction(tester, '7月を終了して8月へ');
 
   expect(
     find.byKey(Key('public-demo-summer-bonus-${plan.name}')),
@@ -206,7 +206,7 @@ void main() {
       _RecordingSaveService(restored: _freshJulyAggregate()),
     );
 
-    await _tapAction(tester, '7月終了→8月');
+    await _tapAction(tester, '7月を終了して8月へ');
 
     expect(
       find.byKey(const Key('public-demo-summer-bonus-none')),

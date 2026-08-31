@@ -93,39 +93,39 @@ Future<void> _driveToNovemberBankruptcy(WidgetTester tester) async {
   await _dismiss(tester);
   await _tapAndSettle(tester, '受注');
   await _dismiss(tester);
-  await _tapAndSettle(tester, '4月終了→5月');
+  await _tapAndSettle(tester, '4月を終了して5月へ');
   await _dismiss(tester);
 
   // May: no additional hiring.
-  await _tapAndSettle(tester, '5月終了→6月');
+  await _tapAndSettle(tester, '5月を終了して6月へ');
 
   // June: accept July continuation for Sato (only assignment).
   await _tapAndSettle(tester, '7月分の発注を確認');
   await _tapAndSettle(tester, '受注する');
-  await _tapAndSettle(tester, '6月終了→7月');
+  await _tapAndSettle(tester, '6月を終了して7月へ');
 
   // July: choose no bonus.
-  await _tapAndSettle(tester, '7月終了→8月');
+  await _tapAndSettle(tester, '7月を終了して8月へ');
   await tester.tap(find.byKey(const Key('public-demo-summer-bonus-none')));
   await tester.pumpAndSettle();
-  await _tapAndSettle(tester, '7月終了→8月');
+  await _tapAndSettle(tester, '7月を終了して8月へ');
 
   // Close August through January; February closes into March shortage.
   for (final label in [
-    '8月終了→9月',
-    '9月終了→10月',
-    '10月終了→11月',
-    '11月終了→12月',
-    '12月終了→1月',
-    '1月終了→2月',
-    '2月終了→3月',
+    '8月を終了して翌月へ',
+    '9月を終了して翌月へ',
+    '10月を終了して翌月へ',
+    '11月を終了して翌月へ',
+    '12月を終了して翌月へ',
+    '1月を終了して翌月へ',
+    '2月を終了して翌月へ',
   ]) {
     await _tapAndSettle(tester, label);
   }
-  // After '2月終了→3月', state.month == 15, financialStatus == cashShortage.
+  // After '2月を終了して翌月へ', state.month == 15, financialStatus == cashShortage.
 
   // March's fiscal-year close produces bankruptcy.
-  await _tapAndSettle(tester, '3月終了→第1期終了');
+  await _tapAndSettle(tester, '3月を終了して第1期を完了');
   // After this close: state.month == 15, financialStatus == bankruptcy.
 }
 
@@ -151,29 +151,29 @@ void main() {
       await _dismiss(tester);
       await _tapAndSettle(tester, '受注');
       await _dismiss(tester);
-      await _tapAndSettle(tester, '4月終了→5月');
+      await _tapAndSettle(tester, '4月を終了して5月へ');
       await _dismiss(tester);
-      await _tapAndSettle(tester, '5月終了→6月');
+      await _tapAndSettle(tester, '5月を終了して6月へ');
       await _tapAndSettle(tester, '7月分の発注を確認');
       await _tapAndSettle(tester, '受注する');
-      await _tapAndSettle(tester, '6月終了→7月');
-      await _tapAndSettle(tester, '7月終了→8月');
+      await _tapAndSettle(tester, '6月を終了して7月へ');
+      await _tapAndSettle(tester, '7月を終了して8月へ');
       await tester.tap(find.byKey(const Key('public-demo-summer-bonus-none')));
       await tester.pumpAndSettle();
-      await _tapAndSettle(tester, '7月終了→8月');
+      await _tapAndSettle(tester, '7月を終了して8月へ');
       for (final label in [
-        '8月終了→9月',
-        '9月終了→10月',
-        '10月終了→11月',
-        '11月終了→12月',
-        '12月終了→1月',
-        '1月終了→2月',
+        '8月を終了して翌月へ',
+        '9月を終了して翌月へ',
+        '10月を終了して翌月へ',
+        '11月を終了して翌月へ',
+        '12月を終了して翌月へ',
+        '1月を終了して翌月へ',
       ]) {
         await _tapAndSettle(tester, label);
       }
 
       // February close → March: cashShortage.
-      await _tapAndSettle(tester, '2月終了→3月');
+      await _tapAndSettle(tester, '2月を終了して翌月へ');
       var state = _currentState(tester);
       expect(state.month, 15);
       expect(
@@ -186,7 +186,7 @@ void main() {
       expect(state.cash, isNegative);
 
       // March fiscal-year close: bankruptcy.
-      await _tapAndSettle(tester, '3月終了→第1期終了');
+      await _tapAndSettle(tester, '3月を終了して第1期を完了');
       state = _currentState(tester);
       expect(state.month, 15);
       expect(
@@ -222,7 +222,7 @@ void main() {
 
       // B2: the legacy no-op close button is absent.
       expect(
-        find.text('3月終了→第1期終了'),
+        find.text('3月を終了して第1期を完了'),
         findsNothing,
         reason:
             'month-close CTA must not be shown when it cannot execute '
@@ -255,27 +255,27 @@ void main() {
       await _dismiss(tester);
       await _tapAndSettle(tester, '受注');
       await _dismiss(tester);
-      await _tapAndSettle(tester, '4月終了→5月');
+      await _tapAndSettle(tester, '4月を終了して5月へ');
       await _dismiss(tester);
-      await _tapAndSettle(tester, '5月終了→6月');
+      await _tapAndSettle(tester, '5月を終了して6月へ');
       await _tapAndSettle(tester, '7月分の発注を確認');
       await _tapAndSettle(tester, '受注する');
-      await _tapAndSettle(tester, '6月終了→7月');
-      await _tapAndSettle(tester, '7月終了→8月');
+      await _tapAndSettle(tester, '6月を終了して7月へ');
+      await _tapAndSettle(tester, '7月を終了して8月へ');
       await tester.tap(find.byKey(const Key('public-demo-summer-bonus-none')));
       await tester.pumpAndSettle();
-      await _tapAndSettle(tester, '7月終了→8月');
+      await _tapAndSettle(tester, '7月を終了して8月へ');
       for (final label in [
-        '8月終了→9月',
-        '9月終了→10月',
-        '10月終了→11月',
-        '11月終了→12月',
-        '12月終了→1月',
-        '1月終了→2月',
+        '8月を終了して翌月へ',
+        '9月を終了して翌月へ',
+        '10月を終了して翌月へ',
+        '11月を終了して翌月へ',
+        '12月を終了して翌月へ',
+        '1月を終了して翌月へ',
       ]) {
         await _tapAndSettle(tester, label);
       }
-      await _tapAndSettle(tester, '2月終了→3月');
+      await _tapAndSettle(tester, '2月を終了して翌月へ');
 
       final state = _currentState(tester);
       expect(state.financialStatus, PublicDemoFinancialStatus.cashShortage);
@@ -406,7 +406,7 @@ void main() {
       );
       // After restart we're in April; the April close button should be
       // reachable somewhere on screen.
-      final aprilButton = find.text('4月終了→5月');
+      final aprilButton = find.text('4月を終了して5月へ');
       // Scroll down to find it if needed.
       for (var i = 0; aprilButton.evaluate().isEmpty && i < 10; i++) {
         await tester.drag(find.byType(ListView), const Offset(0, -300));

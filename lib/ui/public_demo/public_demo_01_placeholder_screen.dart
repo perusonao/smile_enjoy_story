@@ -2169,10 +2169,6 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
                         if (s.month == 4) ...[
                           for (var i = 0; i < workflow.engineers.length; i++)
                             ec(i),
-                          OutlinedButton(
-                            onPressed: april,
-                            child: const Text('4月終了→5月'),
-                          ),
                         ],
                         if (s.month == 5) ...[
                           _RecruitmentMediaCard(
@@ -2181,10 +2177,6 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
                           ),
                           for (var i = 0; i < workflow.applicants.length; i++)
                             ac(i),
-                          OutlinedButton(
-                            onPressed: may,
-                            child: const Text('5月終了→6月'),
-                          ),
                         ],
                         if (s.month == 6)
                           for (final a in workflow.applicants.where(
@@ -2208,10 +2200,6 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
                               ec(i),
                           for (var i = 0; i < workflow.assignments.length; i++)
                             assignmentCard(i),
-                          OutlinedButton(
-                            onPressed: june,
-                            child: const Text('6月終了→7月'),
-                          ),
                         ],
                         if (s.month == 7) ...[
                           Text(
@@ -2264,10 +2252,6 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
                               ),
                             ),
                           ),
-                          OutlinedButton(
-                            onPressed: july,
-                            child: const Text('7月終了→8月'),
-                          ),
                         ],
                         if (s.month >= 8 && s.month <= 14) ...[
                           Text(
@@ -2282,32 +2266,12 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
                                   : '夏季賞与 ¥${s.summerBonusPaidAmount}',
                             ),
                           ],
-                          // PLAYTEST-BLOCKER-1A: hide the close button once a
-                          // terminal state is reached — a no-op button that looks
-                          // active is the UX failure this PR fixes.
-                          if (!s.isCloseBlocked)
-                            OutlinedButton(
-                              onPressed: closeOrdinaryMonth,
-                              child: Text(
-                                '${publicDemoMonthLabel(s.month)}終了→'
-                                '${publicDemoMonthLabel(s.month + 1)}',
-                              ),
-                            ),
                         ],
                         if (s.month == 15 && !s.fiscalYearCompleted) ...[
                           Text(
                             '${publicDemoMonthLabel(s.month)}開始結果',
                             style: Theme.of(c).textTheme.titleLarge,
                           ),
-                          // PLAYTEST-BLOCKER-1A: hide the March close button when
-                          // a terminal state has already been reached (entering
-                          // March already bankrupt due to February closure).
-                          if (!s.isCloseBlocked)
-                            OutlinedButton(
-                              key: const Key('public-demo-march-close'),
-                              onPressed: closeOrdinaryMonth,
-                              child: const Text('3月終了→第1期終了'),
-                            ),
                         ],
                         if (s.fiscalYearCompleted) ...[
                           Card(

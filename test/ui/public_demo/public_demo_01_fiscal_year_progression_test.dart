@@ -94,21 +94,21 @@ void main() {
       await dismissDialog(tester, '確認');
       await tapAndSettle(tester, '受注');
       await dismissDialog(tester, '確認');
-      await tapAndSettle(tester, '4月終了→5月');
+      await tapAndSettle(tester, '4月を終了して5月へ');
       await dismissDialog(tester, '確認');
       expect(find.text('1年目 5月'), findsOneWidget);
 
       // May and June: no further hiring or order-renewal interaction. Sato's
       // April order alone is enough Revenue for July's cash guard to pass.
-      await tapAndSettle(tester, '5月終了→6月');
-      await tapAndSettle(tester, '6月終了→7月');
+      await tapAndSettle(tester, '5月を終了して6月へ');
+      await tapAndSettle(tester, '6月を終了して7月へ');
 
       // July requires confirming the (default "none") summer bonus decision
       // before the close button actually closes the month.
-      await tapAndSettle(tester, '7月終了→8月');
+      await tapAndSettle(tester, '7月を終了して8月へ');
       await tester.tap(find.byKey(const Key('public-demo-summer-bonus-none')));
       await tester.pumpAndSettle();
-      await tapAndSettle(tester, '7月終了→8月');
+      await tapAndSettle(tester, '7月を終了して8月へ');
       expect(find.text('1年目 8月'), findsOneWidget);
       // 12MONTH-3-FIX1 P1-2: no month past May can process a generated
       // applicant, so the paid recruitment-media CTA must not render for
@@ -137,10 +137,10 @@ void main() {
       // 13/14/15 ("1月"/"2月"/"3月", never "13月" etc.) remains covered
       // unconditionally by public_demo_month_label_test.dart.
       const closes = [
-        ('8月終了→9月', '9月'),
-        ('9月終了→10月', '10月'),
-        ('10月終了→11月', '11月'),
-        ('11月終了→12月', '12月'),
+        ('8月を終了して翌月へ', '9月'),
+        ('9月を終了して翌月へ', '10月'),
+        ('10月を終了して翌月へ', '11月'),
+        ('11月を終了して翌月へ', '12月'),
       ];
       for (final (buttonLabel, nextMonthLabel) in closes) {
         await tapAndSettle(tester, buttonLabel);
@@ -195,7 +195,7 @@ void main() {
       // not a silent no-op. The domain-level terminal guard (§22/23 test X)
       // is proven by public_demo_financial_status_test.dart.
       expect(
-        find.text('12月終了→1月'),
+        find.text('12月を終了して翌月へ'),
         findsNothing,
         reason:
             'month-close CTA must be hidden after bankruptcy '

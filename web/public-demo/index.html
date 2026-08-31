@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>S.E.S. Public Demo 0.1</title>
+  <!--
+    Stable external playtest entry point. Redirects into the app root's
+    existing hash route (`#/public-demo-01`, see lib/app/app_entry.dart)
+    without introducing a new runtime route or changing routing authority.
+
+    The target is relative ("../#/public-demo-01") so this works from
+    whatever subpath the site is served under (e.g. GitHub Pages'
+    /smile_enjoy_story/public-demo/) without assuming deployment at the
+    domain root. `location.replace` is used instead of `location.href` so
+    this redirect page doesn't sit in browser history — pressing Back after
+    the redirect returns to wherever the tester was before, not to a
+    redirect loop. The meta refresh is a no-JS fallback.
+  -->
+  <meta http-equiv="refresh" content="0; url=../#/public-demo-01">
+  <link rel="canonical" href="../#/public-demo-01">
+  <script>location.replace('../#/public-demo-01');</script>
+</head>
+<body>
+  <p>Redirecting to the <a href="../#/public-demo-01">S.E.S. Public Demo 0.1</a>&hellip;</p>
+</body>
+</html>

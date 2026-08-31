@@ -15,6 +15,18 @@ For help getting started with Flutter development, view the
 [online documentation](https://docs.flutter.dev/), which offers tutorials,
 samples, guidance on mobile development, and a full API reference.
 
+## Public Demo 0.1 (external playtesters)
+
+Share this stable URL with external testers:
+
+> https://perusonao.github.io/smile_enjoy_story/public-demo/
+
+It's a static redirect (`web/public-demo/index.html`) into the existing
+`#/public-demo-01` route — it doesn't add a route or change what the app
+does. This is separate from the development root
+(`https://perusonao.github.io/smile_enjoy_story/`), which keeps launching
+the normal development experience.
+
 ## Playwright E2E (QA / UX audit)
 
 `/e2e` drives the real, built Web app on mobile device profiles from a

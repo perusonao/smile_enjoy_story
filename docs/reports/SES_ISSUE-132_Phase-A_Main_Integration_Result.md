@@ -35,7 +35,14 @@ below and treated as a CI gate rather than a silent skip.
   task's isolation requirement — the primary checkout had no uncommitted
   work of its own to protect, but the worktree was used anyway to keep this
   operation fully reversible and independent of the primary working tree)
-- HEAD SHA: `342248e11147fd15311e5c47744a4e68158e9ffd`
+- HEAD SHA: `28072a5ee66e48e3a6c7751451119e60c3a38020` (this includes the
+  #132 Phase A cherry-pick, `342248e11147fd15311e5c47744a4e68158e9ffd`, plus
+  this report's own docs-only commit on top; the code/diff described
+  throughout this report — DIFF AUDIT, PRESERVATION, DOMAIN/FINANCE/
+  PERSISTENCE — is entirely `342248e`'s content, since this report commit
+  changes only this file. A final addendum commit adding the PR reference
+  below moves the pushed branch tip one commit further than this SHA; see
+  the linked PR for the exact final tip.)
 - parent: `25a2e9b6b401794090151cc86006e433c8d9a789` (`origin/main`, exact
   expected SHA)
 
@@ -273,21 +280,22 @@ RESULTS above).
 
 ## PR
 
-Not created by this run — GitHub PR-creation tooling was not exercised in
-this pass; the branch `claude/issue-132-phase-a-main-integration` is
-pushed to `origin` and is ready for a maintainer (or a follow-up run with
-GitHub write access) to open a PR with:
-
+- number: **#136**
+- URL: https://github.com/perusonao/smile_enjoy_story/pull/136
 - base: `main`
 - base SHA: `25a2e9b6b401794090151cc86006e433c8d9a789`
-- head SHA: `342248e11147fd15311e5c47744a4e68158e9ffd`
-- suggested title: `feat(public-demo): integrate SkillSheet Phase A redesign`
-- body should restate the sections above: #132 Phase A only; #118 single
-  CTA preserved; Domain/Finance/Persistence/normal-game changes: none;
-  tests executed (flutter analyze clean, 1324/1324 + 191/191 flutter test,
-  7/7 Playwright mobile-chromium at 360/390px); WebKit not run locally
-  (environment constraint, not a test weakening) and required as a CI gate
-  before merge; Phase B/C explicitly deferred.
+- head SHA at PR-creation time: `28072a5ee66e48e3a6c7751451119e60c3a38020`
+  (the branch tip advances by one further docs-only commit, adding this PR
+  reference, immediately after — see the PR itself for the exact final
+  commit)
+- title: `feat(public-demo): integrate SkillSheet Phase A redesign`
+- body restates: #132 Phase A only; #118 single CTA preserved;
+  Domain/Finance/Persistence/normal-game changes: none; tests executed
+  (flutter analyze clean, 1324/1324 + 191/191 flutter test, 7/7 Playwright
+  mobile-chromium at 360/390px); WebKit not run locally (environment
+  constraint, not a test weakening) and required as a CI gate before merge;
+  Phase B/C explicitly deferred. Not merged by this run, per instructions —
+  merge is left to CI completion and maintainer review.
 
 ## MERGE READINESS
 

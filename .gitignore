@@ -55,3 +55,11 @@ e2e/playwright/.cache/
 # — CI-generated MP4s/manifest, never committed to the repo (see
 # e2e/replay-viewer/, § "動画をrepositoryへcommitしない").
 e2e/replay-package/
+
+# Issue #117 Screen Verification Gate — local run output only.
+# The harness lives in e2e/verification/issue-117/ and is committed; its
+# output (reproduced Pages payload, screenshots, videos, traces, and the
+# packaged artifact ZIP) is not, per the same no-committed-video rule as
+# e2e/replay-package/ above.
+.verification/
+SES_ISSUE-117_Screen_Verification_Artifacts.zip

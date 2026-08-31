@@ -83,6 +83,13 @@ Future<void> _tapAction(WidgetTester tester, String label) async {
   await tester.tap(finder.first);
   await tester.pump();
   if (label == 'SkillSheet確認') {
+    // SKILLSHEET-UX-2A Phase A: the SkillSheet presentation is now a
+    // showModalBottomSheet (slide-in entrance transition) rather than the
+    // #117 AlertDialog (scale/fade transition). A single bare `pump()`
+    // after opening it left the confirm button's on-screen position
+    // mid-animation, off the visible sheet; settle the entrance transition
+    // before locating/tapping it. No assertion below changed.
+    await tester.pumpAndSettle();
     await tester.tap(find.widgetWithText(FilledButton, '内容を確認'));
     await tester.pumpAndSettle();
   }

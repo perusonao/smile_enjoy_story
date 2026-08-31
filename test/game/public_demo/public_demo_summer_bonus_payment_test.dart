@@ -139,8 +139,7 @@ void main() {
     expect(duplicate.state.cash, paid.state.cash);
   });
 
-  test('FINANCE-FAILURE-1A+1B: insufficient cash for the selected bonus pays '
-      'zero bonus instead — the mandatory close is never rolled back', () {
+  test('an unaffordable paid plan is rejected without changing state', () {
     // totalOutflow for plan=one, no extra hires would be 800,000 +
     // 550,000 = 1,350,000; cash is exactly 1 short of that.
     final before = july(cash: 1349999);
@@ -148,14 +147,57 @@ void main() {
       monthlyExpenses: 800000,
       applicants: [],
     );
-    expect(result.isPaid, isTrue);
-    expect(result.bonusAmount, 0);
-    expect(result.state.summerBonusPaid, isTrue);
-    expect(result.state.summerBonusPaidAmount, 0);
-    expect(result.state.month, 8);
-    // Only the mandatory 800,000 settles — the unaffordable bonus does not.
-    expect(result.state.cash, 1349999 - 800000);
+    expect(result.isRejected, isTrue);
+    expect(result.bonusAmount, 550000);
+    expect(result.state, same(before));
+    expect(result.state.summerBonusPaid, isFalse);
+    expect(result.state.summerBonusPaidAmount, isNull);
+    expect(result.state.month, 7);
+    expect(result.state.cash, 1349999);
   });
+
+  test(
+    'preview keeps none eligible when mandatory expenses make cash negative',
+    () {
+      final before = july(
+        cash: 1360000,
+        plan: PublicDemoSummerBonusPlan.none,
+      );
+      final preview = PublicDemoSummerBonusPayment.preview(
+        state: before,
+        monthlyExpenses: 1570000,
+        applicants: const [],
+        plan: PublicDemoSummerBonusPlan.none,
+      );
+
+      expect(preview.bonusAmount, 0);
+      expect(preview.projectedCash, -210000);
+      expect(preview.isEligible, isTrue);
+    },
+  );
+
+  test(
+    'preview rejects both paid plans when their complete close is unfunded',
+    () {
+      final before = july(cash: 1360000);
+
+      for (final plan in [
+        PublicDemoSummerBonusPlan.half,
+        PublicDemoSummerBonusPlan.one,
+      ]) {
+        final preview = PublicDemoSummerBonusPayment.preview(
+          state: before,
+          monthlyExpenses: 1570000,
+          applicants: const [],
+          plan: plan,
+        );
+        expect(
+          preview.eligibility,
+          PublicDemoSummerBonusEligibility.insufficientCash,
+        );
+      }
+    },
+  );
 
   test('FINANCE-FAILURE-1A+1B: mandatory expenses alone exceeding cash still '
       'completes the close, with the resulting negative cash committed', () {

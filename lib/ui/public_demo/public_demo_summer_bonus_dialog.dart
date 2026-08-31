@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
 
 import '../../game/public_demo/public_demo_recruitment.dart';
-import '../../game/public_demo/public_demo_revenue_payment.dart';
+import '../../game/public_demo/public_demo_monthly_close.dart';
 import '../../game/public_demo/public_demo_state.dart';
 import '../../game/public_demo/public_demo_summer_bonus_payment.dart';
 import '../../game/public_demo/public_demo_summer_bonus_plan.dart';
+import '../theme.dart';
 
 /// July-only decision UI. It previews the same transaction settled at close.
 class PublicDemoSummerBonusDialog extends StatelessWidget {
@@ -19,43 +20,33 @@ class PublicDemoSummerBonusDialog extends StatelessWidget {
   final Iterable<PublicDemoApplicant> applicants;
   final int monthlyExpenses;
 
-  int _amount(PublicDemoSummerBonusPlan plan) =>
-      PublicDemoSummerBonusPayment.calculateSummerBonus(
-        plan: plan,
-        applicants: applicants,
-        month: 7,
-      );
-
-  String _yen(int amount) =>
-      '¥${amount.toString().replaceAllMapped(RegExp(r'(?<!^)(?=(\d{3})+$)'), (_) => ',')}';
-
   @override
   Widget build(BuildContext context) {
-    // Same-close preview: closeJuly settles pendingRevenue into cash before
-    // its own cash guard runs (PublicDemoMonthlyClose.closeJuly), so this
-    // reuses the same transaction to keep the preview's affordability basis
-    // identical to what the close actually checks.
-    final availableCash = PublicDemoRevenuePayment.apply(
-      state: state,
-    ).state.cash;
     Widget choice(PublicDemoSummerBonusPlan plan, String label) {
-      final amount = _amount(plan);
-      final projectedCash = availableCash - monthlyExpenses - amount;
-      final enabled = projectedCash >= 0;
+      final preview = PublicDemoMonthlyClose.previewJuly(
+        state: state,
+        monthlyExpenses: monthlyExpenses,
+        applicants: applicants,
+        plan: plan,
+      );
       return Padding(
         padding: const EdgeInsets.only(bottom: 8),
         child: FilledButton.tonal(
           key: Key('public-demo-summer-bonus-${plan.name}'),
-          onPressed: enabled ? () => Navigator.pop(context, plan) : null,
+          onPressed: preview.isEligible
+              ? () => Navigator.pop(context, plan)
+              : null,
           child: Align(
             alignment: Alignment.centerLeft,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(label),
-                Text('支給総額 ${_yen(amount)}'),
-                Text('支給後の予想現預金 ${_yen(projectedCash)}'),
-                if (!enabled) const Text('現預金不足のため選択できません'),
+                Text('支給総額 ${formatYen(preview.bonusAmount)}'),
+                Text('支給後の予想現預金 ${formatYen(preview.projectedCash)}'),
+                if (preview.eligibility ==
+                    PublicDemoSummerBonusEligibility.insufficientCash)
+                  const Text('現預金不足のため選択できません'),
               ],
             ),
           ),

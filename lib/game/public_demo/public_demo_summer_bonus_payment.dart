@@ -20,39 +20,79 @@ class PublicDemoSummerBonusPayment {
               plan.months)
           .round();
 
+  /// Domain-owned preview used by both the July close and its decision UI.
+  ///
+  /// [state] is the same state the payment transaction will settle. The
+  /// common monthly-close facade passes the post-AR state, so pending revenue
+  /// is included exactly once before this calculation. A zero bonus is always
+  /// an eligible management decision, even when mandatory monthly expenses
+  /// make the projected cash negative. Paid plans retain the existing rule:
+  /// they are eligible only when the complete close can fund them without
+  /// producing a negative balance.
+  static PublicDemoSummerBonusSettlementPreview preview({
+    required PublicDemoState state,
+    required int monthlyExpenses,
+    required Iterable<PublicDemoApplicant> applicants,
+    required PublicDemoSummerBonusPlan plan,
+  }) {
+    final bonusAmount = calculateSummerBonus(
+      plan: plan,
+      applicants: applicants,
+      month: 7,
+    );
+    final projectedCash = state.cash - monthlyExpenses - bonusAmount;
+    final isApplicable =
+        state.month == 7 && !state.summerBonusPaid && !state.isCloseBlocked;
+    final eligibility = !isApplicable
+        ? PublicDemoSummerBonusEligibility.notApplicable
+        : plan == PublicDemoSummerBonusPlan.none || projectedCash >= 0
+        ? PublicDemoSummerBonusEligibility.eligible
+        : PublicDemoSummerBonusEligibility.insufficientCash;
+    return PublicDemoSummerBonusSettlementPreview(
+      plan: plan,
+      availableCash: state.cash,
+      monthlyExpenses: monthlyExpenses,
+      bonusAmount: bonusAmount,
+      projectedCash: projectedCash,
+      eligibility: eligibility,
+    );
+  }
+
   /// Returns an unchanged state when this is not July, has already closed
   /// its bonus decision, or the aggregate's financial state already blocks
   /// any further monthly close ([PublicDemoState.isCloseBlocked]).
   ///
-  /// FINANCE-FAILURE-1A+1B §11 (P0): the mandatory monthly close (prior AR
-  /// settlement, salary, fixed costs) always commits — there is no
-  /// insufficient-cash rollback of this close any more. Affordability
-  /// gating is instead scoped to the *optional* summer bonus alone: when
-  /// the company cannot afford both `monthlyExpenses` and the selected
-  /// bonus together, the bonus paid is 0 (as if
-  /// [PublicDemoSummerBonusPlan.none] had been selected) and the mandatory
-  /// close still proceeds — including with a negative resulting cash,
-  /// which [PublicDemoState.advanceToAugust]'s own financial-status
-  /// transition (via [PublicDemoState.copyWith]'s `financialStatus`) turns
-  /// into shortage/bankruptcy exactly like any other month.
+  /// A confirmed zero-bonus decision always lets the mandatory close commit,
+  /// including when monthly expenses produce negative cash. An unaffordable
+  /// paid plan is rejected without changing state; the player must explicitly
+  /// choose an eligible plan rather than having a paid decision silently
+  /// rewritten to zero during settlement.
   static PublicDemoSummerBonusPaymentResult closeJuly({
     required PublicDemoState state,
     required int monthlyExpenses,
     required Iterable<PublicDemoApplicant> applicants,
   }) {
-    if (state.month != 7 || state.summerBonusPaid || state.isCloseBlocked) {
+    final settlement = preview(
+      state: state,
+      monthlyExpenses: monthlyExpenses,
+      applicants: applicants,
+      plan: state.summerBonusSelection,
+    );
+    if (settlement.eligibility ==
+        PublicDemoSummerBonusEligibility.notApplicable) {
       return PublicDemoSummerBonusPaymentResult.notApplicable(
         state: state,
         monthlyExpenses: monthlyExpenses,
       );
     }
-    final requestedBonus = calculateSummerBonus(
-      plan: state.summerBonusSelection,
-      applicants: applicants,
-      month: 7,
-    );
-    final canAffordBonus = state.cash >= monthlyExpenses + requestedBonus;
-    final bonusAmount = canAffordBonus ? requestedBonus : 0;
+    if (!settlement.isEligible) {
+      return PublicDemoSummerBonusPaymentResult.rejected(
+        state: state,
+        monthlyExpenses: monthlyExpenses,
+        bonusAmount: settlement.bonusAmount,
+      );
+    }
+    final bonusAmount = settlement.bonusAmount;
     final nextCash = state.cash - monthlyExpenses - bonusAmount;
     final paid = state
         .copyWith(
@@ -115,6 +155,18 @@ class PublicDemoSummerBonusPaymentResult {
     status: PublicDemoSummerBonusPaymentStatus.notApplicable,
   );
 
+  factory PublicDemoSummerBonusPaymentResult.rejected({
+    required PublicDemoState state,
+    required int monthlyExpenses,
+    required int bonusAmount,
+  }) => PublicDemoSummerBonusPaymentResult._(
+    state: state,
+    cashBefore: state.cash,
+    monthlyExpenses: monthlyExpenses,
+    bonusAmount: bonusAmount,
+    status: PublicDemoSummerBonusPaymentStatus.rejected,
+  );
+
   final PublicDemoState state;
   final int cashBefore;
   final int monthlyExpenses;
@@ -122,9 +174,41 @@ class PublicDemoSummerBonusPaymentResult {
   final PublicDemoSummerBonusPaymentStatus status;
 
   bool get isPaid => status == PublicDemoSummerBonusPaymentStatus.paid;
+  bool get isRejected =>
+      status == PublicDemoSummerBonusPaymentStatus.rejected;
   int get totalOutflow => monthlyExpenses + bonusAmount;
   int get cashAfter => state.cash;
   int get cashMovement => cashAfter - cashBefore;
 }
 
-enum PublicDemoSummerBonusPaymentStatus { paid, notApplicable }
+enum PublicDemoSummerBonusPaymentStatus { paid, rejected, notApplicable }
+
+/// A pure settlement projection. It contains every value the July decision
+/// UI needs, while keeping the eligibility rule in the payment domain.
+class PublicDemoSummerBonusSettlementPreview {
+  const PublicDemoSummerBonusSettlementPreview({
+    required this.plan,
+    required this.availableCash,
+    required this.monthlyExpenses,
+    required this.bonusAmount,
+    required this.projectedCash,
+    required this.eligibility,
+  });
+
+  final PublicDemoSummerBonusPlan plan;
+  final int availableCash;
+  final int monthlyExpenses;
+  final int bonusAmount;
+  final int projectedCash;
+  final PublicDemoSummerBonusEligibility eligibility;
+
+  bool get isEligible => eligibility == PublicDemoSummerBonusEligibility.eligible;
+  bool get isApplicable =>
+      eligibility != PublicDemoSummerBonusEligibility.notApplicable;
+}
+
+enum PublicDemoSummerBonusEligibility {
+  eligible,
+  insufficientCash,
+  notApplicable,
+}

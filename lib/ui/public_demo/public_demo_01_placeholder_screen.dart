@@ -647,6 +647,70 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
     );
   }
 
+  /// Public Demo-only test control for repeatable human QA. The destructive
+  /// confirmation is intentionally separate from [_restartGame], which also
+  /// serves the already-terminal recovery card.
+  Widget _publicDemoTestControlsCard() => Card(
+    key: const Key('public-demo-test-controls'),
+    color: Colors.amber.shade50,
+    child: Padding(
+      padding: const EdgeInsets.all(12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Row(
+            children: [
+              Icon(Icons.science_outlined, size: 20),
+              SizedBox(width: 8),
+              Text(
+                'テスト用操作',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          const Text('Public Demo 0.1の進行だけを初期状態へ戻します。'),
+          const SizedBox(height: 8),
+          OutlinedButton.icon(
+            key: const Key('public-demo-restart-april-button'),
+            onPressed: _isRestarting ? null : _confirmRestartFromApril,
+            icon: const Icon(Icons.restart_alt),
+            label: Text(_isRestarting ? '再開準備中…' : '4月からやり直す'),
+          ),
+        ],
+      ),
+    ),
+  );
+
+  Future<void> _confirmRestartFromApril() async {
+    if (_isRestoring || _isRestarting) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        key: const Key('public-demo-restart-april-dialog'),
+        title: const Text('Public Demoを4月からやり直しますか？'),
+        content: const Text(
+          '現在のPublic Demo 0.1の進行と保存データを削除し、'
+          '1年目4月の初期状態へ戻します。通常ゲームの保存データは変更しません。',
+        ),
+        actions: [
+          TextButton(
+            key: const Key('public-demo-restart-april-cancel'),
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('キャンセル'),
+          ),
+          FilledButton(
+            key: const Key('public-demo-restart-april-confirm'),
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('4月からやり直す'),
+          ),
+        ],
+      ),
+    );
+    if (!mounted || confirmed != true) return;
+    await _restartGame();
+  }
+
   /// Clears Public Demo storage only after every earlier queued save. The
   /// terminal aggregate remains visible until clear succeeds; otherwise a
   /// failed browser write cannot silently turn into a pretend fresh session.
@@ -2077,6 +2141,8 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
                           recommendedAction: _recommendedActionSlot,
                           navigatorAdvice: navigatorAdvice,
                         ),
+                        const SizedBox(height: 8),
+                        _publicDemoTestControlsCard(),
                         const SizedBox(height: 8),
                         HomeOfficeStageSection(display: _officeStageDisplay),
                         const SizedBox(height: 8),

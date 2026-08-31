@@ -664,10 +664,18 @@ class PublicDemoAggregate {
   /// Closes July (state-only; reads `workflow.joinedApplicants` — the full
   /// authoritative derived set, never a caller-chosen subset).
   ///
-  /// FINANCE-FAILURE-1A+1B §11 (P0): there is no insufficient-cash rollback
-  /// here any more — see [PublicDemoMonthlyClose.closeJuly]'s own doc.
+  /// The zero plan always permits the mandatory close, including a negative
+  /// result. An unaffordable paid plan is rejected before Growth, AR, or any
+  /// expense is applied — see [PublicDemoMonthlyClose.closeJuly].
   PublicDemoAggregate closeJuly({required int monthlyExpenses}) {
     if (state.month != 7 || state.isCloseBlocked) return this;
+    final preview = PublicDemoMonthlyClose.previewJuly(
+      state: state,
+      monthlyExpenses: monthlyExpenses,
+      applicants: workflow.joinedApplicants,
+      plan: state.summerBonusSelection,
+    );
+    if (!preview.isEligible) return this;
     return _copyWith(
       state: PublicDemoMonthlyClose.closeJuly(
         state: _closeGrowth(

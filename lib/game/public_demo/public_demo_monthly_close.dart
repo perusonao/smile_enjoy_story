@@ -4,6 +4,7 @@ import 'public_demo_revenue_payment.dart';
 import 'public_demo_salary.dart';
 import 'public_demo_state.dart';
 import 'public_demo_summer_bonus_payment.dart';
+import 'public_demo_summer_bonus_plan.dart';
 import 'public_demo_workflow_state.dart';
 
 /// Common entry point for Public Demo 0.1's month-end transitions.
@@ -191,29 +192,64 @@ class PublicDemoMonthlyClose {
 
   /// Closes July, delegating to [PublicDemoSummerBonusPayment.closeJuly]
   /// (which itself is called by [PublicDemoState.advanceToAugust]). Ordinary
-  /// monthly expenses always settle — this is the single monthly-close
-  /// authority for July, and (FINANCE-FAILURE-1A+1B §11, P0) there is no
-  /// insufficient-cash rollback path any more: prior AR collection, salary,
-  /// and fixed costs are never undone merely because the resulting cash
-  /// would go negative. [PublicDemoFinancialStatus]'s shortage/bankruptcy
-  /// rules (applied inside [PublicDemoState.advanceToAugust] via
-  /// [PublicDemoSummerBonusPayment.closeJuly]) decide the outcome instead.
+  /// monthly expenses always settle once the player selects an eligible
+  /// bonus plan. With `none`, prior AR collection, salary, and fixed costs
+  /// commit even when mandatory expenses make cash negative;
+  /// [PublicDemoFinancialStatus]'s shortage/bankruptcy rules decide the
+  /// outcome exactly like an ordinary month.
   ///
   /// Revenue settles into cash *before* the bonus affordability check runs,
   /// so last month's collected revenue is part of the funds available to
   /// pay salary, fixed costs, and bonus — matching the 30-day site's
   /// payment timing. Affordability gating remains scoped to the *optional*
-  /// bonus itself: [PublicDemoSummerBonusPayment.closeJuly] pays 0 bonus
-  /// (never less than the requested amount, never partial) when the
-  /// company cannot afford both mandatory monthly expenses and the
-  /// selected bonus together — it never converts that into a rollback of
-  /// the mandatory close.
+  /// bonus itself. A paid plan is rejected when the company cannot afford
+  /// mandatory monthly expenses and the selected bonus together; it is
+  /// never silently converted to a zero-bonus decision and is never paid
+  /// partially. The rejection is atomic: even the AR
+  /// settlement remains unapplied until the player chooses an eligible plan.
+  /// The zero plan is always eligible, so mandatory expenses still settle
+  /// and may produce negative cash exactly like every ordinary month.
+  static PublicDemoSummerBonusSettlementPreview previewJuly({
+    required PublicDemoState state,
+    required int monthlyExpenses,
+    required Iterable<PublicDemoApplicant> applicants,
+    required PublicDemoSummerBonusPlan plan,
+  }) {
+    final revenueEligible =
+        state.month == 7 && !state.summerBonusPaid && !state.isCloseBlocked;
+    final revenueApplied = revenueEligible
+        ? PublicDemoRevenuePayment.apply(state: state).state
+        : state;
+    return PublicDemoSummerBonusPayment.preview(
+      state: revenueApplied,
+      monthlyExpenses: monthlyExpenses,
+      applicants: applicants,
+      plan: plan,
+    );
+  }
+
   static PublicDemoMonthlyCloseResult closeJuly({
     required PublicDemoState state,
     required int monthlyExpenses,
     required Iterable<PublicDemoApplicant> applicants,
   }) {
     final closedMonth = state.month;
+    final preview = previewJuly(
+      state: state,
+      monthlyExpenses: monthlyExpenses,
+      applicants: applicants,
+      plan: state.summerBonusSelection,
+    );
+    if (!preview.isEligible) {
+      return PublicDemoMonthlyCloseResult._(
+        state: state,
+        status: preview.isApplicable
+            ? PublicDemoMonthlyCloseStatus.rejected
+            : PublicDemoMonthlyCloseStatus.notApplicable,
+        cashBefore: state.cash,
+        closedMonth: closedMonth,
+      );
+    }
     final revenueEligible =
         closedMonth == 7 && !state.summerBonusPaid && !state.isCloseBlocked;
     final revenueResult = revenueEligible
@@ -364,8 +400,9 @@ class PublicDemoMonthlyCloseResult {
   final int closedMonth;
 
   bool get isClosed => status == PublicDemoMonthlyCloseStatus.closed;
+  bool get isRejected => status == PublicDemoMonthlyCloseStatus.rejected;
   int get cashAfter => state.cash;
   int get cashMovement => cashAfter - cashBefore;
 }
 
-enum PublicDemoMonthlyCloseStatus { closed, notApplicable }
+enum PublicDemoMonthlyCloseStatus { closed, rejected, notApplicable }

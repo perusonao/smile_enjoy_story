@@ -95,18 +95,18 @@ void main() {
       await dismiss(tester);
       await tapAndSettle(tester, '受注');
       await dismiss(tester);
-      await tapAndSettle(tester, '4月終了→5月');
+      await tapAndSettle(tester, '4月を終了して5月へ');
       await dismiss(tester);
 
       // May: no further hiring.
-      await tapAndSettle(tester, '5月終了→6月');
+      await tapAndSettle(tester, '5月を終了して6月へ');
 
       // June: explicitly accept July's continuation — the one real decision
       // this contract is built on.
       await tapAndSettle(tester, '7月分の発注を確認');
       expect(find.text('7月分発注あり'), findsOneWidget);
       await tapAndSettle(tester, '受注する');
-      await tapAndSettle(tester, '6月終了→7月');
+      await tapAndSettle(tester, '6月を終了して7月へ');
 
       // A. July: the assignment is established, and Revenue/Growth already
       // agree at the very first month this contract can exist for.
@@ -115,10 +115,10 @@ void main() {
       expect(state.engineersAssigned, 1);
 
       // Close July (confirm the default "no bonus" decision first).
-      await tapAndSettle(tester, '7月終了→8月');
+      await tapAndSettle(tester, '7月を終了して8月へ');
       await tester.tap(find.byKey(const Key('public-demo-summer-bonus-none')));
       await tester.pumpAndSettle();
-      await tapAndSettle(tester, '7月終了→8月');
+      await tapAndSettle(tester, '7月を終了して8月へ');
 
       // B. August: still assigned, one real month past the June decision —
       // Growth grew Sato via "assignment", matching Revenue's count.
@@ -140,7 +140,7 @@ void main() {
       // engineer), carried as this month's pending balance.
       expect(state.pendingRevenue, 500000, reason: 'D (August)');
 
-      await tapAndSettle(tester, '8月終了→9月');
+      await tapAndSettle(tester, '8月を終了して翌月へ');
 
       // C. September: still assigned, now several months past the one
       // June decision — proving the carry-forward is not just a 1-month
@@ -173,13 +173,13 @@ void main() {
       // itself: it is a real, committed transaction (AR/expenses/cash all
       // settle, month still advances), not a rollback.
       const remainingCloses = [
-        '9月終了→10月',
-        '10月終了→11月',
-        '11月終了→12月',
-        '12月終了→1月',
-        '1月終了→2月',
-        '2月終了→3月',
-        '3月終了→第1期終了',
+        '9月を終了して翌月へ',
+        '10月を終了して翌月へ',
+        '11月を終了して翌月へ',
+        '12月を終了して翌月へ',
+        '1月を終了して翌月へ',
+        '2月を終了して翌月へ',
+        '3月を終了して第1期を完了',
       ];
       for (final label in remainingCloses) {
         await tapAndSettle(tester, label);
@@ -214,7 +214,7 @@ void main() {
       // false fiscal success) is proven by public_demo_financial_status_test
       // .dart and is not re-derived here.
       expect(
-        find.text('3月終了→第1期終了'),
+        find.text('3月を終了して第1期を完了'),
         findsNothing,
         reason:
             'month-close CTA must be hidden after bankruptcy '

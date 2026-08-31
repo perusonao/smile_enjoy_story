@@ -97,16 +97,16 @@ void main() {
     await dismiss(tester);
     await tapAndSettle(tester, '受注');
     await dismiss(tester);
-    await tapAndSettle(tester, '4月終了→5月');
+    await tapAndSettle(tester, '4月を終了して5月へ');
     await dismiss(tester);
 
     // May: no further hiring.
-    await tapAndSettle(tester, '5月終了→6月');
+    await tapAndSettle(tester, '5月を終了して6月へ');
 
     // June: accept July's continuation for Sato.
     await tapAndSettle(tester, '7月分の発注を確認');
     await tapAndSettle(tester, '受注する');
-    await tapAndSettle(tester, '6月終了→7月');
+    await tapAndSettle(tester, '6月を終了して7月へ');
 
     // F (pre-completion sanity): Suzuki's training card and CTA are
     // present before the fiscal year ends — this is the same CTA E will
@@ -124,25 +124,25 @@ void main() {
 
     // Close July (default "no bonus"), then every ordinary month through
     // March.
-    await tapAndSettle(tester, '7月終了→8月');
+    await tapAndSettle(tester, '7月を終了して8月へ');
     await tester.tap(find.byKey(const Key('public-demo-summer-bonus-none')));
     await tester.pumpAndSettle();
-    await tapAndSettle(tester, '7月終了→8月');
+    await tapAndSettle(tester, '7月を終了して8月へ');
 
     // FINANCE-FAILURE-1A+1B: closing August through March reaches
     // BANKRUPTCY — see this file's class doc for the trajectory. Closing
-    // March (3月終了→第1期終了) is the close that actually produces it: a
+    // March (3月を終了して第1期を完了) is the close that actually produces it: a
     // real, committed transaction (cash/AR/expenses all settle, month
     // still advances to 12月), not a rollback.
     const closes = [
-      '8月終了→9月',
-      '9月終了→10月',
-      '10月終了→11月',
-      '11月終了→12月',
-      '12月終了→1月',
-      '1月終了→2月',
-      '2月終了→3月',
-      '3月終了→第1期終了',
+      '8月を終了して翌月へ',
+      '9月を終了して翌月へ',
+      '10月を終了して翌月へ',
+      '11月を終了して翌月へ',
+      '12月を終了して翌月へ',
+      '1月を終了して翌月へ',
+      '2月を終了して翌月へ',
+      '3月を終了して第1期を完了',
     ];
     for (final label in closes) {
       await tapAndSettle(tester, label);
@@ -189,7 +189,7 @@ void main() {
     // Domain-level terminal guard (§22/23 test X) remains proven by
     // public_demo_financial_status_test.dart.
     expect(
-      find.text('3月終了→第1期終了'),
+      find.text('3月を終了して第1期を完了'),
       findsNothing,
       reason: 'legacy no-op close button must not be visible after bankruptcy',
     );

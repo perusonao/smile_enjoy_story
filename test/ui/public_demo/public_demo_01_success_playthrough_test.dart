@@ -96,7 +96,7 @@ void main() {
       '案件を受注しました',
       imageKey: const Key('public-demo-order-decision-image'),
     );
-    await tapAndSettle(tester, '4月終了→5月');
+    await tapAndSettle(tester, '4月を終了して5月へ');
     expect(find.text('新しい応募が届きました'), findsOneWidget);
     expect(
       find.byKey(const Key('public-demo-recruitment-application-image')),
@@ -129,7 +129,7 @@ void main() {
       '案件を受注しました',
       imageKey: const Key('public-demo-order-decision-image'),
     );
-    await tapAndSettle(tester, '5月終了→6月');
+    await tapAndSettle(tester, '5月を終了して6月へ');
     await dismissEvent(
       tester,
       '入社・初参画！',
@@ -161,7 +161,7 @@ void main() {
     if (find.text('7月分発注あり').evaluate().isNotEmpty) {
       await tapAndSettle(tester, '受注する');
     }
-    await tapAndSettle(tester, '6月終了→7月');
+    await tapAndSettle(tester, '6月を終了して7月へ');
 
     expect(find.text('1年目 7月'), findsOneWidget);
     // The new month opens at the dashboard so the completed June growth is

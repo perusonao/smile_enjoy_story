@@ -219,7 +219,7 @@ void main() {
       expect(inHome(find.text('1年目 4月')), findsOneWidget);
       expect(find.text('1年目 4月'), findsOneWidget);
       // ...and the headline that used to restate it is gone. (Composite
-      // labels like "4月終了→5月" or "7月開始結果" are different strings and
+      // labels like "4月を終了して5月へ" or "7月開始結果" are different strings and
       // are unaffected — this asserts the bare duplicate specifically.)
       expect(find.text('4月'), findsNothing);
     });
@@ -312,7 +312,7 @@ void main() {
       expect(find.byKey(const Key('home-month-goal')), findsNothing);
 
       // And it follows the authoritative month.
-      await tapAndSettle(tester, '4月終了→5月');
+      await tapAndSettle(tester, '4月を終了して5月へ');
       await dismiss(tester);
       expect(currentState(tester).month, 5);
       expect(homeData(tester).monthGoalText, '応募者を採用し、入社前から6月の案件獲得を目指しましょう');
@@ -324,9 +324,9 @@ void main() {
       // no engineer is in a sellable stage — the design table's "none of
       // the above" row.
       await pumpDemo(tester);
-      await tapAndSettle(tester, '4月終了→5月');
+      await tapAndSettle(tester, '4月を終了して5月へ');
       await dismiss(tester);
-      await tapAndSettle(tester, '5月終了→6月');
+      await tapAndSettle(tester, '5月を終了して6月へ');
       await settle(tester);
       expect(currentState(tester).month, 6);
 
@@ -398,7 +398,7 @@ void main() {
         'close, and cash keeps its truncating format', (tester) async {
       await pumpDemo(tester);
       await playApril(tester);
-      await tapAndSettle(tester, '4月終了→5月');
+      await tapAndSettle(tester, '4月を終了して5月へ');
       await dismiss(tester);
 
       final state = currentState(tester);
@@ -671,7 +671,7 @@ void main() {
     ) async {
       await pumpDemoAt(tester, const Size(390, 844));
       await playApril(tester);
-      await tapAndSettle(tester, '4月終了→5月');
+      await tapAndSettle(tester, '4月を終了して5月へ');
       await dismiss(tester);
 
       final events = find.byKey(const Key('public-demo-important-events'));
@@ -755,7 +755,7 @@ void main() {
       await pumpDemo(tester);
       expect(currentState(tester).month, 4);
 
-      await tapAndSettle(tester, '4月終了→5月');
+      await tapAndSettle(tester, '4月を終了して5月へ');
       await dismiss(tester);
 
       expect(currentState(tester).month, 5);
@@ -772,22 +772,22 @@ void main() {
       // The structurally-insolvent trajectory the existing suites pin:
       // CASH SHORTAGE closing September.
       await playApril(tester);
-      await tapAndSettle(tester, '4月終了→5月');
+      await tapAndSettle(tester, '4月を終了して5月へ');
       await dismiss(tester);
-      await tapAndSettle(tester, '5月終了→6月');
+      await tapAndSettle(tester, '5月を終了して6月へ');
       await settle(tester);
-      await tapAndSettle(tester, '6月終了→7月');
+      await tapAndSettle(tester, '6月を終了して7月へ');
       await settle(tester);
-      await tapAndSettle(tester, '7月終了→8月');
+      await tapAndSettle(tester, '7月を終了して8月へ');
       await tester.tap(find.byKey(const Key('public-demo-summer-bonus-none')));
       await tester.pumpAndSettle();
-      await tapAndSettle(tester, '7月終了→8月');
+      await tapAndSettle(tester, '7月を終了して8月へ');
       await settle(tester);
-      await tapAndSettle(tester, '8月終了→9月');
+      await tapAndSettle(tester, '8月を終了して翌月へ');
       await settle(tester);
-      await tapAndSettle(tester, '9月終了→10月');
+      await tapAndSettle(tester, '9月を終了して翌月へ');
       await settle(tester);
-      await tapAndSettle(tester, '10月終了→11月');
+      await tapAndSettle(tester, '10月を終了して翌月へ');
       await settle(tester);
 
       expect(
@@ -809,7 +809,7 @@ void main() {
       );
 
       // 21: bankruptcy is still reached, and is still terminal.
-      await tapAndSettle(tester, '11月終了→12月');
+      await tapAndSettle(tester, '11月を終了して翌月へ');
       await settle(tester);
       expect(
         currentState(tester).financialStatus,
@@ -819,7 +819,7 @@ void main() {
       // not a silent no-op. Domain-level terminal guard is proven by
       // public_demo_financial_status_test.dart.
       expect(
-        find.text('12月終了→1月'),
+        find.text('12月を終了して翌月へ'),
         findsNothing,
         reason:
             'month-close CTA must be hidden after bankruptcy '

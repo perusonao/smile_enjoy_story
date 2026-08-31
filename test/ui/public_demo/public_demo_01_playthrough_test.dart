@@ -44,7 +44,7 @@ void main() {
     expect(find.text('1年目 4月'), findsOneWidget);
 
     // April: advance without winning an order. The demo must still recover into May.
-    await tapAndSettle(tester, '4月終了→5月');
+    await tapAndSettle(tester, '4月を終了して5月へ');
     expect(find.text('新しい応募が届きました'), findsOneWidget);
     expect(
       find.byKey(const Key('public-demo-recruitment-application-image')),
@@ -60,13 +60,13 @@ void main() {
     expect(find.textContaining('実務経験'), findsNothing);
 
     // May: advance without hiring. This is a valid failure/recovery route.
-    await tapAndSettle(tester, '5月終了→6月');
+    await tapAndSettle(tester, '5月を終了して6月へ');
     expect(find.text('1年目 6月'), findsOneWidget);
     expect(find.textContaining('翌月の発注を確認'), findsOneWidget);
-    expect(find.text('6月終了→7月'), findsOneWidget);
+    expect(find.text('6月を終了して7月へ'), findsOneWidget);
 
     // June: no assignments is valid; advance into July waiting state.
-    await tapAndSettle(tester, '6月終了→7月');
+    await tapAndSettle(tester, '6月を終了して7月へ');
     expect(find.text('1年目 7月'), findsOneWidget);
     // Recruitment media is intentionally unavailable in July because this
     // month has no applicant-processing pipeline. Keep asserting the exact
@@ -87,7 +87,7 @@ void main() {
 
     // The default domain plan is none, but July still explicitly asks the
     // player to confirm that decision before it can be settled.
-    await tapAndSettle(tester, '7月終了→8月');
+    await tapAndSettle(tester, '7月を終了して8月へ');
     expect(
       find.byKey(const Key('public-demo-summer-bonus-none')),
       findsOneWidget,
@@ -100,7 +100,7 @@ void main() {
     await tester.pumpWidget(
       const MaterialApp(home: PublicDemo01PlaceholderScreen()),
     );
-    await tapAndSettle(tester, '4月終了→5月');
+    await tapAndSettle(tester, '4月を終了して5月へ');
     await tester.tap(find.widgetWithText(FilledButton, '確認'));
     await tester.pumpAndSettle();
 

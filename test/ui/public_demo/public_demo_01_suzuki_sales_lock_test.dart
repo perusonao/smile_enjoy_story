@@ -202,7 +202,7 @@ void main() {
       reason: 'selecting training charges its ¥30,000 cost immediately',
     );
 
-    await tapAndSettle(tester, '4月終了→5月');
+    await tapAndSettle(tester, '4月を終了して5月へ');
     await dismissDialog(tester, '確認');
     expect(find.text('1年目 5月'), findsOneWidget);
     final capabilityAfterApril = currentState(
@@ -221,7 +221,7 @@ void main() {
     // May renders no founding-engineer sales card at all.
     expect(actionButton('SkillSheet確認'), findsNothing);
 
-    await tapAndSettle(tester, '5月終了→6月');
+    await tapAndSettle(tester, '5月を終了して6月へ');
     expect(find.text('1年目 6月'), findsOneWidget);
     // June's founding-engineer sales card is scoped to newly joined
     // applicants (joinedApplicantIds), which excludes Suzuki by design —
@@ -233,7 +233,7 @@ void main() {
       findsOneWidget,
     );
 
-    await tapAndSettle(tester, '6月終了→7月');
+    await tapAndSettle(tester, '6月を終了して7月へ');
     expect(find.text('1年目 7月'), findsOneWidget);
     // Month 7 onward never renders a founding-engineer sales card again —
     // the corrected banner's "まだ営業を始められません。" is still true here,

@@ -49,7 +49,11 @@ export default defineConfig({
   use: {
     baseURL: BASE_URL,
     // Evidence, not diagnostics: the gate has to be provable on a green run.
-    trace: 'on',
+    // Screencast frames are switched off because the always-on video already
+    // carries the visual record — keeping both put ~60MB of duplicate JPEGs
+    // in the traces and pushed the artifact bundle over its delivery limit.
+    // Actions, DOM snapshots, network and sources are all retained.
+    trace: { mode: 'on', screenshots: false, snapshots: true, sources: true },
     // Per-project video size is set in `mobile()` below.
     screenshot: 'only-on-failure',
     actionTimeout: 15_000,

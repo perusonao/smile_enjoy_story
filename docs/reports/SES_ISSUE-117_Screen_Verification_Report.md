@@ -304,18 +304,29 @@ check. That would be a check of the *source*, not of the deployed release artifa
 
 ## 10. Artifacts
 
-**ZIP:** `SES_ISSUE-117_Screen_Verification_Artifacts.zip`
+**ZIP:** `SES_ISSUE-117_Screen_Verification_Artifacts.zip` (47.2 MiB)
 
 ```
 SES_ISSUE-117_Screen_Verification_Report.md
-screenshots/360/   01..06 × {viewport, -scrolled, -bottom} + findings.json   (18 PNG, 1080×2400)
-screenshots/390/   01..06 × {viewport, -scrolled, -bottom} + findings.json   (18 PNG, 1170×2400)
-videos/360/360px-full-flow.webm      full 360px flow, recorded at 360×800
-videos/390/390px-full-flow.webm      full 390px flow, recorded at 390×800
+screenshots/360/   01..06 x {viewport, -scrolled, -bottom} + findings.json   (18 PNG, 1080x2400)
+screenshots/390/   01..06 x {viewport, -scrolled, -bottom} + findings.json   (18 PNG, 1170x2400)
+videos/360/360px-full-flow.webm      full 360px flow, recorded at 360x800
+videos/390/390px-full-flow.webm      full 390px flow, recorded at 390x800
 traces/360px-trace.zip               Playwright trace (npx playwright show-trace)
 traces/390px-trace.zip               Playwright trace
 playwright-results.json              machine-readable run result
 ```
+
+The chat delivery channel caps a single file at 30 MiB, so the same content is
+also packaged as two independently openable halves — no content is dropped, and
+the report is included in both:
+
+- `SES_ISSUE-117_Screen_Verification_Artifacts-part1of2-report-screenshots-videos.zip` (23.5 MiB)
+- `SES_ISSUE-117_Screen_Verification_Artifacts-part2of2-traces.zip` (23.7 MiB)
+
+Traces are recorded with actions, DOM snapshots, network and sources, but without
+screencast frames: the always-on video already carries the visual record, and
+keeping both put ~60 MiB of duplicate JPEGs in the traces.
 
 Screenshot pixel dimensions confirm the viewports: 1080 = 360 × DPR 3, 1170 = 390 × DPR 3.
 

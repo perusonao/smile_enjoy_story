@@ -5,6 +5,8 @@ import 'package:smile_enjoy_story/game/public_demo/public_demo_growth_engine.dar
 import 'package:smile_enjoy_story/game/public_demo/public_demo_state.dart';
 import 'package:smile_enjoy_story/ui/public_demo/public_demo_01_placeholder_screen.dart';
 
+import 'public_demo_intro_test_support.dart';
+
 // 12MONTH-3-FIX1 P1-1: Public Demo 0.1's formally-adopted design decision is
 // that an engineer whose assignment is accepted for July continues on the
 // same assignment, with no further monthly renewal decision — see
@@ -80,6 +82,7 @@ void main() {
       await tester.pumpWidget(
         const MaterialApp(home: PublicDemo01PlaceholderScreen()),
       );
+      await dismissPublicDemoIntroIfPresent(tester);
 
       // April: Sato wins the May order (deterministic interview scores).
       await tapAndSettle(tester, 'SkillSheet確認');

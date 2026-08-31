@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:smile_enjoy_story/ui/public_demo/public_demo_01_placeholder_screen.dart';
 
+import 'public_demo_intro_test_support.dart';
+
 Finder actionButton(String text) => find.ancestor(
   of: find.text(text),
   matching: find.byWidgetPredicate((widget) => widget is ButtonStyleButton),
@@ -71,6 +73,7 @@ void main() {
     await tester.pumpWidget(
       const MaterialApp(home: PublicDemo01PlaceholderScreen()),
     );
+    await dismissPublicDemoIntroIfPresent(tester);
 
     // April: Sato wins the May order.
     await tapAndSettle(tester, 'SkillSheet確認');

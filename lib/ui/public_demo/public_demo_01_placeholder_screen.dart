@@ -32,6 +32,7 @@ import 'public_demo_cash_shortage_card.dart';
 import 'public_demo_growth_result_card.dart';
 import 'public_demo_home_dashboard_section.dart';
 import 'public_demo_home_presentation_components.dart';
+import 'public_demo_intro_dialog.dart';
 import 'public_demo_interview_result_dialog.dart';
 import 'public_demo_monthly_cash_flow_card.dart';
 import 'public_demo_sales_progress.dart';
@@ -108,6 +109,30 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
     setState(() {
       _game = restored ?? PublicDemoAggregate.initial();
       _isRestoring = false;
+    });
+    // SES_PUBLIC-DEMO-INTRO-1A: `restored == null` is exactly "no save
+    // existed to load", i.e. a genuinely fresh session — the same signal
+    // that just selected PublicDemoAggregate.initial() above. This reuses
+    // that existing boolean instead of adding a persisted "intro seen"
+    // field: a returning player (restored != null) never sees the intro,
+    // with no new save-schema surface at all.
+    if (restored == null) _showFreshStartIntroIfNeeded();
+  }
+
+  /// Shows the one-time fresh-start intro (SES_PUBLIC-DEMO-INTRO-1A) after
+  /// the current frame, so it opens over an already-painted screen rather
+  /// than blocking initial paint. Never awaited by its caller — the intro
+  /// is purely informational and must not gate restoration or restart.
+  void _showFreshStartIntroIfNeeded() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      unawaited(
+        showDialog<void>(
+          context: context,
+          barrierDismissible: false,
+          builder: (_) => const PublicDemoIntroDialog(),
+        ),
+      );
     });
   }
 
@@ -608,6 +633,11 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
       _isRestarting = false;
     });
     _resetMonthScroll();
+    // SES_PUBLIC-DEMO-INTRO-1A: an explicit restart is reached this branch
+    // only after `cleared` succeeded, i.e. no save exists for this session
+    // either — the same "fresh" condition `_restoreAggregate` checks. Show
+    // the intro again rather than special-casing restart as exempt.
+    _showFreshStartIntroIfNeeded();
   }
 
   @override

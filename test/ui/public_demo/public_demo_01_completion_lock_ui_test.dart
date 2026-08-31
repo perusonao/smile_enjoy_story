@@ -4,6 +4,8 @@ import 'package:smile_enjoy_story/game/public_demo/public_demo_financial_status.
 import 'package:smile_enjoy_story/game/public_demo/public_demo_state.dart';
 import 'package:smile_enjoy_story/ui/public_demo/public_demo_01_placeholder_screen.dart';
 
+import 'public_demo_intro_test_support.dart';
+
 // POST-12MONTH-1 / FINANCE-FAILURE-1A+1B: once a terminal state is reached
 // (fiscal year completed, or — B'.1 — BANKRUPTCY), Public Demo 0.1 is a
 // read-only terminal state. This walks the same real-widget April onward
@@ -80,6 +82,7 @@ void main() {
     await tester.pumpWidget(
       const MaterialApp(home: PublicDemo01PlaceholderScreen()),
     );
+    await dismissPublicDemoIntroIfPresent(tester);
 
     // April: Sato wins the May order (same deterministic path as the
     // carryforward test), leaving Suzuki (eng-02) waiting the whole year

@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:smile_enjoy_story/ui/public_demo/public_demo_01_placeholder_screen.dart';
 
+import 'public_demo_intro_test_support.dart';
+
 Future<void> tapAndSettle(WidgetTester tester, String text) async {
   final finder = find.text(text);
   await tester.scrollUntilVisible(
@@ -41,6 +43,7 @@ void main() {
     await tester.pumpWidget(
       const MaterialApp(home: PublicDemo01PlaceholderScreen()),
     );
+    await dismissPublicDemoIntroIfPresent(tester);
     expect(find.text('1年目 4月'), findsOneWidget);
 
     // April: advance without winning an order. The demo must still recover into May.
@@ -100,6 +103,7 @@ void main() {
     await tester.pumpWidget(
       const MaterialApp(home: PublicDemo01PlaceholderScreen()),
     );
+    await dismissPublicDemoIntroIfPresent(tester);
     await tapAndSettle(tester, '4月終了→5月');
     await tester.tap(find.widgetWithText(FilledButton, '確認'));
     await tester.pumpAndSettle();

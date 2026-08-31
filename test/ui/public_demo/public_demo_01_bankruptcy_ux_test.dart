@@ -20,6 +20,8 @@ import 'package:smile_enjoy_story/game/public_demo/public_demo_financial_status.
 import 'package:smile_enjoy_story/game/public_demo/public_demo_state.dart';
 import 'package:smile_enjoy_story/ui/public_demo/public_demo_01_placeholder_screen.dart';
 
+import 'public_demo_intro_test_support.dart';
+
 // ---------------------------------------------------------------------------
 // Test helpers (same shape as public_demo_01_completion_lock_ui_test.dart)
 // ---------------------------------------------------------------------------
@@ -136,6 +138,7 @@ void main() {
       await tester.pumpWidget(
         const MaterialApp(home: PublicDemo01PlaceholderScreen()),
       );
+      await dismissPublicDemoIntroIfPresent(tester);
 
       // Drive to just before the November close.
       await _tapAndSettle(tester, 'SkillSheet確認');
@@ -200,6 +203,7 @@ void main() {
       await tester.pumpWidget(
         const MaterialApp(home: PublicDemo01PlaceholderScreen()),
       );
+      await dismissPublicDemoIntroIfPresent(tester);
       await _driveToNovemberBankruptcy(tester);
 
       final state = _currentState(tester);
@@ -242,6 +246,7 @@ void main() {
       );
 
       // Drive to cashShortage state (after February close → March).
+      await dismissPublicDemoIntroIfPresent(tester);
       await _tapAndSettle(tester, 'SkillSheet確認');
       await _tapAndSettle(tester, '営業開始');
       await _tapAndSettle(tester, '案件紹介');
@@ -357,6 +362,7 @@ void main() {
       await tester.pumpWidget(
         const MaterialApp(home: PublicDemo01PlaceholderScreen()),
       );
+      await dismissPublicDemoIntroIfPresent(tester);
       await _driveToNovemberBankruptcy(tester);
 
       final bankruptState = _currentState(tester);
@@ -371,6 +377,10 @@ void main() {
       expect(restartButton, findsOneWidget);
       await tester.tap(restartButton);
       await tester.pumpAndSettle();
+      // SES_PUBLIC-DEMO-INTRO-1A: a successful restart re-shows the intro
+      // dialog (a genuinely new playthrough) — dismiss it before the
+      // remaining assertions.
+      await dismissPublicDemoIntroIfPresent(tester);
 
       // D1: state matches PublicDemoAggregate.initial().state exactly.
       final restoredState = _currentState(tester);

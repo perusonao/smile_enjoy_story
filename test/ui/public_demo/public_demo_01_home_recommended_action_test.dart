@@ -36,6 +36,8 @@ import 'package:smile_enjoy_story/presentation/home/models/home_recommended_acti
 import 'package:smile_enjoy_story/ui/public_demo/public_demo_01_placeholder_screen.dart';
 import 'package:smile_enjoy_story/ui/public_demo/public_demo_home_dashboard_section.dart';
 
+import 'public_demo_intro_test_support.dart';
+
 PublicDemoState currentState(WidgetTester tester) =>
     (tester.state(find.byType(PublicDemo01PlaceholderScreen)) as dynamic).s
         as PublicDemoState;
@@ -119,6 +121,7 @@ Future<void> pumpDemo(WidgetTester tester, {Size? size}) async {
     MaterialApp(home: PublicDemo01PlaceholderScreen(key: UniqueKey())),
   );
   await tester.pumpAndSettle();
+  await dismissPublicDemoIntroIfPresent(tester);
 }
 
 /// April: the first engineer wins the May order — the shared opening the

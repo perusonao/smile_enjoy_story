@@ -60,6 +60,8 @@ import 'package:smile_enjoy_story/ui/public_demo/public_demo_01_placeholder_scre
 import 'package:smile_enjoy_story/ui/public_demo/public_demo_cash_shortage_card.dart';
 import 'package:smile_enjoy_story/ui/public_demo/public_demo_home_dashboard_section.dart';
 
+import 'public_demo_intro_test_support.dart';
+
 /// The screen's own authoritative finance state, read straight off its
 /// [State] — the same technique the existing Public Demo widget suites use,
 /// so every assertion below compares the UI against the real authority
@@ -130,6 +132,7 @@ Future<void> pumpDemo(WidgetTester tester) async {
     const MaterialApp(home: PublicDemo01PlaceholderScreen()),
   );
   await tester.pumpAndSettle();
+  await dismissPublicDemoIntroIfPresent(tester);
 }
 
 Future<void> pumpDemoAt(WidgetTester tester, Size size) async {

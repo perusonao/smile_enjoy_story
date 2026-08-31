@@ -48,6 +48,8 @@ import 'package:smile_enjoy_story/presentation/home/widgets/recommended_action_s
 import 'package:smile_enjoy_story/ui/public_demo/public_demo_01_placeholder_screen.dart';
 import 'package:smile_enjoy_story/ui/public_demo/public_demo_home_dashboard_section.dart';
 
+import 'public_demo_intro_test_support.dart';
+
 /// The screen's own authoritative finance state, read straight off its
 /// [State] — the same technique
 /// public_demo_01_assignment_carryforward_test.dart already uses, so every
@@ -118,6 +120,7 @@ Future<void> pumpDemo(WidgetTester tester) async {
     const MaterialApp(home: PublicDemo01PlaceholderScreen()),
   );
   await tester.pumpAndSettle();
+  await dismissPublicDemoIntroIfPresent(tester);
 }
 
 /// April: Sato wins the May order — the shared opening of the existing

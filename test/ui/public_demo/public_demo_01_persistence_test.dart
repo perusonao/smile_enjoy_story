@@ -12,6 +12,8 @@ import 'package:smile_enjoy_story/game/public_demo/public_demo_state.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_summer_bonus_plan.dart';
 import 'package:smile_enjoy_story/ui/public_demo/public_demo_01_placeholder_screen.dart';
 
+import 'public_demo_intro_test_support.dart';
+
 class _RecordingSaveService extends PublicDemoSaveService {
   _RecordingSaveService({this.restored, this.clearResult = true});
 
@@ -62,6 +64,11 @@ Future<void> _mount(WidgetTester tester, PublicDemoSaveService service) async {
     MaterialApp(home: PublicDemo01PlaceholderScreen(saveService: service)),
   );
   await tester.pump();
+  // SES_PUBLIC-DEMO-INTRO-1A: dismiss the fresh-start intro dialog before
+  // any caller drives an interaction with the screen underneath. A no-op
+  // when `service.load()` resolved a prior aggregate (the intro only shows
+  // for a genuinely fresh restore).
+  await dismissPublicDemoIntroIfPresent(tester);
 }
 
 Future<void> _tapAction(WidgetTester tester, String label) async {
@@ -290,5 +297,68 @@ void main() {
     );
     expect(service.restored, same(terminal));
     expect(find.text('保存データを削除できませんでした。現在のプレイを続けます。'), findsOneWidget);
+  });
+
+  group('SES_PUBLIC-DEMO-INTRO-1A fresh-start intro', () {
+    testWidgets('a fresh restore (no prior save) shows the intro dialog', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: PublicDemo01PlaceholderScreen(
+            saveService: _RecordingSaveService(),
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('public-demo-intro-dialog')), findsOneWidget);
+    });
+
+    testWidgets(
+      'a restored aggregate (a returning session) never shows the intro dialog',
+      (tester) async {
+        final aggregate = PublicDemoAggregate.initial().startSkillSheetReview(
+          'eng-01',
+        );
+        await tester.pumpWidget(
+          MaterialApp(
+            home: PublicDemo01PlaceholderScreen(
+              saveService: _RecordingSaveService(restored: aggregate),
+            ),
+          ),
+        );
+        await tester.pump();
+        await tester.pumpAndSettle();
+
+        expect(find.byKey(const Key('public-demo-intro-dialog')), findsNothing);
+      },
+    );
+
+    testWidgets(
+      'dismissing the intro leaves the screen underneath interactable',
+      (tester) async {
+        final service = _RecordingSaveService();
+        await _mount(tester, service);
+
+        await _tapAction(tester, 'SkillSheet確認');
+
+        expect(service.saved, hasLength(1));
+      },
+    );
+
+    testWidgets('a successful restart shows the intro dialog again', (
+      tester,
+    ) async {
+      final service = _RecordingSaveService(restored: _bankruptAggregate());
+      await _mount(tester, service);
+
+      await tester.tap(find.byKey(const Key('public-demo-restart-button')));
+      await tester.pump();
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('public-demo-intro-dialog')), findsOneWidget);
+    });
   });
 }

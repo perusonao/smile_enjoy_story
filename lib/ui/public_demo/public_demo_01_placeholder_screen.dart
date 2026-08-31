@@ -394,6 +394,69 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
   void _startSkillSheetReview(String engineerId) =>
       _commitAggregate(_game.startSkillSheetReview(engineerId));
 
+  /// PUBLIC-DEMO-UX-1A: the Public Demo now follows the main game's
+  /// SkillSheet concept instead of treating the review button as a silent
+  /// workflow acknowledgement. The dialog is deliberately read-only here:
+  /// it only displays facts the Public Demo already owns, and the existing
+  /// authoritative stage transition is committed only after an explicit
+  /// confirmation. Back/cancel therefore leaves the workflow untouched.
+  Future<void> _openSkillSheetReview(PublicDemoEngineerSales engineer) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        key: Key('public-demo-skill-sheet-${engineer.id}'),
+        title: Text('${engineer.name}\n営業用SkillSheet'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                '取引先へ提示する営業用プロフィールです。内容を確認してから営業開始へ進みます。',
+              ),
+              const SizedBox(height: 12),
+              const Text(
+                '経歴・スキル要約',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 4),
+              Text(engineer.summary),
+              const Divider(height: 24),
+              const Text(
+                '営業・面談プロフィール',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 6),
+              _dialogRow('案件スキル適合', '${engineer.interviewProfile.skillFit}'),
+              _dialogRow('ヒューマンスキル', '${engineer.interviewProfile.humanity}'),
+              _dialogRow('モチベーション', '${engineer.interviewProfile.morale}'),
+              _dialogRow('取引先からの信頼', '${engineer.interviewProfile.clientTrust}'),
+              const SizedBox(height: 12),
+              Text(
+                'Public Demoでは現在の営業用情報を閲覧します。実経歴との差分編集や盛りリスク判定は本編のSkillSheet機能で扱います。',
+                style: Theme.of(dialogContext).textTheme.bodySmall,
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            key: Key('public-demo-skill-sheet-cancel-${engineer.id}'),
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('戻る'),
+          ),
+          FilledButton(
+            key: Key('public-demo-skill-sheet-confirm-${engineer.id}'),
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('内容を確認'),
+          ),
+        ],
+      ),
+    );
+    if (!mounted || confirmed != true) return;
+    _startSkillSheetReview(engineer.id);
+  }
+
   void _beginSelling(String engineerId) =>
       _commitAggregate(_game.beginSelling(engineerId));
 
@@ -1403,7 +1466,7 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
         if (readyForFieldSales(e.id)) {
           emit(
             HomeRecommendedActionKind.employeeSkillSheetReview,
-            () => _startSkillSheetReview(e.id),
+            () => unawaited(_openSkillSheetReview(e)),
           );
         }
       case PublicDemoSalesStage.skillSheet:
@@ -1783,7 +1846,7 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
                 readyForFieldSales(e.id)) ...[
               const Text('営業準備OK', style: TextStyle(fontSize: 12)),
               FilledButton(
-                onPressed: () => _startSkillSheetReview(e.id),
+                onPressed: () => unawaited(_openSkillSheetReview(e)),
                 child: const Text('SkillSheet確認'),
               ),
             ],

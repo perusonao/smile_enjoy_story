@@ -87,6 +87,10 @@ Future<void> tapAndSettle(WidgetTester tester, String text) async {
   await tester.pumpAndSettle();
   await tester.tap(finder.first);
   await settle(tester);
+  if (text == 'SkillSheet確認') {
+    await tester.tap(find.widgetWithText(FilledButton, '内容を確認'));
+    await tester.pumpAndSettle();
+  }
 }
 
 Future<void> tapCta(WidgetTester tester) async {
@@ -94,6 +98,11 @@ Future<void> tapCta(WidgetTester tester) async {
   await tester.pumpAndSettle();
   await tester.tap(ctaFinder);
   await settle(tester);
+  final confirm = find.widgetWithText(FilledButton, '内容を確認');
+  if (confirm.evaluate().isNotEmpty) {
+    await tester.tap(confirm);
+    await tester.pumpAndSettle();
+  }
 }
 
 Future<void> dismiss(WidgetTester tester) async {
@@ -858,6 +867,12 @@ void main() {
         // Usable exactly where it sits — no scroll, no ensureVisible.
         await tester.tap(ctaFinder);
         await settle(tester);
+        expect(
+          currentWorkflow(tester).engineers.first.stage,
+          PublicDemoSalesStage.waiting,
+        );
+        await tester.tap(find.widgetWithText(FilledButton, '内容を確認'));
+        await tester.pumpAndSettle();
         expect(
           currentWorkflow(tester).engineers.first.stage,
           PublicDemoSalesStage.skillSheet,

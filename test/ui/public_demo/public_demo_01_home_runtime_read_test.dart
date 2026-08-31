@@ -106,6 +106,10 @@ Future<void> tapAndSettle(WidgetTester tester, String text) async {
   await tester.pumpAndSettle();
   await tester.tap(finder.first);
   await settle(tester);
+  if (text == 'SkillSheet確認') {
+    await tester.tap(find.widgetWithText(FilledButton, '内容を確認'));
+    await tester.pumpAndSettle();
+  }
 }
 
 Future<void> dismiss(WidgetTester tester) async {
@@ -408,6 +412,14 @@ void main() {
 
       await tester.tap(cta);
       await settle(tester);
+
+      expect(
+        currentWorkflow(tester).engineers.first.stage,
+        PublicDemoSalesStage.waiting,
+        reason: 'opening SkillSheet is read-only until explicit confirmation',
+      );
+      await tester.tap(find.widgetWithText(FilledButton, '内容を確認'));
+      await tester.pumpAndSettle();
 
       expect(
         currentWorkflow(tester).engineers.first.stage,

@@ -47,8 +47,13 @@ Future<void> tapFinder(WidgetTester tester, Finder finder) async {
   await _settleAfterPossiblePrecache(tester);
 }
 
-Future<void> tapAndSettle(WidgetTester tester, String text) =>
-    tapFinder(tester, actionButton(text));
+Future<void> tapAndSettle(WidgetTester tester, String text) async {
+  await tapFinder(tester, actionButton(text));
+  if (text == 'SkillSheet確認') {
+    await tester.tap(find.widgetWithText(FilledButton, '内容を確認'));
+    await tester.pumpAndSettle();
+  }
+}
 
 Future<void> dismissDialog(WidgetTester tester, String confirmLabel) async {
   final confirm = find.widgetWithText(FilledButton, confirmLabel);

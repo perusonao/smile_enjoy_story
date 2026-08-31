@@ -40,6 +40,15 @@ Future<void> tapAndSettle(WidgetTester tester, String text) async {
   await tester.pumpAndSettle();
   await tester.tap(finder.first);
   await _settleAfterPossiblePrecache(tester);
+
+  // PUBLIC-DEMO-UX-1A: SkillSheet確認 now opens real inspectable content.
+  // This success-path helper explicitly confirms it before continuing; the
+  // dedicated SkillSheet tests cover the cancel/no-op branch independently.
+  if (text == 'SkillSheet確認' &&
+      find.textContaining('営業用SkillSheet').evaluate().isNotEmpty) {
+    await tester.tap(find.widgetWithText(FilledButton, '内容を確認'));
+    await tester.pumpAndSettle();
+  }
 }
 
 Future<void> dismissInterviewResult(

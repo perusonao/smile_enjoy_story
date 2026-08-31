@@ -121,13 +121,14 @@ unchanged.
   — PASS, 2 tests.
 - `flutter test test/ui/public_demo/public_demo_01_success_playthrough_test.dart`
   — INCONCLUSIVE locally. The Windows Flutter child process continued after
-  the command wrapper returned, so no final test result was captured; it was
+  the command wrapper returned, so no final local result was captured; it is
   not counted as a pass.
-- Focused multi-file and full `flutter test` — not claimed as run to a final
-  result locally; fresh GitHub CI is required.
-- Playwright Chromium/WebKit — not run locally. The PR keeps the browser
-  coverage in `e2e/tests/public-demo-fresh-start.spec.ts`; GitHub CI remains
-  required.
+- GitHub Actions run `33380012332`, `validate` — PASS: `flutter analyze`,
+  full `flutter test`, release web build, and replay unit tests all passed.
+- GitHub Actions run `33380012332`, `e2e-chromium` — PASS.
+- GitHub Actions run `33380012332`, `e2e-webkit` — FAIL, but the dedicated
+  `tests/public-demo-fresh-start.spec.ts` #117 browser scenario passed. The
+  failure is described below and is outside #117.
 
 ## Test Integrity
 
@@ -142,16 +143,24 @@ No duplicate next-month/month-close CTA behavior was changed. The reported
 month-close assertion could not be located on this revision, and no
 month-close or progression rule was altered. Issue #118 remains untouched.
 
+The sole fresh-CI failure is also not #118: WebKit failed in the pre-existing
+Phase 3A recruitment scenario
+`e2e/tests/beginner-mode-waiting-and-recruitment.spec.ts:493/589`, timing out
+while looking for the `未面接` button. The #117 Public Demo fresh-start browser
+scenario passed on WebKit. No retry, timeout, CTA, or month-close behavior was
+changed to mask this unrelated failure.
+
 ## Remaining Verification
 
-- Fresh PR #131 GitHub `flutter test` / validation on this revision.
-- Fresh Chromium and WebKit Playwright results.
+- Resolve or obtain a clean rerun for the unrelated WebKit Phase 3A
+  recruitment-flow failure before the final merge gate.
 - Deployed-screen or human UX review, if required by the release gate.
 
 ## Final Assessment
 
 NOT MERGE READY
 
-The scoped implementation and dedicated test pass are complete, but the full
-Flutter and browser validation must still be green on fresh GitHub CI for the
-final merge gate.
+The scoped implementation, full Flutter validation, and Chromium E2E are
+green, but the fresh WebKit suite is not fully green because of the unrelated
+Phase 3A recruitment-flow failure. The PR must not merge until that required
+gate is clean.

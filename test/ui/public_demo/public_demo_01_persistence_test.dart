@@ -3,13 +3,17 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:smile_enjoy_story/app/app_experience.dart';
+import 'package:smile_enjoy_story/game/game.dart';
 import 'package:smile_enjoy_story/game/persistence/public_demo_save_codec.dart';
 import 'package:smile_enjoy_story/game/persistence/public_demo_save_service.dart';
+import 'package:smile_enjoy_story/game/persistence/save_service.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_aggregate.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_financial_status.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_recruitment_medium.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_state.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_summer_bonus_plan.dart';
+import 'package:smile_enjoy_story/game/public_demo/public_demo_workflow_state.dart';
 import 'package:smile_enjoy_story/ui/public_demo/public_demo_01_placeholder_screen.dart';
 
 class _RecordingSaveService extends PublicDemoSaveService {
@@ -57,6 +61,11 @@ PublicDemoState _screenState(WidgetTester tester) =>
     (tester.state(find.byType(PublicDemo01PlaceholderScreen)) as dynamic).s
         as PublicDemoState;
 
+PublicDemoWorkflowState _screenWorkflow(WidgetTester tester) =>
+    (tester.state(find.byType(PublicDemo01PlaceholderScreen)) as dynamic)
+            .workflow
+        as PublicDemoWorkflowState;
+
 Future<void> _mount(WidgetTester tester, PublicDemoSaveService service) async {
   await tester.pumpWidget(
     MaterialApp(home: PublicDemo01PlaceholderScreen(saveService: service)),
@@ -77,6 +86,14 @@ Future<void> _tapAction(WidgetTester tester, String label) async {
     await tester.tap(find.widgetWithText(FilledButton, '内容を確認'));
     await tester.pumpAndSettle();
   }
+}
+
+Future<void> _openAprilRestart(WidgetTester tester) async {
+  final button = find.byKey(const Key('public-demo-restart-april-button'));
+  await tester.ensureVisible(button);
+  await tester.pumpAndSettle();
+  await tester.tap(button);
+  await tester.pumpAndSettle();
 }
 
 PublicDemoAggregate _bankruptAggregate() {
@@ -294,5 +311,79 @@ void main() {
     );
     expect(service.restored, same(terminal));
     expect(find.text('保存データを削除できませんでした。現在のプレイを続けます。'), findsOneWidget);
+  });
+
+  testWidgets('test restart confirms from July and rebuilds the canonical '
+      'April aggregate repeatedly', (tester) async {
+    final service = _RecordingSaveService(restored: _freshJulyAggregate());
+    final canonical = PublicDemoAggregate.initial();
+    await _mount(tester, service);
+
+    for (var attempt = 0; attempt < 2; attempt++) {
+      await _openAprilRestart(tester);
+      expect(
+        find.byKey(const Key('public-demo-restart-april-dialog')),
+        findsOneWidget,
+      );
+      await tester.tap(
+        find.byKey(const Key('public-demo-restart-april-confirm')),
+      );
+      await tester.pumpAndSettle();
+
+      expect(_screenState(tester).toJson(), canonical.state.toJson());
+      expect(_screenWorkflow(tester).toJson(), canonical.workflow.toJson());
+      expect(find.text('1年目 4月'), findsOneWidget);
+      expect(find.text('SkillSheetを確認'), findsWidgets);
+    }
+    expect(service.clearCalls, 2);
+  });
+
+  testWidgets('test restart cancellation leaves the current session unchanged', (
+    tester,
+  ) async {
+    final current = _freshJulyAggregate();
+    final service = _RecordingSaveService(restored: current);
+    await _mount(tester, service);
+
+    await _openAprilRestart(tester);
+    await tester.tap(
+      find.byKey(const Key('public-demo-restart-april-cancel')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(_screenState(tester).toJson(), current.state.toJson());
+    expect(_screenWorkflow(tester).toJson(), current.workflow.toJson());
+    expect(service.clearCalls, 0);
+    expect(find.text('1年目 7月'), findsOneWidget);
+  });
+
+  testWidgets('Public Demo test restart leaves a normal game save byte-for-byte '
+      'unchanged', (tester) async {
+    SharedPreferences.setMockInitialValues({});
+    final normalService = SaveService.forExperience(
+      AppExperience.development,
+    );
+    final normal = GameEngine.newGame(
+      seed: 133,
+      companyName: 'Issue 133 normal save',
+    );
+    await normalService.save(normal);
+    final publicDemoService = const PublicDemoSaveService();
+    await publicDemoService.save(_freshJulyAggregate());
+    final preferences = await SharedPreferences.getInstance();
+    final normalRawBefore = preferences.getString(normalService.key);
+    expect(normalRawBefore, isNotNull);
+
+    await _mount(tester, publicDemoService);
+    await _openAprilRestart(tester);
+    await tester.tap(
+      find.byKey(const Key('public-demo-restart-april-confirm')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(preferences.getString(normalService.key), normalRawBefore);
+    expect((await normalService.load())!.company.name, 'Issue 133 normal save');
+    expect(preferences.getString(PublicDemoSaveService.key), isNull);
+    expect(_screenState(tester).month, 4);
   });
 }

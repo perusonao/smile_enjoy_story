@@ -258,10 +258,7 @@ void main() {
       expect(retry.state.cash, result.state.cash);
     });
 
-    test('H: paid bonus affordability behavior is unchanged — an '
-        'unaffordable bonus pays zero, never rolling back the mandatory '
-        'close (regression; see public_demo_summer_bonus_payment_test'
-        '.dart for the full contract)', () {
+    test('H: an unaffordable paid bonus is rejected atomically', () {
       final start = fixture(
         month: 7,
         cash: 1000000,
@@ -272,11 +269,12 @@ void main() {
         monthlyExpenses: 800000,
         applicants: const [],
       );
-      expect(result.isClosed, isTrue);
+      expect(result.isRejected, isTrue);
       // Bonus for plan=one with no hires is the initial engineer total
       // (550,000); 1,000,000 - 800,000 = 200,000 < 550,000, unaffordable.
-      expect(result.state.summerBonusPaidAmount, 0);
-      expect(result.state.cash, 1000000 - 800000);
+      expect(result.state.summerBonusPaidAmount, isNull);
+      expect(result.state, same(start));
+      expect(result.state.cash, 1000000);
     });
   });
 

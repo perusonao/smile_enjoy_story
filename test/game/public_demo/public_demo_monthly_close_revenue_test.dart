@@ -1,5 +1,4 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:smile_enjoy_story/game/public_demo/public_demo_financial_status.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_monthly_close.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_state.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_summer_bonus_plan.dart';
@@ -223,13 +222,9 @@ void main() {
     });
   });
 
-  group('FINANCE-FAILURE-1A+1B: Revenue and the underlying close always settle '
-      'together — bonus affordability only ever gates the optional bonus '
-      'itself, never a rollback of the mandatory close (no more July '
-      'insufficient-cash rollback)', () {
-    test('insufficient cash even after Revenue settles: the mandatory close '
-        'still commits (AR collected, salary/fixed costs paid), the bonus '
-        'pays zero instead', () {
+  group('July bonus eligibility is atomic with Revenue and monthly close', () {
+    test('insufficient cash after Revenue rejects a paid plan without '
+        'partially collecting AR or paying expenses', () {
       // totalOutflow for plan=one, no extra hires = 800,000 + 550,000 =
       // 1,350,000 (see public_demo_monthly_close_test.dart for the same
       // constants). cash(800,000) + pendingRevenue(500,000) = 1,300,000,
@@ -246,19 +241,15 @@ void main() {
         monthlyExpenses: 800000,
         applicants: const [],
       );
-      expect(result.isClosed, isTrue);
-      expect(result.state.summerBonusPaid, isTrue);
-      expect(result.state.summerBonusPaidAmount, 0);
-      expect(result.state.month, 8);
-      // AR collected (500,000) + cash(800,000) - monthlyExpenses
-      // (800,000) - bonus(0) = 500,000.
-      expect(result.state.cash, 500000);
-      expect(result.state.financialStatus, PublicDemoFinancialStatus.normal);
+      expect(result.isRejected, isTrue);
+      expect(result.state, same(start));
+      expect(result.state.summerBonusPaid, isFalse);
+      expect(result.state.month, 7);
+      expect(result.state.cash, 800000);
+      expect(result.state.pendingRevenue, 500000);
     });
 
-    test('Revenue settling is what makes the bonus payable: bonus is zeroed '
-        'without it, paid in full with it — the mandatory close commits '
-        'either way', () {
+    test('Revenue settling is what makes the bonus payable', () {
       final start = fixture(
         month: 7,
         cash: 1000000,
@@ -268,15 +259,14 @@ void main() {
       );
 
       // Without Revenue connected, raw cash (1,000,000) alone cannot
-      // cover totalOutflow (1,350,000) — but the mandatory close still
-      // commits, with the bonus reduced to zero.
+      // cover totalOutflow (1,350,000), so the lower-level payment rejects.
       final withoutRevenue = start.advanceToAugust(
         monthlyExpenses: 800000,
         applicants: const [],
       );
-      expect(withoutRevenue.isPaid, isTrue);
-      expect(withoutRevenue.bonusAmount, 0);
-      expect(withoutRevenue.state.cash, 1000000 - 800000);
+      expect(withoutRevenue.isRejected, isTrue);
+      expect(withoutRevenue.bonusAmount, 550000);
+      expect(withoutRevenue.state, same(start));
 
       // With Revenue connected, the old pendingRevenue (500,000) settles
       // into cash first, making 1,500,000 available -- enough to pay.
@@ -291,6 +281,86 @@ void main() {
       expect(result.cashAfter, 1500000 - 1350000);
       // July's assigned=1 books 500,000 as August's pending.
       expect(result.state.pendingRevenue, 500000);
+    });
+
+    test('Issue #133 fixture: none closes July at -210,000 and a retry is '
+        'an exact no-op', () {
+      final start = fixture(
+        month: 7,
+        cash: 860000,
+        pendingRevenue: 500000,
+        engineersAssigned: 1,
+        summerBonusSelection: PublicDemoSummerBonusPlan.none,
+      );
+
+      final preview = PublicDemoMonthlyClose.previewJuly(
+        state: start,
+        monthlyExpenses: 1570000,
+        applicants: const [],
+        plan: PublicDemoSummerBonusPlan.none,
+      );
+      expect(preview.availableCash, 1360000);
+      expect(preview.bonusAmount, 0);
+      expect(preview.projectedCash, -210000);
+      expect(preview.isEligible, isTrue);
+
+      final first = PublicDemoMonthlyClose.closeJuly(
+        state: start,
+        monthlyExpenses: 1570000,
+        applicants: const [],
+      );
+      expect(first.isClosed, isTrue);
+      expect(first.state.month, 8);
+      expect(first.state.cash, -210000);
+      expect(first.state.summerBonusPaid, isTrue);
+      expect(first.state.summerBonusPaidAmount, 0);
+      expect(first.state.latestMonthlyCashFlow!.cashReceived, 500000);
+      expect(
+        first.state.latestMonthlyCashFlow!.salaryPaid +
+            first.state.latestMonthlyCashFlow!.fixedCostsPaid,
+        1570000,
+      );
+      expect(first.state.latestMonthlyCashFlow!.bonusPaid, 0);
+
+      final duplicate = PublicDemoMonthlyClose.closeJuly(
+        state: first.state,
+        monthlyExpenses: 1570000,
+        applicants: const [],
+      );
+      expect(duplicate.status, PublicDemoMonthlyCloseStatus.notApplicable);
+      expect(duplicate.state, same(first.state));
+      expect(duplicate.state.cash, -210000);
+      expect(duplicate.state.pendingRevenue, first.state.pendingRevenue);
+      expect(
+        duplicate.state.latestMonthlyCashFlow,
+        same(first.state.latestMonthlyCashFlow),
+      );
+    });
+
+    test('Issue #133 fixture: both paid plans are rejected atomically', () {
+      for (final plan in [
+        PublicDemoSummerBonusPlan.half,
+        PublicDemoSummerBonusPlan.one,
+      ]) {
+        final start = fixture(
+          month: 7,
+          cash: 860000,
+          pendingRevenue: 500000,
+          engineersAssigned: 1,
+          summerBonusSelection: plan,
+        );
+        final result = PublicDemoMonthlyClose.closeJuly(
+          state: start,
+          monthlyExpenses: 1570000,
+          applicants: const [],
+        );
+
+        expect(result.isRejected, isTrue, reason: plan.name);
+        expect(result.state, same(start), reason: plan.name);
+        expect(result.state.cash, 860000, reason: plan.name);
+        expect(result.state.pendingRevenue, 500000, reason: plan.name);
+        expect(result.state.latestMonthlyCashFlow, isNull, reason: plan.name);
+      }
     });
   });
 }

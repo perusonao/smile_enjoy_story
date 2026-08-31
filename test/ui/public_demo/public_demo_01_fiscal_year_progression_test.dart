@@ -62,6 +62,10 @@ Future<void> tapAndSettle(WidgetTester tester, String text) async {
   await tester.pumpAndSettle();
   await tester.tap(finder.first);
   await _settleAfterPossiblePrecache(tester);
+  if (text == 'SkillSheet確認') {
+    await tester.tap(find.widgetWithText(FilledButton, '内容を確認'));
+    await tester.pumpAndSettle();
+  }
 }
 
 Future<void> dismissDialog(WidgetTester tester, String confirmLabel) async {

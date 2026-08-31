@@ -433,7 +433,7 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
               _dialogRow('取引先からの信頼', '${engineer.interviewProfile.clientTrust}'),
               const SizedBox(height: 12),
               Text(
-                'Public Demoでは現在の営業用情報を閲覧します。実経歴との差分編集や盛りリスク判定は本編のSkillSheet機能で扱います。',
+                'Public Demoでは現在の営業用情報を閲覧できます。',
                 style: Theme.of(dialogContext).textTheme.bodySmall,
               ),
             ],

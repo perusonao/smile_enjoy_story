@@ -73,6 +73,10 @@ Future<void> _tapAction(WidgetTester tester, String label) async {
   await tester.pumpAndSettle();
   await tester.tap(finder.first);
   await tester.pump();
+  if (label == 'SkillSheet確認') {
+    await tester.tap(find.widgetWithText(FilledButton, '内容を確認'));
+    await tester.pumpAndSettle();
+  }
 }
 
 PublicDemoAggregate _bankruptAggregate() {

@@ -78,6 +78,19 @@ void main() {
         findsOneWidget,
       );
       expect(find.widgetWithText(FilledButton, '営業開始'), findsNothing);
+
+      await tapVisible(
+        tester,
+        find.byKey(const Key('home-recommended-action-cta')),
+      );
+      expect(
+        find.byKey(Key('public-demo-skill-sheet-${engineer.id}')),
+        findsOneWidget,
+      );
+      await tapVisible(
+        tester,
+        find.byKey(Key('public-demo-skill-sheet-cancel-${engineer.id}')),
+      );
     });
 
     testWidgets('explicit confirmation advances once and existing sales start continues', (

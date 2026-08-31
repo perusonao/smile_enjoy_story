@@ -68,6 +68,10 @@ Future<void> tapAndSettle(WidgetTester tester, String text) async {
   await tester.pumpAndSettle();
   await tester.tap(finder.first);
   await settle(tester);
+  if (text == 'SkillSheet確認') {
+    await tester.tap(find.widgetWithText(FilledButton, '内容を確認'));
+    await tester.pumpAndSettle();
+  }
 }
 
 Future<void> dismiss(WidgetTester tester) async {
@@ -297,6 +301,10 @@ void main() {
       final before = currentWorkflow(tester).engineers.first.stage;
       await tester.tap(find.byKey(const Key('home-recommended-action-cta')));
       await settle(tester);
+
+      expect(currentWorkflow(tester).engineers.first.stage, before);
+      await tester.tap(find.widgetWithText(FilledButton, '内容を確認'));
+      await tester.pumpAndSettle();
 
       expect(
         currentWorkflow(tester).engineers.first.stage,

@@ -118,6 +118,10 @@ Future<void> tapAndSettle(WidgetTester tester, String text) async {
   await tester.pumpAndSettle();
   await tester.tap(finder.first);
   await settle(tester);
+  if (text == 'SkillSheet確認') {
+    await tester.tap(find.widgetWithText(FilledButton, '内容を確認'));
+    await tester.pumpAndSettle();
+  }
 }
 
 Future<void> dismiss(WidgetTester tester) async {
@@ -558,6 +562,8 @@ void main() {
         // laid out there — and it still runs April's real first step.
         await tester.tap(cta);
         await settle(tester);
+        await tester.tap(find.widgetWithText(FilledButton, '内容を確認'));
+        await tester.pumpAndSettle();
         expect(actionButton('営業開始'), findsWidgets);
       });
     }

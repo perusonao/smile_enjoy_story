@@ -223,10 +223,10 @@ downloaded and installed to run these checks.
     line — no assertion was weakened; the same fact is checked through its
     one remaining, more precisely-keyed home)
 - `git diff --check`: clean, no whitespace errors.
-- Full `flutter test`: was still running in the background at report-writing
-  time (this repository's suite is large and this sandbox runs Flutter
-  tests with software rendering, which is slow). See Known Issues below —
-  will be confirmed and this report updated if anything unrelated surfaces.
+- Full `flutter test` (entire repository suite): **1392 tests, all passing**
+  (confirmed after this report's first commit; ~8.5 minutes under this
+  sandbox's software-rendered Flutter test execution, exit code 0). No
+  unrelated regression surfaced.
 
 No test was skipped, retried, given a longer timeout, or weakened from
 `findsOneWidget` to a looser matcher. Every assertion removed for a deleted
@@ -235,13 +235,6 @@ fact's one remaining, correctly-keyed home.
 
 ## Known Issues
 
-- The full-repository `flutter test` run had not finished by the time this
-  report and commit were prepared (large suite, slow software-rendered CI
-  sandbox). The targeted suites that exercise every file this phase touched
-  (`test/ui/public_demo/`, `test/presentation/home/`, 355 tests) all pass.
-  If the full run later surfaces an unrelated failure, it predates this
-  change (this phase's diff is two presentation files plus their direct
-  tests) and will be reported as a follow-up rather than silently ignored.
 - The Employee Stage cap (4 visible + overflow) is a display-only bound;
   Public Demo 0.1's roster is small enough in practice that this rarely
   triggers yet. It is validated at the component level (5+ employees) but
@@ -272,7 +265,6 @@ file was written, in the same commit).
 ## PR / Merge Readiness
 
 No PR was created (not requested — "PRはまだ作成しない" per the task). Branch
-`claude/ses-first-fun-year-home-ui-s9di49` was pushed to `origin`. Given
-`flutter analyze` is clean and every test file this phase touches passes
-(355/355 in the targeted suites), this is mergeable pending the full-suite
-confirmation noted above.
+`claude/ses-first-fun-year-home-ui-s9di49` was pushed to `origin`.
+`flutter analyze` is clean, the full repository suite (1392 tests) passes,
+and `git diff --check` is clean. Mergeable as-is.

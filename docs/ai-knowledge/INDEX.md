@@ -31,6 +31,14 @@ not repeated wording in one PR.
 | SES-CI-002 | github-pages | Deploy only the current main SHA from the same workflow chain | high | [entry](decisions/SES-CI-002-pages-deployment-chain.md) |
 | SES-E2E-004 | playwright | Scope dialog controls to real dialog semantics | high | [entry](patterns/SES-E2E-004-dialog-semantics-scope.md) |
 
+## Related standing decisions (outside this router's ID scheme)
+
+- Product/process priority (First Fun Year goal, AI role split, model
+  selection, result-report policy, E2E blocking policy):
+  [`docs/decisions/SES_DEVELOPMENT-PRIORITY_2026-09-02.md`](../decisions/SES_DEVELOPMENT-PRIORITY_2026-09-02.md).
+  This governs task prioritization, not a specific incident/pattern, so it
+  is not assigned an `SES-XXX-NNN` ID.
+
 ## Search hints
 
 - Accounting, month close, cash, payroll: `SES-FIN-*`

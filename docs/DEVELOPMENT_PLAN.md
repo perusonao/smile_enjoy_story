@@ -4,6 +4,15 @@ Last updated: 2026-08-16
 
 This document is the source of truth for near-term development priorities for S.E.S. (Smile. Enjoy. Story.).
 
+## Process/priority governance
+
+For *how* work is prioritized, which AI does what, model selection, result
+reporting, and E2E blocking policy (as opposed to phase/feature content),
+see [`docs/decisions/SES_DEVELOPMENT-PRIORITY_2026-09-02.md`](decisions/SES_DEVELOPMENT-PRIORITY_2026-09-02.md).
+That document currently sets the top-level goal — a developer-played,
+enjoyable full April-to-March "First Fun Year" — that should be used to
+judge priority among the phases below.
+
 ## Mandatory startup rule for development agents
 
 Before starting any implementation, debugging, refactoring, UI work, or test work in this repository:

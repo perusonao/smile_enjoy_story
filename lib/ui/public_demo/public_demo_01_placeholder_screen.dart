@@ -9,6 +9,7 @@ import '../../game/public_demo/public_demo_interview.dart';
 import '../../game/public_demo/public_demo_internal_training_transaction.dart';
 import '../../game/public_demo/public_demo_month_guard.dart';
 import '../../game/public_demo/public_demo_month_label.dart';
+import '../../game/public_demo/public_demo_recovery.dart';
 import '../../game/public_demo/public_demo_recruitment.dart';
 import '../../game/public_demo/public_demo_recruitment_medium.dart';
 import '../../game/public_demo/public_demo_sales.dart';
@@ -385,6 +386,17 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
 
   void _selectInternalTraining(String engineerId) {
     _commitAggregate(_game.selectInternalTraining(engineerId));
+  }
+
+  /// RECOVERY-LOOP-1: the single entry point for committing a late-year
+  /// Recovery order into an assignment. The button this is bound to
+  /// (`ec(i)`'s `ordered`-stage branch) only ever renders when
+  /// [PublicDemoRecoveryEligibility.isEligible] already holds, but
+  /// [PublicDemoAggregate.recoverAssignment] re-checks the same
+  /// eligibility itself — never relying on the UI alone, exactly like
+  /// every other command on this screen.
+  void _recoverAssignment(String engineerId) {
+    _commitAggregate(_game.recoverAssignment(engineerId));
   }
 
   // HOME-RUNTIME-2C: the engineer/applicant stage commands below were
@@ -1861,7 +1873,7 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
     );
   }
 
-  Widget ec(int i) {
+  Widget ec(int i, {bool showTrainingCard = true}) {
     final e = workflow.engineers[i];
     final capability = capabilityFor(e.id);
     final fieldSalesRequirement =
@@ -1963,6 +1975,30 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
                 onPressed: () => _recordEngineerOrder(e),
                 child: const Text('受注'),
               ),
+            // RECOVERY-LOOP-1: the same `ordered` stage
+            // `assignOrderedForMay` already harvests every May — from July
+            // (internal month 7) through February (14), this is instead
+            // the only entry point that turns it into an actual
+            // assignment, since no month past June re-runs
+            // `assignOrderedForMay`'s wholesale roster rebuild. The button
+            // itself only ever renders when
+            // `PublicDemoRecoveryEligibility.isEligible` already holds
+            // (economically waiting, training-unselected, runtime-ready,
+            // non-terminal, within the Recovery month window); the
+            // eligibility check is still re-run by
+            // `PublicDemoAggregate.recoverAssignment` before it does
+            // anything.
+            if (e.stage == PublicDemoSalesStage.ordered &&
+                PublicDemoRecoveryEligibility.isEligible(
+                  state: s,
+                  workflow: workflow,
+                  engineerId: e.id,
+                ))
+              FilledButton(
+                key: Key('public-demo-recovery-assignment-${e.id}'),
+                onPressed: () => _recoverAssignment(e.id),
+                child: const Text('案件へ復帰'),
+              ),
             if (e.stage == PublicDemoSalesStage.partnerInterviewFailed ||
                 e.stage == PublicDemoSalesStage.clientInterviewFailed)
               FilledButton(
@@ -1976,11 +2012,19 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
             // changed, and the point of both is that the sales action can no
             // longer be pushed below the fold by a card that outranks it on
             // screen without outranking it in importance.
-            internalTrainingCard(
-              engineerId: e.id,
-              engineerName: e.name,
-              showEngineerName: false,
-            ),
+            // RECOVERY-LOOP-1: from month 7 on, internal training already
+            // has its own unconditional, dedicated card for every engineer
+            // runtime (the `s.month >= 6` block further down in build()) —
+            // rendering this embedded one too would duplicate the same
+            // `public-demo-internal-training-<id>` key on screen at once.
+            // Months 4/6 are unaffected: [showTrainingCard] stays true
+            // there, exactly as before this parameter existed.
+            if (showTrainingCard)
+              internalTrainingCard(
+                engineerId: e.id,
+                engineerName: e.name,
+                showEngineerName: false,
+              ),
           ],
         ),
       ),
@@ -2222,6 +2266,28 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
                           for (var i = 0; i < workflow.assignments.length; i++)
                             assignmentCard(i),
                         ],
+                        // RECOVERY-LOOP-1: from July (7) through February
+                        // (14) — the same window
+                        // `PublicDemoRecoveryEligibility` enforces — every
+                        // economically-waiting engineer's card is rendered
+                        // here, mirroring month 6's own filter
+                        // (`!assignedEngineerIds.contains(...)`) so the
+                        // existing sales-flow buttons (`ec(i)`'s own
+                        // `waiting` → `ordered` branches, plus the new
+                        // Recovery button once `ordered`) are reachable at
+                        // all past June — no month past June otherwise
+                        // renders an engineer card for anyone still
+                        // waiting. `showTrainingCard: false` because the
+                        // `s.month >= 6` block below already renders every
+                        // engineer runtime's training card unconditionally
+                        // — rendering it a second time here would duplicate
+                        // that same card's key.
+                        if (s.month >= 7 && s.month <= 14)
+                          for (var i = 0; i < workflow.engineers.length; i++)
+                            if (!workflow
+                                .assignedEngineerIds(month: s.month)
+                                .contains(workflow.engineers[i].id))
+                              ec(i, showTrainingCard: false),
                         if (s.month == 7) ...[
                           Text(
                             '7月開始結果',

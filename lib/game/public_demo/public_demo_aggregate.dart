@@ -5,6 +5,7 @@ import 'public_demo_interview.dart';
 import 'public_demo_internal_training_transaction.dart';
 import 'public_demo_monthly_close.dart';
 import 'public_demo_raise_transaction.dart';
+import 'public_demo_recovery.dart';
 import 'public_demo_recruitment.dart';
 import 'public_demo_recruitment_medium.dart';
 import 'public_demo_sales.dart';
@@ -510,6 +511,61 @@ class PublicDemoAggregate {
       replacementStage: replacementStage,
     ),
   );
+
+  /// The single sanctioned way to commit a late-year (internal month 7–14)
+  /// Recovery order for one economically-waiting engineer
+  /// (RECOVERY-LOOP-1 Final Spec). A no-op unless
+  /// [PublicDemoRecoveryEligibility.isEligible] holds for [engineerId] —
+  /// see its own doc for the full eligibility chain (month window,
+  /// non-terminal, genuinely `ordered`, training-unselected, runtime-ready,
+  /// not already assigned).
+  ///
+  /// On success, atomically:
+  /// - appends/upserts ONLY [engineerId]'s own assignment via
+  ///   [PublicDemoWorkflowState.recoverLateYearAssignment] — every other
+  ///   engineer's assignment is carried forward untouched, never rebuilt
+  ///   the way [PublicDemoWorkflowState.assignOrderedForMay] rebuilds
+  ///   May's whole roster
+  /// - sets that assignment's `nextOrderStatus: accepted` /
+  ///   `replacementStage: ordered` explicitly, never relying on
+  ///   [PublicDemoAssignment]'s own constructor defaults
+  /// - re-projects [PublicDemoState.engineersAssigned]/[engineersWaiting]
+  ///   from the resulting canonical
+  ///   [PublicDemoWorkflowState.assignedEngineerIds] — the same projection
+  ///   [_validateForPersistence] already requires to hold for month ≥ 6 —
+  ///   rather than a bare +1/-1 delta, so HOME/UI never has to re-derive
+  ///   these counts independently
+  ///
+  /// Finance is untouched by this method itself: [PublicDemoState.cash] and
+  /// [PublicDemoState.pendingRevenue] do not change here. The existing
+  /// month-end [PublicDemoMonthlyClose]/[PublicDemoRevenuePayment] path
+  /// (reached through [closeOrdinaryMonth]/[closeJuly]) picks this engineer
+  /// up naturally at the next month-end close, from the now-updated
+  /// [PublicDemoState.engineersAssigned] — exactly like every other
+  /// assigned engineer — preserving the existing revenue-recognition/AR/
+  /// 30-day-collection contract without any Finance-formula change.
+  PublicDemoAggregate recoverAssignment(String engineerId) {
+    if (!PublicDemoRecoveryEligibility.isEligible(
+      state: state,
+      workflow: workflow,
+      engineerId: engineerId,
+    )) {
+      return this;
+    }
+    final nextWorkflow = workflow.recoverLateYearAssignment(
+      engineerId,
+      month: state.month,
+    );
+    if (identical(nextWorkflow, workflow)) return this;
+    final assignedIds = nextWorkflow.assignedEngineerIds(month: state.month);
+    return _copyWith(
+      state: state.copyWith(
+        engineersAssigned: assignedIds.length,
+        engineersWaiting: state.engineerCount - assignedIds.length,
+      ),
+      workflow: nextWorkflow,
+    );
+  }
 
   /// The single sanctioned way to decide a raise for [applicantId]
   /// (POST-12MONTH-1-FIX1 P1-1), via [PublicDemoRaiseTransaction] — reads

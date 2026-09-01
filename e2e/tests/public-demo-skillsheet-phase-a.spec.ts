@@ -23,6 +23,66 @@ async function hasNoHorizontalOverflow(page: import('@playwright/test').Page): P
   return page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1);
 }
 
+async function waitForRenderedFrames(page: import('@playwright/test').Page): Promise<void> {
+  await page.evaluate(
+    () =>
+      new Promise<void>((resolve) =>
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+      ),
+  );
+}
+
+/** Scrolls the open SkillSheet's own scrollable body (bounded, polling for
+ * the target rather than a fixed scroll amount) until [locator] is on
+ * screen. Mirrors `clickScrollableButton` in
+ * public-demo-july-restart.spec.ts / `scrollToButton` in
+ * public-demo-single-month-cta.spec.ts: Flutter Web's accessibility tree
+ * only attaches a scrollable child's semantics once it is actually scrolled
+ * into view. `PublicDemoSkillSheetSheet` wraps every section — including
+ * 営業・面談プロフィール, the last one, holding 案件スキル適合 /
+ * ヒューマンスキル / モチベーション / 取引先からの信頼 — in one
+ * `SingleChildScrollView`, and that section sits below the fold at both
+ * 360x800 and 390x800 until scrolled to, confirmed against the real
+ * mobile-webkit CI failure (run 33450496884) this helper responds to. */
+async function scrollSheetUntilVisible(
+  page: import('@playwright/test').Page,
+  locator: import('@playwright/test').Locator,
+  maxSteps = 20,
+): Promise<void> {
+  const viewport = page.viewportSize();
+  if (viewport) await page.mouse.move(viewport.width / 2, viewport.height / 2);
+  for (let step = 0; step < maxSteps; step++) {
+    if ((await locator.count()) > 0) {
+      const box = await locator.first().boundingBox();
+      if (box && viewport) {
+        if (box.y >= 0 && box.y + box.height <= viewport.height) return;
+        // Target is above the current viewport (an earlier assertion in
+        // this same test scrolled the sheet further down already) — scroll
+        // back up towards it instead of only ever scrolling down.
+        if (box.y < 0) {
+          await page.mouse.wheel(0, -500);
+          await waitForRenderedFrames(page);
+          continue;
+        }
+      }
+    }
+    await page.mouse.wheel(0, 500);
+    await waitForRenderedFrames(page);
+  }
+}
+
+/** Scrolls to (see above) then clicks [locator] — used for the accordion
+ * section headers below the fold once the sheet has already been scrolled
+ * further down for an earlier assertion in the same test. */
+async function scrollSheetAndClick(
+  page: import('@playwright/test').Page,
+  locator: import('@playwright/test').Locator,
+  maxSteps = 20,
+): Promise<void> {
+  await scrollSheetUntilVisible(page, locator, maxSteps);
+  await locator.click();
+}
+
 for (const viewport of VIEWPORTS) {
   test.describe(`SkillSheet Phase A @ ${viewport.label}`, () => {
     test.use({ viewport: { width: viewport.width, height: viewport.height } });
@@ -50,6 +110,13 @@ for (const viewport of VIEWPORTS) {
 
       // ---- content is real domain data, not placeholder text --------
       await expect(page.getByText('Java / SQL・開発経験3年', { exact: true })).toBeVisible();
+
+      // 案件スキル適合/ヒューマンスキル/モチベーション/取引先からの信頼 live in
+      // 営業・面談プロフィール, the SkillSheet's last (already-expanded)
+      // section — scroll the sheet's own content to bring it on screen
+      // before asserting, the same way a real player would, rather than
+      // asserting against an unscrolled viewport.
+      await scrollSheetUntilVisible(page, page.getByText('案件スキル適合', { exact: true }));
       await expect(page.getByText('案件スキル適合', { exact: true })).toBeVisible();
       await expect(page.getByText('ヒューマンスキル', { exact: true })).toBeVisible();
       await expect(page.getByText('モチベーション', { exact: true })).toBeVisible();
@@ -62,13 +129,18 @@ for (const viewport of VIEWPORTS) {
       await captureMilestone(page, testInfo, `${viewport.label}-02-skillsheet-open`);
 
       // ---- accordion sections are tappable ---------------------------
-      await page.getByText('技術スキル', { exact: true }).click();
+      // The preceding scroll left the sheet positioned at its last section;
+      // 技術スキル/経験 sit above that, so scroll back up to reach them
+      // rather than relying on a plain `.click()` to auto-scroll (per the
+      // helper doc comment above, Flutter Web's semantics scrollers don't
+      // reliably support that on WebKit).
+      await scrollSheetAndClick(page, page.getByText('技術スキル', { exact: true }));
       await expect(page.getByText('Backend Lv.3', { exact: true })).toBeVisible({ timeout: 10_000 });
       expect(await hasNoHorizontalOverflow(page), `expanded 技術スキル must not overflow at ${viewport.label}`).toBe(
         true,
       );
 
-      await page.getByText('経験', { exact: true }).click();
+      await scrollSheetAndClick(page, page.getByText('経験', { exact: true }));
       await expect(page.getByText(/実経験/, { exact: false })).toBeVisible({ timeout: 10_000 });
       await expect(page.getByText(/SkillSheet記載/, { exact: false })).toBeVisible();
       expect(await hasNoHorizontalOverflow(page), `expanded 経験 must not overflow at ${viewport.label}`).toBe(true);

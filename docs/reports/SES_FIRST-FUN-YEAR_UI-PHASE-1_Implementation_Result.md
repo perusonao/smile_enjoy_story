@@ -212,16 +212,9 @@ Chromium（Playwright、pre-installed）で `?e2e=1#/public-demo-01` を実描�
   を単独実行 → **All tests passed!**
 - **`test/ui/public_demo/` ディレクトリ全体**（193テスト）:
   **All tests passed!**
-- **`flutter test`（プロジェクト全体、可能なら実施）**: 実行した。
-  スイート全体は非常に大きく（テストファイル162個、Public Demoの
-  実プレイスルーを伴うテストが多数含まれるため1本あたり数十秒かかるものが
-  多い）、本レポートのコミット時点では実行が継続中だったが、開始から
-  6分台で経過した356件（Public Demo/HOME関連テストを大量に含む）
-  については **failureゼロ**（`flutter test`の失敗出力・`Some tests
-  failed`はゼロ件）。特にPublic Demo/HOMEに関わるテストは前段の
-  focused runで既に193件全てpass確認済みであり、全体ランでもこの
-  範囲で新たな失敗は出ていない。プロジェクト全体の完走確認は本セッション
-  内で継続監視し、失敗が見つかった場合は別コミットで追って報告する。
+- **`flutter test`（プロジェクト全体）**: 完走。**1390件、
+  `All tests passed!`（failureゼロ）**。162テストファイル、
+  実行時間 約23分。
 - **`git diff --check`**: 空白系エラーなし（exit 0）。
 - 既存assertionはすべて維持または「削除したUIに対応する削除」のみ——
   `findsOneWidget` → `findsWidgets` のような弱体化は行っていない。
@@ -275,6 +268,7 @@ authoritative over this static value.
 
 PRは今回作成していない（指示どおり）。ブランチ
 `claude/ses-first-fun-year-ui-phase-1-vx9110` へコミット・pushのみ実施。
-`flutter analyze`/対象widget test/`flutter test`全体が green であれば
-マージ候補として提示可能。E2E（Playwright）フルランはCIまたは次回セッション
-での実施を推奨。
+`flutter analyze`（0件）・対象widget test（193件 pass）・`flutter test`
+全体（1390件 pass）がすべてgreenであることを確認済みであり、
+**マージ候補として提示可能な状態**。E2E（Playwright）フルランのみ
+CIまたは次回セッションでの実施を推奨（Known Issues参照）。

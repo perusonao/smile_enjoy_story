@@ -23,8 +23,9 @@ this `origin/main` tip, so nothing was discarded).
 
 ## FINAL HEAD SHA
 
-`8b55e18b133fcae8a0071956ebbbb6bc39b187ea` (this report's own commit —
-see **commit SHA** below).
+`8b55e18b133fcae8a0071956ebbbb6bc39b187ea` (the implementation commit).
+A follow-up docs-only commit, `a82f74978c436fece923d536586a36364be30312`,
+records this SHA in the report itself — see **commit SHA** below for both.
 
 ## 事前調査で確認した「現在mainの状態」
 
@@ -261,8 +262,14 @@ regressionは無い。**
 
 ## commit SHA
 
-`8b55e18b133fcae8a0071956ebbbb6bc39b187ea` on branch
-`claude/ses-first-fun-year-ui-phase-1-vx9110`.
+- `8b55e18b133fcae8a0071956ebbbb6bc39b187ea` — implementation + tests.
+- `a82f74978c436fece923d536586a36364be30312` — docs-only fixup recording
+  the above SHA in this report.
+
+Both on branch `claude/ses-first-fun-year-ui-phase-1-vx9110`. If a further
+docs-only fixup lands after this line was written, the branch's true HEAD
+(`git log -1` on `claude/ses-first-fun-year-ui-phase-1-vx9110`) is
+authoritative over this static value.
 
 ## PR / Merge Readiness
 

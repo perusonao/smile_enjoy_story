@@ -23,6 +23,7 @@ import 'package:smile_enjoy_story/game/public_demo/public_demo_salary.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_state.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_summer_bonus_plan.dart';
 import 'package:smile_enjoy_story/ui/public_demo/public_demo_01_placeholder_screen.dart';
+import 'package:smile_enjoy_story/ui/public_demo/public_demo_summer_bonus_dialog.dart';
 
 class _FixedSaveService extends PublicDemoSaveService {
   _FixedSaveService(this._aggregate);
@@ -119,6 +120,80 @@ void main() {
     await _pump(tester, aggregate);
     _expectSingleOrNoMonthAdvanceCta(tester, blocked: false);
   });
+
+  // Issue #119 PR1 (Month Guard): the canonical CTA is the sole entry point
+  // for both "open the required decision" and "close the month" — tapping
+  // it before the July summer-bonus decision is acknowledged must open the
+  // decision UI and must NOT advance the month.
+  testWidgets(
+    'July (before summer bonus decision): tapping the canonical CTA opens '
+    'the summer-bonus decision and does not advance the month',
+    (tester) async {
+      final aggregate = PublicDemoAggregate.initial()
+          .closeApril(monthlyExpenses: expense)
+          .closeMay(week: 9, monthlyExpenses: expense)
+          .closeJune(assignedInJuly: 0, monthlyExpenses: expense);
+      expect(aggregate.state.month, 7);
+      expect(aggregate.state.summerBonusDecisionConfirmed, isFalse);
+      await _pump(tester, aggregate);
+
+      await tester.ensureVisible(find.byKey(_canonicalCtaKey));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(_canonicalCtaKey));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byType(PublicDemoSummerBonusDialog),
+        findsOneWidget,
+        reason: 'the outstanding required decision must open, not be bypassed',
+      );
+
+      final screenStateBeforeChoice =
+          (tester.state(find.byType(PublicDemo01PlaceholderScreen)) as dynamic)
+                  .s
+              as PublicDemoState;
+      expect(
+        screenStateBeforeChoice.month,
+        7,
+        reason: 'the required decision being open must not itself close July',
+      );
+
+      await tester.tap(
+        find.byKey(const Key('public-demo-summer-bonus-none')),
+      );
+      await tester.pumpAndSettle();
+
+      final screenStateAfterChoice =
+          (tester.state(find.byType(PublicDemo01PlaceholderScreen)) as dynamic)
+                  .s
+              as PublicDemoState;
+      expect(
+        screenStateAfterChoice.month,
+        7,
+        reason:
+            'choosing a plan only confirms the decision; closing July still '
+            'requires a second, explicit CTA tap',
+      );
+      expect(screenStateAfterChoice.summerBonusDecisionConfirmed, isTrue);
+
+      _expectSingleOrNoMonthAdvanceCta(tester, blocked: false);
+      await tester.ensureVisible(find.byKey(_canonicalCtaKey));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(_canonicalCtaKey));
+      await tester.pumpAndSettle();
+
+      final screenStateAfterClose =
+          (tester.state(find.byType(PublicDemo01PlaceholderScreen)) as dynamic)
+                  .s
+              as PublicDemoState;
+      expect(
+        screenStateAfterClose.month,
+        8,
+        reason: 'once the required decision is satisfied, the same '
+            'canonical CTA closes July into August',
+      );
+    },
+  );
 
   testWidgets('July (summer bonus none confirmed): exactly one '
       'month-advance CTA, and tapping it closes into August exactly once', (

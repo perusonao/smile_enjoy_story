@@ -27,6 +27,7 @@ import '../../presentation/home/models/home_navigator_display.dart';
 import '../../presentation/home/models/home_recommended_action.dart';
 import '../../presentation/build_info.dart';
 import '../../presentation/home/widgets/home_office_stage_section.dart';
+import '../../presentation/year_end/models/public_demo_year_end_display_data.dart';
 import '../asset_paths.dart';
 import '../theme.dart';
 import 'public_demo_event_dialog.dart';
@@ -40,6 +41,7 @@ import 'public_demo_sales_progress.dart';
 import 'public_demo_salary_offer_dialog.dart';
 import 'public_demo_raise_dialog.dart';
 import 'public_demo_summer_bonus_dialog.dart';
+import 'public_demo_year_end_result_card.dart';
 
 /// Signature of the local collector the HOME-RUNTIME-2C emit helpers append
 /// to. Named rather than inlined so each helper's shape is obvious at a
@@ -582,73 +584,14 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
     ),
   );
 
-  /// PLAYTEST-BLOCKER-1A: a prominent card that communicates the terminal
-  /// financial state (bankruptcy or March cash-shortage failure) and
-  /// provides the only safe exit — restarting the playthrough.
-  ///
-  /// Reads [s] read-only. Does not infer the terminal condition from cash
-  /// sign; the authoritative [PublicDemoFinancialStatus.isTerminal] check
-  /// is the entry guard on [PublicDemoState.isFinanciallyTerminal].
-  Widget _bankruptcyTerminalCard() {
-    final isBankruptcy =
-        s.financialStatus == PublicDemoFinancialStatus.bankruptcy;
-    final title = isBankruptcy ? '倒産' : '3月資金不足';
-    final reason = isBankruptcy
-        ? '資金不足の状態で月次決算を迎え、再度赤字となったため倒産が確定しました。'
-        : '3月の月次決算が赤字となり、今期は終了しました。';
-
-    return Card(
-      key: const Key('public-demo-bankruptcy-card'),
-      color: Colors.red.shade50,
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Icon(Icons.business_outlined, color: Colors.red.shade800),
-                const SizedBox(width: 8),
-                Text(
-                  title,
-                  style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 18,
-                    color: Colors.red.shade800,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            const Text(
-              'このプレイスルーは終了しました。',
-              style: TextStyle(fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 4),
-            Text(reason),
-            const SizedBox(height: 10),
-            Text(
-              '最終現預金: ${formatYen(s.cash)}',
-              style: const TextStyle(fontWeight: FontWeight.w600),
-            ),
-            if (s.latestMonthlyCashFlow != null)
-              Text(
-                '最終決算月: ${publicDemoMonthLabel(s.latestMonthlyCashFlow!.month)}',
-              ),
-            const SizedBox(height: 16),
-            SizedBox(
-              width: double.infinity,
-              child: FilledButton(
-                key: const Key('public-demo-restart-button'),
-                onPressed: _isRestarting ? null : _restartGame,
-                child: Text(_isRestarting ? '再開準備中…' : '最初からやり直す'),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
+  /// Year-End Phase 1: both successful completion and authoritative terminal
+  /// failure use one result presentation. The projection reads existing facts
+  /// only and does not alter terminal authority or infer it from cash.
+  Widget _yearEndResultCard() => PublicDemoYearEndResultCard(
+    data: PublicDemoYearEndDisplayData.fromState(s),
+    onRestart: _restartGame,
+    isRestarting: _isRestarting,
+  );
 
   /// Public Demo-only test control for repeatable human QA. The destructive
   /// confirmation is intentionally separate from [_restartGame], which also
@@ -2148,7 +2091,8 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
                         // This card is the player's primary signal that the
                         // playthrough has ended — without it the only cue was a
                         // month-close button that silently became a no-op.
-                        if (s.isFinanciallyTerminal) _bankruptcyTerminalCard(),
+                        if (s.isFinanciallyTerminal || s.fiscalYearCompleted)
+                          _yearEndResultCard(),
                         // HOME-RUNTIME-READ-1: the new HOME read-only display,
                         // added alongside (never in place of) the existing Public
                         // Demo UI below. It receives only the projection — no
@@ -2163,8 +2107,10 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
                           navigatorAdvice: navigatorAdvice,
                         ),
                         const SizedBox(height: 8),
-                        _publicDemoTestControlsCard(),
-                        const SizedBox(height: 8),
+                        if (!s.isCloseBlocked) ...[
+                          _publicDemoTestControlsCard(),
+                          const SizedBox(height: 8),
+                        ],
                         HomeOfficeStageSection(display: _officeStageDisplay),
                         const SizedBox(height: 8),
                         PublicDemoEmployeeStageSection(
@@ -2292,27 +2238,6 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
                           Text(
                             '${publicDemoMonthLabel(s.month)}開始結果',
                             style: Theme.of(c).textTheme.titleLarge,
-                          ),
-                        ],
-                        if (s.fiscalYearCompleted) ...[
-                          Card(
-                            key: const Key('public-demo-fiscal-year-complete'),
-                            child: Padding(
-                              padding: const EdgeInsets.all(14),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    '第1期終了',
-                                    style: Theme.of(c).textTheme.titleLarge,
-                                  ),
-                                  const SizedBox(height: 8),
-                                  const Text('1年間の経営が終了しました。'),
-                                  const SizedBox(height: 8),
-                                  Text('最終現預金 ¥${s.cash}'),
-                                ],
-                              ),
-                            ),
                           ),
                         ],
                         if (s.month >= 7)

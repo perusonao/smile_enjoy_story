@@ -7,6 +7,7 @@ import '../../game/public_demo/public_demo_engineer_runtime.dart';
 import '../../game/public_demo/public_demo_fiscal_close_id.dart';
 import '../../game/public_demo/public_demo_interview.dart';
 import '../../game/public_demo/public_demo_internal_training_transaction.dart';
+import '../../game/public_demo/public_demo_month_guard.dart';
 import '../../game/public_demo/public_demo_month_label.dart';
 import '../../game/public_demo/public_demo_recruitment.dart';
 import '../../game/public_demo/public_demo_recruitment_medium.dart';
@@ -296,7 +297,9 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
       ),
       7 => PublicDemoMonthlyPrimaryCtaModel(
         label: '7月を終了して8月へ',
-        description: '夏季賞与を確認してから、月末処理へ進みます。',
+        description: _summerBonusDecisionRequired
+            ? '夏季賞与が未決定です。タップすると決定画面が開きます。'
+            : '夏季賞与の決定が完了しました。月末処理へ進みます。',
         enabled: true,
         onPressed: () => unawaited(july()),
       ),
@@ -1070,6 +1073,22 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
     month: 7,
   );
 
+  /// The Domain-owned Month Guard's outstanding items for the current
+  /// month-close attempt (Issue #119 PR1). This is the single source of
+  /// truth for "is a required decision still outstanding" — callers must
+  /// consult it instead of independently re-deriving the same condition
+  /// (e.g. reading `s.summerBonusDecisionConfirmed` directly).
+  List<PublicDemoMonthGuardItem> get _monthGuardItems =>
+      PublicDemoMonthGuard.evaluate(
+        month: s.month,
+        monthCloseApplicable: !s.isCloseBlocked,
+        summerBonusDecisionConfirmed: s.summerBonusDecisionConfirmed,
+      );
+
+  bool get _summerBonusDecisionRequired => _monthGuardItems.any(
+    (item) => item.id == PublicDemoMonthGuard.summerBonusDecisionItemId,
+  );
+
   Future<void> decideSummerBonus() async {
     final decision = await showDialog<PublicDemoSummerBonusPlan>(
       context: context,
@@ -1084,7 +1103,9 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
   }
 
   Future<void> july() async {
-    if (!s.summerBonusDecisionConfirmed) {
+    // Month Guard enforcement lives here, above `closeJuly` — the aggregate
+    // entry point itself stays ungated (Issue #119 PR1).
+    if (_summerBonusDecisionRequired) {
       await decideSummerBonus();
       return;
     }
@@ -2228,13 +2249,13 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
                                   ),
                                   const SizedBox(height: 4),
                                   Text(
-                                    s.summerBonusDecisionConfirmed
-                                        ? '選択済み：${switch (s.summerBonusSelection) {
+                                    _summerBonusDecisionRequired
+                                        ? '7月終了前に支給内容を選びましょう。'
+                                        : '選択済み：${switch (s.summerBonusSelection) {
                                             PublicDemoSummerBonusPlan.none => 'なし',
                                             PublicDemoSummerBonusPlan.half => '0.5か月',
                                             PublicDemoSummerBonusPlan.one => '1か月',
-                                          }}'
-                                        : '7月終了前に支給内容を選びましょう。',
+                                          }}',
                                   ),
                                   const SizedBox(height: 8),
                                   FilledButton(
@@ -2243,9 +2264,9 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
                                     ),
                                     onPressed: decideSummerBonus,
                                     child: Text(
-                                      s.summerBonusDecisionConfirmed
-                                          ? '夏季賞与を変更'
-                                          : '夏季賞与を決める',
+                                      _summerBonusDecisionRequired
+                                          ? '夏季賞与を決める'
+                                          : '夏季賞与を変更',
                                     ),
                                   ),
                                 ],

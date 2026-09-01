@@ -524,22 +524,26 @@ export async function isFinanciallyTerminal(page: Page): Promise<boolean> {
 /** Reads whether Public Demo's financial status is currently `cashShortage`
  * (`PublicDemoFinancialStatus.cashShortage` / `state.isFinanciallyRestricted`)
  * — a non-terminal warning state distinct from [isFinanciallyTerminal]'s
- * bankruptcy check: the player can still act, just under the finance
- * summary card's own red warning banner (`public_demo_01_placeholder_screen
- * .dart`'s `_financeSummary` getter). Matches the exact production string,
- * never a looser "is anything wrong" heuristic. */
+ * bankruptcy check: the player can still act, just under the dedicated
+ * `PublicDemoCashShortageCard` (`Key('public-demo-cash-shortage-card')`,
+ * `public_demo_cash_shortage_card.dart`) rendered above HOME. HOME UI Phase
+ * 1 removed the finance-summary card's own duplicate warning banner, so this
+ * now matches the shortage card's own title string — still the exact
+ * production string, never a looser "is anything wrong" heuristic. */
 export async function isCashShortage(page: Page): Promise<boolean> {
   const snap = await snapshot(page);
-  return snap.includes('資金不足です。必要な対応を確認してください。');
+  return snap.includes('資金不足：次回決算が期限です');
 }
 
-/** Reads the finance-summary card's `現金残高` (current cash) line verbatim,
- * for a checkpoint assertion/log — never parsed into a number here, so a
- * future currency-formatting change fails loudly in the calling test
- * instead of silently miscomparing. */
+/** Reads the compact HOME KPI's `現金` (current cash) tile verbatim, for a
+ * checkpoint assertion/log — never parsed into a number here, so a future
+ * currency-formatting change fails loudly in the calling test instead of
+ * silently miscomparing. HOME UI Phase 1 removed the finance-summary card's
+ * own duplicate `現金残高` line (the KPI tile already carried the same
+ * figure), so this now reads the KPI directly via [readCompactKpiValue]. */
 export async function readCashSummaryLine(page: Page): Promise<string | undefined> {
-  const snap = await snapshot(page);
-  return snap.split('\n').find((line) => line.includes('現金残高'))?.trim();
+  const value = await readCompactKpiValue(page, '現金');
+  return value === undefined ? undefined : `現金 ${value}`;
 }
 
 /** Scrolls down (from wherever the page currently sits — call [scrollToTop]

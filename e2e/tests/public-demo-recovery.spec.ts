@@ -113,16 +113,19 @@ for (const viewport of VIEWPORTS) {
         await decideNoSummerBonus(page);
         await closeMonthlyPrimaryCta(page); // July -> August
         await assertCalendarMonth(page, 8);
-        // Read from the finance summary card's own labelled rows (exact
+        // Read from PublicDemoMonthlyCashFlowCard's own labelled rows (exact
         // yen, not the compact KPI's ¥-in-万 rounding) — `scrollToText`
         // scrolls to find each one, since a virtualized `ListView` does not
         // keep this card built once enough content (Recovery's own
         // per-engineer cards included) exists above it on the page.
+        // (HOME UI Phase 1 removed the finance-summary card's own duplicate
+        // 今月売上/次回入金予定 rows — the monthly cash-flow card's 売上/
+        // 売掛金 rows are the same authoritative figures, unduplicated.)
         // Both engineers' combined ¥500,000/each revenue this close.
-        await scrollToText(page, '今月売上 ¥1,000,000');
+        await scrollToText(page, '売上 ¥1,000,000');
         // The same amount is booked as AR, awaiting next month's
         // collection — not cash.
-        await scrollToText(page, '次回入金予定 ¥1,000,000');
+        await scrollToText(page, '売掛金（来月入金予定） ¥1,000,000');
       });
 
       await test.step('closing August collects that AR into cash (the 30-day contract)', async () => {

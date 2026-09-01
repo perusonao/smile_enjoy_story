@@ -82,7 +82,6 @@ void main() {
         find.byType(HomeNavigatorSection),
         find.byType(RecommendedActionSection),
         find.byType(HomeOfficeStageSection),
-        find.byType(PublicDemoEmployeeStageSection),
         find.byType(PublicDemoImportantEventsSection),
         find.byType(PublicDemoFinanceSummarySection),
         find.byType(PublicDemoMonthlyPrimaryCtaSection),
@@ -97,22 +96,23 @@ void main() {
         );
       }
 
+      // HOME UI Phase 1: `PublicDemoEmployeeStageSection` ("社員ステージ") is
+      // deleted outright — it repeated the same employee names the Office
+      // Stage above it already shows, in a second vocabulary, with no
+      // action of its own. The Office Stage remains the one employee
+      // summary on HOME.
+      expect(find.byType(HomeOfficeStageSection), findsOneWidget);
+      expect(find.text('社員ステージ'), findsNothing);
+
+      // HOME UI Phase 1 also trimmed the finance summary to the two figures
+      // the compact KPI does not already carry (payroll/fixed costs); cash
+      // and next-month-estimate are the KPI's job now, not this section's.
       final finance = tester.widget<PublicDemoFinanceSummarySection>(
         find.byType(PublicDemoFinanceSummarySection),
       );
-      expect(finance.summary.cash, currentState(tester).cash);
-      expect(
-        finance.summary.nextMonthEstimate,
-        currentState(tester).pendingRevenue,
-      );
+      expect(finance.summary.payroll, greaterThan(0));
+      expect(finance.summary.fixedCosts, greaterThan(0));
       expect(find.text('佐藤 健'), findsWidgets);
-      expect(
-        find.descendant(
-          of: find.byType(PublicDemoEmployeeStageSection),
-          matching: find.text('営業準備前'),
-        ),
-        findsNWidgets(2),
-      );
     });
 
     testWidgets('the primary Recommended Action remains initially reachable', (
@@ -171,11 +171,10 @@ void main() {
           await pumpDemo(tester, size: Size(width, 844), textScale: 1.3);
 
           for (final text in [
-            '社員ステージ',
-            '資金サマリー',
+            '今月の支出予定',
             '今月の主要行動',
-            '今月売上',
-            '次回入金予定',
+            '給与',
+            '固定費',
           ]) {
             final label = find.text(text);
             await tester.ensureVisible(label);

@@ -2,17 +2,6 @@ import 'package:flutter/material.dart';
 
 import '../theme.dart';
 
-/// Resolved, display-only data for one employee on the Public Demo HOME.
-///
-/// The HOME/controller decides both who appears here and which status label is
-/// appropriate. This model deliberately contains no game-state reference.
-class PublicDemoEmployeeStageItem {
-  const PublicDemoEmployeeStageItem({required this.name, required this.status});
-
-  final String name;
-  final String status;
-}
-
 /// Presentation data for an important event. [onPressed] remains owned by
 /// the caller so this widget never decides a route or event outcome.
 class PublicDemoImportantEventItem {
@@ -34,22 +23,20 @@ class PublicDemoImportantEventItem {
 }
 
 /// Finance values already calculated by the finance/state authority.
+///
+/// HOME UI Phase 1 trimmed this to the two figures the compact HOME KPI does
+/// not already carry (payroll, fixed costs). It used to also repeat
+/// cash/revenue/next-month-estimate and a financial-status warning, all of
+/// which duplicated the KPI and the cash-shortage/bankruptcy cards HOME
+/// already shows above this section.
 class PublicDemoFinanceSummaryModel {
   const PublicDemoFinanceSummaryModel({
-    required this.cash,
-    required this.revenue,
     required this.payroll,
     required this.fixedCosts,
-    required this.nextMonthEstimate,
-    this.warning,
   });
 
-  final int cash;
-  final int revenue;
   final int payroll;
   final int fixedCosts;
-  final int nextMonthEstimate;
-  final String? warning;
 }
 
 /// The already-resolved primary action for this month.
@@ -65,49 +52,6 @@ class PublicDemoMonthlyPrimaryCtaModel {
   final String description;
   final bool enabled;
   final VoidCallback onPressed;
-}
-
-class PublicDemoEmployeeStageSection extends StatelessWidget {
-  const PublicDemoEmployeeStageSection({super.key, required this.employees});
-
-  final List<PublicDemoEmployeeStageItem> employees;
-
-  @override
-  Widget build(BuildContext context) => _HomeSectionCard(
-    title: '社員ステージ',
-    child: employees.isEmpty
-        ? const Text('表示できる社員はいません')
-        : Column(
-            children: [
-              for (final employee in employees)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 8),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          const Icon(Icons.person_outline, size: 20),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Text(
-                              employee.name,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 3),
-                      Padding(
-                        padding: const EdgeInsets.only(left: 28),
-                        child: _StatusChip(label: employee.status),
-                      ),
-                    ],
-                  ),
-                ),
-            ],
-          ),
-  );
 }
 
 class PublicDemoImportantEventsSection extends StatelessWidget {
@@ -149,35 +93,12 @@ class PublicDemoFinanceSummarySection extends StatelessWidget {
   @override
   Widget build(BuildContext context) => _HomeSectionCard(
     cardKey: const Key('public-demo-finance-summary'),
-    title: '資金サマリー',
+    title: '今月の支出予定',
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        if (summary.warning != null) ...[
-          Semantics(
-            label: '資金警告: ${summary.warning}',
-            child: Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: Colors.red.shade50,
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Text(
-                summary.warning!,
-                style: TextStyle(color: Colors.red.shade900),
-              ),
-            ),
-          ),
-          const SizedBox(height: 10),
-        ],
-        const Text('直近の支出予定', style: TextStyle(fontWeight: FontWeight.w600)),
         _FinanceRow('給与', summary.payroll, emphasis: true, expense: true),
         _FinanceRow('固定費', summary.fixedCosts, emphasis: true, expense: true),
-        const Divider(height: 18),
-        _FinanceRow('現金残高', summary.cash, subdued: true),
-        _FinanceRow('今月売上', summary.revenue, subdued: true),
-        _FinanceRow('次回入金予定', summary.nextMonthEstimate, subdued: true),
       ],
     ),
   );
@@ -257,13 +178,11 @@ class _FinanceRow extends StatelessWidget {
     this.amount, {
     this.emphasis = false,
     this.expense = false,
-    this.subdued = false,
   });
   final String label;
   final int amount;
   final bool emphasis;
   final bool expense;
-  final bool subdued;
 
   @override
   Widget build(BuildContext context) => Padding(
@@ -275,9 +194,6 @@ class _FinanceRow extends StatelessWidget {
           label,
           style: TextStyle(
             fontWeight: emphasis ? FontWeight.bold : FontWeight.normal,
-            color: subdued
-                ? Theme.of(context).colorScheme.onSurfaceVariant
-                : null,
           ),
         ),
         Align(
@@ -286,11 +202,7 @@ class _FinanceRow extends StatelessWidget {
             '${expense ? '-' : ''}${formatYen(amount)}',
             style: TextStyle(
               fontWeight: FontWeight.w600,
-              color: emphasis
-                  ? SesTheme.primaryBlue
-                  : subdued
-                  ? Theme.of(context).colorScheme.onSurfaceVariant
-                  : null,
+              color: emphasis ? SesTheme.primaryBlue : null,
             ),
           ),
         ),

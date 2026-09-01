@@ -18,34 +18,6 @@ Widget host(Widget child, {double scale = 1}) => MaterialApp(
 
 void main() {
   testWidgets(
-    'employee stage renders empty, normal, multiple statuses, and a long name',
-    (tester) async {
-      await tester.pumpWidget(
-        host(const PublicDemoEmployeeStageSection(employees: [])),
-      );
-      expect(find.text('表示できる社員はいません'), findsOneWidget);
-      await tester.pumpWidget(
-        host(
-          const PublicDemoEmployeeStageSection(
-            employees: [
-              PublicDemoEmployeeStageItem(
-                name: '非常に長い名前を持つ代表社員テストエンジニア太郎',
-                status: '営業中',
-              ),
-              PublicDemoEmployeeStageItem(name: '鈴木花子', status: 'Offer'),
-              PublicDemoEmployeeStageItem(name: '佐藤次郎', status: '参画'),
-            ],
-          ),
-        ),
-      );
-      expect(find.text('営業中'), findsOneWidget);
-      expect(find.text('Offer'), findsOneWidget);
-      expect(find.text('参画'), findsOneWidget);
-      expect(tester.takeException(), isNull);
-    },
-  );
-
-  testWidgets(
     'important events hides its empty state, renders populated events, and calls CTA once',
     (tester) async {
       var calls = 0;
@@ -91,31 +63,31 @@ void main() {
   );
 
   testWidgets(
-    'finance summary renders normal, warning, and large numeric values',
+    'finance summary renders payroll and fixed costs as large numeric '
+    'values, and no longer carries cash/revenue/warning (HOME UI Phase 1 '
+    'trimmed those as KPI/cash-shortage-card duplicates)',
     (tester) async {
       await tester.pumpWidget(
         host(
           const PublicDemoFinanceSummarySection(
             summary: PublicDemoFinanceSummaryModel(
-              cash: 1234567890,
-              revenue: 987654321,
               payroll: 123456789,
               fixedCosts: 50000000,
-              nextMonthEstimate: 765432100,
-              warning: '資金繰りに注意が必要です。',
             ),
           ),
         ),
       );
-      expect(find.text('¥1,234,567,890'), findsOneWidget);
+      expect(find.text('今月の支出予定'), findsOneWidget);
       expect(find.text('-¥123,456,789'), findsOneWidget);
+      expect(find.text('-¥50,000,000'), findsOneWidget);
+      expect(find.text('¥1,234,567,890'), findsNothing);
       expect(
         find.byWidgetPredicate(
           (widget) =>
               widget is Semantics &&
-              widget.properties.label == '資金警告: 資金繰りに注意が必要です。',
+              (widget.properties.label?.startsWith('資金警告') ?? false),
         ),
-        findsOneWidget,
+        findsNothing,
       );
     },
   );
@@ -175,14 +147,6 @@ void main() {
           host(
             Column(
               children: [
-                const PublicDemoEmployeeStageSection(
-                  employees: [
-                    PublicDemoEmployeeStageItem(
-                      name: '長い名前の代表社員エンジニア',
-                      status: '客先面談通過',
-                    ),
-                  ],
-                ),
                 PublicDemoImportantEventsSection(
                   events: [
                     PublicDemoImportantEventItem(
@@ -196,11 +160,8 @@ void main() {
                 ),
                 const PublicDemoFinanceSummarySection(
                   summary: PublicDemoFinanceSummaryModel(
-                    cash: 10000000,
-                    revenue: 900000,
                     payroll: 600000,
                     fixedCosts: 50000,
-                    nextMonthEstimate: 400000,
                   ),
                 ),
                 const PublicDemoMonthlyPrimaryCtaSection(

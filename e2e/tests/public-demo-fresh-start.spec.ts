@@ -22,9 +22,12 @@ test.describe('Public Demo fresh start', () => {
       const raw = await page.locator('body').ariaSnapshot();
       expect(raw, 'Public Demo identity').toContain('S.E.S. Public Demo 0.1');
       expect(raw, 'fresh-start month').toContain('4月');
-      expect(raw, 'employee stage').toContain('社員ステージ');
+      // HOME UI Phase 1 deleted the standalone `社員ステージ` summary card
+      // (and its "営業準備前" status vocabulary with it) as a duplicate of
+      // the Office Stage employee summary already on HOME — the initial
+      // employee is still asserted below via the Office Stage's own name
+      // label and the reachable SkillSheet action.
       expect(raw, 'initial employee').toContain('佐藤 健');
-      expect(raw, 'initial sales state').toContain('営業準備前');
       expect(raw, 'initial real action').toContain('SkillSheetを確認');
       expect(raw, 'fresh start must not already be terminal').not.toContain('このプレイスルーは終了しました。');
       expect(raw, 'fresh start must not already be bankrupt').not.toContain('倒産');

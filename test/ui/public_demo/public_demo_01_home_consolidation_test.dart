@@ -648,12 +648,15 @@ void main() {
   });
 
   group('18, 24: every action the cleanup touched is still reachable', () {
-    testWidgets('Employee Status, Finance Summary, and the month-close '
-        'control remain reachable', (tester) async {
+    testWidgets('Employee Status (Office Stage), Finance Summary, and the '
+        'month-close control remain reachable', (tester) async {
       await pumpDemoAt(tester, const Size(360, 800));
 
+      // HOME UI Phase 1 deleted the separate `社員ステージ` card — the
+      // Office Stage is now HOME's one employee summary, so reachability is
+      // asserted against it instead.
       for (final finder in <Finder>[
-        find.text('社員ステージ'),
+        find.byKey(const Key('home-office-stage')),
         find.byKey(const Key('public-demo-finance-summary')),
         find.byKey(const Key('public-demo-monthly-primary-cta')),
       ]) {

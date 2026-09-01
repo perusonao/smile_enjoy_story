@@ -204,34 +204,6 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
     ],
   );
 
-  /// HOME-3's employee stage is a read-only summary of the same employee
-  /// workflow cards that remain below it. The status text comes from the
-  /// existing display mapper; this summary neither changes a stage nor
-  /// creates an alternate employee/action route.
-  List<PublicDemoEmployeeStageItem> get _employeeStageItems => [
-    for (final engineer in workflow.engineers)
-      PublicDemoEmployeeStageItem(
-        name: engineer.name,
-        status: _employeeStageStatus(engineer),
-      ),
-  ];
-
-  /// The summary uses explanatory wording instead of repeating the compact
-  /// KPI/action-card labels verbatim. The source remains the same existing
-  /// workflow stage; this is only a HOME-specific presentation translation.
-  String _employeeStageStatus(PublicDemoEngineerSales engineer) =>
-      switch (engineer.stage) {
-        PublicDemoSalesStage.waiting => '営業準備前',
-        PublicDemoSalesStage.skillSheet => 'SkillSheet確認中',
-        PublicDemoSalesStage.selling => '営業中',
-        PublicDemoSalesStage.introduced => '案件紹介済',
-        PublicDemoSalesStage.partnerInterviewPassed => '上位面談通過',
-        PublicDemoSalesStage.partnerInterviewFailed => '再営業が必要',
-        PublicDemoSalesStage.clientInterviewPassed => '客先面談通過',
-        PublicDemoSalesStage.clientInterviewFailed => '再営業が必要',
-        PublicDemoSalesStage.ordered => '翌月参画予定',
-      };
-
   /// Important Events only surfaces an already-recorded month-close fact.
   /// It does not nominate a gameplay action: its CTA simply reveals the
   /// authoritative detailed cash-flow card that this screen already owns.
@@ -249,26 +221,23 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
     ];
   }
 
-  /// The finance summary is a display of values the existing finance and
-  /// payroll authorities already produced. The latest close owns the
-  /// historical payroll/fixed-cost figures; before the first close, the
-  /// established baseline constants are the only figures available.
+  /// The finance summary is a display of values the existing payroll
+  /// authority already produced. The latest close owns the historical
+  /// payroll/fixed-cost figures; before the first close, the established
+  /// baseline constants are the only figures available.
+  ///
+  /// HOME UI Phase 1: this used to also carry cash/revenue/next-month
+  /// estimate and a financial-status warning, all of which duplicated the
+  /// compact KPI (cash/revenue/入金予定) and the cash-shortage/bankruptcy
+  /// cards already shown above HOME. Trimmed to the two figures the KPI does
+  /// not carry — payroll and fixed costs — so this card states new
+  /// information instead of restating the KPI in a second vocabulary.
   PublicDemoFinanceSummaryModel get _financeSummary {
     final latest = s.latestMonthlyCashFlow;
-    final warning = switch (s.financialStatus) {
-      PublicDemoFinancialStatus.cashShortage => '資金不足です。必要な対応を確認してください。',
-      PublicDemoFinancialStatus.bankruptcy ||
-      PublicDemoFinancialStatus.marchCashShortageFailure => '資金繰りの結果を確認してください。',
-      PublicDemoFinancialStatus.normal => null,
-    };
     return PublicDemoFinanceSummaryModel(
-      cash: s.cash,
-      revenue: _homeDashboardData.revenue,
       payroll: latest?.salaryPaid ?? PublicDemoSalary.initialTotalMonthlySalary,
       fixedCosts:
           latest?.fixedCostsPaid ?? PublicDemoSalary.otherMonthlyFixedCost,
-      nextMonthEstimate: s.pendingRevenue,
-      warning: warning,
     );
   }
 
@@ -2207,13 +2176,15 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
                           navigatorAdvice: navigatorAdvice,
                         ),
                         const SizedBox(height: 8),
-                        _publicDemoTestControlsCard(),
-                        const SizedBox(height: 8),
+                        // HOME UI Phase 1: the Office Stage is now HOME's
+                        // only employee summary. `PublicDemoEmployeeStageSection`
+                        // ("社員ステージ") used to render immediately below it,
+                        // repeating the same names with a differently-worded
+                        // status line; it added no action and no fact the
+                        // Office Stage plus the per-employee cards further
+                        // down did not already carry, so it is deleted
+                        // rather than kept as a second summary.
                         HomeOfficeStageSection(display: _officeStageDisplay),
-                        const SizedBox(height: 8),
-                        PublicDemoEmployeeStageSection(
-                          employees: _employeeStageItems,
-                        ),
                         const SizedBox(height: 8),
                         PublicDemoImportantEventsSection(
                           events: _importantEvents,
@@ -2394,6 +2365,14 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
                               engineerId: runtime.engineerId,
                               engineerName: _engineerName(runtime.engineerId),
                             ),
+                        // HOME UI Phase 1: the QA-only restart control moved
+                        // from directly under HOME (where it competed with
+                        // the month's real KPI/action for first-view space)
+                        // to the very end of the screen. It is still always
+                        // reachable by scrolling — this is a reorder, not a
+                        // removal.
+                        const SizedBox(height: 8),
+                        _publicDemoTestControlsCard(),
                       ],
                     ),
                   ],

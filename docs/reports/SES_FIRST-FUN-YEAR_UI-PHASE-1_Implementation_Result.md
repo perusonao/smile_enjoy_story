@@ -23,7 +23,8 @@ this `origin/main` tip, so nothing was discarded).
 
 ## FINAL HEAD SHA
 
-See **commit SHA** below (filled in after commit/push).
+`8b55e18b133fcae8a0071956ebbbb6bc39b187ea` (this report's own commit —
+see **commit SHA** below).
 
 ## 事前調査で確認した「現在mainの状態」
 
@@ -260,7 +261,8 @@ regressionは無い。**
 
 ## commit SHA
 
-[COMMIT SHA PLACEHOLDER — 本ファイルをコミットした直後に更新]
+`8b55e18b133fcae8a0071956ebbbb6bc39b187ea` on branch
+`claude/ses-first-fun-year-ui-phase-1-vx9110`.
 
 ## PR / Merge Readiness
 

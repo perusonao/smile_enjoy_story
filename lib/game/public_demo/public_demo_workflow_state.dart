@@ -644,6 +644,75 @@ class PublicDemoWorkflowState {
     return _withAssignments(nextAssignments);
   }
 
+  /// The single domain-owned way to commit a late-year (internal month
+  /// 7–14) Recovery order for one economically-waiting engineer back into
+  /// [assignments] (RECOVERY-LOOP-1).
+  ///
+  /// Unlike [assignOrderedForMay], which rebuilds the ENTIRE roster from
+  /// this workflow's own facts every May, this is an employee-specific
+  /// APPEND/UPSERT: every assignment already on [assignments] for a
+  /// different `engineerId` is carried forward completely untouched, in
+  /// place. Reusing [assignOrderedForMay]'s wholesale-rebuild approach here
+  /// would risk losing a continuation/replacement assignment already
+  /// committed for another engineer earlier in the fiscal year (Final
+  /// Spec's CRITICAL ASSIGNMENT REQUIREMENT) — this method never calls
+  /// [assignOrderedForMay] and never replaces [assignments] wholesale.
+  ///
+  /// Defense in depth, mirroring [assignOrderedForMay]: a no-op unless
+  /// [engineerId] genuinely reached [PublicDemoSalesStage.ordered] through
+  /// the real sales pipeline
+  /// ([PublicDemoEngineerSales.hasGenuineInterviewRecord], never `stage`/
+  /// `lastInterviewScore` alone) and is not already counted assigned for
+  /// [month] — [PublicDemoAggregate.recoverAssignment] is responsible for
+  /// this workflow's remaining Final Spec eligibility checks (month
+  /// window, non-terminal, training-unselected, runtime-ready) via
+  /// [PublicDemoRecoveryEligibility] before calling this.
+  ///
+  /// `nextOrderStatus`/`replacementStage` are always set explicitly here
+  /// (`accepted`/`ordered`) rather than left to [PublicDemoAssignment]'s
+  /// own constructor defaults, per Final Spec. When [engineerId] already
+  /// has an assignment entry (e.g. a May-era founding-engineer template it
+  /// never actually used), that existing entry's identity/project/economic
+  /// fields are preserved and only its order-state fields are updated —
+  /// this is the UPSERT half; a brand new entry is APPENDED only when none
+  /// exists yet.
+  PublicDemoWorkflowState recoverLateYearAssignment(
+    String engineerId, {
+    required int month,
+  }) {
+    final engineer = engineers
+        .where((candidate) => candidate.id == engineerId)
+        .firstOrNull;
+    if (engineer == null ||
+        engineer.stage != PublicDemoSalesStage.ordered ||
+        !engineer.hasGenuineInterviewRecord ||
+        assignedEngineerIds(month: month).contains(engineerId)) {
+      return this;
+    }
+    final existing = assignments
+        .where((assignment) => assignment.engineerId == engineerId)
+        .firstOrNull;
+    final recovered =
+        (existing ??
+                publicDemoInitialAssignments
+                    .where((assignment) => assignment.engineerId == engineerId)
+                    .firstOrNull ??
+                PublicDemoAssignment.forOrderedEngineer(
+                  engineerId: engineer.id,
+                  engineerName: engineer.name,
+                  humanity: engineer.interviewProfile.humanity,
+                ))
+            .copyWith(
+              nextOrderStatus: PublicDemoNextOrderStatus.accepted,
+              replacementStage: PublicDemoReplacementStage.ordered,
+            );
+    return _withAssignments([
+      for (final assignment in assignments)
+        if (assignment.engineerId == engineerId) recovered else assignment,
+      if (existing == null) recovered,
+    ]);
+  }
+
   // ---------------------------------------------------------------------
   // Cross-cutting projections consumed by monthly close / Growth / Revenue
   // ---------------------------------------------------------------------

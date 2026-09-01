@@ -512,6 +512,20 @@ export async function decideNoSummerBonus(page: Page): Promise<void> {
   await waitForStableFrame(page);
 }
 
+/** Decides the July summer bonus as one month (`1か月`) and leaves the
+ * month ready to close. Recovery's cash-shortage acceptance scenario uses
+ * this real UI choice to reach its target financial state earlier, before
+ * long-run Flutter Web accessibility-tree navigation becomes unstable. */
+export async function decideOneMonthSummerBonus(page: Page): Promise<void> {
+  await clickButton(page, '夏季賞与を決める', true);
+  const dialog = page.getByRole('alertdialog');
+  await expect(dialog).toBeVisible({ timeout: 15_000 });
+  const oneMonth = dialog.getByRole('button', { name: /^1か月/ });
+  await expect(oneMonth).toBeEnabled();
+  await oneMonth.click();
+  await waitForStableFrame(page);
+}
+
 /** Reads whether the bankruptcy/March-cash-shortage terminal card
  * (`Key('public-demo-bankruptcy-card')`) is present, without asserting
  * either way — callers decide what a terminal state should mean for their

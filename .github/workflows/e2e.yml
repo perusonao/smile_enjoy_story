@@ -139,6 +139,11 @@ on:
         description: "Comma-separated seed list for founding-first-assignment.spec.ts (default: fast 3-seed sample; use the 10-seed set for a full validation pass)"
         required: false
         default: ""
+      recovery_acceptance:
+        description: "Run only the two CRITICAL Recovery cashShortage acceptance cases (360px and 390px)"
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -251,12 +256,18 @@ jobs:
       - name: Run Playwright E2E (mobile-chromium)
         env:
           SES_E2E_SEEDS: ${{ github.event.inputs.seeds }}
+          SES_RECOVERY_ACCEPTANCE: ${{ inputs.recovery_acceptance }}
           CI: "true"
           # Always keep video, not just on failure — playwright.config.ts's
           # default is retain-on-failure, so a passing run otherwise leaves
           # no recording to review.
           SES_E2E_VIDEO: "on"
-        run: npx playwright test --project=mobile-chromium
+        run: |
+          if [[ "$SES_RECOVERY_ACCEPTANCE" == "true" ]]; then
+            npx playwright test tests/public-demo-recovery.spec.ts --grep "CRITICAL ACCEPTANCE GATE" --project=mobile-chromium
+          else
+            npx playwright test --project=mobile-chromium
+          fi
 
       - name: Upload ses-playwright-results (mobile-chromium)
         if: always()
@@ -304,9 +315,15 @@ jobs:
       - name: Run Playwright E2E (mobile-webkit)
         env:
           SES_E2E_SEEDS: ${{ github.event.inputs.seeds }}
+          SES_RECOVERY_ACCEPTANCE: ${{ inputs.recovery_acceptance }}
           CI: "true"
           SES_E2E_VIDEO: "on"
-        run: npx playwright test --project=mobile-webkit
+        run: |
+          if [[ "$SES_RECOVERY_ACCEPTANCE" == "true" ]]; then
+            npx playwright test tests/public-demo-recovery.spec.ts --grep "CRITICAL ACCEPTANCE GATE" --project=mobile-webkit
+          else
+            npx playwright test --project=mobile-webkit
+          fi
 
       - name: Upload ses-playwright-results (mobile-webkit)
         if: always()

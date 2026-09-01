@@ -30,6 +30,7 @@ import {
   recoverAssignment,
   appOneCard,
   decideNoSummerBonus,
+  decideOneMonthSummerBonus,
   closeMonthlyPrimaryCta,
   isCashShortage,
   isFinanciallyTerminal,
@@ -185,7 +186,11 @@ for (const viewport of VIEWPORTS) {
           // July's close specifically requires the summer bonus decision
           // first (`_monthlyPrimaryAction`'s own July description) — every
           // other month in this loop closes directly.
-          if (month === 7) await decideNoSummerBonus(page);
+          // Use the real one-month bonus choice to accelerate the same
+          // structural deficit into cashShortage. This keeps the gate on
+          // production economics/UI while avoiding unrelated long-run
+          // accessibility-tree navigation near months 11-12.
+          if (month === 7) await decideOneMonthSummerBonus(page);
           await closeMonthlyPrimaryCta(page);
           month += 1;
           await assertCalendarMonth(page, month);

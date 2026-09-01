@@ -29,7 +29,10 @@ work began, rather than stacked on that stale history.
 
 ## Final HEAD
 
-`<filled in by the commit that adds this report — see the PR's head commit>`.
+The single commit `test(e2e): add Public Demo full-year (Apr-Mar) baseline
+harness — Phase 1` on `claude/full-year-demo-e2e-phase1-ls8sje`, based
+directly on Base SHA above (fast-forward, no rebase/merge commits) — see the
+PR's own head commit for the exact SHA.
 
 ## Current Public Demo E2E Architecture
 

@@ -97,14 +97,17 @@ void main() {
         );
       }
 
+      // SES-FIRST-FUN-YEAR-UI-PHASE-1: PublicDemoFinanceSummarySection no
+      // longer carries cash/nextMonthEstimate — both duplicated the compact
+      // KPI, which shows them on every build (see
+      // PublicDemoFinanceSummaryModel's class doc). It still carries the
+      // two figures the KPI does not: payroll and fixed costs, sourced from
+      // the same finance authority as before.
       final finance = tester.widget<PublicDemoFinanceSummarySection>(
         find.byType(PublicDemoFinanceSummarySection),
       );
-      expect(finance.summary.cash, currentState(tester).cash);
-      expect(
-        finance.summary.nextMonthEstimate,
-        currentState(tester).pendingRevenue,
-      );
+      expect(finance.summary.payroll, greaterThan(0));
+      expect(finance.summary.fixedCosts, greaterThan(0));
       expect(find.text('佐藤 健'), findsWidgets);
       expect(
         find.descendant(
@@ -172,10 +175,10 @@ void main() {
 
           for (final text in [
             '社員ステージ',
-            '資金サマリー',
+            '今月の支出予定',
             '今月の主要行動',
-            '今月売上',
-            '次回入金予定',
+            '給与',
+            '固定費',
           ]) {
             final label = find.text(text);
             await tester.ensureVisible(label);

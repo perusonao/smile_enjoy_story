@@ -253,22 +253,20 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
   /// payroll authorities already produced. The latest close owns the
   /// historical payroll/fixed-cost figures; before the first close, the
   /// established baseline constants are the only figures available.
+  ///
+  /// SES-FIRST-FUN-YEAR-UI-PHASE-1: this used to also carry cash, revenue,
+  /// pendingRevenue, and a shortage/bankruptcy `warning` string — all three
+  /// figures already render every build in the compact KPI
+  /// (`PublicDemoHomeDashboardSection` -> `KpiSection.compact`), and the
+  /// warning duplicated `PublicDemoCashShortageCard`/the bankruptcy
+  /// terminal card, both composed above this section. Trimmed to
+  /// payroll/fixedCosts, the two figures the KPI does not carry.
   PublicDemoFinanceSummaryModel get _financeSummary {
     final latest = s.latestMonthlyCashFlow;
-    final warning = switch (s.financialStatus) {
-      PublicDemoFinancialStatus.cashShortage => '資金不足です。必要な対応を確認してください。',
-      PublicDemoFinancialStatus.bankruptcy ||
-      PublicDemoFinancialStatus.marchCashShortageFailure => '資金繰りの結果を確認してください。',
-      PublicDemoFinancialStatus.normal => null,
-    };
     return PublicDemoFinanceSummaryModel(
-      cash: s.cash,
-      revenue: _homeDashboardData.revenue,
       payroll: latest?.salaryPaid ?? PublicDemoSalary.initialTotalMonthlySalary,
       fixedCosts:
           latest?.fixedCostsPaid ?? PublicDemoSalary.otherMonthlyFixedCost,
-      nextMonthEstimate: s.pendingRevenue,
-      warning: warning,
     );
   }
 
@@ -2293,9 +2291,10 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
                             '7月開始結果',
                             style: Theme.of(c).textTheme.titleLarge,
                           ),
-                          Text(
-                            '参画 ${s.engineersAssigned}名 / 待機 ${s.engineersWaiting}名',
-                          ),
+                          // SES-FIRST-FUN-YEAR-UI-PHASE-1: the 参画/待機
+                          // headcount line that used to render here is
+                          // removed — it duplicated the always-visible
+                          // compact KPI's 参画/待機 tiles verbatim.
                           for (final a in workflow.assignments)
                             ListTile(
                               title: Text(a.engineerName),

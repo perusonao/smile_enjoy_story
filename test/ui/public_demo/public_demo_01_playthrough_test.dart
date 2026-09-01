@@ -76,13 +76,32 @@ void main() {
       findsNothing,
     );
     expect(find.text('求人媒体を選ぶ'), findsNothing);
+    // SES-FIRST-FUN-YEAR-UI-PHASE-1: the July recap's own
+    // "参画 X名 / 待機 Y名" line was removed as a duplicate of the always-
+    // visible compact KPI's 参画/待機 tiles, which already carry this exact
+    // fact on every build (see public_demo_01_placeholder_screen.dart's
+    // July-block comment). Assert the fact through its one remaining home,
+    // the KPI tile, rather than a line that no longer exists.
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('home-kpi-compact-assigned')),
+        matching: find.text('0名'),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('home-kpi-compact-waiting')),
+        matching: find.text('2名'),
+      ),
+      findsOneWidget,
+    );
     await tester.scrollUntilVisible(
-      find.textContaining('参画 0名 / 待機 2名'),
+      find.text('7月開始結果'),
       300,
       scrollable: find.byType(Scrollable).first,
     );
     expect(find.text('7月開始結果'), findsOneWidget);
-    expect(find.textContaining('参画 0名 / 待機 2名'), findsOneWidget);
     expect(find.text('夏季賞与'), findsOneWidget);
 
     // The default domain plan is none, but July still explicitly asks the

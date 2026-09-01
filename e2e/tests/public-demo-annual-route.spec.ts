@@ -33,11 +33,17 @@ import {
   assertCalendarMonth,
   snapshot,
   sellFoundingEngineerInApril,
+  hireAndRunAppOnePreEntryPipeline,
+  confirmSatoJulyContinuationOnly,
+  runWaitingEngineerSalesPipelineToOrdered,
+  recoverAssignment,
+  appOneCard,
   confirmJulyContinuation,
   decideNoSummerBonus,
   closeMonthlyPrimaryCta,
   readCashSummaryLine,
   isFinanciallyTerminal,
+  scrollToText,
 } from '../helpers/public-demo-player';
 
 const VIEWPORTS = [
@@ -101,7 +107,7 @@ for (const viewport of VIEWPORTS) {
     test(`April-March: the current annual route traverses every month to the fiscal year's terminal close (${viewport.label})`, async ({
       page,
     }) => {
-      test.setTimeout(180_000);
+      test.setTimeout(240_000);
       const errors = watchForErrors(page);
 
       await test.step('April: open and sell eng-01', async () => {
@@ -173,6 +179,122 @@ for (const viewport of VIEWPORTS) {
       );
       expect(finalSnap, 'the reset control must remain available after the terminal close').toContain(
         '4月からやり直す',
+      );
+
+      expect(errors.pageErrors, 'uncaught page errors').toEqual([]);
+      expect(errors.crashed, 'Public Demo page crashed').toBe(false);
+      expect(errors.consoleErrors, 'unallowlisted console.error').toEqual([]);
+    });
+
+    // RECOVERY-LOOP-1 — Gameplay Complete Route B.
+    //
+    // The test above (Route A) is this file's own CURRENT BEHAVIOR baseline:
+    // one billable founding engineer's revenue can never cover two founding
+    // salaries + fixed costs, so even the smallest legitimate route reaches
+    // BANKRUPTCY at March's close. Route B below starts from that exact same
+    // early poor outcome (eng-02 permanently field-sales-locked — see
+    // public_demo_01_suzuki_sales_lock_test.dart) and proves the Late-Year
+    // Recovery Loop, once used, changes the fiscal year's outcome: hiring
+    // app-01 in May but deliberately leaving them economically waiting
+    // through June (an early setback — the July continuation this playthrough
+    // is missing a second billable engineer to spread costs over is real, not
+    // staged), then Recovering them in July, survives every ordinary month
+    // through March WITHOUT bankruptcy — the same fiscal year that, without
+    // that one Recovery decision, is Route A's bankruptcy above. Training is
+    // deliberately never touched in this route (RECOVERY-LOOP-1's own
+    // instruction: "TrainingをRoute Bに混ぜない") — every month's action here
+    // is either a sales-pipeline step or a monthly close, nothing else.
+    test(`Route B — Gameplay Complete: an early poor outcome (only eng-01 sellable) is turned into a solvent fiscal-year completion by Recovering app-01 in July (${viewport.label})`, async ({
+      page,
+    }) => {
+      test.setTimeout(240_000);
+      const errors = watchForErrors(page);
+
+      await test.step('April: the same early poor outcome as Route A — only eng-01 is sellable', async () => {
+        await openPublicDemo(page);
+        await assertFreshStartInvariants(page);
+        await assertCalendarMonth(page, 4);
+        await sellFoundingEngineerInApril(page);
+      });
+
+      await test.step('April -> May', async () => {
+        await closeMonthlyPrimaryCta(page);
+        await assertCalendarMonth(page, 5);
+      });
+
+      await test.step('May: hire app-01 through the full pre-entry sales pipeline — not yet a fix, just this fiscal year\'s second hire', async () => {
+        await hireAndRunAppOnePreEntryPipeline(page);
+      });
+
+      await test.step('May -> June', async () => {
+        await closeMonthlyPrimaryCta(page);
+        await assertCalendarMonth(page, 6);
+      });
+
+      await test.step('June: confirm eng-01\'s July continuation; leave app-01\'s own May-era assignment undecided, so they stay economically waiting entering July', async () => {
+        await confirmSatoJulyContinuationOnly(page);
+      });
+
+      await test.step('June -> July', async () => {
+        await closeMonthlyPrimaryCta(page);
+        await assertCalendarMonth(page, 7);
+      });
+
+      await test.step('July: the Recovery decision — app-01 redoes the sales pipeline and is Recovered into an assignment', async () => {
+        const snap = await snapshot(page);
+        expect(snap, 'app-01 must still be waiting entering July').toContain('待機');
+        await runWaitingEngineerSalesPipelineToOrdered(page, appOneCard(page));
+        await recoverAssignment(page);
+        const afterSnap = await snapshot(page);
+        expect(afterSnap, 'both eng-01 and app-01 are now assigned').toContain('参画 2名');
+      });
+
+      await test.step('July: decide no summer bonus', async () => {
+        await decideNoSummerBonus(page);
+      });
+
+      await test.step('July -> August', async () => {
+        await closeMonthlyPrimaryCta(page);
+        await assertCalendarMonth(page, 8);
+      });
+
+      // August through February close identically, exactly like Route A's
+      // own loop — no Recovery/training action recurs; this is purely
+      // whether the ONE July decision above is enough to hold for the rest
+      // of the fiscal year.
+      const ordinaryMonths = [9, 10, 11, 12, 1, 2, 3];
+      for (const calendarMonth of ordinaryMonths) {
+        await test.step(`-> ${calendarMonth}月`, async () => {
+          await closeMonthlyPrimaryCta(page);
+          await assertCalendarMonth(page, calendarMonth);
+        });
+      }
+
+      const beforeMarchClose = await readCashSummaryLine(page);
+
+      await test.step('March: close the fiscal year', async () => {
+        await closeMonthlyPrimaryCta(page);
+      });
+
+      // THE PROOF: the same early poor outcome Route A cannot recover from
+      // reaches March WITHOUT bankruptcy once Recovery is used — one real
+      // decision in July changes the fiscal year's outcome, not the
+      // underlying economics themselves (Finance production code is
+      // untouched; see e2e helper additions' own doc comments).
+      const terminal = await isFinanciallyTerminal(page);
+      expect(
+        terminal,
+        `Route B must NOT reach the terminal close Route A does (cash before March close: ${beforeMarchClose})`,
+      ).toBe(false);
+
+      // `scrollToText` (not a bare `snapshot()`): the fiscal-year-complete
+      // card can render below whatever Flutter Web's accessibility tree
+      // currently has built right after a close — the same reachability
+      // fact `findMonthlyPrimaryCta`/`readCompactKpiValue` already account
+      // for, not a sign the card is actually missing.
+      const finalSnap = await scrollToText(page, '第1期終了');
+      expect(finalSnap, 'no bankruptcy card once Recovery has been used').not.toContain(
+        '倒産',
       );
 
       expect(errors.pageErrors, 'uncaught page errors').toEqual([]);

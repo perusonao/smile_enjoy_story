@@ -34,22 +34,22 @@ class PublicDemoImportantEventItem {
 }
 
 /// Finance values already calculated by the finance/state authority.
+///
+/// SES-FIRST-FUN-YEAR-UI-PHASE-1: this model used to also carry `cash`,
+/// `revenue`, `nextMonthEstimate`, and a `warning` banner, all of which
+/// duplicated figures the compact KPI (`KpiSection.compact`,
+/// `PublicDemoHomeDashboardSection`) already shows on every build, and a
+/// warning already shown above HOME by `PublicDemoCashShortageCard` /
+/// the bankruptcy terminal card. Trimmed to the two figures the KPI does
+/// not carry — this section's remaining, non-duplicate reason to exist.
 class PublicDemoFinanceSummaryModel {
   const PublicDemoFinanceSummaryModel({
-    required this.cash,
-    required this.revenue,
     required this.payroll,
     required this.fixedCosts,
-    required this.nextMonthEstimate,
-    this.warning,
   });
 
-  final int cash;
-  final int revenue;
   final int payroll;
   final int fixedCosts;
-  final int nextMonthEstimate;
-  final String? warning;
 }
 
 /// The already-resolved primary action for this month.
@@ -72,42 +72,65 @@ class PublicDemoEmployeeStageSection extends StatelessWidget {
 
   final List<PublicDemoEmployeeStageItem> employees;
 
+  /// SES-FIRST-FUN-YEAR-UI-PHASE-1: this HOME summary used to render every
+  /// employee unconditionally, so the card's height grew without bound as
+  /// the roster grew across the fiscal year — the "大型employee card" the
+  /// First Fun Year UI review named as HOME bloat. Capped at the same
+  /// overflow idiom the Office Stage above it already uses ("+N名"), so the
+  /// card stays a bounded summary rather than a second full roster list;
+  /// the always-reachable per-employee cards further down the screen are
+  /// still where every individual employee's detail and actions live.
+  static const int _maxVisible = 4;
+
   @override
-  Widget build(BuildContext context) => _HomeSectionCard(
-    title: '社員ステージ',
-    child: employees.isEmpty
-        ? const Text('表示できる社員はいません')
-        : Column(
-            children: [
-              for (final employee in employees)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 8),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          const Icon(Icons.person_outline, size: 20),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Text(
-                              employee.name,
-                              overflow: TextOverflow.ellipsis,
+  Widget build(BuildContext context) {
+    final visible = employees.take(_maxVisible).toList(growable: false);
+    final hidden = employees.length - visible.length;
+    return _HomeSectionCard(
+      title: '社員ステージ',
+      child: employees.isEmpty
+          ? const Text('表示できる社員はいません')
+          : Column(
+              children: [
+                for (final employee in visible)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            const Icon(Icons.person_outline, size: 20),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                employee.name,
+                                overflow: TextOverflow.ellipsis,
+                              ),
                             ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 3),
-                      Padding(
-                        padding: const EdgeInsets.only(left: 28),
-                        child: _StatusChip(label: employee.status),
-                      ),
-                    ],
+                          ],
+                        ),
+                        const SizedBox(height: 3),
+                        Padding(
+                          padding: const EdgeInsets.only(left: 28),
+                          child: _StatusChip(label: employee.status),
+                        ),
+                      ],
+                    ),
                   ),
-                ),
-            ],
-          ),
-  );
+                if (hidden > 0)
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      '他$hidden名',
+                      key: const Key('public-demo-employee-stage-more'),
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  ),
+              ],
+            ),
+    );
+  }
 }
 
 class PublicDemoImportantEventsSection extends StatelessWidget {
@@ -149,35 +172,12 @@ class PublicDemoFinanceSummarySection extends StatelessWidget {
   @override
   Widget build(BuildContext context) => _HomeSectionCard(
     cardKey: const Key('public-demo-finance-summary'),
-    title: '資金サマリー',
+    title: '今月の支出予定',
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        if (summary.warning != null) ...[
-          Semantics(
-            label: '資金警告: ${summary.warning}',
-            child: Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: Colors.red.shade50,
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Text(
-                summary.warning!,
-                style: TextStyle(color: Colors.red.shade900),
-              ),
-            ),
-          ),
-          const SizedBox(height: 10),
-        ],
-        const Text('直近の支出予定', style: TextStyle(fontWeight: FontWeight.w600)),
-        _FinanceRow('給与', summary.payroll, emphasis: true, expense: true),
-        _FinanceRow('固定費', summary.fixedCosts, emphasis: true, expense: true),
-        const Divider(height: 18),
-        _FinanceRow('現金残高', summary.cash, subdued: true),
-        _FinanceRow('今月売上', summary.revenue, subdued: true),
-        _FinanceRow('次回入金予定', summary.nextMonthEstimate, subdued: true),
+        _FinanceRow('給与', summary.payroll),
+        _FinanceRow('固定費', summary.fixedCosts),
       ],
     ),
   );
@@ -251,19 +251,16 @@ class _ImportantEventCard extends StatelessWidget {
   }
 }
 
+/// One "支出" (expense) line: a bold label and its bold, negatively-signed
+/// yen amount. Both remaining callers (給与, 固定費) are expense rows, so
+/// SES-FIRST-FUN-YEAR-UI-PHASE-1 dropped the `emphasis`/`expense`/`subdued`
+/// flags this used to take — they only ever varied between the deleted
+/// cash/revenue/nextMonthEstimate rows, never between these two.
 class _FinanceRow extends StatelessWidget {
-  const _FinanceRow(
-    this.label,
-    this.amount, {
-    this.emphasis = false,
-    this.expense = false,
-    this.subdued = false,
-  });
+  const _FinanceRow(this.label, this.amount);
+
   final String label;
   final int amount;
-  final bool emphasis;
-  final bool expense;
-  final bool subdued;
 
   @override
   Widget build(BuildContext context) => Padding(
@@ -271,26 +268,14 @@ class _FinanceRow extends StatelessWidget {
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          label,
-          style: TextStyle(
-            fontWeight: emphasis ? FontWeight.bold : FontWeight.normal,
-            color: subdued
-                ? Theme.of(context).colorScheme.onSurfaceVariant
-                : null,
-          ),
-        ),
+        Text(label, style: const TextStyle(fontWeight: FontWeight.bold)),
         Align(
           alignment: Alignment.centerRight,
           child: Text(
-            '${expense ? '-' : ''}${formatYen(amount)}',
-            style: TextStyle(
+            '-${formatYen(amount)}',
+            style: const TextStyle(
               fontWeight: FontWeight.w600,
-              color: emphasis
-                  ? SesTheme.primaryBlue
-                  : subdued
-                  ? Theme.of(context).colorScheme.onSurfaceVariant
-                  : null,
+              color: SesTheme.primaryBlue,
             ),
           ),
         ),

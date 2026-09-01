@@ -175,11 +175,17 @@ void main() {
       scrollable: find.byType(Scrollable).first,
     );
     expect(find.text('7月開始結果'), findsOneWidget);
-    await tester.scrollUntilVisible(
-      find.textContaining('参画 1名'),
-      300,
-      scrollable: find.byType(Scrollable).first,
+    // SES-FIRST-FUN-YEAR-UI-PHASE-1: the July recap's own
+    // "参画 X名 / 待機 Y名" line was removed as a duplicate of the always-
+    // visible compact KPI's 参画 tile, which already carries this exact
+    // fact on every build (see the KPI-tile assertion above, and
+    // public_demo_01_placeholder_screen.dart's July-block comment).
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('home-kpi-compact-assigned')),
+        matching: find.text('1名'),
+      ),
+      findsOneWidget,
     );
-    expect(find.textContaining('参画 1名'), findsOneWidget);
   });
 }

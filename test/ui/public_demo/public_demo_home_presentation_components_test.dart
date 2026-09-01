@@ -90,33 +90,57 @@ void main() {
     },
   );
 
+  testWidgets('finance summary renders large numeric values', (tester) async {
+    await tester.pumpWidget(
+      host(
+        const PublicDemoFinanceSummarySection(
+          summary: PublicDemoFinanceSummaryModel(
+            payroll: 123456789,
+            fixedCosts: 50000000,
+          ),
+        ),
+      ),
+    );
+    expect(find.text('今月の支出予定'), findsOneWidget);
+    expect(find.text('-¥123,456,789'), findsOneWidget);
+    expect(find.text('-¥50,000,000'), findsOneWidget);
+    // SES-FIRST-FUN-YEAR-UI-PHASE-1: cash/revenue/nextMonthEstimate and the
+    // warning banner are gone from this section — they duplicated the
+    // compact KPI and the shortage/bankruptcy cards composed above HOME.
+    // See PublicDemoFinanceSummaryModel's class doc.
+    expect(find.text('現金残高'), findsNothing);
+    expect(find.text('今月売上'), findsNothing);
+    expect(find.text('次回入金予定'), findsNothing);
+    expect(find.byWidgetPredicate((widget) => widget is Semantics && widget.properties.label?.startsWith('資金警告') == true), findsNothing);
+  });
+
   testWidgets(
-    'finance summary renders normal, warning, and large numeric values',
+    'employee stage caps the visible roster and summarizes the rest, '
+    'matching the Office Stage overflow idiom',
     (tester) async {
       await tester.pumpWidget(
         host(
-          const PublicDemoFinanceSummarySection(
-            summary: PublicDemoFinanceSummaryModel(
-              cash: 1234567890,
-              revenue: 987654321,
-              payroll: 123456789,
-              fixedCosts: 50000000,
-              nextMonthEstimate: 765432100,
-              warning: '資金繰りに注意が必要です。',
-            ),
+          const PublicDemoEmployeeStageSection(
+            employees: [
+              PublicDemoEmployeeStageItem(name: '社員A', status: '営業中'),
+              PublicDemoEmployeeStageItem(name: '社員B', status: '営業中'),
+              PublicDemoEmployeeStageItem(name: '社員C', status: '営業中'),
+              PublicDemoEmployeeStageItem(name: '社員D', status: '営業中'),
+              PublicDemoEmployeeStageItem(name: '社員E', status: '営業中'),
+              PublicDemoEmployeeStageItem(name: '社員F', status: '営業中'),
+            ],
           ),
         ),
       );
-      expect(find.text('¥1,234,567,890'), findsOneWidget);
-      expect(find.text('-¥123,456,789'), findsOneWidget);
+      expect(find.text('社員A'), findsOneWidget);
+      expect(find.text('社員D'), findsOneWidget);
+      expect(find.text('社員E'), findsNothing);
+      expect(find.text('社員F'), findsNothing);
       expect(
-        find.byWidgetPredicate(
-          (widget) =>
-              widget is Semantics &&
-              widget.properties.label == '資金警告: 資金繰りに注意が必要です。',
-        ),
+        find.byKey(const Key('public-demo-employee-stage-more')),
         findsOneWidget,
       );
+      expect(find.text('他2名'), findsOneWidget);
     },
   );
 
@@ -196,11 +220,8 @@ void main() {
                 ),
                 const PublicDemoFinanceSummarySection(
                   summary: PublicDemoFinanceSummaryModel(
-                    cash: 10000000,
-                    revenue: 900000,
                     payroll: 600000,
                     fixedCosts: 50000,
-                    nextMonthEstimate: 400000,
                   ),
                 ),
                 const PublicDemoMonthlyPrimaryCtaSection(

@@ -46,16 +46,27 @@ void main() {
   );
 
   testWidgets(
-    'important events hides its empty state, renders populated events, and calls CTA once',
+    // SES-ISSUE-124 P1 fix: the empty state used to be an invisible,
+    // zero-footprint SizedBox — a real-device Screen Verification review
+    // found that satisfied only the layout-budget tests, not the actual
+    // "今月何が変わったか" question a player needs answered on screen. It
+    // is now a real, visible line of text (still no full card — see the
+    // widget's own doc comment for why).
+    'important events shows a visible "no changes yet" line when empty, '
+    'renders populated events, and calls CTA once',
     (tester) async {
       var calls = 0;
       await tester.pumpWidget(
         host(const PublicDemoImportantEventsSection(events: [])),
       );
-      expect(
-        find.byKey(const Key('public-demo-important-events-empty')),
-        findsOneWidget,
+      final emptyState = find.byKey(
+        const Key('public-demo-important-events-empty'),
       );
+      expect(emptyState, findsOneWidget);
+      // The empty state must be genuinely visible text a player can read,
+      // not merely present as an inert marker in the widget tree.
+      expect(tester.widget<Text>(emptyState).data, isNotEmpty);
+      expect(find.text('今月の変化：まだありません'), findsOneWidget);
       expect(find.byType(Card), findsNothing);
       final events = [
         PublicDemoImportantEventItem(

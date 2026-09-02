@@ -135,14 +135,30 @@ void main() {
         );
 
         // 6: what changed this month. April is turn one — nothing has
-        // closed yet, so the Important Events slot is correctly empty (see
-        // public_demo_01_home_presentation_components_test.dart for its
-        // populated-state coverage) — its zero-footprint empty marker
-        // still sits inside the same budget, so the slot itself never
-        // pushes a later month's real content out of the first view.
+        // closed yet, so the Important Events slot correctly has no real
+        // event to show (see
+        // public_demo_home_presentation_components_test.dart for its
+        // populated-state coverage). P1 fix: that "nothing yet" answer
+        // must itself be genuine, readable text a player sees — not just
+        // an invisible marker present in the tree — so this asserts the
+        // actual visible string, not merely the key.
+        final importantEventsEmpty = find.byKey(
+          const Key('public-demo-important-events-empty'),
+        );
         expectInFirstView(
-          find.byKey(const Key('public-demo-important-events-empty')),
+          importantEventsEmpty,
           '今月何が変わったか (Important Events slot, empty in April)',
+        );
+        expect(
+          find.text('今月の変化：まだありません'),
+          findsOneWidget,
+          reason: 'the empty-month answer must be real, visible text, not '
+              'an invisible marker',
+        );
+        expect(
+          tester.widget<Text>(importantEventsEmpty).data,
+          isNotEmpty,
+          reason: 'the empty-state widget itself must carry visible text',
         );
       },
     );

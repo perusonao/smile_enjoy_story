@@ -2339,13 +2339,13 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
                           recommendedAction: _recommendedActionSlot,
                           navigatorAdvice: navigatorAdvice,
                         ),
-                        const SizedBox(height: 8),
+                        const SizedBox(height: 2),
                         HomeOfficeStageSection(display: _officeStageDisplay),
-                        const SizedBox(height: 8),
+                        const SizedBox(height: 2),
                         PublicDemoEmployeeStageSection(
                           employees: _employeeStageItems,
                         ),
-                        const SizedBox(height: 8),
+                        const SizedBox(height: 2),
                         PublicDemoImportantEventsSection(
                           events: _importantEvents,
                         ),

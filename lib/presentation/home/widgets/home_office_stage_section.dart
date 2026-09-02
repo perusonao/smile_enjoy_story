@@ -21,34 +21,52 @@ class HomeOfficeStageMetrics {
   /// The scene (background + figures) height at each mode. Declared as
   /// plain constants so the component-height totals below stay
   /// compile-time constants too.
-  static const double compactSceneHeight = 108;
-  static const double normalSceneHeight = 120;
+  ///
+  /// SES-ISSUE-124 (Screen Verification follow-up): shrunk from the
+  /// original 108/120 so the "社員の様子" photo no longer spends most of
+  /// the initial portrait viewport it shares with the duplicate "社員ステ
+  /// ージ" list below it — the two are consolidated by PublicDemo01's own
+  /// compaction of that legacy card, not by anything in this file. Sized
+  /// to still clear each portrait + its name pill with margin (see the
+  /// per-mode figure-height math in the class doc history), never to the
+  /// safety ceiling.
+  static const double compactSceneHeight = 64;
+  static const double normalSceneHeight = 70;
 
   /// 360x800 — the smaller of the two required targets.
   static const HomeOfficeStageLayout compact = HomeOfficeStageLayout(
     sceneHeight: compactSceneHeight,
-    portraitSize: 54,
-    nameFontSize: 10,
-    horizontalGap: 8,
+    portraitSize: 28,
+    nameFontSize: 8,
+    horizontalGap: 6,
   );
 
   /// 390x844.
   static const HomeOfficeStageLayout normal = HomeOfficeStageLayout(
     sceneHeight: normalSceneHeight,
-    portraitSize: 62,
-    nameFontSize: 11,
-    horizontalGap: 10,
+    portraitSize: 32,
+    nameFontSize: 9,
+    horizontalGap: 8,
   );
 
   /// Height the card spends on everything that is not the scene itself:
   /// the title row plus the card's own vertical padding. Constant across
   /// both modes, so `component = scene + chrome` holds in both.
+  ///
+  /// SES-ISSUE-124: the padding/gap below is trimmed from the original
+  /// 10/8/10 alongside the scene shrink above — same reason, same budget.
   static const double chromeHeight =
       _cardPaddingTop + _titleRowHeight + _titleGap + _cardPaddingBottom;
 
-  static const double _cardPaddingTop = 10;
-  static const double _cardPaddingBottom = 10;
+  static const double _cardPaddingTop = 6;
+  static const double _cardPaddingBottom = 6;
   static const double _cardPaddingHorizontal = 12;
+  // Kept at the original 20/8 rather than shrunk further: this is a
+  // MINIMUM constraint on the title row (see the widget body below), not a
+  // fixed size, so lowering it below the title text's own intrinsic height
+  // would not save any real space — it would only make this formula
+  // under-count the actual rendered height, which is exactly what broke
+  // the layout-safety tests during SES-ISSUE-124's first pass at this.
   static const double _titleRowHeight = 20;
   static const double _titleGap = 8;
 
@@ -330,6 +348,15 @@ class _MemberFigure extends StatelessWidget {
           // The label is a single ellipsised line on a translucent pill: it
           // must never wrap into the portrait above it, and never widen the
           // figure past the portrait it belongs to.
+          //
+          // SES-ISSUE-124: the scene itself is now sized to the compacted
+          // HOME budget, not to the original design's generous 2x-scale
+          // margin — so this caption's own text-scale growth is capped
+          // rather than left unbounded. The name is never the only place
+          // it appears (the portrait itself, plus the always-present, fully
+          // scaling per-employee cards below), so a capped decorative
+          // caption over a photo does not cost legibility the way an
+          // uncapped body-text control would.
           DecoratedBox(
             decoration: BoxDecoration(
               color: Colors.black54,
@@ -348,6 +375,9 @@ class _MemberFigure extends StatelessWidget {
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 textAlign: TextAlign.center,
+                textScaler: MediaQuery.textScalerOf(
+                  context,
+                ).clamp(maxScaleFactor: 1.15),
               ),
             ),
           ),
@@ -419,6 +449,11 @@ class _MoreMembersChip extends StatelessWidget {
                     fontWeight: FontWeight.bold,
                   ),
                   maxLines: 1,
+                  // SES-ISSUE-124: same capped-caption reasoning as
+                  // _MemberFigure's own name label — see its doc comment.
+                  textScaler: MediaQuery.textScalerOf(
+                    context,
+                  ).clamp(maxScaleFactor: 1.15),
                 ),
               ),
             ),
@@ -433,6 +468,9 @@ class _MoreMembersChip extends StatelessWidget {
             ),
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
+            textScaler: MediaQuery.textScalerOf(
+              context,
+            ).clamp(maxScaleFactor: 1.15),
           ),
         ],
       ),

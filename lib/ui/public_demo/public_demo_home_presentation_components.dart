@@ -87,34 +87,35 @@ class PublicDemoEmployeeStageSection extends StatelessWidget {
     final visible = employees.take(_maxVisible).toList(growable: false);
     final hidden = employees.length - visible.length;
     return _HomeSectionCard(
+      cardKey: const Key('public-demo-employee-stage'),
       title: '社員ステージ',
+      dense: true,
       child: employees.isEmpty
           ? const Text('表示できる社員はいません')
           : Column(
               children: [
+                // SES-ISSUE-124 (Screen Verification follow-up): one row per
+                // employee instead of a name row plus an indented status
+                // row — this card used to duplicate the picture-based
+                // "社員の様子" summary directly above it at roughly twice
+                // the height a single "誰が・どんな状態か" line needs.
                 for (final employee in visible)
                   Padding(
-                    padding: const EdgeInsets.only(bottom: 8),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                    padding: const EdgeInsets.only(bottom: 2),
+                    child: Row(
                       children: [
-                        Row(
-                          children: [
-                            const Icon(Icons.person_outline, size: 20),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: Text(
-                                employee.name,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                          ],
+                        const Icon(Icons.person_outline, size: 16),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: Text(
+                            employee.name,
+                            overflow: TextOverflow.ellipsis,
+                            style: Theme.of(context).textTheme.bodyMedium
+                                ?.copyWith(fontSize: 13),
+                          ),
                         ),
-                        const SizedBox(height: 3),
-                        Padding(
-                          padding: const EdgeInsets.only(left: 28),
-                          child: _StatusChip(label: employee.status),
-                        ),
+                        const SizedBox(width: 6),
+                        _StatusChip(label: employee.status),
                       ],
                     ),
                   ),
@@ -309,17 +310,26 @@ class _HomeSectionCard extends StatelessWidget {
     required this.title,
     required this.child,
     this.accent = false,
+    this.dense = false,
   });
   final Key? cardKey;
   final String title;
   final Widget child;
   final bool accent;
 
+  /// SES-ISSUE-124 (Screen Verification follow-up): a tighter padding/gap
+  /// variant for the one card in the initial viewport whose own chrome
+  /// otherwise outweighs its now-compacted content — see
+  /// [PublicDemoEmployeeStageSection]. Sections with real per-row content
+  /// (finance, events, the monthly CTA) keep the original spacing.
+  final bool dense;
+
   @override
   Widget build(BuildContext context) => Card(
     key: cardKey,
+    margin: dense ? EdgeInsets.zero : null,
     child: Padding(
-      padding: const EdgeInsets.all(14),
+      padding: EdgeInsets.all(dense ? 4 : 14),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -330,7 +340,7 @@ class _HomeSectionCard extends StatelessWidget {
               color: accent ? SesTheme.primaryBlue : null,
             ),
           ),
-          const SizedBox(height: 10),
+          SizedBox(height: dense ? 3 : 10),
           child,
         ],
       ),

@@ -60,6 +60,13 @@ test.describe('Public Demo July close and April restart', () => {
 
     await assertCalendarMonth(page, 8);
 
+    // SES-FIRST-FUN-YEAR-UI-PHASE-2: the test-only restart control moved
+    // out of the normal monthly flow into a bottom "開発・テストメニュー" fold,
+    // closed by default so a normal player never mistakes it for part of
+    // ordinary play. Opening that fold once is the one new step here — it
+    // stays open across the cancel-and-retry below, and the restart
+    // button itself, its key, and its confirmation dialog are unchanged.
+    await clickScrollableButton(page, '開発・テストメニュー');
     await clickScrollableButton(page, '4月からやり直す');
     const restartDialog = page.getByRole('alertdialog');
     await expect(restartDialog).toBeVisible();

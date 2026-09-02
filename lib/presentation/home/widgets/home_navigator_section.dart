@@ -91,20 +91,29 @@ class HomeNavigatorLayout {
 
 /// NAVIGATOR-1A — 佐倉 ひより, on HOME.
 ///
-/// This is a **presentation layer and nothing else**, and in this phase it
-/// is a stricter one than either section above it:
+/// SES-FIRST-FUN-YEAR-UI-PHASE-2 merges what used to be two stacked cards
+/// (this navigator card, plus a separate `RecommendedActionSection` right
+/// below it) into one. The two cards said the same thing twice — "here is
+/// the next action" — in two different wordings, one of them hidden behind
+/// a "詳しく見る" tap. Now there is exactly one always-visible guidance line
+/// plus, directly under it, the one CTA button: nothing about the resolved
+/// action is stated twice, and nothing actionable requires an extra tap to
+/// reveal. Only the optional educational *why* ([HomeNavigatorAdvice.
+/// explanation]) stays behind a local expand control, so a future phase can
+/// still grow that into a modal without this card's always-visible contract
+/// changing.
 ///
-///  * It takes no data. Not a projection, not a state, not an aggregate —
-///    its constructor accepts only an [expression], which defaults to
-///    [NavigatorExpression.normal] and which nothing in this phase ever
-///    passes anything else for. There is therefore no value HOME could
-///    project that would change a single pixel of this widget, which is the
-///    strongest available form of "the navigator does not read game state".
-///  * Its only local interaction is an inline expand/collapse control. It
-///    takes no gameplay callback; Recommended Action remains HOME's single
-///    mutation entry point exactly as HOME-RUNTIME-2C left it.
-///  * It says fixed presentation copy. Selecting advice from finance, sales,
-///    recruitment or the calendar belongs to a later adapter, not this card.
+/// This is a **presentation layer and nothing else**:
+///
+///  * It takes no data beyond [expression] and [advice] — not a state, not
+///    an aggregate. Every value [advice] carries (headline, message,
+///    explanation, CTA) was already resolved by the owning screen (via
+///    [navigatorAdviceFor]) before this widget ever sees it.
+///  * Its only local interaction is the optional explanation expand/collapse
+///    control. The CTA it renders is the same already-bound owner callback
+///    [advice] carries — Recommended Action remains HOME's single mutation
+///    entry point exactly as HOME-RUNTIME-2C left it; this card only moved
+///    where that CTA is drawn, not who dispatches it.
 ///
 /// She is the existing general-affairs employee made visible, not a fourth
 /// hire — see [HomeNavigatorIdentity] for why that costs the domain
@@ -179,60 +188,119 @@ class _HomeNavigatorSectionState extends State<HomeNavigatorSection> {
                       _RoleBadge(layout: layout),
                     ],
                   ),
-                  if (widget.advice != null) ...[
+                  const SizedBox(height: HomeNavigatorMetrics.textGap),
+                  if (widget.advice case final advice?) ...[
+                    // The eyebrow names which of the two roles this line
+                    // plays: a concrete next step (a CTA follows) or the
+                    // month's general goal (nothing is eligible right now).
+                    // Never both, and never a third card restating either.
+                    Text(
+                      advice.ctaLabel != null ? '次にやること' : '今月やること',
+                      key: const Key('home-navigator-message-label'),
+                      style: theme.textTheme.labelSmall?.copyWith(
+                        fontWeight: FontWeight.bold,
+                        color: theme.colorScheme.primary,
+                      ),
+                    ),
                     const SizedBox(height: HomeNavigatorMetrics.textGap),
+                    if (advice.headline case final headline?) ...[
+                      Text(
+                        headline,
+                        key: const Key('home-recommended-action-headline'),
+                        style: theme.textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.bold,
+                        ),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: HomeNavigatorMetrics.textGap),
+                    ],
+                    // No maxLines and no ellipsis, deliberately: the whole
+                    // point of the merge is that this line is never
+                    // truncated behind a "詳しく見る" tap the way the old
+                    // rationale line was — at a larger text scale the card
+                    // grows to hold it instead.
                     Semantics(
-                      label: 'おすすめの理由: ${widget.advice!.message}',
+                      label: 'ひよりからの案内: ${advice.message}',
                       child: Text(
-                        widget.advice!.message,
-                        key: const Key('home-navigator-rationale'),
+                        advice.message,
+                        key: const Key('home-navigator-message'),
                         style: theme.textTheme.bodySmall?.copyWith(
                           fontSize: layout.messageFontSize,
                           height: 1.25,
-                          fontWeight: FontWeight.w600,
-                          color: theme.colorScheme.onSurface,
+                          color: theme.colorScheme.onSurfaceVariant,
                         ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
                       ),
                     ),
-                  ],
-                  const SizedBox(height: HomeNavigatorMetrics.textGap),
-                  // No maxLines and no ellipsis, deliberately. The greeting
-                  // is fixed and short, so at the default scale it settles
-                  // in two lines; at 1.3x or 2.0x it takes more, and the
-                  // card grows to hold them. Truncating instead would trade
-                  // a readable navigator for a first view the design
-                  // already said it is willing to lose at large text
-                  // scales.
-                  Text(
-                    HomeNavigatorIdentity.greeting,
-                    key: const Key('home-navigator-message'),
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      fontSize: layout.messageFontSize,
-                      height: 1.25,
-                      color: theme.colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-                  const SizedBox(height: HomeNavigatorMetrics.textGap),
-                  if (_isAdviceExpanded && widget.advice != null)
-                    _AdviceBubble(
-                      advice: widget.advice!,
-                      onCollapse: () => _setAdviceExpanded(false),
-                    )
-                  else if (widget.advice != null)
-                    Align(
-                      alignment: Alignment.centerLeft,
-                      child: TextButton.icon(
-                        key: const Key('home-navigator-open-advice'),
-                        onPressed: () => _setAdviceExpanded(true),
-                        icon: const Icon(Icons.chat_bubble_outline, size: 18),
-                        label: const Text('詳しく見る'),
-                        style: TextButton.styleFrom(
-                          minimumSize: const Size(48, 48),
-                          padding: const EdgeInsets.symmetric(horizontal: 8),
-                          tapTargetSize: MaterialTapTargetSize.padded,
+                    if (advice.ctaLabel case final ctaLabel?) ...[
+                      const SizedBox(height: 8),
+                      SizedBox(
+                        width: double.infinity,
+                        child: FilledButton.icon(
+                          key: const Key('home-recommended-action-cta'),
+                          style: theme.filledButtonTheme.style?.copyWith(
+                            minimumSize: const WidgetStatePropertyAll(
+                              Size(0, 48),
+                            ),
+                            padding: const WidgetStatePropertyAll(
+                              EdgeInsets.symmetric(
+                                horizontal: 16,
+                                vertical: 12,
+                              ),
+                            ),
+                          ),
+                          onPressed: advice.onCtaPressed,
+                          icon: const Icon(Icons.arrow_forward),
+                          label: Text(
+                            ctaLabel,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            textAlign: TextAlign.center,
+                          ),
                         ),
+                      ),
+                    ],
+                    if (advice.explanation != null) ...[
+                      const SizedBox(height: HomeNavigatorMetrics.textGap),
+                      if (_isAdviceExpanded)
+                        _AdviceBubble(
+                          advice: advice,
+                          onCollapse: () => _setAdviceExpanded(false),
+                        )
+                      else
+                        Align(
+                          alignment: Alignment.centerLeft,
+                          child: TextButton.icon(
+                            key: const Key('home-navigator-open-advice'),
+                            onPressed: () => _setAdviceExpanded(true),
+                            icon: const Icon(
+                              Icons.chat_bubble_outline,
+                              size: 18,
+                            ),
+                            label: const Text('詳しく見る'),
+                            style: TextButton.styleFrom(
+                              minimumSize: const Size(48, 48),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                              ),
+                              tapTargetSize: MaterialTapTargetSize.padded,
+                            ),
+                          ),
+                        ),
+                    ],
+                  ] else
+                    // Suppressed (advice is null — a terminal financial
+                    // state or the fiscal year is over): no action to
+                    // recommend and no month goal left to pursue, so she
+                    // falls back to her one fixed line instead of stating
+                    // either.
+                    Text(
+                      HomeNavigatorIdentity.greeting,
+                      key: const Key('home-navigator-message'),
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        fontSize: layout.messageFontSize,
+                        height: 1.25,
+                        color: theme.colorScheme.onSurfaceVariant,
                       ),
                     ),
                 ],
@@ -245,6 +313,16 @@ class _HomeNavigatorSectionState extends State<HomeNavigatorSection> {
   }
 }
 
+/// The optional "why" — [HomeNavigatorAdvice.explanation] alone.
+///
+/// SES-FIRST-FUN-YEAR-UI-PHASE-2: this used to also restate [advice.title]
+/// and [advice.message] and carry its own nested CTA button. All three are
+/// gone: the message is now always visible above (never hidden behind this
+/// expand), and the CTA is now a single always-visible button in the same
+/// card — duplicating either here would recreate the exact "same fact,
+/// shown twice" problem the merge exists to remove. What is left here is
+/// genuinely additional: the educational explanation, which the always-
+/// visible line deliberately does not state.
 class _AdviceBubble extends StatelessWidget {
   const _AdviceBubble({required this.advice, required this.onCollapse});
 
@@ -257,7 +335,7 @@ class _AdviceBubble extends StatelessWidget {
     final scheme = theme.colorScheme;
     return Semantics(
       container: true,
-      label: 'ひよりからのご案内',
+      label: 'ひよりからの補足説明',
       child: DecoratedBox(
         key: const Key('home-navigator-advice-bubble'),
         decoration: BoxDecoration(
@@ -271,21 +349,7 @@ class _AdviceBubble extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text(
-                advice.title,
-                key: const Key('home-navigator-advice-title'),
-                style: theme.textTheme.labelLarge?.copyWith(
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                advice.message,
-                key: const Key('home-navigator-advice-message'),
-                style: theme.textTheme.bodySmall?.copyWith(height: 1.3),
-              ),
-              if (advice.explanation case final explanation?) ...[
-                const SizedBox(height: 6),
+              if (advice.explanation case final explanation?)
                 Text(
                   explanation,
                   key: const Key('home-navigator-advice-explanation'),
@@ -294,18 +358,6 @@ class _AdviceBubble extends StatelessWidget {
                     color: scheme.onSurfaceVariant,
                   ),
                 ),
-              ],
-              if (advice.onCtaPressed case final onCtaPressed?) ...[
-                const SizedBox(height: 6),
-                Align(
-                  alignment: Alignment.centerRight,
-                  child: FilledButton(
-                    key: const Key('home-navigator-advice-cta'),
-                    onPressed: onCtaPressed,
-                    child: Text(advice.ctaLabel!),
-                  ),
-                ),
-              ],
               Align(
                 alignment: Alignment.centerRight,
                 child: TextButton.icon(

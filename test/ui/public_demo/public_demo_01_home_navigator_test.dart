@@ -28,7 +28,6 @@ import 'package:smile_enjoy_story/game/public_demo/public_demo_workflow_state.da
 import 'package:smile_enjoy_story/presentation/home/models/home_navigator_display.dart';
 import 'package:smile_enjoy_story/presentation/home/widgets/home_navigator_section.dart';
 import 'package:smile_enjoy_story/presentation/home/widgets/home_office_stage_section.dart';
-import 'package:smile_enjoy_story/presentation/home/widgets/recommended_action_section.dart';
 import 'package:smile_enjoy_story/ui/asset_paths.dart';
 import 'package:smile_enjoy_story/ui/public_demo/public_demo_01_placeholder_screen.dart';
 import 'package:smile_enjoy_story/ui/public_demo/public_demo_home_dashboard_section.dart';
@@ -187,13 +186,11 @@ void main() {
       (tester) async {
         await pumpDemoAt(tester);
         final before = workflowSnapshot(tester);
-        final openAdvice = find.byKey(const Key('home-navigator-open-advice'));
-        await tester.ensureVisible(openAdvice);
-        await tester.tap(openAdvice);
-        await tester.pumpAndSettle();
-        final adviceCta = find.byKey(const Key('home-navigator-advice-cta'));
-        await tester.ensureVisible(adviceCta);
-        await tester.tap(adviceCta);
+        // SES-FIRST-FUN-YEAR-UI-PHASE-2: the CTA is now always visible on
+        // the merged navigator card — no "詳しく見る" tap is needed to reach
+        // it first.
+        await tester.ensureVisible(ctaFinder);
+        await tester.tap(ctaFinder);
         await settle(tester);
 
         expect(workflowSnapshot(tester), before);
@@ -243,7 +240,7 @@ void main() {
       await tapAndSettle(tester, '営業開始');
       expect(find.byType(HomeNavigatorSection), findsOneWidget);
       expect(find.text('佐倉 ひより'), findsOneWidget);
-      expect(find.text(HomeNavigatorIdentity.greeting), findsOneWidget);
+      expect(find.byKey(const Key('home-navigator-message')), findsOneWidget);
     });
 
     testWidgets('scrolling the whole screen never reveals a second one', (
@@ -283,40 +280,41 @@ void main() {
   });
 
   group(
-    'C, D: company status → Navigator → Recommended Action → Employee Status',
+    'C, D: company status → Navigator (with its resolved action) → '
+    'Employee Status',
     () {
       for (final size in const [Size(360, 800), Size(390, 844)]) {
         final label = '${size.width.toInt()}x${size.height.toInt()}';
 
-        testWidgets('C: at $label the navigator explains the resolved action '
-            'before the Recommended Action card', (tester) async {
+        testWidgets('C: at $label the navigator states the resolved action '
+            'and its CTA in one card', (tester) async {
           await pumpDemoAt(tester, size: size);
 
+          // SES-FIRST-FUN-YEAR-UI-PHASE-2: the CTA used to live in a
+          // separate RecommendedActionSection card below the navigator.
+          // The merge folds it into the same card, so the CTA is now a
+          // descendant of the navigator rather than sitting below it.
           expect(
-            tester.getRect(navigatorFinder).bottom,
-            lessThanOrEqualTo(
-              tester.getRect(find.byType(RecommendedActionSection)).top,
-            ),
+            find.descendant(of: navigatorFinder, matching: ctaFinder),
+            findsOneWidget,
           );
           expect(
-            find.byKey(const Key('home-navigator-rationale')),
+            find.byKey(const Key('home-navigator-message-label')),
             findsOneWidget,
           );
           expect(find.textContaining('SkillSheet'), findsWidgets);
         });
 
         testWidgets(
-          'D: at $label the office strip follows the Recommended Action',
+          'D: at $label the office strip follows the navigator card',
           (tester) async {
             await pumpDemoAt(tester, size: size);
 
             final stage = tester.getRect(stageFinder);
-            final action = tester.getRect(
-              find.byType(RecommendedActionSection),
-            );
+            final navigator = tester.getRect(navigatorFinder);
             expect(
               stage.top,
-              greaterThanOrEqualTo(action.bottom),
+              greaterThanOrEqualTo(navigator.bottom),
               reason: 'Employee Status follows the primary action',
             );
           },
@@ -339,13 +337,8 @@ void main() {
             tester,
             find.byType(HomeNavigatorSection),
           );
-          final action = treeIndexOf(
-            tester,
-            find.byType(RecommendedActionSection),
-          );
           expect(dashboard, lessThan(navigator));
-          expect(navigator, lessThan(action));
-          expect(action, lessThan(stage));
+          expect(navigator, lessThan(stage));
         });
       }
 
@@ -410,22 +403,24 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
-    testWidgets('opening and closing advice is local presentation state; the '
-        'Recommended Action CTA remains the gameplay entry point', (
-      tester,
-    ) async {
+    testWidgets('opening and closing the explanation is local presentation '
+        'state; the Recommended Action CTA remains the gameplay entry '
+        'point', (tester) async {
       await pumpDemoAt(tester);
       final before = stateSnapshot(tester);
       final workflowBefore = workflowSnapshot(tester);
+
+      // SES-FIRST-FUN-YEAR-UI-PHASE-2: the headline and the guidance line
+      // are already visible without opening anything — only the
+      // educational explanation is behind the local toggle now.
+      expect(find.text('佐藤 健のSkillSheetを確認'), findsOneWidget);
+      expect(find.text('SkillSheetの内容を確認しましょう。'), findsOneWidget);
+
       await tester.ensureVisible(
         find.byKey(const Key('home-navigator-open-advice')),
       );
       await tester.tap(find.byKey(const Key('home-navigator-open-advice')));
       await tester.pumpAndSettle();
-      expect(
-        find.text('「佐藤 健のSkillSheetを確認」：SkillSheetの内容を確認しましょう。'),
-        findsNWidgets(2),
-      );
       expect(
         find.text('SkillSheetは、経験やスキルを案件へ伝えるための資料です。内容を確認して次の手続きに備えます。'),
         findsOneWidget,
@@ -470,9 +465,13 @@ void main() {
       // pinning too: nothing the navigator sits next to moved it either.
       expect(currentState(tester).toJson(), before.toJson());
 
-      expect(find.text(HomeNavigatorIdentity.greeting), findsOneWidget);
+      // 1A's "reads nothing" claim is about the navigator's own identity
+      // and expression, not about the guidance text — that legitimately
+      // follows the resolved action (NAVIGATOR-1C onward). Name, role and
+      // expression are what stay fixed.
       expect(find.text('佐倉 ひより'), findsOneWidget);
       expect(find.text('総務'), findsOneWidget);
+      expect(find.byKey(const Key('home-navigator-message')), findsOneWidget);
       expect(
         tester
             .widget<HomeNavigatorSection>(find.byType(HomeNavigatorSection))
@@ -540,9 +539,7 @@ void main() {
           // larger scale, but never permits the order to change.
           expect(
             treeIndexOf(tester, find.byType(HomeNavigatorSection)),
-            lessThan(
-              treeIndexOf(tester, find.byType(RecommendedActionSection)),
-            ),
+            lessThan(treeIndexOf(tester, find.byType(HomeOfficeStageSection))),
           );
           expect(tester.takeException(), isNull);
         }
@@ -593,11 +590,11 @@ void main() {
       );
       expect(find.text('佐倉 ひより'), findsOneWidget);
       expect(find.text('総務'), findsOneWidget);
-      expect(find.text(HomeNavigatorIdentity.greeting), findsOneWidget);
+      expect(find.byKey(const Key('home-navigator-message')), findsOneWidget);
 
       // 3. The existing Recommended Action CTA is unaffected — still
-      // present, still above the navigator, still the real production
-      // widget (not a stand-in).
+      // present, still inside the same navigator card, still the real
+      // production widget (not a stand-in).
       expect(ctaFinder, findsOneWidget);
       final ctaLabel = tester.widget<Text>(
         find.descendant(of: ctaFinder, matching: find.byType(Text)).first,

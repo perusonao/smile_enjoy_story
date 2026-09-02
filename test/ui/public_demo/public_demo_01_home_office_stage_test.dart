@@ -23,7 +23,6 @@ import 'package:smile_enjoy_story/game/public_demo/public_demo_state.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_workflow_state.dart';
 import 'package:smile_enjoy_story/presentation/home/models/home_office_stage_display.dart';
 import 'package:smile_enjoy_story/presentation/home/widgets/home_office_stage_section.dart';
-import 'package:smile_enjoy_story/presentation/home/widgets/recommended_action_section.dart';
 import 'package:smile_enjoy_story/ui/public_demo/public_demo_01_placeholder_screen.dart';
 import 'package:smile_enjoy_story/ui/public_demo/public_demo_home_dashboard_section.dart';
 
@@ -124,7 +123,9 @@ void main() {
         'the legacy content', (tester) async {
       await pumpDemoAt(tester);
 
-      final recommended = tester.getRect(find.byType(RecommendedActionSection));
+      final recommended = tester.getRect(
+        find.byKey(const Key('home-recommended-action-cta')),
+      );
       final stage = tester.getRect(stageFinder);
       final legacy = tester.getRect(actionButton('SkillSheet確認'));
 
@@ -272,8 +273,6 @@ void main() {
     ) async {
       await pumpDemoAt(tester);
 
-      expect(find.byType(RecommendedActionSection), findsOneWidget);
-      expect(find.byKey(const Key('home-recommended-action')), findsOneWidget);
       expect(
         find.byKey(const Key('home-recommended-action-cta')),
         findsOneWidget,

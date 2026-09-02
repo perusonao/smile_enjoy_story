@@ -6,7 +6,6 @@ import '../../presentation/home/models/home_recommended_action.dart';
 import '../../presentation/home/widgets/home_navigator_section.dart';
 import '../../presentation/home/widgets/kpi_section.dart';
 import '../../presentation/home/widgets/month_header_bar.dart';
-import '../../presentation/home/widgets/recommended_action_section.dart';
 
 /// The Public Demo screen's read-only mount point for the new HOME
 /// dashboard display (HOME-RUNTIME-READ-1).
@@ -44,12 +43,17 @@ import '../../presentation/home/widgets/recommended_action_section.dart';
 /// `今月やること` card) are deleted from the owning screen rather than left
 /// rendering the same facts a second time.
 ///
-/// HOME-RUNTIME-2C replaces the third of those with
-/// [RecommendedActionSection], which shows the single next action when one
-/// is eligible and falls back to the very same month-goal card when none
-/// is. That is a replacement, not an addition: stacking a new card above
-/// the existing HOME is exactly what would have undone 2A's first-view
-/// reclamation.
+/// HOME-RUNTIME-2C replaced the third of those with a separate
+/// `RecommendedActionSection` card, which showed the single next action
+/// when one was eligible and fell back to the month goal when none was.
+///
+/// SES-FIRST-FUN-YEAR-UI-PHASE-2 goes one step further and removes that
+/// second card outright: real-device testing found "ひよりのアドバイス" and
+/// "次にやること" reading as two overlapping cards answering the same
+/// question. [HomeNavigatorSection] now renders the resolved guidance *and*
+/// its CTA (or the month-goal fallback) itself, via [_effectiveAdvice] —
+/// there is exactly one guidance component on HOME again, not a
+/// `RecommendedActionSection` stacked under the navigator.
 ///
 /// Everything above still holds unchanged for the widened projection: the
 /// three fields HOME-RUNTIME-2A added (`waitingEmployeeCount`,
@@ -79,9 +83,32 @@ class PublicDemoHomeDashboardSection extends StatelessWidget {
   final HomeRecommendedActionSlot recommendedAction;
 
   /// Hiyori's already-resolved presentation advice. Its optional CTA is the
-  /// same owner-bound callback carried by [recommendedAction]; this section
-  /// only places it above the action it explains.
+  /// same owner-bound callback carried by [recommendedAction]; [_effectiveAdvice]
+  /// is what actually reaches [HomeNavigatorSection].
   final HomeNavigatorAdvice? navigatorAdvice;
+
+  /// What [HomeNavigatorSection] renders — [navigatorAdvice] as resolved by
+  /// [navigatorAdviceFor], except when [recommendedAction] is
+  /// [HomeRecommendedActionNone]: there [navigatorAdviceFor] returns the
+  /// generic [HomeNavigatorAdvice.neutral] ("今すぐ必須の操作はありません。"), and
+  /// this substitutes the month's own, more specific goal
+  /// ([HomeDashboardDisplayData.monthGoalText]) for that generic line
+  /// instead. Both are already-projected, read-only text this section
+  /// already receives; this only picks which one a single guidance line
+  /// states; it ranks nothing and invents no new copy.
+  HomeNavigatorAdvice? get _effectiveAdvice {
+    final advice = navigatorAdvice;
+    if (advice == null || recommendedAction is! HomeRecommendedActionNone) {
+      return advice;
+    }
+    if (data.monthGoalText.isEmpty) return advice;
+    return HomeNavigatorAdvice(
+      title: advice.title,
+      message: data.monthGoalText,
+      explanation: advice.explanation,
+      semantic: advice.semantic,
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -95,12 +122,7 @@ class PublicDemoHomeDashboardSection extends StatelessWidget {
         const SizedBox(height: 8),
         HomeNavigatorSection(
           expression: navigatorExpressionFor(navigatorAdvice?.semantic),
-          advice: navigatorAdvice,
-        ),
-        const SizedBox(height: 8),
-        RecommendedActionSection(
-          slot: recommendedAction,
-          monthGoalText: data.monthGoalText,
+          advice: _effectiveAdvice,
         ),
         const SizedBox(height: 4),
       ],

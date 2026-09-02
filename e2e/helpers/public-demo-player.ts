@@ -532,8 +532,15 @@ export async function isFinanciallyTerminal(page: Page): Promise<boolean> {
  * summary card's own duplicate warning banner (`_financeSummary`'s
  * `warning` field, which used to carry this same fact as a second,
  * differently-worded string) — this now reads the one surviving
- * authoritative card instead. */
+ * authoritative card instead.
+ *
+ * Scrolls to the top first, same as [readCompactKpiValue]/[findMonthlyPrimaryCta]:
+ * `PublicDemoCashShortageCard` renders near the top of the page, and a
+ * caller (e.g. the Recovery sales pipeline, which scrolls deep into a
+ * waiting engineer's own card further down) can leave the page scrolled
+ * well past it. */
 export async function isCashShortage(page: Page): Promise<boolean> {
+  await scrollToTop(page);
   const snap = await snapshot(page);
   return snap.includes('資金不足：次回決算が期限です');
 }

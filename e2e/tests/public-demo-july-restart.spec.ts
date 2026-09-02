@@ -4,6 +4,7 @@ import {
   openPublicDemo,
   assertCalendarMonth,
   scrollToButton,
+  scrollToTop,
 } from '../helpers/public-demo-player';
 
 // This test needs to inspect two dialogs' own content (the April
@@ -14,10 +15,18 @@ import {
 // it). It still reuses `scrollToButton` — the same robust, dialog-aware
 // scroll loop `clickButton` itself is built on — rather than a second,
 // weaker scroll implementation of its own.
+//
+// Scrolls to the top first, same as `findMonthlyPrimaryCta`: this test's
+// own targets (the monthly-close CTA, the summer-bonus/restart controls)
+// all render near the top of the page, and `scrollToButton`'s own search
+// only ever goes downward until it has already seen the target (so a
+// caller left scrolled deep past it — e.g. after the previous action's own
+// card interaction — could never recover on its own).
 async function clickScrollableButton(
   page: import('@playwright/test').Page,
   name: string,
 ) {
+  await scrollToTop(page);
   const button = await scrollToButton(page, name, true);
   await expect(button).toBeVisible();
   await button.click();

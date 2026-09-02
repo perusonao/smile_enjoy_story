@@ -22,7 +22,7 @@ test.describe('Public Demo fresh start', () => {
       const raw = await page.locator('body').ariaSnapshot();
       expect(raw, 'Public Demo identity').toContain('S.E.S. Public Demo 0.1');
       expect(raw, 'fresh-start month').toContain('4月');
-      expect(raw, 'employee stage').toContain('社員ステージ');
+      expect(raw, 'employee summary').toContain('社員の様子');
       expect(raw, 'initial employee').toContain('佐藤 健');
       expect(raw, 'initial sales state').toContain('営業準備前');
       expect(raw, 'initial real action').toContain('SkillSheetを確認');

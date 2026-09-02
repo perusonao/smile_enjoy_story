@@ -463,12 +463,20 @@ void main() {
 
       final cta = find.byKey(const Key('home-recommended-action-cta'));
       expect(inHome(cta), findsOneWidget);
-      final openAdvice = find.byKey(const Key('home-navigator-open-advice'));
-      expect(inHome(openAdvice), findsOneWidget);
+      // PUBLIC-DEMO-HOME-UI-3A: the "詳しく見る" local advice-detail toggle
+      // is gone — the advice explanation is always visible now. What HOME
+      // gained instead is the mockup's "他の行動を確認する" secondary route,
+      // wired by the owning screen to the same truthful scroll-jump every
+      // other on-page destination uses — still no new gameplay entry point.
+      final secondaryCta = find.byKey(
+        const Key('home-navigator-secondary-cta'),
+      );
+      expect(inHome(secondaryCta), findsOneWidget);
       expect(
         inHome(find.byWidgetPredicate((w) => w is ButtonStyleButton)),
         findsNWidgets(2),
-        reason: 'HOME has one action CTA and Hiyori\'s local detail control',
+        reason: 'HOME has one primary action CTA and one secondary '
+            'scroll-jump control',
       );
 
       // The non-CTA parts of HOME remain completely inert.
@@ -668,12 +676,15 @@ void main() {
   });
 
   group('18, 24: every action the cleanup touched is still reachable', () {
-    testWidgets('Employee Status, Finance Summary, and the month-close '
+    testWidgets('the Office Stage, Finance Summary, and the month-close '
         'control remain reachable', (tester) async {
       await pumpDemoAt(tester, const Size(360, 800));
 
       for (final finder in <Finder>[
-        find.text('社員ステージ'),
+        // PUBLIC-DEMO-HOME-UI-3A: the duplicate "社員ステージ" list is
+        // deleted — home-office-stage is the sole employee-roster
+        // presentation this group now asserts stays reachable.
+        find.byKey(const Key('home-office-stage')),
         find.byKey(const Key('public-demo-finance-summary')),
         find.byKey(const Key('public-demo-monthly-primary-cta')),
       ]) {
@@ -686,21 +697,27 @@ void main() {
       }
     });
 
-    testWidgets('a populated Important Events section remains reachable', (
-      tester,
-    ) async {
-      await pumpDemoAt(tester, const Size(390, 844));
-      await playApril(tester);
-      await tapAndSettle(tester, '4月を終了して5月へ');
-      await dismiss(tester);
+    testWidgets(
+      // PUBLIC-DEMO-HOME-UI-3A: PublicDemoImportantEventsSection ("重要イベ
+      // ント", at most the latest month-close event) is replaced by
+      // PublicDemoImportantTasksSection ("今月の重要タスク", always exactly
+      // three truthful tasks) — this now pins that the new section, and its
+      // scroll-jump CTA, remain reachable after a month closes.
+      'the important tasks section remains reachable after a month closes',
+      (tester) async {
+        await pumpDemoAt(tester, const Size(390, 844));
+        await playApril(tester);
+        await tapAndSettle(tester, '4月を終了して5月へ');
+        await dismiss(tester);
 
-      final events = find.byKey(const Key('public-demo-important-events'));
-      await tester.ensureVisible(events.first);
-      await tester.pumpAndSettle();
-      expect(events, findsOneWidget);
-      expect(find.text('月次'), findsOneWidget);
-      expect(find.text('収支を見る'), findsOneWidget);
-    });
+        final tasks = find.byKey(const Key('public-demo-important-tasks'));
+        await tester.ensureVisible(tasks.first);
+        await tester.pumpAndSettle();
+        expect(tasks, findsOneWidget);
+        expect(find.text('今月の重要タスク'), findsOneWidget);
+        expect(find.text('営業'), findsOneWidget);
+      },
+    );
 
     testWidgets('2B: the legacy SkillSheet確認 button still exists, still '
         'sits below the Office Stage, and still works after scrolling', (

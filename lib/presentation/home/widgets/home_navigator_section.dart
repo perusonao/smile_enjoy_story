@@ -358,12 +358,17 @@ class _AdviceBubble extends StatelessWidget {
                     color: scheme.onSurfaceVariant,
                   ),
                   const SizedBox(width: 4),
-                  Text(
-                    'ひよりからのアドバイス',
-                    key: const Key('home-navigator-advice-title'),
-                    style: theme.textTheme.labelSmall?.copyWith(
-                      fontWeight: FontWeight.bold,
-                      color: scheme.onSurfaceVariant,
+                  // Flexible, not a bare Text: at a large text scale the
+                  // title alone can exceed the bubble's width, and this is
+                  // what lets it wrap instead of overflowing the Row.
+                  Flexible(
+                    child: Text(
+                      'ひよりからのアドバイス',
+                      key: const Key('home-navigator-advice-title'),
+                      style: theme.textTheme.labelSmall?.copyWith(
+                        fontWeight: FontWeight.bold,
+                        color: scheme.onSurfaceVariant,
+                      ),
                     ),
                   ),
                 ],

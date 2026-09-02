@@ -403,43 +403,47 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
-    testWidgets('opening and closing the explanation is local presentation '
-        'state; the Recommended Action CTA remains the gameplay entry '
-        'point', (tester) async {
+    testWidgets(
+      // PUBLIC-DEMO-HOME-UI-3A: the "詳しく見る"/"閉じる" local toggle is
+      // gone — the approved visual target shows the explanation open at
+      // all times. The headline, the guidance line, and the explanation
+      // are all already visible without any tap; reading them changes no
+      // state, and the Recommended Action CTA remains the gameplay entry
+      // point.
+      'the explanation is visible without opening anything; reading it '
+      'is presentation-only and the Recommended Action CTA remains the '
+      'gameplay entry point',
+      (tester) async {
+        await pumpDemoAt(tester);
+        final before = stateSnapshot(tester);
+        final workflowBefore = workflowSnapshot(tester);
+
+        expect(find.text('佐藤 健のSkillSheetを確認'), findsOneWidget);
+        expect(find.text('SkillSheetの内容を確認しましょう。'), findsOneWidget);
+        expect(
+          find.text('SkillSheetは、経験やスキルを案件へ伝えるための資料です。内容を確認して次の手続きに備えます。'),
+          findsOneWidget,
+        );
+        expect(
+          find.byKey(const Key('home-navigator-open-advice')),
+          findsNothing,
+        );
+        expect(
+          find.byKey(const Key('home-navigator-close-advice')),
+          findsNothing,
+        );
+
+        expect(stateSnapshot(tester), before);
+        expect(workflowSnapshot(tester), workflowBefore);
+        expect(ctaFinder, findsOneWidget);
+      },
+    );
+
+    testWidgets('the always-visible advice leaves the existing CTA '
+        'available and its real owner dispatch still progresses workflow', (
+      tester,
+    ) async {
       await pumpDemoAt(tester);
-      final before = stateSnapshot(tester);
-      final workflowBefore = workflowSnapshot(tester);
-
-      // SES-FIRST-FUN-YEAR-UI-PHASE-2: the headline and the guidance line
-      // are already visible without opening anything — only the
-      // educational explanation is behind the local toggle now.
-      expect(find.text('佐藤 健のSkillSheetを確認'), findsOneWidget);
-      expect(find.text('SkillSheetの内容を確認しましょう。'), findsOneWidget);
-
-      await tester.ensureVisible(
-        find.byKey(const Key('home-navigator-open-advice')),
-      );
-      await tester.tap(find.byKey(const Key('home-navigator-open-advice')));
-      await tester.pumpAndSettle();
-      expect(
-        find.text('SkillSheetは、経験やスキルを案件へ伝えるための資料です。内容を確認して次の手続きに備えます。'),
-        findsOneWidget,
-      );
-      await tester.tap(find.byKey(const Key('home-navigator-close-advice')));
-      await tester.pumpAndSettle();
-      expect(stateSnapshot(tester), before);
-      expect(workflowSnapshot(tester), workflowBefore);
-      expect(ctaFinder, findsOneWidget);
-    });
-
-    testWidgets('expanded advice leaves the existing CTA available and its '
-        'real owner dispatch still progresses workflow', (tester) async {
-      await pumpDemoAt(tester);
-      await tester.ensureVisible(
-        find.byKey(const Key('home-navigator-open-advice')),
-      );
-      await tester.tap(find.byKey(const Key('home-navigator-open-advice')));
-      await tester.pumpAndSettle();
       final before = workflowSnapshot(tester);
       await tapAndSettle(tester, 'SkillSheet確認');
       expect(workflowSnapshot(tester), isNot(before));

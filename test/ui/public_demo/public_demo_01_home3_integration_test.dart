@@ -3,7 +3,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_state.dart';
 import 'package:smile_enjoy_story/presentation/home/widgets/home_navigator_section.dart';
 import 'package:smile_enjoy_story/presentation/home/widgets/home_office_stage_section.dart';
-import 'package:smile_enjoy_story/presentation/home/widgets/recommended_action_section.dart';
 import 'package:smile_enjoy_story/ui/public_demo/public_demo_01_placeholder_screen.dart';
 import 'package:smile_enjoy_story/ui/public_demo/public_demo_home_presentation_components.dart';
 
@@ -80,7 +79,6 @@ void main() {
 
       final order = [
         find.byType(HomeNavigatorSection),
-        find.byType(RecommendedActionSection),
         find.byType(HomeOfficeStageSection),
         find.byType(PublicDemoEmployeeStageSection),
         find.byType(PublicDemoImportantEventsSection),

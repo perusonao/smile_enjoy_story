@@ -103,6 +103,7 @@ class HomeNavigatorAdvice {
   const HomeNavigatorAdvice({
     required this.title,
     required this.message,
+    this.headline,
     this.explanation,
     this.semantic = HomeNavigatorAdviceSemantic.neutral,
     this.ctaLabel,
@@ -113,6 +114,12 @@ class HomeNavigatorAdvice {
        );
 
   final String title;
+
+  /// Who/what the CTA below is about — the resolved action's own
+  /// `headline` (e.g. `佐藤 健のSkillSheetを確認`), verbatim. `null` for the
+  /// month-goal fallback and the suppressed/neutral cases, none of which
+  /// name a subject.
+  final String? headline;
   final String message;
 
   /// Fixed educational presentation copy explaining why the already-resolved
@@ -236,7 +243,8 @@ HomeNavigatorAdvice? navigatorAdviceFor(HomeRecommendedActionSlot slot) =>
         final copy = _guidanceCopyFor(candidate.action.kind);
         return HomeNavigatorAdvice(
           title: 'ひよりからのご案内',
-          message: '「${candidate.action.headline}」：${copy.message}',
+          headline: candidate.action.headline,
+          message: copy.message,
           explanation: copy.explanation,
           semantic: copy.semantic,
           ctaLabel: candidate.action.ctaLabel,

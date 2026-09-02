@@ -37,10 +37,12 @@ void main() {
       );
       final first = navigatorAdviceFor(slot);
       final second = navigatorAdviceFor(slot);
-      expect(first!.message, '「佐藤 健のSkillSheetを確認」：SkillSheetの内容を確認しましょう。');
+      expect(first!.headline, '佐藤 健のSkillSheetを確認');
+      expect(first.message, 'SkillSheetの内容を確認しましょう。');
       expect(first.explanation, 'SkillSheetは、経験やスキルを案件へ伝えるための資料です。内容を確認して次の手続きに備えます。');
       expect(first.semantic, HomeNavigatorAdviceSemantic.neutral);
-      expect(second!.message, first.message);
+      expect(second!.headline, first.headline);
+      expect(second.message, first.message);
       expect(second.explanation, first.explanation);
     });
 

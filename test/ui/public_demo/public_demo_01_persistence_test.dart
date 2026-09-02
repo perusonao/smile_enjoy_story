@@ -88,8 +88,20 @@ Future<void> _tapAction(WidgetTester tester, String label) async {
   }
 }
 
+/// SES-FIRST-FUN-YEAR-UI-PHASE-2: the test-only restart control now lives
+/// inside the bottom "開発・テストメニュー" fold, closed by default so it never
+/// reads as part of the normal monthly game flow. Opening that fold first is
+/// the only change here — the button itself, its key, and everything it
+/// does are unchanged.
 Future<void> _openAprilRestart(WidgetTester tester) async {
+  final toggle = find.byKey(const Key('public-demo-dev-menu-toggle'));
+  await tester.ensureVisible(toggle);
+  await tester.pumpAndSettle();
   final button = find.byKey(const Key('public-demo-restart-april-button'));
+  if (button.evaluate().isEmpty) {
+    await tester.tap(toggle);
+    await tester.pumpAndSettle();
+  }
   await tester.ensureVisible(button);
   await tester.pumpAndSettle();
   await tester.tap(button);

@@ -313,8 +313,18 @@ export async function closeMonthlyPrimaryCta(page: Page): Promise<void> {
 /** Restarts a Public Demo playthrough from whatever month it currently sits
  * at, via the always-available "テスト用操作" reset control
  * (`public-demo-july-restart.spec.ts`'s own flow) — confirms the
- * confirmation dialog. Leaves the caller to assert April afterwards. */
+ * confirmation dialog. Leaves the caller to assert April afterwards.
+ *
+ * SES-FIRST-FUN-YEAR-UI-PHASE-2: the reset control moved out of the normal
+ * monthly flow into a bottom "開発・テストメニュー" fold, closed by default so
+ * a normal player never mistakes it for part of ordinary play. Opening
+ * that fold (idempotently — a no-op if it is already open) is the one new
+ * step here; the restart button itself and its confirmation dialog are
+ * unchanged. */
 export async function restartFromApril(page: Page): Promise<void> {
+  if ((await page.getByRole('button', { name: '4月からやり直す', exact: true }).count()) === 0) {
+    await clickButton(page, '開発・テストメニュー');
+  }
   await clickButton(page, '4月からやり直す', true);
   const dialog = page.getByRole('alertdialog');
   await expect(dialog).toBeVisible({ timeout: 15_000 });

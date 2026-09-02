@@ -45,6 +45,7 @@ import {
   isFinanciallyTerminal,
   scrollToText,
   readCompactKpiValue,
+  clickButton,
 } from '../helpers/public-demo-player';
 
 const VIEWPORTS = [
@@ -178,9 +179,18 @@ for (const viewport of VIEWPORTS) {
       expect(finalSnap, 'terminal card must record bankruptcy at March').toContain(
         '最終決算月: 3月',
       );
-      expect(finalSnap, 'the reset control must remain available after the terminal close').toContain(
-        '4月からやり直す',
-      );
+      // SES-FIRST-FUN-YEAR-UI-PHASE-2: the "テスト用操作" reset control moved
+      // into a bottom "開発・テストメニュー" fold, closed by default. Opening
+      // it (idempotently) is the one new step; the control itself is
+      // otherwise unchanged and still available after a terminal close.
+      if ((await page.getByRole('button', { name: '4月からやり直す', exact: true }).count()) === 0) {
+        await clickButton(page, '開発・テストメニュー');
+      }
+      const snapWithDevMenuOpen = await snapshot(page);
+      expect(
+        snapWithDevMenuOpen,
+        'the reset control must remain available after the terminal close',
+      ).toContain('4月からやり直す');
 
       expect(errors.pageErrors, 'uncaught page errors').toEqual([]);
       expect(errors.crashed, 'Public Demo page crashed').toBe(false);

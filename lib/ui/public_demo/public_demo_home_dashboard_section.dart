@@ -71,6 +71,7 @@ class PublicDemoHomeDashboardSection extends StatelessWidget {
     required this.data,
     required this.recommendedAction,
     required this.navigatorAdvice,
+    this.onShowOtherActions,
   });
 
   /// The read-only projection to display. Rebuilt from authoritative state
@@ -87,6 +88,14 @@ class PublicDemoHomeDashboardSection extends StatelessWidget {
   /// is what actually reaches [HomeNavigatorSection].
   final HomeNavigatorAdvice? navigatorAdvice;
 
+  /// PUBLIC-DEMO-HOME-UI-3A: the mockup's "他の行動を確認する" secondary route
+  /// under the primary CTA. Already an owner-bound callback (the screen's
+  /// own `_scrollToSection(_legacyActionsKey)`) — this section only attaches
+  /// it to the resolved advice via [_effectiveAdvice]; it never invents a
+  /// route or decides when the secondary button should be reachable beyond
+  /// "advice is non-null".
+  final VoidCallback? onShowOtherActions;
+
   /// What [HomeNavigatorSection] renders — [navigatorAdvice] as resolved by
   /// [navigatorAdviceFor], except when [recommendedAction] is
   /// [HomeRecommendedActionNone]: there [navigatorAdviceFor] returns the
@@ -96,17 +105,34 @@ class PublicDemoHomeDashboardSection extends StatelessWidget {
   /// instead. Both are already-projected, read-only text this section
   /// already receives; this only picks which one a single guidance line
   /// states; it ranks nothing and invents no new copy.
+  ///
+  /// Also attaches [onShowOtherActions] (as '他の行動を確認する') whenever both
+  /// the resolved advice and the callback are non-null.
   HomeNavigatorAdvice? get _effectiveAdvice {
     final advice = navigatorAdvice;
-    if (advice == null || recommendedAction is! HomeRecommendedActionNone) {
-      return advice;
-    }
-    if (data.monthGoalText.isEmpty) return advice;
+    if (advice == null) return null;
+    final base = recommendedAction is HomeRecommendedActionNone
+        ? (data.monthGoalText.isEmpty
+              ? advice
+              : HomeNavigatorAdvice(
+                  title: advice.title,
+                  message: data.monthGoalText,
+                  explanation: advice.explanation,
+                  semantic: advice.semantic,
+                ))
+        : advice;
+    final onShowOther = onShowOtherActions;
+    if (onShowOther == null) return base;
     return HomeNavigatorAdvice(
-      title: advice.title,
-      message: data.monthGoalText,
-      explanation: advice.explanation,
-      semantic: advice.semantic,
+      title: base.title,
+      headline: base.headline,
+      message: base.message,
+      explanation: base.explanation,
+      semantic: base.semantic,
+      ctaLabel: base.ctaLabel,
+      onCtaPressed: base.onCtaPressed,
+      secondaryLabel: '他の行動を確認する',
+      onSecondaryPressed: onShowOther,
     );
   }
 

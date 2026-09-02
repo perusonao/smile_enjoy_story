@@ -218,10 +218,16 @@ class _CompactKpi extends StatelessWidget {
   }
 }
 
-/// Value-over-label, no icon, single line each: the densest readable form
-/// of a KPI figure. Both lines keep `maxLines: 1` + ellipsis so a long
-/// value can never wrap a tile taller than its row-mates (four tiles share
-/// ~328pt of inner width at 360x800).
+/// Value-over-label with a small leading icon badge: the densest readable
+/// form of a KPI figure that still reads as icon-led, per the approved
+/// PUBLIC-DEMO-HOME-UI-3A visual target. Both text lines keep `maxLines: 1`
+/// + ellipsis so a long value can never wrap a tile taller than its
+/// row-mates (four tiles share ~328pt of inner width at 360x800).
+///
+/// PUBLIC-DEMO-HOME-UI-3A: adds the icon badge [_KpiTileData.icon] already
+/// carried but never painted before this change. No `Key`, value format, or
+/// label text changed — existing finders for `home-kpi-compact-*` keep
+/// working unmodified.
 class _CompactKpiTile extends StatelessWidget {
   const _CompactKpiTile({required this.data});
 
@@ -238,25 +244,43 @@ class _CompactKpiTile extends StatelessWidget {
         color: colorScheme.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(10),
       ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
+      child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            data.value ?? '—',
-            style: theme.textTheme.titleSmall?.copyWith(
-              fontWeight: FontWeight.bold,
+          DecoratedBox(
+            decoration: BoxDecoration(
+              color: colorScheme.primary.withValues(alpha: 0.12),
+              shape: BoxShape.circle,
             ),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
+            child: Padding(
+              padding: const EdgeInsets.all(4),
+              child: Icon(data.icon, size: 12, color: colorScheme.primary),
+            ),
           ),
-          Text(
-            data.label,
-            style: theme.textTheme.labelSmall?.copyWith(
-              color: colorScheme.onSurfaceVariant,
+          const SizedBox(width: 6),
+          Expanded(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  data.value ?? '—',
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.bold,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                Text(
+                  data.label,
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: colorScheme.onSurfaceVariant,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
             ),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
           ),
         ],
       ),

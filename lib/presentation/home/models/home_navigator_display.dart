@@ -108,9 +108,16 @@ class HomeNavigatorAdvice {
     this.semantic = HomeNavigatorAdviceSemantic.neutral,
     this.ctaLabel,
     this.onCtaPressed,
+    this.secondaryLabel,
+    this.onSecondaryPressed,
   }) : assert(
          (ctaLabel == null) == (onCtaPressed == null),
          'A Navigator CTA must carry both its label and its owner callback.',
+       ),
+       assert(
+         (secondaryLabel == null) == (onSecondaryPressed == null),
+         'A Navigator secondary action must carry both its label and its '
+         'owner callback.',
        );
 
   final String title;
@@ -128,6 +135,13 @@ class HomeNavigatorAdvice {
   final HomeNavigatorAdviceSemantic semantic;
   final String? ctaLabel;
   final VoidCallback? onCtaPressed;
+
+  /// The mockup's "他の行動を確認する" secondary route: an already-owned
+  /// on-page callback (e.g. scrolling to the existing legacy action block),
+  /// never a new route or a fabricated navigation destination. `null` unless
+  /// the owning screen attaches both this and [onSecondaryPressed] together.
+  final String? secondaryLabel;
+  final VoidCallback? onSecondaryPressed;
 
   static const neutral = HomeNavigatorAdvice(
     title: 'ひよりからのご案内',

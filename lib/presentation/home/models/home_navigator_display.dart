@@ -230,6 +230,11 @@ _guidanceCopyFor(HomeRecommendedActionKind kind) => switch (kind) {
     explanation: '求人媒体は、候補者を募る方法を選ぶための画面です。表示された選択肢と内容を確認します。',
     semantic: HomeNavigatorAdviceSemantic.neutral,
   ),
+  HomeRecommendedActionKind.recoveryAssignment => (
+    message: '案件への復帰手続きを進めましょう。',
+    explanation: '案件参画が決まった社員は、復帰の手続きを進めることで改めて案件へ参画できます。表示された内容を確認してください。',
+    semantic: HomeNavigatorAdviceSemantic.neutral,
+  ),
 };
 
 /// Purely translates HOME's already-resolved recommendation outcome.

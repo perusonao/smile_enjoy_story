@@ -91,6 +91,18 @@ Future<void> tapAndSettle(WidgetTester tester, String text) async {
     await tester.tap(find.widgetWithText(FilledButton, '内容を確認'));
     await tester.pumpAndSettle();
   }
+  // Issue #119: a month-close tap may now surface the Month Guard's
+  // `recommended`-level warning (e.g. an economically-waiting engineer's
+  // Recovery step is still outstanding). This suite is not exercising that
+  // warning itself, so proceed through it exactly as a player choosing
+  // "このまま月末処理を進める" would, preserving every trajectory below.
+  final monthGuardProceed = find.byKey(
+    const Key('public-demo-month-guard-proceed'),
+  );
+  if (monthGuardProceed.evaluate().isNotEmpty) {
+    await tester.tap(monthGuardProceed);
+    await tester.pumpAndSettle();
+  }
 }
 
 Future<void> tapCta(WidgetTester tester) async {
@@ -655,56 +667,93 @@ void main() {
   // 6: terminal / finance precedence
   // =====================================================================
   group('6: terminal and financial precedence stay with the authority', () {
-    testWidgets('cashShortage outranks every ordinary action, and the '
-        'ordinary actions stay reachable', (tester) async {
-      await pumpDemo(tester);
-      await playIntoCashShortage(tester);
+    // Issue #119 PLAYTHROUGH-BLOCKER-2: `playIntoCashShortage` never taps
+    // eng-01's June "次月発注" decision (`_addRaiseCandidate`'s sibling
+    // assignment flow), so `assignedEngineerIds(month >= 7)` genuinely
+    // never counts them assigned from July on — the same fact that makes
+    // them genuinely `PublicDemoRecoveryEligibility.isEligible` throughout
+    // this trajectory's August-October closes (verified independently at
+    // the domain level in
+    // `test/game/public_demo/public_demo_month_guard_test.dart`). Deciding
+    // that order here instead (as `public_demo_01_bankruptcy_ux_test.dart`'s
+    // own cash-shortage trajectory does) would let eng-01 keep billing
+    // revenue and never reach cash shortage by October at all — this
+    // trajectory's cash-shortage timing is calibrated on the gap, not
+    // incidental to it. So this is exactly the truthful state Issue #119
+    // exists to surface: a real, reachable, mutating Recovery step is
+    // outstanding, and it must not stay permanently hidden behind the
+    // purely-informational shortage card — see `recoveryAssignment`'s own
+    // doc in `home_recommended_action.dart`.
+    testWidgets(
+      'a genuine Recovery action outranks the cash-shortage info card, and '
+      'both stay reachable',
+      (tester) async {
+        await pumpDemo(tester);
+        await playIntoCashShortage(tester);
 
-      expect(
-        currentState(tester).financialStatus,
-        PublicDemoFinancialStatus.cashShortage,
-      );
-      // The card still owns its own authority, above HOME...
-      expect(
-        find.byKey(const Key('public-demo-cash-shortage-card')),
-        findsOneWidget,
-      );
-      // ...and the recommendation points at it, outranking anything else
-      // this state could otherwise offer.
-      expect(
-        recommended(tester)!.kind,
-        HomeRecommendedActionKind.cashShortageResponse,
-      );
-      expect(find.text('資金不足の対応を確認'), findsOneWidget);
-      // §13's Failure-Recovery rule: not a dead end. The KPI and the
-      // month-close CTA are both still there.
-      expect(find.byKey(const Key('home-kpi-compact')), findsOneWidget);
-      expect(actionButton('11月を終了して翌月へ'), findsWidgets);
-    });
+        expect(
+          currentState(tester).financialStatus,
+          PublicDemoFinancialStatus.cashShortage,
+        );
+        // The informational card still owns its own authority, above HOME...
+        expect(
+          find.byKey(const Key('public-demo-cash-shortage-card')),
+          findsOneWidget,
+        );
+        // ...but the recommendation points at the real, mutating action a
+        // player can take, not the card that merely explains the situation.
+        expect(
+          recommended(tester)!.kind,
+          HomeRecommendedActionKind.recoveryAssignment,
+        );
+        expect(
+          tester
+              .widget<Text>(
+                find.byKey(const Key('home-recommended-action-headline')),
+              )
+              .data,
+          contains('を案件へ復帰させる'),
+        );
+        // The plain "資金不足を確認" recommendation text must NOT be what is
+        // offered here — the whole point is that it no longer permanently
+        // covers the real action.
+        expect(find.text('資金不足の対応を確認'), findsNothing);
+        // §13's Failure-Recovery rule: not a dead end. The KPI and the
+        // month-close CTA are both still there.
+        expect(find.byKey(const Key('home-kpi-compact')), findsOneWidget);
+        expect(actionButton('11月を終了して翌月へ'), findsWidgets);
+      },
+    );
 
-    testWidgets('the shortage CTA changes nothing authoritative', (
-      tester,
-    ) async {
-      await pumpDemo(tester);
-      await playIntoCashShortage(tester);
+    testWidgets(
+      'the reachable Recovery CTA performs the real recovery, while the '
+      'cash-shortage card stays purely informational beside it',
+      (tester) async {
+        await pumpDemo(tester);
+        await playIntoCashShortage(tester);
 
-      final before = currentState(tester);
-      final stagesBefore = currentWorkflow(
-        tester,
-      ).engineers.map((e) => e.stage).toList();
-      await tapCta(tester);
+        final before = currentState(tester);
+        final beforeWaiting = before.engineersWaiting;
+        final beforeAssigned = before.engineersAssigned;
+        await tapCta(tester);
 
-      final after = currentState(tester);
-      expect(after.cash, before.cash);
-      expect(after.month, before.month);
-      expect(after.financialStatus, before.financialStatus);
-      expect(after.salesRemaining, before.salesRemaining);
-      expect(after.pendingRevenue, before.pendingRevenue);
-      expect(
-        currentWorkflow(tester).engineers.map((e) => e.stage).toList(),
-        stagesBefore,
-      );
-    });
+        final after = currentState(tester);
+        // The Recovery command only ever moves one engineer from waiting to
+        // assigned (`PublicDemoAggregate.recoverAssignment`'s own contract)
+        // — it does not touch Finance, month, or sales-slot state.
+        expect(after.engineersWaiting, beforeWaiting - 1);
+        expect(after.engineersAssigned, beforeAssigned + 1);
+        expect(after.cash, before.cash);
+        expect(after.month, before.month);
+        expect(after.financialStatus, before.financialStatus);
+        expect(after.salesRemaining, before.salesRemaining);
+        expect(after.pendingRevenue, before.pendingRevenue);
+        // Recovering the engineer removes them from the recommended-action
+        // slot's own outstanding-work set: the CTA no longer offers the
+        // same Recovery step a second time.
+        expect(recommended(tester)?.kind, isNot(HomeRecommendedActionKind.recoveryAssignment));
+      },
+    );
 
     testWidgets('bankruptcy suppresses the slot entirely — there is no next '
         'action, and no consolation month goal either', (tester) async {

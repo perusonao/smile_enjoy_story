@@ -70,4 +70,99 @@ void main() {
       },
     );
   });
+
+  // ===========================================================================
+  // Issue #119 remaining scope: the `recommended` level.
+  // ===========================================================================
+  group('PublicDemoMonthGuard recommended level (Issue #119)', () {
+    test('no-task: nothing outstanding and no required decision yields no '
+        'items at all', () {
+      final items = PublicDemoMonthGuard.evaluate(
+        month: 9,
+        monthCloseApplicable: true,
+        summerBonusDecisionConfirmed: true,
+        outstandingRecommendedActions: const [],
+      );
+      expect(items, isEmpty);
+    });
+
+    test('recommended-task: each outstanding candidate becomes its own '
+        'recommended item, truthfully naming that candidate\'s action', () {
+      final items = PublicDemoMonthGuard.evaluate(
+        month: 9,
+        monthCloseApplicable: true,
+        summerBonusDecisionConfirmed: true,
+        outstandingRecommendedActions: const [
+          PublicDemoMonthGuardCandidate(
+            id: 'employeeSkillSheetReview:eng-02',
+            actionName: '鈴木 一郎のSkillSheetを確認',
+          ),
+          PublicDemoMonthGuardCandidate(
+            id: 'recoveryAssignment:app-01',
+            actionName: '高橋 翔を案件へ復帰させる',
+          ),
+        ],
+      );
+      expect(items, hasLength(2));
+      expect(
+        items.every((item) => item.level == PublicDemoMonthGuardLevel.recommended),
+        isTrue,
+      );
+      expect(items[0].id, 'employeeSkillSheetReview:eng-02');
+      expect(items[0].message, contains('鈴木 一郎のSkillSheetを確認'));
+      expect(items[1].id, 'recoveryAssignment:app-01');
+      expect(items[1].message, contains('高橋 翔を案件へ復帰させる'));
+    });
+
+    test('required-task: July\'s required item and any recommended '
+        'candidates can coexist in the same evaluate() call — the caller '
+        'decides how to sequence resolving them, this file only classifies', () {
+      final items = PublicDemoMonthGuard.evaluate(
+        month: 7,
+        monthCloseApplicable: true,
+        summerBonusDecisionConfirmed: false,
+        outstandingRecommendedActions: const [
+          PublicDemoMonthGuardCandidate(
+            id: 'raiseRequest:app-02',
+            actionName: '田中 美咲の昇給要求を確認',
+          ),
+        ],
+      );
+      expect(items, hasLength(2));
+      expect(
+        items.where((i) => i.level == PublicDemoMonthGuardLevel.required),
+        hasLength(1),
+      );
+      expect(
+        items.where((i) => i.level == PublicDemoMonthGuardLevel.recommended),
+        hasLength(1),
+      );
+    });
+
+    test('terminal state: month close not applicable suppresses every '
+        'item, required and recommended alike', () {
+      final items = PublicDemoMonthGuard.evaluate(
+        month: 9,
+        monthCloseApplicable: false,
+        summerBonusDecisionConfirmed: true,
+        outstandingRecommendedActions: const [
+          PublicDemoMonthGuardCandidate(
+            id: 'recoveryAssignment:app-01',
+            actionName: '高橋 翔を案件へ復帰させる',
+          ),
+        ],
+      );
+      expect(items, isEmpty);
+    });
+
+    test('an empty outstandingRecommendedActions list is the default, so '
+        'every PR1 call site (which never passed it) is unaffected', () {
+      final items = PublicDemoMonthGuard.evaluate(
+        month: 9,
+        monthCloseApplicable: true,
+        summerBonusDecisionConfirmed: true,
+      );
+      expect(items, isEmpty);
+    });
+  });
 }

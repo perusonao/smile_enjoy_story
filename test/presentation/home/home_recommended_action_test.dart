@@ -178,6 +178,63 @@ void main() {
     );
   });
 
+  // ===========================================================================
+  // Issue #119 PLAYTHROUGH-BLOCKER-2: `isInformational` and the one
+  // deliberate priority exception it motivates.
+  // ===========================================================================
+  group('informational classification (Issue #119)', () {
+    test('cashShortageResponse is the only informational kind', () {
+      for (final kind in HomeRecommendedActionKind.values) {
+        expect(
+          kind.isInformational,
+          kind == HomeRecommendedActionKind.cashShortageResponse,
+          reason: '${kind.name}.isInformational must be '
+              '${kind == HomeRecommendedActionKind.cashShortageResponse}',
+        );
+      }
+    });
+
+    test(
+      'recoveryAssignment is the one kind ranked above cashShortageResponse',
+      () {
+        expect(
+          HomeRecommendedActionKind.recoveryAssignment.presentationPriority,
+          lessThan(HomeRecommendedActionKind.cashShortageResponse.presentationPriority),
+        );
+        for (final kind in HomeRecommendedActionKind.values) {
+          if (kind == HomeRecommendedActionKind.recoveryAssignment) continue;
+          expect(
+            kind.presentationPriority,
+            greaterThanOrEqualTo(
+              HomeRecommendedActionKind.cashShortageResponse.presentationPriority,
+            ),
+            reason:
+                '${kind.name} must not also outrank cashShortageResponse — '
+                'only recoveryAssignment is a deliberate exception',
+          );
+        }
+      },
+    );
+
+    test(
+      'selection: a genuine Recovery candidate wins over the informational '
+      'shortage card even though it is P0 by design',
+      () {
+        final shortage = candidate(HomeRecommendedActionKind.cashShortageResponse);
+        final recovery = candidate(
+          HomeRecommendedActionKind.recoveryAssignment,
+          subjectName: '佐藤 健',
+        );
+        for (final order in [
+          [shortage, recovery],
+          [recovery, shortage],
+        ]) {
+          expect(selectHomeRecommendedAction(order), same(recovery));
+        }
+      },
+    );
+  });
+
   group('selection', () {
     test('no candidates selects nothing', () {
       expect(selectHomeRecommendedAction(const []), isNull);

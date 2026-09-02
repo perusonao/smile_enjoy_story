@@ -185,10 +185,18 @@ const _targets = <({Size size, double contentBudget})>[
 /// month-goal card). HOME-RUNTIME-2C swaps the last of those for the
 /// recommended-action card, whose only structural addition is one CTA row.
 /// 320pt is that block plus that row: enough for the phase, and not enough
-/// for a second card to reappear in the slot. It is still barely half of
-/// the 615pt browser-chrome content budget, so the screen's own content
-/// keeps the rest.
-const double _homeBlockCeiling = 500;
+/// for a second card to reappear in the slot.
+///
+/// PUBLIC-DEMO-HOME-UI-3A raises this ceiling once more, deliberately: the
+/// approved visual target requires the advice explanation ("ひよりからの
+/// アドバイス") to be always visible (replacing the former "詳しく見る" tap
+/// -to-reveal control) AND a second, always-visible secondary CTA ("他の
+/// 行動を確認する") below the primary one — both real, required structural
+/// additions, not slack. The block now measures ~510pt at 360x800; 560pt
+/// keeps real margin while still failing the moment a THIRD element is
+/// added to the slot. It remains well under the 615pt browser-chrome
+/// content budget, so the screen's own content still keeps real room.
+const double _homeBlockCeiling = 560;
 
 void main() {
   group('1-2: the Public Demo entry point is preserved', () {
@@ -249,10 +257,25 @@ void main() {
       expect(find.text('社員数'), findsNothing);
 
       // The merged KPI carries every label exactly once, inside HOME.
-      for (final label in ['現金', '参画', '営業残', '社員', '売上', '入金予定']) {
+      //
+      // PUBLIC-DEMO-HOME-UI-3A: '社員' is the one label that legitimately
+      // gains a second, different-purpose appearance outside HOME — it is
+      // also the bottom nav's own destination label (section 8), which
+      // states a navigation target, not a second restatement of the KPI
+      // fact. Scoped the same way '待機' already is just below.
+      for (final label in ['現金', '参画', '営業残', '売上', '入金予定']) {
         expect(find.text(label), findsOneWidget, reason: label);
         expect(inHome(find.text(label)), findsOneWidget, reason: label);
       }
+      expect(inHome(find.text('社員')), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byKey(const Key('public-demo-bottom-nav')),
+          matching: find.text('社員'),
+        ),
+        findsOneWidget,
+      );
+      expect(find.text('社員'), findsNWidgets(2));
 
       // 待機 is the one label that legitimately appears outside HOME: it is
       // also each waiting engineer's own status badge, which is a different
@@ -715,7 +738,13 @@ void main() {
         await tester.pumpAndSettle();
         expect(tasks, findsOneWidget);
         expect(find.text('今月の重要タスク'), findsOneWidget);
-        expect(find.text('営業'), findsOneWidget);
+        // Scoped to the section itself: '営業' is also the bottom nav's own
+        // destination label (section 8), a different, legitimate second
+        // appearance of the same string.
+        expect(
+          find.descendant(of: tasks, matching: find.text('営業')),
+          findsOneWidget,
+        );
       },
     );
 

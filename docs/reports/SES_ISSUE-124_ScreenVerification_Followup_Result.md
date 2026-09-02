@@ -222,8 +222,8 @@ made both pass again at their existing, unmodified thresholds.
 
 - Repository: `perusonao/smile_enjoy_story`
 - Branch: `claude/home-viewport-compression-w9hr5y`
-- Commit SHA: _(filled in after commit — see the pushed branch)_
-- PR URL: _(filled in after the PR is opened)_
+- Commit SHA: `55933c7fb69dc1a25a713d52328cc503f1ce5fa1`
+- PR URL: https://github.com/perusonao/smile_enjoy_story/pull/146
 - Result report (this file, repository-relative path):
   `docs/reports/SES_ISSUE-124_ScreenVerification_Followup_Result.md`
 

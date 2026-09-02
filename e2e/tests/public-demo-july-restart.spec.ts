@@ -1,50 +1,33 @@
 import { test, expect } from '@playwright/test';
 import { watchForErrors } from '../helpers/artifacts';
+import {
+  openPublicDemo,
+  assertCalendarMonth,
+  scrollToButton,
+  scrollToTop,
+} from '../helpers/public-demo-player';
 
-async function expectMonth(page: import('@playwright/test').Page, month: number) {
-  await expect(async () => {
-    const snapshot = await page.locator('body').ariaSnapshot();
-    expect(snapshot).toContain(`1年目 ${month}月`);
-  }).toPass();
-}
-
-async function waitForRenderedFrames(page: import('@playwright/test').Page) {
-  await page.evaluate(
-    () =>
-      new Promise<void>((resolve) =>
-        requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
-      ),
-  );
-}
-
+// This test needs to inspect two dialogs' own content (the April
+// new-applicant event, the summer-bonus picker) before choosing which of
+// their buttons to click — unlike every other Public Demo spec's write
+// path, it deliberately does not go through `clickButton` (which would
+// auto-dismiss a `確認`-labelled dialog before this test gets to assert on
+// it). It still reuses `scrollToButton` — the same robust, dialog-aware
+// scroll loop `clickButton` itself is built on — rather than a second,
+// weaker scroll implementation of its own.
+//
+// Scrolls to the top first, same as `findMonthlyPrimaryCta`: this test's
+// own targets (the monthly-close CTA, the summer-bonus/restart controls)
+// all render near the top of the page, and `scrollToButton`'s own search
+// only ever goes downward until it has already seen the target (so a
+// caller left scrolled deep past it — e.g. after the previous action's own
+// card interaction — could never recover on its own).
 async function clickScrollableButton(
   page: import('@playwright/test').Page,
   name: string,
 ) {
-  const button = page.getByRole('button', { name, exact: true });
-  const viewport = page.viewportSize();
-  if (viewport) await page.mouse.move(viewport.width / 2, viewport.height / 2);
-  for (let step = 0; step < 20; step++) {
-    if ((await button.count()) > 0) {
-      const box = await button.boundingBox();
-      if (
-        box &&
-        viewport &&
-        box.y >= 0 &&
-        box.y + box.height <= viewport.height
-      ) {
-        await button.click();
-        return;
-      }
-      if (box?.y != null && box.y < 0) {
-        await page.mouse.wheel(0, -500);
-        await waitForRenderedFrames(page);
-        continue;
-      }
-    }
-    await page.mouse.wheel(0, 500);
-    await waitForRenderedFrames(page);
-  }
+  await scrollToTop(page);
+  const button = await scrollToButton(page, name, true);
   await expect(button).toBeVisible();
   await button.click();
 }
@@ -53,21 +36,20 @@ test.describe('Public Demo July close and April restart', () => {
   test('none closes July into August and the test restart is confirmable', async ({ page }) => {
     const errors = watchForErrors(page);
 
-    await page.goto('/?e2e=1#/public-demo-01');
-    await page.locator('flt-semantics').first().waitFor({ state: 'attached' });
-    await expectMonth(page, 4);
+    await openPublicDemo(page);
+    await assertCalendarMonth(page, 4);
 
     await clickScrollableButton(page, '4月を終了して5月へ');
     const applicationDialog = page.getByRole('alertdialog');
     await expect(applicationDialog).toBeVisible();
     expect(await applicationDialog.ariaSnapshot()).toContain('新しい応募が届きました');
     await applicationDialog.getByRole('button', { name: '確認', exact: true }).click();
-    await expectMonth(page, 5);
+    await assertCalendarMonth(page, 5);
 
     await clickScrollableButton(page, '5月を終了して6月へ');
-    await expectMonth(page, 6);
+    await assertCalendarMonth(page, 6);
     await clickScrollableButton(page, '6月を終了して7月へ');
-    await expectMonth(page, 7);
+    await assertCalendarMonth(page, 7);
 
     await clickScrollableButton(page, '夏季賞与を決める');
     const bonusDialog = page.getByRole('alertdialog');
@@ -76,7 +58,7 @@ test.describe('Public Demo July close and April restart', () => {
     await none.click();
     await clickScrollableButton(page, '7月を終了して8月へ');
 
-    await expectMonth(page, 8);
+    await assertCalendarMonth(page, 8);
 
     await clickScrollableButton(page, '4月からやり直す');
     const restartDialog = page.getByRole('alertdialog');
@@ -84,7 +66,7 @@ test.describe('Public Demo July close and April restart', () => {
     expect(await restartDialog.ariaSnapshot()).toContain('Public Demoを4月からやり直しますか？');
 
     await restartDialog.getByRole('button', { name: 'キャンセル', exact: true }).click();
-    await expectMonth(page, 8);
+    await assertCalendarMonth(page, 8);
 
     await clickScrollableButton(page, '4月からやり直す');
     await page
@@ -92,7 +74,7 @@ test.describe('Public Demo July close and April restart', () => {
       .getByRole('button', { name: '4月からやり直す', exact: true })
       .click();
 
-    await expectMonth(page, 4);
+    await assertCalendarMonth(page, 4);
     expect(await page.locator('body').ariaSnapshot()).toContain('佐藤 健');
     await expect(page.getByRole('button', { name: 'SkillSheetを確認', exact: true })).toBeVisible();
 

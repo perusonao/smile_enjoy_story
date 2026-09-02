@@ -524,13 +524,25 @@ export async function isFinanciallyTerminal(page: Page): Promise<boolean> {
 /** Reads whether Public Demo's financial status is currently `cashShortage`
  * (`PublicDemoFinancialStatus.cashShortage` / `state.isFinanciallyRestricted`)
  * — a non-terminal warning state distinct from [isFinanciallyTerminal]'s
- * bankruptcy check: the player can still act, just under the finance
- * summary card's own red warning banner (`public_demo_01_placeholder_screen
- * .dart`'s `_financeSummary` getter). Matches the exact production string,
- * never a looser "is anything wrong" heuristic. */
+ * bankruptcy check: the player can still act, just under
+ * `PublicDemoCashShortageCard`'s own red warning banner
+ * (`public_demo_01_placeholder_screen.dart`'s `PublicDemoCashShortageCard(state: s)`).
+ * Matches that card's exact production string, never a looser "is anything
+ * wrong" heuristic. SES-FIRST-FUN-YEAR-UI-PHASE-1 removed the finance
+ * summary card's own duplicate warning banner (`_financeSummary`'s
+ * `warning` field, which used to carry this same fact as a second,
+ * differently-worded string) — this now reads the one surviving
+ * authoritative card instead.
+ *
+ * Scrolls to the top first, same as [readCompactKpiValue]/[findMonthlyPrimaryCta]:
+ * `PublicDemoCashShortageCard` renders near the top of the page, and a
+ * caller (e.g. the Recovery sales pipeline, which scrolls deep into a
+ * waiting engineer's own card further down) can leave the page scrolled
+ * well past it. */
 export async function isCashShortage(page: Page): Promise<boolean> {
+  await scrollToTop(page);
   const snap = await snapshot(page);
-  return snap.includes('資金不足です。必要な対応を確認してください。');
+  return snap.includes('資金不足：次回決算が期限です');
 }
 
 /** Reads the finance-summary card's `現金残高` (current cash) line verbatim,

@@ -44,6 +44,7 @@ import {
   readCashSummaryLine,
   isFinanciallyTerminal,
   scrollToText,
+  readCompactKpiValue,
 } from '../helpers/public-demo-player';
 
 const VIEWPORTS = [
@@ -245,8 +246,13 @@ for (const viewport of VIEWPORTS) {
         expect(snap, 'app-01 must still be waiting entering July').toContain('待機');
         await runWaitingEngineerSalesPipelineToOrdered(page, appOneCard(page));
         await recoverAssignment(page);
-        const afterSnap = await snapshot(page);
-        expect(afterSnap, 'both eng-01 and app-01 are now assigned').toContain('参画 2名');
+        // SES-FIRST-FUN-YEAR-UI-PHASE-1 removed July recap's own duplicate
+        // 参画/待機 headcount line — read the always-visible compact KPI
+        // tile (the surviving authoritative source) instead of a snapshot
+        // substring match against the now-removed text.
+        expect(await readCompactKpiValue(page, '参画'), 'both eng-01 and app-01 are now assigned').toBe(
+          '2名',
+        );
       });
 
       await test.step('July: decide no summer bonus', async () => {

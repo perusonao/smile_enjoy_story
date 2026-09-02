@@ -8,7 +8,7 @@ fixing an unresolved P1 finding from PR #146's automated review.
 - Before (this fix's starting point, matches the task's `Current HEAD`):
   `6b5234b8c75965b03418352baf342576d6cf8e99`
 - After (this fix, pushed to the same PR #146 branch):
-  `<see the pushed commit — recorded below after commit>`
+  `7f8b8fa131062b4f80b575656925d74dc6cf0de1`
 - Branch: `claude/home-viewport-compression-w9hr5y`
 - PR: https://github.com/perusonao/smile_enjoy_story/pull/146
 

@@ -445,9 +445,12 @@ risk per the structural grep above, but not proven green).
 
 ## COMMIT / BRANCH / PR
 
-- Final commit SHA: `64c85feb8f8aa53780556ae0bc89d026d6c30d79`
+- Final implementation commit SHA: `64c85feb8f8aa53780556ae0bc89d026d6c30d79`
+- This report's own commit SHA: `46261b78b26a91bae88118f06da3f4ee3563fd61`
 - Pushed branch: `claude/issue-147-home-ui-3a` (via local branch
   `issue147-work`, since the literal branch name was checked out in a
   sibling worktree this session could not touch)
-- PR: see final message for URL (opened against `main`, not merged, per
-  instruction)
+- PR: https://github.com/perusonao/smile_enjoy_story/pull/150 (opened
+  against `main`, not merged, per instruction; body says "Closes #147" —
+  every acceptance criterion in the issue is satisfied per the Merge
+  Readiness section above)

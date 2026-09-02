@@ -391,16 +391,33 @@ A screen that's legitimately just waiting ("今週やる操作はありません
 
 ## CI
 
-`.github/workflows/e2e.yml` — independent from `.github/workflows/deploy.yml`
-(never touched by this change). Runs on every PR into `main`
-(`flutter analyze` → `flutter test` → `flutter build web` → Playwright on
-both mobile profiles) and on demand via "Run workflow" (optionally with a
-custom seed list for a full validation pass). Results are uploaded as the
-`ses-playwright-results` artifact.
+CI is split across two independent workflows (SES-CI-SPEED-1) so an ordinary
+UI/gameplay PR never waits on WebKit or the full annual/Recovery/multi-
+viewport regression suite:
+
+- **`.github/workflows/e2e.yml`** ("Fast CI") — runs on every PR/push into
+  `main` and on demand. `flutter analyze`/`test`/`build` (`validate`), then a
+  curated **smoke** subset on `mobile-chromium` only (`smoke-e2e`): app
+  launch + Founding→First Assignment (3-seed sample,
+  `founding-first-assignment.spec.ts`), Public Demo entry/HOME
+  (`public-demo-fresh-start.spec.ts`), plus the harness's own browser-free/
+  fixture-based regression guards (`artifacts.*`, `game-state.ariaParsing`,
+  `seeds`, `ses-player.completionCapOrdering`, `ses-player.deadEndStability`,
+  `portable-wheel-fallback`). This is the one gate `build`/`deploy` wait on.
+  Results are uploaded as `ses-playwright-results-smoke-chromium`.
+- **`.github/workflows/e2e-heavy.yml`** ("Heavy E2E") — the rest of the
+  suite (WebKit on every spec, the annual April→March baseline, the
+  late-year Recovery Loop's full pattern set, multi-viewport checks, and
+  every other gameplay-flow spec), on both `mobile-chromium` and
+  `mobile-webkit`. Runs only via manual "Run workflow" (optionally with a
+  custom seed list for the full 10-seed validation pass) or a weekly
+  schedule — never on every push, and never wired into `build`/`deploy`, so
+  a red or slow run here cannot hold up a normal main deploy. Results are
+  uploaded as `ses-playwright-results-heavy-chromium`/`-heavy-webkit`.
 
 **To view results from a GitHub Actions run (incl. from a phone browser):**
-GitHub → **Actions** tab → the "Playwright E2E (S.E.S.)" run → scroll to
-**Artifacts** → download `ses-playwright-results`. It contains
-`test-results/` (videos, screenshots, result JSON, action traces) and
-`playwright-report/` (open `playwright-report/index.html` locally for the
-interactive HTML report with embedded video/trace links).
+GitHub → **Actions** tab → the relevant workflow run → scroll to
+**Artifacts** → download the `ses-playwright-results-*` artifact you need.
+It contains `test-results/` (videos, screenshots, result JSON, action
+traces) and `playwright-report/` (open `playwright-report/index.html`
+locally for the interactive HTML report with embedded video/trace links).

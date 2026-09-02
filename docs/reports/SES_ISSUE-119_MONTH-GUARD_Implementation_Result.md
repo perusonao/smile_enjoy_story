@@ -352,19 +352,28 @@ Clean — no whitespace errors.
   verbatim, and the underlying Flutter-level behavior they exercise is
   fully covered by the widget tests above) but should be confirmed by
   Heavy E2E CI before merge, same as PR1's WebKit gate was.
-* **No other e2e spec's helper semantics changed** — `closeMonthlyPrimaryCta`
-  itself is untouched; it simply will not auto-dismiss the new dialog
-  (its own `waitAndDismissDialog` only matches a `確認`-labelled button,
-  and neither of this dialog's two labels is `確認`), so any *other*
-  existing Heavy E2E spec whose trajectory happens to leave a genuine
-  recommended item outstanding through an August+ close would need the
-  same treatment this report gave the affected Flutter widget-test
-  helpers. `public-demo-annual-route.spec.ts` and `public-demo-recovery.
-  spec.ts` were inspected and, as far as could be determined by reading
-  (not running) them, decide every engineer's own monthly order at each
-  relevant step, so they are not expected to hit this — but this is
-  explicitly **not construed as a substitute for actually running Heavy
-  E2E**, see above.
+* **`closeMonthlyPrimaryCta` itself now proceeds through the new dialog**
+  (commit `adf051f`, added in response to a Codex review finding on this
+  PR): the first pass of this report claimed `public-demo-recovery.
+  spec.ts` was inspected and believed to decide every engineer's own
+  monthly order at each relevant step, so it would not hit the new
+  dialog. That claim was wrong — its `CRITICAL ACCEPTANCE GATE` scenario
+  deliberately leaves app-01 undecided and loops `closeMonthlyPrimaryCta`
+  from August onward specifically to reach cash shortage under genuine
+  Recovery eligibility, which is exactly the state that now opens
+  `PublicDemoMonthGuardWarningDialog` on the very first iteration; the
+  helper's own dialog-dismiss logic only matched an exact `確認` label,
+  neither of which this new dialog uses, so the loop would have hung
+  deterministically. Rather than patch each affected spec/trajectory
+  individually, the fix was made once in the shared helper itself —
+  `closeMonthlyPrimaryCta` now also proceeds via "このまま月末処理を進める"
+  when the dialog is open — so every current and future Heavy E2E caller
+  of this helper is covered, not just the specs this report happened to
+  read. Still **not run end-to-end in this session** (no local
+  `build/web`/Playwright browser run completed) — this fix follows the
+  exact same pattern already verified working on the four affected
+  Flutter widget-test helpers, but should be confirmed by Heavy E2E CI
+  before merge, same as PR1's WebKit gate was.
 
 ## Open Items
 
@@ -376,8 +385,13 @@ Clean — no whitespace errors.
   available this pass (no comparable "silent unwarned loss" case
   demonstrated for those months, and each already gates through its own
   mandatory event dialog) — but it means, strictly, "7月以外" is only
-  fully covered for August–March, not April–June. A future issue could
-  extend the same mechanism there if a concrete blocker is identified.
+  fully covered for August–March, not April–June. A Codex review on this
+  PR raised exactly this gap (`June therefore advances without the
+  promised non-July warning`); the reply stands by the scope decision for
+  the reasons above and offers to open a follow-up issue rather than
+  extend this PR un-validated — see PR #145's review thread. A future
+  issue could extend the same mechanism there if the maintainer wants
+  that coverage.
 * Per Issue #119's own **Screen Verification Gate**: this implementation
   has not been manually verified on a deployed build at a mobile
   viewport. That gate — "verify at least one recommended-task case and

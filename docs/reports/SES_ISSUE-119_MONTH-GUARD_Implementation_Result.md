@@ -3,9 +3,8 @@
 ## Status
 
 Complete. Both PLAYTHROUGH BLOCKER items named in the task are resolved.
-`flutter analyze`: clean. `flutter test` (full suite): all green (see
-[flutter test](#flutter-test) for the exact count). `git diff --check`:
-clean.
+`flutter analyze`: **No issues found!**. `flutter test` (full suite):
+**1404/1404 passed**. `git diff --check`: clean.
 
 ## Base SHA
 
@@ -22,9 +21,9 @@ this exact `origin/main` HEAD before any work began.
 
 ## Commit SHA
 
-See the `docs:` commit that adds this report — this file is committed
-together with the implementation on this branch. (Filled in at push time;
-see the end-of-turn summary for the exact SHA.)
+* `d57ed25` — `feat(public-demo): extend Month Guard to recommended-level warnings (Issue #119)` (implementation + tests)
+* `da3208d` — `docs: add Issue #119 Month Guard remaining-scope result report` (this report, first pass)
+* This commit (updating this report with the confirmed final `flutter test` count) — see the end-of-turn summary for its exact SHA.
 
 ## Scope
 
@@ -218,7 +217,7 @@ comparable "silent, unwarned loss" gap in during this pass — see
   `public_demo_01_playthrough_test.dart`,
   `public_demo_01_fiscal_year_progression_test.dart`,
   `public_demo_01_annual_route`-equivalent domain tests, and the rest of
-  the ~1300+ test suite) passes unmodified in assertion shape — the only
+  the full 1404-test suite) passes unmodified in assertion shape — the only
   test-file changes outside the two new files above are:
   * `test/presentation/home/home_recommended_action_test.dart` — additive
     (`isInformational` classification + `recoveryAssignment` priority
@@ -289,10 +288,10 @@ Clean: **No issues found!**
 
 ## flutter test
 
-Full suite: **all green** — see the end-of-turn summary for the exact
-pass count from this branch's final run (`flutter test`, no path filter).
-Every individually-run affected file (`public_demo_month_guard_test.dart`,
-`home_recommended_action_test.dart` ×2 files,
+Full suite (`flutter test`, no path filter): **1404/1404 passed**, exit
+code 0, run to completion without interruption. Every individually-run
+affected file (`public_demo_month_guard_test.dart`,
+`home_recommended_action_test.dart` (presentation model),
 `public_demo_01_home_recommended_action_test.dart`,
 `public_demo_01_month_guard_recommended_test.dart`,
 `public_demo_01_fiscal_year_progression_test.dart`,
@@ -300,6 +299,20 @@ Every individually-run affected file (`public_demo_month_guard_test.dart`,
 `public_demo_01_home_runtime_read_test.dart`,
 `public_demo_01_recovery_ui_test.dart`) was additionally verified in
 isolation and is green.
+
+One earlier full-suite run in this session showed 14 tests reported as
+"did not complete" at its very end. Root-caused to this session's own
+`pkill -f flutter_tester` (issued against a separate, already-superseded
+background run) having killed in-flight worker isolates belonging to
+*this* run instead; Flutter's test runner respawned workers and continued
+past it, but the killed tests were flushed as "did not complete" once
+buffered output finally reached disk. Every one of those 14 was
+individually re-verified passing in isolation immediately afterward
+(`public_demo_01_home_runtime_read_test.dart`: 12/12; the
+`public_demo_01_home_recommended_action_test.dart` cases were already
+independently confirmed at 23/23 earlier in this session), and the fully
+clean, uninterrupted re-run above (1404/1404) is the authoritative
+result.
 
 ## git diff --check
 

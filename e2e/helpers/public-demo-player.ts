@@ -295,7 +295,19 @@ export async function findMonthlyPrimaryCta(page: Page): Promise<Locator> {
  * any) that specific month's close opens — April's new-applicant event
  * dialog, July's summer-bonus flow being a prerequisite rather than a
  * post-close dialog, etc. Does not itself assert the resulting month; call
- * `assertCalendarMonth` afterwards. */
+ * `assertCalendarMonth` afterwards.
+ *
+ * Issue #119 (PUBLIC-DEMO-MONTH-GUARD-1A): an August-March close can now
+ * also open `PublicDemoMonthGuardWarningDialog` when a `recommended`-level
+ * action is genuinely outstanding (e.g. an economically-waiting engineer's
+ * own Recovery step). Its two buttons ("タスクを確認" / "このまま月末処理を
+ * 進める") are neither one an exact `確認` match, so `waitAndDismissDialog`
+ * above never touches it — this proceeds through it exactly as a player
+ * choosing "このまま月末処理を進める" would, so every existing caller of this
+ * helper keeps closing the month in one call regardless of whether that
+ * warning happens to be showing. A caller that specifically wants to
+ * exercise the warning itself (reviewing it, or choosing to cancel) should
+ * drive the CTA and the dialog directly instead of using this helper. */
 export async function closeMonthlyPrimaryCta(page: Page): Promise<void> {
   const cta = await findMonthlyPrimaryCta(page);
   await expect(cta, 'canonical monthly-close CTA must be reachable').toBeVisible({
@@ -308,6 +320,17 @@ export async function closeMonthlyPrimaryCta(page: Page): Promise<void> {
   // image precache (`april()`), and this is called at most once per month
   // (12 times for a full year), so the worst case here is cheap.
   await waitAndDismissDialog(page, '確認', 4_000);
+  const monthGuardDialog = page.getByRole('alertdialog');
+  if ((await monthGuardDialog.count()) > 0) {
+    const proceed = monthGuardDialog.getByRole('button', {
+      name: 'このまま月末処理を進める',
+      exact: true,
+    });
+    if ((await proceed.count()) > 0) {
+      await proceed.click();
+      await waitForStableFrame(page);
+    }
+  }
 }
 
 /** Restarts a Public Demo playthrough from whatever month it currently sits

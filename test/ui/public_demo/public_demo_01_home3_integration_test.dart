@@ -39,17 +39,16 @@ Future<void> settleDialogImage(WidgetTester tester) async {
   await tester.pumpAndSettle();
 }
 
+// PUBLIC-DEMO-HOME-UI-3A: the new bottomNavigationBar shrinks the ListView's
+// own visible viewport below the raw physical screen size, so a manual drag
+// loop that checked against `tester.view.physicalSize.height` could scroll
+// a target directly *behind* the nav bar and still "pass" the bound check
+// while the widget was not actually hit-testable there.
+// `WidgetController.ensureVisible` scrolls using the real ancestor
+// `Scrollable`'s own viewport instead, so it does not have this defect.
 Future<void> scrollToVisible(WidgetTester tester, Finder target) async {
-  final viewportHeight = tester.view.physicalSize.height;
-  for (
-    var i = 0;
-    i < 8 && tester.getRect(target).bottom > viewportHeight;
-    i++
-  ) {
-    await tester.drag(find.byType(ListView), const Offset(0, -300));
-    await tester.pumpAndSettle();
-  }
-  expect(tester.getRect(target).bottom, lessThanOrEqualTo(viewportHeight));
+  await tester.ensureVisible(target);
+  await tester.pumpAndSettle();
 }
 
 Future<void> tapAndDismissMonthEnd(WidgetTester tester) async {
@@ -77,11 +76,17 @@ void main() {
     ) async {
       await pumpDemo(tester, size: const Size(360, 800));
 
+      // PUBLIC-DEMO-HOME-UI-3A: PublicDemoEmployeeStageSection (the
+      // duplicate full-size roster) is deleted — HomeOfficeStageSection is
+      // now the only employee-roster presentation on HOME.
+      // PublicDemoImportantEventsSection is replaced by
+      // PublicDemoImportantTasksSection ("今月の重要タスク"), and
+      // PublicDemoQuickAccessSection (section 7) is new.
       final order = [
         find.byType(HomeNavigatorSection),
         find.byType(HomeOfficeStageSection),
-        find.byType(PublicDemoEmployeeStageSection),
-        find.byType(PublicDemoImportantEventsSection),
+        find.byType(PublicDemoImportantTasksSection),
+        find.byType(PublicDemoQuickAccessSection),
         find.byType(PublicDemoFinanceSummarySection),
         find.byType(PublicDemoMonthlyPrimaryCtaSection),
       ];
@@ -94,7 +99,6 @@ void main() {
           lessThan(treeIndexOf(tester, order[i])),
         );
       }
-
       // SES-FIRST-FUN-YEAR-UI-PHASE-1: PublicDemoFinanceSummarySection no
       // longer carries cash/nextMonthEstimate — both duplicated the compact
       // KPI, which shows them on every build (see
@@ -107,12 +111,13 @@ void main() {
       expect(finance.summary.payroll, greaterThan(0));
       expect(finance.summary.fixedCosts, greaterThan(0));
       expect(find.text('佐藤 健'), findsWidgets);
+      // The Office Stage card is the only roster-like employee summary.
       expect(
         find.descendant(
-          of: find.byType(PublicDemoEmployeeStageSection),
-          matching: find.text('営業準備前'),
+          of: find.byType(HomeOfficeStageSection),
+          matching: find.text('佐藤 健'),
         ),
-        findsNWidgets(2),
+        findsOneWidget,
       );
     });
 
@@ -146,24 +151,43 @@ void main() {
       },
     );
 
-    testWidgets('the event shortcut is presentation-only and preserves state', (
-      tester,
-    ) async {
-      await pumpDemo(tester, size: const Size(390, 844));
-      await tapAndDismissMonthEnd(tester);
-      final before = currentState(tester).toJson();
+    testWidgets(
+      'a quick-access item scroll-jumps to its section and preserves state',
+      (tester) async {
+        await pumpDemo(tester, size: const Size(390, 844));
+        await tapAndDismissMonthEnd(tester);
+        final before = currentState(tester).toJson();
 
-      final eventCta = find.widgetWithText(TextButton, '収支を見る');
-      await scrollToVisible(tester, eventCta);
-      await tester.tap(eventCta);
-      await tester.pumpAndSettle();
+        final quickAccessFinance = find.byKey(
+          const Key('public-demo-quick-access-finance'),
+        );
+        await scrollToVisible(tester, quickAccessFinance);
+        await tester.tap(quickAccessFinance);
+        await tester.pumpAndSettle();
 
-      expect(currentState(tester).toJson(), before);
-      expect(
-        find.byKey(const Key('public-demo-monthly-cash-flow-card')),
-        findsOneWidget,
-      );
-    });
+        expect(currentState(tester).toJson(), before);
+        expect(
+          find.byKey(const Key('public-demo-finance-summary')),
+          findsOneWidget,
+        );
+      },
+    );
+
+    testWidgets(
+      'an important-task CTA scroll-jumps to the legacy action surface and '
+      'preserves state',
+      (tester) async {
+        await pumpDemo(tester, size: const Size(390, 844));
+        final before = currentState(tester).toJson();
+
+        final taskCta = find.widgetWithText(TextButton, '対応する').first;
+        await scrollToVisible(tester, taskCta);
+        await tester.tap(taskCta);
+        await tester.pumpAndSettle();
+
+        expect(currentState(tester).toJson(), before);
+      },
+    );
 
     for (final width in [360.0, 390.0]) {
       testWidgets(
@@ -172,7 +196,8 @@ void main() {
           await pumpDemo(tester, size: Size(width, 844), textScale: 1.3);
 
           for (final text in [
-            '社員ステージ',
+            '今月の重要タスク',
+            'クイックアクセス',
             '今月の支出予定',
             '今月の主要行動',
             '給与',

@@ -76,8 +76,24 @@ void main() {
       await tester.pump();
 
       expect(find.text('S.E.S. Public Demo 0.1'), findsOneWidget);
-      expect(find.text('Deploy: PR #95 · c4beb9e'), findsOneWidget);
+      // PUBLIC-DEMO-HOME-UI-3A: BuildInfoLabel is relocated out of the
+      // AppBar title (which used to carry a two-line Column) into the
+      // collapsed "開発・テストメニュー" card — the compact developer/test
+      // surface the issue asks the deploy identity be kept available in
+      // without visually dominating the gameplay header. It is therefore
+      // absent until that section is expanded.
+      expect(find.text('Deploy: PR #95 · c4beb9e'), findsNothing);
       expect(tester.getSize(find.byType(AppBar)).height, kToolbarHeight);
+
+      final toggle = find.byKey(const Key('public-demo-dev-menu-toggle'));
+      await tester.ensureVisible(toggle);
+      await tester.pumpAndSettle();
+      await tester.tap(toggle);
+      await tester.pumpAndSettle();
+      final buildInfoLabel = find.text('Deploy: PR #95 · c4beb9e');
+      await tester.ensureVisible(buildInfoLabel);
+      await tester.pumpAndSettle();
+      expect(buildInfoLabel, findsOneWidget);
       expect(tester.takeException(), isNull);
     });
   }

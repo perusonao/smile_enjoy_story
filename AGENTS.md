@@ -4,19 +4,23 @@
 
 Before starting any implementation, debugging, refactoring, UI change, or test change in this repository, read:
 
-- `docs/DEVELOPMENT_PLAN.md`
+- `docs/decisions/SES_DEVELOPMENT-PRIORITY_2026-09-02.md` — current governing priority/process plan
+- `docs/DEVELOPMENT_PLAN.md` — phase/feature plan
 
-Treat it as the current development-priority source of truth.
+Treat these together as the current development source of truth. The priority decision governs **why/what to prioritize now**; the development plan contains the detailed phase/feature sequence.
 
 ## Working rules
 
 - Identify the requested task's phase/priority before changing code.
+- Optimize work toward the First Fun Year goal: April through the following March should be playable and enjoyable enough to make another strategy/year appealing.
+- Prefer implementation tasks sized for roughly 2–3 hours of Claude Code/Codex processing; split work expected to exceed a 5-hour usage window.
 - Prioritize progression correctness and financial correctness over presentation work.
 - Do not silently add later-roadmap features while fixing an earlier-phase task.
 - Preserve Failure Recovery: negative outcomes must not leave the player in a dead end.
 - Preserve accounting/save/SelectionFlow/Morale/Trust behavior unless the requested task explicitly changes it.
 - Run the relevant Flutter/unit/replay/Playwright checks after changes.
-- If an explicit user request changes the roadmap, follow the user request and update `docs/DEVELOPMENT_PLAN.md` when the change is intended to persist.
+- Coding-agent prompts should state the minimum recommended model and require a result-report Markdown under `docs/reports/` unless there is a clear reason not to.
+- If an explicit user request changes the roadmap, priority, completion status, estimate, or persistent working policy, follow the user request and update the governing plan/document as part of the change.
 
 ## AI knowledge base
 
@@ -30,8 +34,7 @@ when appropriate. Do not promote a one-off observation directly to a core rule.
 
 ## Current focus
 
-Playable 0.4C.2 stabilization and March-to-April accounting correctness are
-complete. Phase 3A (April-June Beginner Mode foundation) has shipped —
-implemented, unit/widget-tested, and validated with seeded Playwright runs.
-Current focus is a human/video UX review of that Phase 3A slice, then Phase
-3B (July-September assisted growth decisions).
+The governing focus is **First Fun Year**. Complete the current HOME/Public Demo
+UI work, perform an April-to-March human playthrough, fix only true annual-play
+blockers immediately, then choose the next improvement from observed fun/clarity/
+feedback gaps rather than mechanically following issue number order.

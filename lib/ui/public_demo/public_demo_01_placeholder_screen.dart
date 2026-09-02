@@ -72,6 +72,18 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
   final _scrollController = ScrollController();
   final _monthlyCashFlowKey = GlobalKey();
 
+  /// PUBLIC-DEMO-HOME-UI-3A: Public Demo has exactly one screen and no
+  /// `Navigator.push` anywhere, so every "destination" the approved visual
+  /// target names (quick access, bottom nav, the Navigator card's secondary
+  /// route) is truthfully implemented as an on-page scroll-jump to a
+  /// section that already exists, via [_scrollToSection] below — never a
+  /// fabricated route or a second navigation state. These keys mark exactly
+  /// the sections those scroll-jumps target.
+  final _officeStageKey = GlobalKey();
+  final _financeSummaryKey = GlobalKey();
+  final _legacyActionsKey = GlobalKey();
+  final _devMenuKey = GlobalKey();
+
   /// The single authoritative Public Demo 0.1 root (WORKFLOW-STATE-1AB
   /// FIX3): atomically owns both finance/monthly-close facts ([s]) and
   /// workflow facts ([workflow]). This is the ONLY state field this widget
@@ -211,50 +223,69 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
     ],
   );
 
-  /// HOME-3's employee stage is a read-only summary of the same employee
-  /// workflow cards that remain below it. The status text comes from the
-  /// existing display mapper; this summary neither changes a stage nor
-  /// creates an alternate employee/action route.
-  List<PublicDemoEmployeeStageItem> get _employeeStageItems => [
-    for (final engineer in workflow.engineers)
-      PublicDemoEmployeeStageItem(
-        name: engineer.name,
-        status: _employeeStageStatus(engineer),
-      ),
-  ];
-
-  /// The summary uses explanatory wording instead of repeating the compact
-  /// KPI/action-card labels verbatim. The source remains the same existing
-  /// workflow stage; this is only a HOME-specific presentation translation.
-  String _employeeStageStatus(PublicDemoEngineerSales engineer) =>
-      switch (engineer.stage) {
-        PublicDemoSalesStage.waiting => '営業準備前',
-        PublicDemoSalesStage.skillSheet => 'SkillSheet確認中',
-        PublicDemoSalesStage.selling => '営業中',
-        PublicDemoSalesStage.introduced => '案件紹介済',
-        PublicDemoSalesStage.partnerInterviewPassed => '上位面談通過',
-        PublicDemoSalesStage.partnerInterviewFailed => '再営業が必要',
-        PublicDemoSalesStage.clientInterviewPassed => '客先面談通過',
-        PublicDemoSalesStage.clientInterviewFailed => '再営業が必要',
-        PublicDemoSalesStage.ordered => '翌月参画予定',
-      };
-
-  /// Important Events only surfaces an already-recorded month-close fact.
-  /// It does not nominate a gameplay action: its CTA simply reveals the
-  /// authoritative detailed cash-flow card that this screen already owns.
-  List<PublicDemoImportantEventItem> get _importantEvents {
-    final flow = s.latestMonthlyCashFlow;
-    if (flow == null) return const [];
+  /// Section 6 ("今月の重要タスク") — exactly the three fixed, truthful items
+  /// specified for PUBLIC-DEMO-HOME-UI-3A, each built only from an
+  /// already-authoritative, always-defined int this screen already reads
+  /// for the compact KPI / finance summary. No priority, deadline, or
+  /// progress percentage is invented for any of them (see
+  /// [PublicDemoImportantTaskItem]'s own doc for why the category chip is
+  /// neutral rather than a priority claim).
+  List<PublicDemoImportantTaskItem> get _importantTasks {
+    final data = _homeDashboardData;
     return [
-      PublicDemoImportantEventItem(
-        title: '${publicDemoMonthLabel(flow.month)}の月次収支',
-        summary: '入金・支出・次回入金予定を月次決算で確認できます。',
-        category: '月次',
-        ctaLabel: '収支を見る',
-        onPressed: _scrollToLatestCashFlow,
+      PublicDemoImportantTaskItem(
+        title: '営業活動を進める',
+        fact: '営業残: ${data.salesRemaining}回',
+        category: '営業',
+        ctaLabel: '対応する',
+        onPressed: _scrollToOtherActions,
+      ),
+      PublicDemoImportantTaskItem(
+        title: '採用・面談に対応する',
+        fact: '待機: ${data.waitingEmployeeCount}名',
+        category: '採用',
+        ctaLabel: '対応する',
+        onPressed: _scrollToOtherActions,
+      ),
+      PublicDemoImportantTaskItem(
+        title: '資金計画を確認する',
+        fact: '固定費: ${formatYen(_financeSummary.fixedCosts)}',
+        category: '資金',
+        ctaLabel: '確認する',
+        onPressed: () => _scrollToSection(_financeSummaryKey),
       ),
     ];
   }
+
+  /// Section 7 ("クイックアクセス") — four real on-page destinations, each a
+  /// scroll-jump to a section that already exists (see the class doc above
+  /// [_officeStageKey]). No fabricated route.
+  List<PublicDemoQuickAccessItem> get _quickAccessItems => [
+    PublicDemoQuickAccessItem(
+      itemKey: const Key('public-demo-quick-access-office'),
+      icon: Icons.groups_outlined,
+      label: '社員の様子',
+      onPressed: () => _scrollToSection(_officeStageKey),
+    ),
+    PublicDemoQuickAccessItem(
+      itemKey: const Key('public-demo-quick-access-finance'),
+      icon: Icons.account_balance_wallet_outlined,
+      label: '収支・会計',
+      onPressed: () => _scrollToSection(_financeSummaryKey),
+    ),
+    PublicDemoQuickAccessItem(
+      itemKey: const Key('public-demo-quick-access-actions'),
+      icon: Icons.storefront_outlined,
+      label: '案件・営業',
+      onPressed: _scrollToOtherActions,
+    ),
+    PublicDemoQuickAccessItem(
+      itemKey: const Key('public-demo-quick-access-dev'),
+      icon: Icons.build_outlined,
+      label: '開発・テスト',
+      onPressed: _openDevMenuSection,
+    ),
+  ];
 
   /// The finance summary is a display of values the existing finance and
   /// payroll authorities already produced. The latest close owns the
@@ -325,13 +356,81 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
     };
   }
 
-  void _scrollToLatestCashFlow() {
-    final context = _monthlyCashFlowKey.currentContext;
+  /// Generalized form of the pre-existing `_scrollToLatestCashFlow`: jumps
+  /// to whichever already-on-page section [key] marks. This is the single
+  /// mechanism behind every quick-access item, every bottom-nav
+  /// destination, and the Navigator card's secondary route — see the class
+  /// doc on the `_officeStageKey` field group for why a scroll-jump, not a
+  /// route, is the truthful implementation here.
+  void _scrollToSection(GlobalKey key) {
+    final context = key.currentContext;
     if (context == null) return;
     Scrollable.ensureVisible(
       context,
       duration: const Duration(milliseconds: 250),
       curve: Curves.easeOut,
+    );
+  }
+
+  void _scrollToOtherActions() => _scrollToSection(_legacyActionsKey);
+
+  void _openDevMenuSection() {
+    if (!_isDevMenuExpanded) setState(() => _isDevMenuExpanded = true);
+    // The toggle above only takes effect on the next build, so the section
+    // key isn't mounted yet this frame — scroll to it once it is.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _scrollToSection(_devMenuKey);
+    });
+  }
+
+  void _scrollToTop() {
+    if (!_scrollController.hasClients) return;
+    unawaited(
+      _scrollController.animateTo(
+        0,
+        duration: const Duration(milliseconds: 250),
+        curve: Curves.easeOut,
+      ),
+    );
+  }
+
+  /// Bottom nav (section 8) `onDestinationSelected`. There is no second
+  /// screen to switch to, so every index is a real scroll-jump rather than
+  /// a route change — see the class doc above [_officeStageKey]. Tapping
+  /// any destination therefore never changes [_bottomNavIndex]; only ホーム
+  /// (index 0) is ever shown selected, because there genuinely is no other
+  /// "current tab" to track without inventing one. This is stated plainly
+  /// in the result report as a truthful reduction.
+  void _handleBottomNavSelection(int index) {
+    switch (index) {
+      case 0:
+        _scrollToTop();
+      case 1:
+        _scrollToSection(_officeStageKey);
+      case 2:
+        _scrollToOtherActions();
+      case 3:
+        _scrollToSection(_financeSummaryKey);
+      case 4:
+        _openDevMenuSection();
+    }
+  }
+
+  Future<void> _showNotifications() async {
+    if (!mounted) return;
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        key: const Key('public-demo-notifications-dialog'),
+        title: const Text('お知らせ'),
+        content: const Text('現在お知らせはありません。'),
+        actions: [
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('閉じる'),
+          ),
+        ],
+      ),
     );
   }
 
@@ -697,6 +796,12 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
   /// Public Demo-only test control for repeatable human QA. The destructive
   /// confirmation is intentionally separate from [_restartGame], which also
   /// serves the already-terminal recovery card.
+  ///
+  /// PUBLIC-DEMO-HOME-UI-3A: also the new home for [BuildInfoLabel], moved
+  /// out of the AppBar title. This card is exactly the "compact
+  /// developer/test surface" the issue asks the deploy/build identity be
+  /// kept available in without visually dominating the gameplay header —
+  /// it is already collapsed behind "開発・テストメニュー" by default.
   Widget _publicDemoTestControlsCard() => Card(
     key: const Key('public-demo-test-controls'),
     color: Colors.amber.shade50,
@@ -723,6 +828,10 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
             onPressed: _isRestarting ? null : _confirmRestartFromApril,
             icon: const Icon(Icons.restart_alt),
             label: Text(_isRestarting ? '再開準備中…' : '4月からやり直す'),
+          ),
+          const SizedBox(height: 8),
+          BuildInfoLabel(
+            buildInfo: widget.buildInfo ?? BuildInfo.fromEnvironment(),
           ),
         ],
       ),
@@ -2275,17 +2384,68 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
         ),
       ),
       child: Scaffold(
+        // Section 1: menu affordance + centered title + notification
+        // affordance. PUBLIC-DEMO-HOME-UI-3A relocates the build/deploy
+        // identity (BuildInfoLabel) out of the header — it now lives inside
+        // the collapsed "開発・テストメニュー" card
+        // (_publicDemoTestControlsCard), the compact developer/test surface
+        // the issue asks for, so it no longer visually competes with the
+        // gameplay header.
         appBar: AppBar(
-          title: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Text('S.E.S. Public Demo 0.1'),
-              BuildInfoLabel(
-                buildInfo: widget.buildInfo ?? BuildInfo.fromEnvironment(),
-              ),
-            ],
+          leading: IconButton(
+            key: const Key('public-demo-app-bar-menu'),
+            icon: const Icon(Icons.menu),
+            tooltip: '開発・テストメニュー',
+            onPressed: _openDevMenuSection,
           ),
+          title: const Text('S.E.S. Public Demo 0.1'),
+          actions: [
+            IconButton(
+              key: const Key('public-demo-app-bar-notifications'),
+              icon: const Icon(Icons.notifications_outlined),
+              tooltip: 'お知らせ',
+              onPressed: () => unawaited(_showNotifications()),
+            ),
+          ],
+        ),
+        bottomNavigationBar: NavigationBar(
+          key: const Key('public-demo-bottom-nav'),
+          // Section 8: preserves existing navigation authority — Public
+          // Demo has exactly one screen, so every destination below is a
+          // real scroll-jump (see _handleBottomNavSelection), never a route
+          // change. There is genuinely no second "current tab" to track
+          // without inventing one, so this stays fixed at ホーム (0) rather
+          // than simulating a selection that does not exist — documented as
+          // a truthful reduction in the Issue #147 result report.
+          selectedIndex: 0,
+          onDestinationSelected: _handleBottomNavSelection,
+          destinations: const [
+            NavigationDestination(
+              icon: Icon(Icons.home_outlined),
+              selectedIcon: Icon(Icons.home),
+              label: 'ホーム',
+            ),
+            NavigationDestination(
+              icon: Icon(Icons.groups_outlined),
+              selectedIcon: Icon(Icons.groups),
+              label: '社員',
+            ),
+            NavigationDestination(
+              icon: Icon(Icons.storefront_outlined),
+              selectedIcon: Icon(Icons.storefront),
+              label: '営業',
+            ),
+            NavigationDestination(
+              icon: Icon(Icons.account_balance_outlined),
+              selectedIcon: Icon(Icons.account_balance),
+              label: '会計',
+            ),
+            NavigationDestination(
+              icon: Icon(Icons.menu_outlined),
+              selectedIcon: Icon(Icons.menu),
+              label: 'メニュー',
+            ),
+          ],
         ),
         body: Stack(
           children: [
@@ -2334,24 +2494,54 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
                         // HOME-RUNTIME-2A: its MonthHeaderBar is now the only month
                         // display on the screen — the `N月` headline that used to
                         // restate it here is deleted.
+                        // Sections 1-4 (header band/KPI grid/Navigator card):
+                        // the header band and KPI grid are composed inside
+                        // this section (MonthHeaderBar + KpiSection.compact);
+                        // the Navigator card is HomeNavigatorSection. Its
+                        // secondary route ("他の行動を確認する") is the same
+                        // truthful scroll-jump every other "destination" on
+                        // this screen uses — never a second mutation path.
                         PublicDemoHomeDashboardSection(
                           data: _homeDashboardData,
                           recommendedAction: _recommendedActionSlot,
                           navigatorAdvice: navigatorAdvice,
-                        ),
-                        const SizedBox(height: 1),
-                        HomeOfficeStageSection(display: _officeStageDisplay),
-                        const SizedBox(height: 1),
-                        PublicDemoEmployeeStageSection(
-                          employees: _employeeStageItems,
-                        ),
-                        const SizedBox(height: 0),
-                        PublicDemoImportantEventsSection(
-                          events: _importantEvents,
+                          onShowOtherActions: _scrollToOtherActions,
                         ),
                         const SizedBox(height: 8),
-                        PublicDemoFinanceSummarySection(
-                          summary: _financeSummary,
+                        // Section 5: employee summary. This office-scene
+                        // card is now the ONLY roster-like presentation on
+                        // HOME — the former `PublicDemoEmployeeStageSection`
+                        // duplicate list is deleted (Issue #147 requires
+                        // employee information not be repeated across
+                        // adjacent HOME sections). Wrapped so quick access /
+                        // bottom nav / "社員" can scroll-jump to it.
+                        KeyedSubtree(
+                          key: _officeStageKey,
+                          child: HomeOfficeStageSection(
+                            display: _officeStageDisplay,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        // Section 6: "今月の重要タスク" — up to three truthful
+                        // tasks built only from existing authoritative facts
+                        // (see _importantTasks's own doc).
+                        PublicDemoImportantTasksSection(items: _importantTasks),
+                        const SizedBox(height: 8),
+                        // Section 7: クイックアクセス — real on-page
+                        // scroll-jumps only, no dead buttons.
+                        PublicDemoQuickAccessSection(items: _quickAccessItems),
+                        const SizedBox(height: 8),
+                        // Supplementary finance detail, kept from the prior
+                        // structure and wrapped so it is reachable from
+                        // quick access / bottom nav even in April, before
+                        // the first monthly close (unlike
+                        // `_monthlyCashFlowKey`'s card, this always renders
+                        // — see the field's own doc).
+                        KeyedSubtree(
+                          key: _financeSummaryKey,
+                          child: PublicDemoFinanceSummarySection(
+                            summary: _financeSummary,
+                          ),
                         ),
                         if (_monthlyPrimaryAction
                             case final monthlyAction?) ...[
@@ -2361,20 +2551,41 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
                           ),
                         ],
                         const SizedBox(height: 8),
-                        dashboard(),
-                        if (s.month == 4) ...[
-                          for (var i = 0; i < workflow.engineers.length; i++)
-                            ec(i),
-                        ],
-                        if (s.month == 5) ...[
-                          _RecruitmentMediaCard(
-                            state: s,
-                            onPressed: _openRecruitmentMedia,
-                          ),
-                          for (var i = 0; i < workflow.applicants.length; i++)
-                            ac(i),
-                        ],
-                        if (s.month == 6)
+                        // The real, interactive per-person gameplay action
+                        // surface (SkillSheet review, selling, interviews,
+                        // orders, recovery, ...) — unchanged content, only
+                        // repositioned after the new required top-of-screen
+                        // sections, and wrapped as the "案件・営業"/other-
+                        // actions scroll-jump target every quick-access,
+                        // bottom-nav, and Navigator-secondary-route
+                        // affordance on this screen points to.
+                        KeyedSubtree(
+                          key: _legacyActionsKey,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              dashboard(),
+                              if (s.month == 4) ...[
+                                for (
+                                  var i = 0;
+                                  i < workflow.engineers.length;
+                                  i++
+                                )
+                                  ec(i),
+                              ],
+                              if (s.month == 5) ...[
+                                _RecruitmentMediaCard(
+                                  state: s,
+                                  onPressed: _openRecruitmentMedia,
+                                ),
+                                for (
+                                  var i = 0;
+                                  i < workflow.applicants.length;
+                                  i++
+                                )
+                                  ac(i),
+                              ],
+                              if (s.month == 6)
                           for (final a in workflow.applicants.where(
                             (a) =>
                                 s.joinedApplicantIds.contains(a.id) &&
@@ -2526,7 +2737,13 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
                               engineerId: runtime.engineerId,
                               engineerName: _engineerName(runtime.engineerId),
                             ),
-                        _publicDemoDevMenuSection(),
+                            ],
+                          ),
+                        ),
+                        KeyedSubtree(
+                          key: _devMenuKey,
+                          child: _publicDemoDevMenuSection(),
+                        ),
                       ],
                     ),
                   ],

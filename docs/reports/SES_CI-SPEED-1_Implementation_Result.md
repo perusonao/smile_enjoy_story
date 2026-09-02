@@ -107,7 +107,8 @@ This sandbox has no access to this repository's historical Actions run logs, so 
 
 ## Commit SHA
 
-See the pushed branch — the final commit SHA for this change is included in the same push this report is committed in; check `git log -1` on `claude/ses-ci-speed-optimization-6w4hl0` for the exact value at review time.
+`a5c927c44a3ba3c699c97333c0fdd650c0ef557a` — pushed to
+`claude/ses-ci-speed-optimization-6w4hl0`.
 
 ## PR readiness
 

@@ -1,0 +1,161 @@
+name: Heavy E2E (S.E.S.)
+
+# SES-CI-SPEED-1: the slow, regression-depth half of the Playwright suite,
+# split out of `.github/workflows/e2e.yml` (Fast CI) so it can no longer
+# hold up an ordinary main deploy. This workflow:
+#   - runs the FULL spec list (e2e/tests/*.spec.ts) — including the annual
+#     April->March baseline (public-demo-annual-route.spec.ts), the
+#     late-year Recovery Loop's full pattern set (public-demo-recovery.spec.ts),
+#     and the multi-viewport checks (public-demo-single-month-cta.spec.ts,
+#     public-demo-recovery.spec.ts) — not just the curated smoke subset;
+#   - runs it on BOTH mobile-chromium and mobile-webkit (WebKit全件);
+#   - is deliberately NOT wired into build/deploy at all: no job here
+#     touches Pages, and this workflow never blocks or is blocked by
+#     e2e.yml. A red or slow run here is a signal to investigate, never a
+#     reason to hold back a normal main deploy.
+#
+# Triggers: workflow_dispatch (on demand — e.g. before a release, or to
+# reproduce/verify a heavy-suite fix) and a weekly schedule, so regressions
+# in the parts of the suite normal PRs no longer exercise are still caught
+# automatically without paying their cost on every push.
+#
+# WebKit note: `e2e-heavy-webkit` keeps the same `continue-on-error: true`
+# the previous combined workflow used — a known WebKit infrastructure flake,
+# not a policy that WebKit failures don't matter. Remove it once WebKit is
+# stable enough to be a hard gate here.
+
+on:
+  workflow_dispatch:
+    inputs:
+      seeds:
+        description: "Comma-separated seed list for founding-first-assignment.spec.ts (default: the full 10-seed validation set)"
+        required: false
+        default: ""
+  schedule:
+    # Weekly, Monday 03:00 JST (Sunday 18:00 UTC).
+    - cron: "0 18 * * 0"
+
+permissions:
+  contents: read
+
+env:
+  # Full 10-seed batch by default (§24 "10-seed validation") — the whole
+  # point of this workflow is the depth normal CI intentionally skips.
+  # A workflow_dispatch input still overrides it for a smaller/targeted run.
+  SES_E2E_SEEDS: ${{ github.event.inputs.seeds || '100001,100002,100003,100004,100005,100006,100007,100008,100009,100010' }}
+
+jobs:
+  build-web:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.44.9"
+          channel: stable
+
+      - run: flutter pub get
+      - run: flutter analyze
+      - run: flutter test
+
+      - name: flutter build web (release, no CDN — self-contained for the local static server)
+        run: flutter build web --release --no-web-resources-cdn --dart-define="BUILD_COMMIT_SHA=$GITHUB_SHA"
+
+      - name: Upload build/web (for e2e-heavy-chromium/e2e-heavy-webkit)
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-web-heavy
+          path: build/web/**
+          retention-days: 1
+
+  e2e-heavy-chromium:
+    needs: build-web
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    defaults:
+      run:
+        working-directory: e2e
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install E2E dependencies
+        run: npm ci
+
+      - name: Download build/web
+        uses: actions/download-artifact@v4
+        with:
+          name: build-web-heavy
+          path: build/web
+
+      - name: Install Playwright browsers (chromium only — this job never touches webkit)
+        run: npx playwright install --with-deps chromium
+
+      - name: Run full Playwright E2E suite (mobile-chromium)
+        env:
+          CI: "true"
+          SES_E2E_VIDEO: "on"
+        run: npx playwright test --project=mobile-chromium
+
+      - name: Upload ses-playwright-results (heavy, mobile-chromium)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ses-playwright-results-heavy-chromium
+          path: |
+            e2e/test-results/**
+            e2e/playwright-report/**
+          retention-days: 10
+          if-no-files-found: warn
+
+  e2e-heavy-webkit:
+    needs: build-web
+    # Known WebKit infrastructure flake (carried over from the previous
+    # combined workflow) — kept visible and artifact-backed without making
+    # it a hard gate for this already-non-blocking workflow.
+    continue-on-error: true
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    defaults:
+      run:
+        working-directory: e2e
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install E2E dependencies
+        run: npm ci
+
+      - name: Download build/web
+        uses: actions/download-artifact@v4
+        with:
+          name: build-web-heavy
+          path: build/web
+
+      - name: Install Playwright browsers (webkit only — this job never touches chromium)
+        run: npx playwright install --with-deps webkit
+
+      - name: Run full Playwright E2E suite (mobile-webkit)
+        env:
+          CI: "true"
+          SES_E2E_VIDEO: "on"
+        run: npx playwright test --project=mobile-webkit
+
+      - name: Upload ses-playwright-results (heavy, mobile-webkit)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ses-playwright-results-heavy-webkit
+          path: |
+            e2e/test-results/**
+            e2e/playwright-report/**
+          retention-days: 10
+          if-no-files-found: warn

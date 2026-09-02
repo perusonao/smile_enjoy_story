@@ -36,12 +36,17 @@ resource contention and artifact behavior.
 
 ## Related files
 
-`.github/workflows/e2e.yml`, `e2e/playwright.config.ts`.
+`.github/workflows/e2e.yml`, `.github/workflows/e2e-heavy.yml`, `e2e/playwright.config.ts`.
 
 ## Related PR/commit
 
-`d9d4295` (PR #15).
+`d9d4295` (PR #15). SES-CI-SPEED-1 (2026-09) split CI into Fast CI
+(`e2e.yml`, chromium-only `smoke-e2e` job) and Heavy E2E (`e2e-heavy.yml`,
+`e2e-heavy-chromium`/`e2e-heavy-webkit` jobs) — the per-browser job/runner
+isolation this decision describes is preserved across both files.
 
 ## Regression protection
 
-Separate `e2e-chromium` and `e2e-webkit` workflow jobs and per-browser artifacts.
+Separate per-browser workflow jobs and per-browser artifacts: `smoke-e2e`
+(chromium) in `e2e.yml`; `e2e-heavy-chromium`/`e2e-heavy-webkit` in
+`e2e-heavy.yml`.

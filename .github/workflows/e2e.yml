@@ -1,132 +1,56 @@
-name: Playwright E2E (S.E.S.)
+name: Fast CI (S.E.S.)
 
-# Single workflow for validation + E2E + Replay Package + Pages deploy.
+# SES-CI-SPEED-1: fast, always-on CI + Pages deploy. The one job here that
+# drives real browser UI (`smoke-e2e`) is a deliberately small, curated
+# subset of the full Playwright suite (see e2e/tests/): app launch, Public
+# Demo entry/basic HOME display, and the single most important short
+# progression check (Founding -> First Assignment, 3-seed sample). This is
+# the CI every normal UI/gameplay PR waits on, so it must stay minutes, not
+# tens of minutes.
 #
-# Previously this repo used two workflows: this one (validation/E2E, all
-# events) and a separate deploy.yml triggered by `workflow_run` once this
-# one completed on main. That cross-workflow `workflow_run` trigger never
-# fired in practice across two independent main pushes (confirmed via the
-# GitHub API: zero workflow_run-triggered runs, repo-wide, ever) despite
-# the trigger being correctly configured (name match, no branches filter,
-# no job-if skip involved — the run itself was never created). Root cause
-# on GitHub's side could not be confirmed from the repo alone, so rather
-# than keep depending on that cross-workflow event, deploy is now just
-# more jobs in this same workflow run, wired together with `needs:` —
-# no event hand-off, nothing to fail to fire.
+# Everything else that used to run here — WebKit (all specs), the annual
+# April->March baseline, the late-year Recovery Loop's full pattern set, and
+# multi-viewport checks — moved to `.github/workflows/e2e-heavy.yml`
+# (manual `workflow_dispatch` + a weekly schedule). That workflow is fully
+# independent of this one: it never gates `build`/`deploy` below, so a red
+# or slow heavy run can never hold up an ordinary main deploy. See that
+# file's own header for what it covers.
 #
 # jobs:
-#   validate       — pull_request / push / workflow_dispatch. Flutter
-#                    analyze/test/build + Replay Viewer unit tests. The
-#                    one shared gate `e2e-chromium`/`e2e-webkit` both wait
-#                    on, so neither browser project pays for a second
-#                    Flutter build.
-#   e2e-chromium   — needs: validate. Playwright's mobile-chromium project
-#                    only, on its own GitHub-hosted runner.
-#   e2e-webkit     — needs: validate. Playwright's mobile-webkit project
-#                    only, on its own GitHub-hosted runner. Split from
-#                    e2e-chromium (PR #15 CI investigation: both projects
-#                    used to run as 2 workers *on the same 2-core runner*,
-#                    §git history of this file for the CDP-throttle
-#                    measurements that first identified this contention) so
-#                    the two browser engines no longer compete for the same
-#                    CPU — each now gets its own runner's full 2 cores.
-#                    `workers` inside playwright.config.ts is deliberately
-#                    left untouched by this split (still `2` under CI): with
-#                    only one project selected per job (`--project=...`),
-#                    that setting now only parallelizes *that job's own*
-#                    spec files, not two different browser engines against
-#                    each other — a real, structural difference from the
-#                    single-job design, not a value that needed editing.
-#   replay-package — push only. Downloads *both* browsers' raw Playwright
-#                    results (uploaded by e2e-chromium/e2e-webkit) and
-#                    merges them into one `test-results/` tree + one merged
-#                    `playwright-report.json` before running the existing
-#                    `npm run build:replay` unchanged — same replay-package
-#                    output shape as when a single job produced both
-#                    browsers' results directly. Needed because splitting
-#                    Playwright's own JSON reporter output across two job
-#                    runs would otherwise scatter it into two reports.
-#                    QA-only tool, not part of the game: `build` does NOT
-#                    `needs:` this job (see `build` below), and it carries
-#                    its own bounded `timeout-minutes` so a stuck step here
-#                    (e.g. `apt-get install ffmpeg` hanging) can never stall
-#                    the game's Pages deploy — it can only cost itself up to
-#                    that timeout before failing on its own.
-#   check-latest   — push / workflow_dispatch only. Stale-run guard (see
-#                    e2e/scripts/check-latest-main.mjs): is this run's
-#                    commit still origin/main's actual tip?
-#   build          — Flutter web release build + best-effort fold-in of this
-#                    *same run's* e2e-replay-package artifact (no cross-run
-#                    token/run-id needed — it's the same workflow run) +
-#                    upload-pages-artifact. Deliberately does NOT `needs:
-#                    replay-package` — replay packaging is a QA convenience,
-#                    not a game-deploy gate, and nothing here ever reads
-#                    `needs.replay-package.result`. In practice `build`'s own
-#                    checkout/Flutter-install/analyze/test/build-web steps
-#                    take longer than replay-package's own run, so by the
-#                    time `build` reaches "Download e2e-replay-package" the
-#                    artifact has almost always already been uploaded. If
-#                    replay-package is still running (or failed, or hit its
-#                    timeout) when `build` gets there, the download step
-#                    (`continue-on-error: true`) simply finds nothing and
-#                    `build` deploys the game without updating
-#                    /e2e-replays/ this time. That specific run's replay is
-#                    NOT retried, queued, or picked up by any later run —
-#                    `actions/download-artifact` with no `run-id` only ever
-#                    searches the *current* workflow run, so a late
-#                    `replay-package` artifact is unreachable once this run's
-#                    `build` has already moved on. It is simply never
-#                    published; the next thing a viewer sees in
-#                    /e2e-replays/ is whichever *separate, new* replay a
-#                    later push's own `replay-package` produces, if that one
-#                    also finishes in time for that push's own `build`
-#                    (Phase 1 scope — see PHASE2 note below for a dedicated
-#                    replay-only follow-up deployment that would let a late
-#                    artifact still get published).
-#   deploy         — re-verify the stale guard immediately before
-#                    actions/deploy-pages (build's flutter build web can
-#                    take minutes; re-check right at the point of no
-#                    return), then deploy.
+#   validate   — pull_request / push / workflow_dispatch. Flutter
+#                analyze/test/build + Replay Viewer unit tests. The one
+#                shared gate `smoke-e2e` waits on, so it doesn't pay for a
+#                second Flutter build.
+#   smoke-e2e  — needs: validate. Playwright's mobile-chromium project only,
+#                restricted to the curated smoke spec list above (see the
+#                `Run Playwright E2E (smoke, mobile-chromium)` step below for
+#                the exact file list). This is the "毎回必要な高速CI" half of
+#                SES-CI-SPEED-1; it is a blocking gate for `build`/`deploy`.
+#   replay-package — push only. Packages `smoke-e2e`'s own chromium results
+#                into the existing Replay Viewer output (`npm run
+#                build:replay`), same as before. Now single-browser input
+#                (no more WebKit job in this workflow) — still QA-only, still
+#                never blocks `build`/`deploy` (see `build` below).
+#   check-latest — push / workflow_dispatch only. Stale-run guard (see
+#                e2e/scripts/check-latest-main.mjs): is this run's commit
+#                still origin/main's actual tip?
+#   build      — Flutter web release build + best-effort fold-in of this
+#                *same run's* e2e-replay-package artifact + upload-pages-
+#                artifact. Does NOT `needs: replay-package` — replay
+#                packaging is a QA convenience, not a game-deploy gate (see
+#                the original design rationale preserved below).
+#   deploy     — re-verify the stale guard immediately before
+#                actions/deploy-pages, then deploy.
 #
-# A failed e2e-chromium/e2e-webkit job does NOT by itself block
-# check-latest/build/deploy — matching the previous design's intent ("a red
-# E2E run does not block the game deployment"). Likewise, replay-package
-# failing, timing out, or simply not having finished yet does NOT block
-# build/deploy (§ `build` above) — it is QA/dev tooling, not the game. What
-# DOES block deploy: `check-latest`/`build` actually failing (build re-runs
-# flutter analyze/test against the same commit as its own independent gate
-# — deliberately not deduplicated against `validate`'s copy, so a broken
-# build is never shipped regardless of what happened in the
-# Playwright/replay portion), the stale-SHA guard failing either check, or
-# either E2E job being cancelled/skipped (e.g. superseded by a newer push —
-# a cancelled run has no reliable replay package and a newer run's chain
-# deploys right behind it anyway).
+# What blocks build/deploy: `validate` or `smoke-e2e` failing (a clear
+# core-flow failure), or the stale-SHA guard failing. What does NOT block
+# build/deploy: replay-package failing/timing out/not finishing in time
+# (QA/dev tooling only), and — because it no longer runs in this workflow at
+# all — anything in e2e-heavy.yml (WebKit, annual route, Recovery, multi-
+# viewport).
 #
-# WebKit compatibility is also intentionally non-blocking for ordinary PR
-# merge readiness. `e2e-webkit` remains a real failing job when its tests
-# fail (including its always-uploaded artifacts), but its failure does not
-# fail the workflow run. This is a temporary policy boundary for the known
-# WebKit infrastructure flake; remove `continue-on-error` when that separate
-# stabilization work has made WebKit reliable enough to become a gate again.
-#
-# PHASE2 (not implemented — future option, see task report): today a
-# replay that finishes packaging *after* its push's own `build`/`deploy`
-# already ran is simply never published — it is NOT retried, queued, or
-# folded into any later run (`actions/download-artifact` with no `run-id`
-# only ever looks at the current workflow run). The next replay a viewer
-# sees is whatever separate, new replay a *later* push's own
-# `replay-package` produces, if that one finishes in time for that push's
-# own `build` (Phase 1 "best effort this run, else that run's replay is
-# lost" design). A dedicated follow-up job that re-runs `configure-pages`/
-# `upload-pages-artifact`/`deploy-pages` once replay-package finishes late
-# would need its own copy of the already-built `build/web` (or to re-run
-# `flutter build web`) plus the same `check-latest`/stale-SHA re-verification
-# `deploy` already does, to avoid redeploying a stale commit's game purely
-# to attach a replay. Left out of this change as out of scope for a minimal
-# fix.
-#
-# PRs only ever run validate/e2e-chromium/e2e-webkit (see each downstream
-# job's `if:`) — no Pages deploy happens for pull_request events.
+# PRs only ever run validate/smoke-e2e (see each downstream job's `if:`) —
+# no Pages deploy happens for pull_request events.
 
 on:
   pull_request:
@@ -136,7 +60,7 @@ on:
   workflow_dispatch:
     inputs:
       seeds:
-        description: "Comma-separated seed list for founding-first-assignment.spec.ts (default: fast 3-seed sample; use the 10-seed set for a full validation pass)"
+        description: "Comma-separated seed override for founding-first-assignment.spec.ts's smoke sample (default: fast 3-seed sample). For the full 10-seed validation pass or the rest of the suite (WebKit, annual route, Recovery, multi-viewport), use the 'Heavy E2E (S.E.S.)' workflow instead."
         required: false
         default: ""
 
@@ -192,11 +116,9 @@ jobs:
           fi
           flutter build web --release --no-web-resources-cdn "${build_info[@]}"
 
-      # e2e-chromium/e2e-webkit run on their own separate runners (§ jobs
-      # comment above), so the just-built web app has to travel to them as
-      # an artifact rather than being found on disk the way a single
-      # combined job could rely on.
-      - name: Upload build/web (for e2e-chromium/e2e-webkit)
+      # smoke-e2e runs on its own separate runner, so the just-built web app
+      # has to travel to it as an artifact rather than being found on disk.
+      - name: Upload build/web (for smoke-e2e)
         uses: actions/upload-artifact@v4
         with:
           name: build-web
@@ -219,12 +141,12 @@ jobs:
       - name: Replay unit tests
         run: npm run test:replay-unit
 
-  e2e-chromium:
+  smoke-e2e:
     needs: validate
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 15
     concurrency:
-      group: e2e-chromium-${{ github.ref }}
+      group: smoke-e2e-${{ github.ref }}
       cancel-in-progress: true
     defaults:
       run:
@@ -245,74 +167,38 @@ jobs:
           name: build-web
           path: build/web
 
-      - name: Install Playwright browsers (chromium only — this job never touches webkit)
+      - name: Install Playwright browsers (chromium only — smoke is chromium-only by design)
         run: npx playwright install --with-deps chromium
 
-      - name: Run Playwright E2E (mobile-chromium)
+      # Curated fast subset (SES-CI-SPEED-1): app launch + core progression
+      # (founding-first-assignment, 3-seed default sample), Public Demo
+      # entry + basic HOME display (public-demo-fresh-start), plus the
+      # existing browser-free/fixture-based regression guards for the
+      # harness itself (negligible runtime, kept here rather than only in
+      # the heavy workflow so a harness regression is caught on every PR).
+      # Every other spec (WebKit, annual route, Recovery, multi-viewport,
+      # the other gameplay-flow specs) runs in e2e-heavy.yml instead.
+      - name: Run Playwright E2E (smoke, mobile-chromium)
         env:
           SES_E2E_SEEDS: ${{ github.event.inputs.seeds }}
           CI: "true"
-          # Always keep video, not just on failure — playwright.config.ts's
-          # default is retain-on-failure, so a passing run otherwise leaves
-          # no recording to review.
-          SES_E2E_VIDEO: "on"
-        run: npx playwright test --project=mobile-chromium
+        run: |
+          npx playwright test --project=mobile-chromium \
+            tests/founding-first-assignment.spec.ts \
+            tests/public-demo-fresh-start.spec.ts \
+            tests/artifacts.allowlist.spec.ts \
+            tests/artifacts.watchForErrors.spec.ts \
+            tests/game-state.ariaParsing.spec.ts \
+            tests/seeds.spec.ts \
+            tests/ses-player.completionCapOrdering.spec.ts \
+            tests/ses-player.deadEndStability.spec.ts \
+            tests/portable-wheel-fallback.spec.ts
 
-      - name: Upload ses-playwright-results (mobile-chromium)
+      - name: Upload ses-playwright-results (smoke, mobile-chromium)
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: ses-playwright-results-mobile-chromium
-          path: |
-            e2e/test-results/**
-            e2e/playwright-report/**
-          retention-days: 10
-          if-no-files-found: warn
-
-  e2e-webkit:
-    needs: validate
-    # Keep a failing WebKit run visible and artifact-backed, without making
-    # its known infrastructure flake a blocking Public Demo PR gate.
-    continue-on-error: true
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    concurrency:
-      group: e2e-webkit-${{ github.ref }}
-      cancel-in-progress: true
-    defaults:
-      run:
-        working-directory: e2e
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-
-      - name: Install E2E dependencies
-        run: npm ci
-
-      - name: Download build/web
-        uses: actions/download-artifact@v4
-        with:
-          name: build-web
-          path: build/web
-
-      - name: Install Playwright browsers (webkit only — this job never touches chromium)
-        run: npx playwright install --with-deps webkit
-
-      - name: Run Playwright E2E (mobile-webkit)
-        env:
-          SES_E2E_SEEDS: ${{ github.event.inputs.seeds }}
-          CI: "true"
-          SES_E2E_VIDEO: "on"
-        run: npx playwright test --project=mobile-webkit
-
-      - name: Upload ses-playwright-results (mobile-webkit)
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: ses-playwright-results-mobile-webkit
+          name: ses-playwright-results-smoke-chromium
           path: |
             e2e/test-results/**
             e2e/playwright-report/**
@@ -321,25 +207,22 @@ jobs:
 
   # --- E2E Replay Viewer package (dev/QA tool) ------------------------
   #
-  # main-only, and deliberately `if: always()`: a FAILED E2E run is exactly
-  # when the replay video is most worth having, so this must still run
-  # whether e2e-chromium/e2e-webkit passed or failed. It must NOT and does
-  # not change either job's own pass/fail result (§ approved design:
-  # "テスト失敗をgreenに変えてはいけません") — this job only ever packages
-  # already-decided results, never re-runs or re-scores anything.
+  # main-only, and deliberately `if: always()`: a FAILED smoke run is
+  # exactly when the replay video is most worth having, so this must still
+  # run whether smoke-e2e passed or failed. It must NOT and does not change
+  # smoke-e2e's own pass/fail result — this job only ever packages an
+  # already-decided result, never re-runs or re-scores anything.
+  #
+  # Single-browser input now (smoke-e2e is chromium-only) — the merge step
+  # below still tolerates one or many `ses-playwright-results-*` artifacts
+  # unchanged, so no script changes were needed for this narrower input.
   replay-package:
-    needs: [e2e-chromium, e2e-webkit]
+    needs: smoke-e2e
     if: always() && github.event_name == 'push'
     runs-on: ubuntu-latest
     # QA-only packaging job — bounded so a stuck step (e.g. `apt-get install
-    # ffmpeg` hanging on the runner image, as in run 32168277905) fails this
-    # job on its own instead of running for GitHub's 360-minute default.
-    # 10 minutes is ~5-6x the slowest confirmed normal completion (run
-    # 32152694510: full job 15:19:15Z-15:20:59Z = 1m44s, of which the
-    # `apt-get install ffmpeg` step alone took 48s) — enough headroom for apt
-    # slowness, not so long that a real hang still stalls the next push's
-    # replay-package (its own concurrency group would otherwise queue behind
-    # a hung run for the remainder of that hang).
+    # ffmpeg` hanging on the runner image) fails this job on its own instead
+    # of running for GitHub's 360-minute default.
     timeout-minutes: 10
     concurrency:
       group: e2e-replay-package-${{ github.ref }}
@@ -356,22 +239,13 @@ jobs:
       - name: Install E2E dependencies
         run: npm ci
 
-      # Each browser job uploaded its own isolated test-results/ tree
-      # (including its own playwright-report.json). Merge both back into
-      # the single `test-results/` shape `npm run build:replay` already
-      # expects — unchanged since before this split, so no change to
-      # scripts/build-replay-manifest.mjs itself is needed. Playwright's
-      # own per-test output folder names already embed the project name
-      # (e.g. "...-mobile-chromium", "...-mobile-webkit" — confirmed from
-      # this repo's own prior CI logs), so copying both trees into one
-      # directory cannot collide.
-      - name: Download both browsers' raw results
+      - name: Download smoke-e2e's raw results
         uses: actions/download-artifact@v4
         with:
           pattern: ses-playwright-results-*
           path: e2e/raw-results
 
-      - name: Merge both browsers' test-results into one tree + one report
+      - name: Merge raw results into one tree + one report
         run: |
           set -euo pipefail
           mkdir -p test-results
@@ -394,9 +268,7 @@ jobs:
             console.log(`merged ${glob.length} report(s) -> test-results/playwright-report.json`);
           '
 
-      # ubuntu-latest (24.04) does not ship ffmpeg/ffprobe — confirmed by
-      # run 31894678795 failing with "spawnSync ffmpeg ENOENT" and by the
-      # runner image's own installed-software list (actions/runner-images).
+      # ubuntu-latest (24.04) does not ship ffmpeg/ffprobe.
       # CI-runner-only: not a Flutter, npm, or production runtime dependency.
       - name: Install ffmpeg (CI runner only — for replay MP4 transcoding)
         run: |
@@ -424,14 +296,12 @@ jobs:
           if-no-files-found: warn
 
   check-latest:
-    needs: [e2e-chromium, e2e-webkit]
+    needs: smoke-e2e
     if: |
       always() &&
       (github.event_name == 'push' || github.event_name == 'workflow_dispatch') &&
-      needs.e2e-chromium.result != 'cancelled' &&
-      needs.e2e-chromium.result != 'skipped' &&
-      needs.e2e-webkit.result != 'cancelled' &&
-      needs.e2e-webkit.result != 'skipped'
+      needs.smoke-e2e.result != 'cancelled' &&
+      needs.smoke-e2e.result != 'skipped'
     runs-on: ubuntu-latest
     concurrency:
       group: pages
@@ -456,7 +326,7 @@ jobs:
   # `needs.replay-package.result`; the download step below already treats a
   # missing/not-yet-ready artifact as a warning, not a failure.
   build:
-    needs: [e2e-chromium, e2e-webkit, check-latest]
+    needs: [smoke-e2e, check-latest]
     if: |
       always() &&
       needs.check-latest.result == 'success' &&
@@ -465,10 +335,9 @@ jobs:
     concurrency:
       group: pages
       cancel-in-progress: false
-    # Least privilege (Codex review, PR #7): only build/deploy need Pages
-    # credentials — kept off the workflow-level default so the E2E jobs
-    # (which run npm ci / Playwright / test code on every PR) never hold
-    # them.
+    # Least privilege: only build/deploy need Pages credentials — kept off
+    # the workflow-level default so smoke-e2e (which runs npm ci /
+    # Playwright / test code on every PR) never holds them.
     permissions:
       contents: read
       pages: write

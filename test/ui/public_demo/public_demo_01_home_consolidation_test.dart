@@ -55,7 +55,6 @@ import 'package:smile_enjoy_story/presentation/home/home.dart';
 import 'package:smile_enjoy_story/presentation/home/widgets/key_events_section.dart';
 import 'package:smile_enjoy_story/presentation/home/widgets/kpi_section.dart';
 import 'package:smile_enjoy_story/presentation/home/widgets/month_header_bar.dart';
-import 'package:smile_enjoy_story/presentation/home/widgets/recommended_action_section.dart';
 import 'package:smile_enjoy_story/ui/public_demo/public_demo_01_placeholder_screen.dart';
 import 'package:smile_enjoy_story/ui/public_demo/public_demo_cash_shortage_card.dart';
 import 'package:smile_enjoy_story/ui/public_demo/public_demo_home_dashboard_section.dart';
@@ -212,10 +211,14 @@ void main() {
       expect(sectionFinder, findsOneWidget);
       expect(inHome(find.byType(MonthHeaderBar)), findsOneWidget);
       expect(inHome(find.byType(KpiSection)), findsOneWidget);
-      expect(inHome(find.byType(RecommendedActionSection)), findsOneWidget);
+      expect(
+        inHome(find.byKey(const Key('home-recommended-action-cta'))),
+        findsOneWidget,
+      );
       // The Phase 1A `重要イベント` placeholder is not part of the runtime
-      // HOME: 2C moved the slot's whole presentation to
-      // RecommendedActionSection.
+      // HOME: its whole presentation moved onto the merged navigator card
+      // (SES-FIRST-FUN-YEAR-UI-PHASE-2 folded the former, separate
+      // RecommendedActionSection into it).
       expect(inHome(find.byType(KeyEventsSection)), findsNothing);
     });
   });
@@ -317,10 +320,13 @@ void main() {
       // states that action rather than the month's general goal. The two
       // never appear together — that is what keeps this a slot and not a
       // second card stacked above the first.
-      expect(find.byKey(const Key('home-recommended-action')), findsOneWidget);
+      expect(
+        find.byKey(const Key('home-recommended-action-cta')),
+        findsOneWidget,
+      );
+      expect(find.text('次にやること'), findsOneWidget);
       expect(find.text('今月やること'), findsNothing);
       expect(find.text(aprilGoal), findsNothing);
-      expect(find.byKey(const Key('home-month-goal')), findsNothing);
 
       // And it follows the authoritative month.
       await tapAndSettle(tester, '4月を終了して5月へ');
@@ -342,7 +348,10 @@ void main() {
       expect(currentState(tester).month, 6);
 
       const juneGoal = '翌月の発注を確認し、7月も稼働できる状態を作りましょう';
-      expect(find.byKey(const Key('home-recommended-action')), findsNothing);
+      expect(
+        find.byKey(const Key('home-recommended-action-cta')),
+        findsNothing,
+      );
       expect(find.text('今月やること'), findsOneWidget);
       expect(inHome(find.text('今月やること')), findsOneWidget);
       expect(find.text(juneGoal), findsOneWidget);
@@ -467,7 +476,7 @@ void main() {
       for (final target in <Finder>[
         inHome(find.byType(KpiSection)),
         inHome(find.byType(MonthHeaderBar)),
-        find.byKey(const Key('home-navigator-rationale')),
+        find.byKey(const Key('home-navigator-message')),
         find.byKey(const Key('home-recommended-action-headline')),
       ]) {
         await tester.tap(target, warnIfMissed: false);

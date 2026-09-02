@@ -87,6 +87,12 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
   bool _isRestoring = true;
   bool _isRestarting = false;
 
+  /// SES-FIRST-FUN-YEAR-UI-PHASE-2: whether the bottom "開発・テストメニュー"
+  /// fold is open. Starts closed so the test-only restart control never
+  /// reads as part of the normal monthly game flow — see
+  /// [_publicDemoTestControlsCard]'s doc for why it moved here at all.
+  bool _isDevMenuExpanded = false;
+
   @override
   void initState() {
     super.initState();
@@ -660,6 +666,33 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
       ),
     );
   }
+
+  /// SES-FIRST-FUN-YEAR-UI-PHASE-2: the collapsed home for
+  /// [_publicDemoTestControlsCard]. Real-device testing found the test-only
+  /// restart control sitting in the middle of the normal monthly game flow
+  /// (between the Recommended Action and the Office Stage), where it read
+  /// as if it were part of ordinary play. It is moved to the very bottom of
+  /// the screen, folded behind an explicit "開発・テストメニュー" toggle that
+  /// starts closed, so a normal player scrolling through a month's cards
+  /// never sees it unless they deliberately open this section. Nothing
+  /// about the control itself — its key, its confirmation dialog, or what
+  /// it does — changed; only where it is mounted did.
+  Widget _publicDemoDevMenuSection() => Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      const Divider(height: 24),
+      TextButton.icon(
+        key: const Key('public-demo-dev-menu-toggle'),
+        onPressed: () =>
+            setState(() => _isDevMenuExpanded = !_isDevMenuExpanded),
+        icon: Icon(
+          _isDevMenuExpanded ? Icons.expand_less : Icons.expand_more,
+        ),
+        label: const Text('開発・テストメニュー'),
+      ),
+      if (_isDevMenuExpanded) _publicDemoTestControlsCard(),
+    ],
+  );
 
   /// Public Demo-only test control for repeatable human QA. The destructive
   /// confirmation is intentionally separate from [_restartGame], which also
@@ -2307,8 +2340,6 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
                           navigatorAdvice: navigatorAdvice,
                         ),
                         const SizedBox(height: 8),
-                        _publicDemoTestControlsCard(),
-                        const SizedBox(height: 8),
                         HomeOfficeStageSection(display: _officeStageDisplay),
                         const SizedBox(height: 8),
                         PublicDemoEmployeeStageSection(
@@ -2495,6 +2526,7 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
                               engineerId: runtime.engineerId,
                               engineerName: _engineerName(runtime.engineerId),
                             ),
+                        _publicDemoDevMenuSection(),
                       ],
                     ),
                   ],

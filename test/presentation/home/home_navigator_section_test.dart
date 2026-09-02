@@ -162,30 +162,64 @@ void main() {
   });
 
   group('B: the name and the role are both on screen', () {
-    testWidgets('佐倉 ひより, 総務, and the fixed greeting all render', (
-      tester,
-    ) async {
+    testWidgets('佐倉 ひより and 総務 always render', (tester) async {
       await pumpNavigator(tester);
 
       expect(find.byKey(const Key('home-navigator-name')), findsOneWidget);
       expect(find.text('佐倉 ひより'), findsOneWidget);
       expect(find.byKey(const Key('home-navigator-role')), findsOneWidget);
       expect(find.text('総務'), findsOneWidget);
+    });
+
+    // SES-FIRST-FUN-YEAR-UI-PHASE-2: the fixed greeting is no longer shown
+    // alongside advice — that was exactly the "same fact stated twice"
+    // real-device testing flagged (the greeting plus a second, separate
+    // Recommended Action card both claiming to say what to do next). It
+    // now renders only as the suppressed-advice fallback (a terminal
+    // state); whenever advice is present, the merged guidance line states
+    // that instead.
+    testWidgets('with no advice (suppressed) she falls back to the fixed '
+        'greeting, with no eyebrow and no CTA', (tester) async {
+      await pumpNavigator(tester, advice: null);
+
+      expect(find.text(HomeNavigatorIdentity.greeting), findsOneWidget);
       expect(
-        find.text(HomeNavigatorIdentity.greeting),
-        findsOneWidget,
-        reason: '1A says exactly one fixed line',
+        find.byKey(const Key('home-navigator-message-label')),
+        findsNothing,
+      );
+      expect(
+        find.byKey(const Key('home-recommended-action-cta')),
+        findsNothing,
+      );
+      expect(
+        find.byKey(const Key('home-navigator-open-advice')),
+        findsNothing,
       );
     });
 
-    testWidgets('the greeting is a constant — it is the same string for '
-        'every expression the widget can be built with', (tester) async {
+    testWidgets('the greeting fallback is the same string for every '
+        'expression', (tester) async {
       for (final expression in NavigatorExpression.values) {
-        await pumpNavigator(tester, expression: expression);
+        await pumpNavigator(tester, expression: expression, advice: null);
         expect(find.text(HomeNavigatorIdentity.greeting), findsOneWidget);
         expect(find.text('佐倉 ひより'), findsOneWidget);
         expect(find.text('総務'), findsOneWidget);
       }
+    });
+
+    testWidgets('with advice present she states it instead of the generic '
+        'greeting, behind a labelled eyebrow', (tester) async {
+      await pumpNavigator(tester); // default advice: HomeNavigatorAdvice.neutral
+
+      expect(find.text(HomeNavigatorIdentity.greeting), findsNothing);
+      expect(
+        find.byKey(const Key('home-navigator-message-label')),
+        findsOneWidget,
+      );
+      // No eligible action (the neutral default) reads as "this month's
+      // goal", not "next thing to do" — there is no CTA to name.
+      expect(find.text('今月やること'), findsOneWidget);
+      expect(find.text(HomeNavigatorAdvice.neutral.message), findsOneWidget);
     });
   });
 
@@ -197,9 +231,8 @@ void main() {
       expect(find.byKey(const Key('home-navigator-open-advice')), findsNothing);
     });
 
-    testWidgets('an advice CTA runs only its supplied callback', (
-      tester,
-    ) async {
+    testWidgets('a CTA runs only its supplied callback, with no tap needed '
+        'to reveal it', (tester) async {
       var calls = 0;
       await pumpNavigator(
         tester,
@@ -210,9 +243,16 @@ void main() {
           onCtaPressed: () => calls++,
         ),
       );
-      await tester.tap(find.byKey(const Key('home-navigator-open-advice')));
+      // SES-FIRST-FUN-YEAR-UI-PHASE-2: the CTA used to sit behind the same
+      // "詳しく見る" tap as the explanation. It is now always visible — this
+      // advice carries no explanation, so the expand control does not even
+      // render.
+      expect(
+        find.byKey(const Key('home-navigator-open-advice')),
+        findsNothing,
+      );
+      await tester.tap(find.byKey(const Key('home-recommended-action-cta')));
       await tester.pumpAndSettle();
-      await tester.tap(find.byKey(const Key('home-navigator-advice-cta')));
       expect(calls, 1);
     });
     testWidgets(
@@ -238,29 +278,32 @@ void main() {
               )
               .top,
           greaterThan(
-            tester
-                .getRect(find.byKey(const Key('home-navigator-advice-message')))
-                .bottom,
+            tester.getRect(find.byKey(const Key('home-navigator-message'))).bottom,
           ),
         );
       },
     );
-    testWidgets('an explanation remains optional', (tester) async {
-      await pumpNavigator(
-        tester,
-        advice: const HomeNavigatorAdvice(
-          title: 'ひよりからのご案内',
-          message: '説明のない既存の案内です。',
-        ),
-      );
-      await tester.tap(find.byKey(const Key('home-navigator-open-advice')));
-      await tester.pumpAndSettle();
-      expect(
-        find.byKey(const Key('home-navigator-advice-explanation')),
-        findsNothing,
-      );
-      expect(tester.takeException(), isNull);
-    });
+    testWidgets(
+      'without an explanation no expand control renders at all',
+      (tester) async {
+        await pumpNavigator(
+          tester,
+          advice: const HomeNavigatorAdvice(
+            title: 'ひよりからのご案内',
+            message: '説明のない既存の案内です。',
+          ),
+        );
+        expect(
+          find.byKey(const Key('home-navigator-open-advice')),
+          findsNothing,
+        );
+        expect(
+          find.byKey(const Key('home-navigator-advice-explanation')),
+          findsNothing,
+        );
+        expect(tester.takeException(), isNull);
+      },
+    );
     testWidgets(
       'starts collapsed, expands and collapses with one fixed identity',
       (tester) async {
@@ -280,10 +323,16 @@ void main() {
           find.byKey(const Key('home-navigator-advice-bubble')),
           findsOneWidget,
         );
-        expect(find.text(HomeNavigatorAdvice.neutral.title), findsOneWidget);
+        // SES-FIRST-FUN-YEAR-UI-PHASE-2: the bubble no longer restates the
+        // title or the message — both already render, once, above it. Only
+        // the explanation is genuinely new content inside the bubble.
+        expect(
+          find.text(HomeNavigatorAdvice.neutral.explanation!),
+          findsOneWidget,
+        );
         expect(
           find.text(HomeNavigatorAdvice.neutral.message),
-          findsNWidgets(2),
+          findsOneWidget,
         );
         expect(
           find.descendant(of: section, matching: find.text('佐倉 ひより')),
@@ -311,14 +360,14 @@ void main() {
       await pumpNavigator(tester, bundle: _FailingAssetBundle());
       await tester.tap(find.byKey(const Key('home-navigator-open-advice')));
       await tester.pumpAndSettle();
-      expect(find.text(HomeNavigatorAdvice.neutral.message), findsNWidgets(2));
+      expect(find.text(HomeNavigatorAdvice.neutral.message), findsOneWidget);
     });
 
     for (final size in _sizes) {
       testWidgets(
-        'the default one-line rationale stays inside $size for long advice',
+        'the always-visible message line stays inside $size for long advice',
         (tester) async {
-          const longMessage = '非常に長い推奨理由でも、ひよりの要点は一行で安全に表示され、詳しい内容は展開後に確認できます。';
+          const longMessage = '非常に長い推奨理由でも、ひよりの案内は画面幅に収まって表示され、詳しい内容は展開後に確認できます。';
           await pumpNavigator(
             tester,
             size: size,
@@ -328,11 +377,11 @@ void main() {
               explanation: longMessage,
             ),
           );
-          final rationale = tester.getRect(
-            find.byKey(const Key('home-navigator-rationale')),
+          final message = tester.getRect(
+            find.byKey(const Key('home-navigator-message')),
           );
-          expect(rationale.left, greaterThanOrEqualTo(0));
-          expect(rationale.right, lessThanOrEqualTo(size.width));
+          expect(message.left, greaterThanOrEqualTo(0));
+          expect(message.right, lessThanOrEqualTo(size.width));
           expect(tester.takeException(), isNull);
         },
       );
@@ -351,7 +400,7 @@ void main() {
           for (final key in const [
             'home-navigator',
             'home-navigator-advice-bubble',
-            'home-navigator-advice-message',
+            'home-navigator-advice-explanation',
             'home-navigator-close-advice',
           ]) {
             final rect = tester.getRect(find.byKey(Key(key)));
@@ -395,7 +444,11 @@ void main() {
 
     testWidgets('an expression with no artwork falls back to the silhouette '
         'and keeps every other fact readable', (tester) async {
-      await pumpNavigator(tester, expression: NavigatorExpression.smile);
+      await pumpNavigator(
+        tester,
+        expression: NavigatorExpression.smile,
+        advice: null,
+      );
 
       expect(find.byKey(const Key('home-navigator-portrait')), findsNothing);
       expect(
@@ -436,7 +489,7 @@ void main() {
       testWidgets('with $label the section still renders in full', (
         tester,
       ) async {
-        await pumpNavigator(tester, bundle: bundle());
+        await pumpNavigator(tester, bundle: bundle(), advice: null);
         // The decode failure arrives asynchronously; give it real time to
         // land, the way the existing Public Demo image suites do.
         for (var i = 0; i < 10; i++) {

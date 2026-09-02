@@ -44,7 +44,6 @@ import 'package:smile_enjoy_story/presentation/home/home.dart';
 import 'package:smile_enjoy_story/presentation/home/widgets/home_navigator_section.dart';
 import 'package:smile_enjoy_story/presentation/home/widgets/kpi_section.dart';
 import 'package:smile_enjoy_story/presentation/home/widgets/month_header_bar.dart';
-import 'package:smile_enjoy_story/presentation/home/widgets/recommended_action_section.dart';
 import 'package:smile_enjoy_story/ui/public_demo/public_demo_01_placeholder_screen.dart';
 import 'package:smile_enjoy_story/ui/public_demo/public_demo_home_dashboard_section.dart';
 
@@ -196,7 +195,10 @@ void main() {
       // itself did not move again and was not duplicated — it is the same
       // single slot, showing the more specific of the two things it can
       // say (see the role-split test in the consolidation suite).
-      expect(find.byKey(const Key('home-recommended-action')), findsOneWidget);
+      expect(
+        find.byKey(const Key('home-recommended-action-cta')),
+        findsOneWidget,
+      );
       expect(find.text('今月やること'), findsNothing);
       expect(find.text('現金'), findsOneWidget);
       expect(find.text('現預金'), findsNothing);
@@ -377,7 +379,10 @@ void main() {
       expect(inHome(find.byType(MonthHeaderBar)), findsOneWidget);
       expect(inHome(find.byType(KpiSection)), findsOneWidget);
       expect(inHome(find.byType(HomeNavigatorSection)), findsOneWidget);
-      expect(inHome(find.byType(RecommendedActionSection)), findsOneWidget);
+      expect(
+        inHome(find.byKey(const Key('home-recommended-action-cta'))),
+        findsOneWidget,
+      );
       expect(
         tester.widget<MonthHeaderBar>(inHome(find.byType(MonthHeaderBar))).data,
         isA<HomeDashboardDisplayData>(),

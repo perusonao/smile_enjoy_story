@@ -213,7 +213,6 @@ void main() {
       expect(action.subjectName, currentWorkflow(tester).engineers.first.name);
 
       // Exactly one action is offered — HOME is not a task list.
-      expect(find.byKey(const Key('home-recommended-action')), findsOneWidget);
       expect(ctaFinder, findsOneWidget);
       expect(
         find.byKey(const Key('home-recommended-action-headline')),
@@ -293,7 +292,8 @@ void main() {
         );
         expect(recommended(tester), isNull);
         expect(slot(tester), isA<HomeRecommendedActionNone>());
-        expect(find.byKey(const Key('home-month-goal')), findsOneWidget);
+        expect(find.text('今月やること'), findsOneWidget);
+        expect(ctaFinder, findsNothing);
       }
     });
 
@@ -770,9 +770,9 @@ void main() {
 
       expect(slot(tester), isA<HomeRecommendedActionSuppressed>());
       expect(recommended(tester), isNull);
-      expect(find.byKey(const Key('home-recommended-action')), findsNothing);
       expect(ctaFinder, findsNothing);
-      expect(find.byKey(const Key('home-month-goal')), findsNothing);
+      expect(find.text('今月やること'), findsNothing);
+      expect(find.text('次にやること'), findsNothing);
 
       // Read-only content survives, per POST-12MONTH-1 /
       // FINANCE-FAILURE-1A+1B: the KPI and the employees are still there.
@@ -867,7 +867,6 @@ void main() {
       expect(slot(tester), isA<HomeRecommendedActionNone>());
       expect(recommended(tester), isNull);
       expect(ctaFinder, findsNothing);
-      expect(find.byKey(const Key('home-month-goal')), findsOneWidget);
       expect(find.text('今月やること'), findsOneWidget);
       expect(find.text('翌月の発注を確認し、7月も稼働できる状態を作りましょう'), findsOneWidget);
     });

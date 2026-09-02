@@ -42,6 +42,7 @@
 // the Office Stage itself to be fully painted inside the same budget.
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:smile_enjoy_story/app/app_entry.dart';
@@ -1120,4 +1121,90 @@ void main() {
       });
     }
   });
+
+  group(
+    'PUBLIC-DEMO-HOME-UI-3A: the compact KPI icon badge must not silently '
+    'truncate or over-shrink the value it sits beside',
+    () {
+      // `find.text(value)` alone cannot catch this class of regression:
+      // an earlier iteration painted the value beside the icon with fixed-
+      // size TextOverflow.ellipsis text, which only changes what is
+      // PAINTED, never the widget's own `data` string — a truncated "¥4…"
+      // and a fully painted "¥400万" both satisfy `find.text('¥400万')`, as
+      // the icon badge proved in real-device review (PR screenshot) while
+      // every existing `kpiTileValue`-style assertion kept passing.
+      //
+      // The value now renders inside a `FittedBox(fit: scaleDown)` instead
+      // (see _CompactKpiTile's own doc), which makes silent truncation
+      // structurally impossible — the full string always paints, just
+      // smaller if the tile is narrow. What that trades away is a floor on
+      // how small "smaller" may get, so this test asserts the OTHER real
+      // constraint instead: the effective on-screen font size the scale-
+      // down settles on never drops below the design's own 10px essential-
+      // text minimum.
+      for (final size in const [Size(360, 800), Size(390, 844)]) {
+        final label = '${size.width.toInt()}x${size.height.toInt()}';
+
+        testWidgets('every compact KPI value stays >= 10px effective font '
+            'size, at $label', (tester) async {
+          await pumpDemoAt(tester, size);
+          expect(tester.takeException(), isNull);
+
+          for (final tile in const [
+            'cash',
+            'assigned',
+            'waiting',
+            'sales-remaining',
+            'employees',
+            'revenue',
+            'pending-revenue',
+          ]) {
+            final textFinder = find
+                .descendant(
+                  of: find.byKey(Key('home-kpi-compact-$tile')),
+                  matching: find.byType(Text),
+                )
+                // The tile's Text descendants are [label, value] in tree
+                // order (icon+label row first, value line below) — see
+                // _CompactKpiTile's own class doc.
+                .last;
+            final valueText = tester.widget<Text>(textFinder);
+            final fittedBox = tester.renderObject<RenderFittedBox>(
+              find.ancestor(
+                of: textFinder,
+                matching: find.byType(FittedBox),
+              ),
+            );
+
+            // The value's natural (unconstrained) size at its base style —
+            // what FittedBox scales down from.
+            final natural = TextPainter(
+              text: TextSpan(text: valueText.data, style: valueText.style),
+              textDirection: TextDirection.ltr,
+            )..layout();
+
+            // scaleDown only ever shrinks (or leaves at 1.0), and preserves
+            // aspect ratio — the binding constraint here is always width,
+            // since these tiles are far wider than one text line is tall.
+            final availableWidth = fittedBox.constraints.maxWidth;
+            final scale = availableWidth >= natural.width
+                ? 1.0
+                : availableWidth / natural.width;
+            final baseFontSize = valueText.style!.fontSize!;
+            final effectiveFontSize = baseFontSize * scale;
+
+            expect(
+              effectiveFontSize,
+              greaterThanOrEqualTo(10.0),
+              reason:
+                  '$tile value "${valueText.data}" scales to '
+                  '${effectiveFontSize.toStringAsFixed(1)}px at $label '
+                  '(available width ${availableWidth.toStringAsFixed(1)}pt, '
+                  'natural width ${natural.width.toStringAsFixed(1)}pt)',
+            );
+          }
+        });
+      }
+    },
+  );
 }

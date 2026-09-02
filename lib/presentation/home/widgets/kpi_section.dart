@@ -218,16 +218,26 @@ class _CompactKpi extends StatelessWidget {
   }
 }
 
-/// Value-over-label with a small leading icon badge: the densest readable
-/// form of a KPI figure that still reads as icon-led, per the approved
-/// PUBLIC-DEMO-HOME-UI-3A visual target. Both text lines keep `maxLines: 1`
-/// + ellipsis so a long value can never wrap a tile taller than its
-/// row-mates (four tiles share ~328pt of inner width at 360x800).
+/// Icon-led label row, with the value on its own full-width line below:
+/// the densest readable form of a KPI figure that still reads as icon-led,
+/// per the approved PUBLIC-DEMO-HOME-UI-3A visual target. Both text lines
+/// keep `maxLines: 1` + ellipsis so a long value can never wrap a tile
+/// taller than its row-mates (four tiles share ~328pt of inner width at
+/// 360x800).
 ///
 /// PUBLIC-DEMO-HOME-UI-3A: adds the icon badge [_KpiTileData.icon] already
 /// carried but never painted before this change. No `Key`, value format, or
 /// label text changed — existing finders for `home-kpi-compact-*` keep
 /// working unmodified.
+///
+/// The icon sits beside the LABEL, not the value: an earlier iteration put
+/// it beside the value instead, which left too little width for a figure
+/// like "¥400万" at 390pt and silently ellipsized it (caught by a dedicated
+/// TextPainter-based regression test, since `find.text` alone cannot detect
+/// paint-time ellipsis truncation). The value keeps the tile's full
+/// content width instead — every label here ("現金","参画","待機",...) is
+/// short enough to share its own line with a small badge without doing the
+/// same.
 class _CompactKpiTile extends StatelessWidget {
   const _CompactKpiTile({required this.data});
 
@@ -244,34 +254,29 @@ class _CompactKpiTile extends StatelessWidget {
         color: colorScheme.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(10),
       ),
-      child: Row(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          DecoratedBox(
-            decoration: BoxDecoration(
-              color: colorScheme.primary.withValues(alpha: 0.12),
-              shape: BoxShape.circle,
-            ),
-            child: Padding(
-              padding: const EdgeInsets.all(4),
-              child: Icon(data.icon, size: 12, color: colorScheme.primary),
-            ),
-          ),
-          const SizedBox(width: 6),
-          Expanded(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  data.value ?? '—',
-                  style: theme.textTheme.titleSmall?.copyWith(
-                    fontWeight: FontWeight.bold,
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
+          Row(
+            children: [
+              DecoratedBox(
+                decoration: BoxDecoration(
+                  color: colorScheme.primary.withValues(alpha: 0.14),
+                  shape: BoxShape.circle,
                 ),
-                Text(
+                child: Padding(
+                  padding: const EdgeInsets.all(2.5),
+                  child: Icon(
+                    data.icon,
+                    size: 10,
+                    color: colorScheme.primary,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 4),
+              Flexible(
+                child: Text(
                   data.label,
                   style: theme.textTheme.labelSmall?.copyWith(
                     color: colorScheme.onSurfaceVariant,
@@ -279,7 +284,28 @@ class _CompactKpiTile extends StatelessWidget {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
-              ],
+              ),
+            ],
+          ),
+          const SizedBox(height: 2),
+          // FittedBox rather than maxLines/ellipsis: at 360-390pt the four-
+          // across row leaves as little as ~60pt for a value like "¥400万"
+          // — comfortable most months, but tight enough at the widest
+          // figures that a fixed font size ellipsized real digits instead
+          // of a rare rounding artifact (see this tile's own regression
+          // test in public_demo_01_home_consolidation_test.dart). Scaling
+          // down keeps every digit visible, which the design's own "at
+          // 2.0x, readability takes priority over first-fold completeness"
+          // principle already prioritizes over a fixed size.
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerLeft,
+            child: Text(
+              data.value ?? '—',
+              style: theme.textTheme.titleSmall?.copyWith(
+                fontWeight: FontWeight.bold,
+              ),
+              maxLines: 1,
             ),
           ),
         ],

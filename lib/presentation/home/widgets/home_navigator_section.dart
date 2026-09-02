@@ -51,8 +51,8 @@ class HomeNavigatorMetrics {
   static const double textGap = 3;
 
   /// The height at which the navigator would be costing the first view more
-  /// than a compact identity plus one accessible local control is worth at
-  /// the default text scale.
+  /// than a compact identity plus its advice is worth at the default text
+  /// scale.
   ///
   /// A ceiling, not a target, in the same sense as the Office Stage's: it
   /// exists so growth shows up as a failing test rather than as a silently
@@ -60,7 +60,14 @@ class HomeNavigatorMetrics {
   /// card is *supposed* to grow past it, because the design explicitly
   /// permits the navigator to be pushed out of the first view rather than
   /// have its text truncated.
-  static const double compactCeiling = 140;
+  ///
+  /// PUBLIC-DEMO-HOME-UI-3A raises this from 140: the approved visual
+  /// target requires the advice explanation bubble to be always visible
+  /// (replacing the former "詳しく見る" tap-to-reveal control), which is a
+  /// real, required structural addition, not slack. The default (neutral,
+  /// no CTA) card now measures ~171pt at 360x800; 200pt keeps real margin
+  /// while still failing the moment something else is added to the card.
+  static const double compactCeiling = 200;
 
   static HomeNavigatorLayout of(BuildContext context) =>
       MediaQuery.sizeOf(context).width < compactWidthThreshold

@@ -36,6 +36,7 @@ import 'public_demo_growth_result_card.dart';
 import 'public_demo_home_dashboard_section.dart';
 import 'public_demo_home_presentation_components.dart';
 import 'public_demo_interview_result_dialog.dart';
+import 'public_demo_month_guard_warning_dialog.dart';
 import 'public_demo_monthly_cash_flow_card.dart';
 import 'public_demo_sales_progress.dart';
 import 'public_demo_salary_offer_dialog.dart';
@@ -306,13 +307,13 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
         label: '${publicDemoMonthLabel(s.month)}を終了して翌月へ',
         description: '今月の収支を確定し、翌月へ進みます。',
         enabled: true,
-        onPressed: closeOrdinaryMonth,
+        onPressed: () => unawaited(closeOrdinaryMonth()),
       ),
       15 => PublicDemoMonthlyPrimaryCtaModel(
         label: '3月を終了して第1期を完了',
         description: '今期最後の収支を確定します。',
         enabled: true,
-        onPressed: closeOrdinaryMonth,
+        onPressed: () => unawaited(closeOrdinaryMonth()),
       ),
       _ => null,
     };
@@ -1083,16 +1084,46 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
     month: 7,
   );
 
+  /// The outstanding actions the Month Guard should warn about for the
+  /// current month-close attempt (Issue #119), built from the SAME
+  /// `_recommendedActionCandidates` HOME's one recommended-action slot
+  /// already uses — never a second, widget-local re-derivation of which
+  /// actions are outstanding.
+  ///
+  /// Two kinds are deliberately excluded before the guard ever sees them:
+  ///
+  ///  * [HomeRecommendedActionKind.cashShortageResponse] — purely
+  ///    informational (`HomeRecommendedActionKind.isInformational`); an
+  ///    informational item must never produce a warning.
+  ///  * [HomeRecommendedActionKind.summerBonusDecision] — already owned
+  ///    exclusively by the `required` rule above; `july()` never reaches
+  ///    this getter while it is outstanding (it returns from
+  ///    `decideSummerBonus` first), so this exclusion is defense in depth,
+  ///    not load-bearing.
+  List<PublicDemoMonthGuardCandidate> get _monthGuardRecommendedCandidates => [
+    for (final candidate in _recommendedActionCandidates)
+      if (!candidate.action.kind.isInformational &&
+          candidate.action.kind != HomeRecommendedActionKind.summerBonusDecision)
+        PublicDemoMonthGuardCandidate(
+          id: candidate.action.targetId == null
+              ? candidate.action.kind.name
+              : '${candidate.action.kind.name}:${candidate.action.targetId}',
+          actionName: candidate.action.headline,
+        ),
+  ];
+
   /// The Domain-owned Month Guard's outstanding items for the current
-  /// month-close attempt (Issue #119 PR1). This is the single source of
-  /// truth for "is a required decision still outstanding" — callers must
-  /// consult it instead of independently re-deriving the same condition
-  /// (e.g. reading `s.summerBonusDecisionConfirmed` directly).
+  /// month-close attempt (Issue #119). This is the single source of truth
+  /// for "is a required decision still outstanding" and "which recommended
+  /// actions remain" — callers must consult it instead of independently
+  /// re-deriving either condition (e.g. reading
+  /// `s.summerBonusDecisionConfirmed` directly).
   List<PublicDemoMonthGuardItem> get _monthGuardItems =>
       PublicDemoMonthGuard.evaluate(
         month: s.month,
         monthCloseApplicable: !s.isCloseBlocked,
         summerBonusDecisionConfirmed: s.summerBonusDecisionConfirmed,
+        outstandingRecommendedActions: _monthGuardRecommendedCandidates,
       );
 
   bool get _summerBonusDecisionRequired => _monthGuardItems.any(
@@ -1112,9 +1143,42 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
     _commitAggregate(_game.confirmSummerBonusDecision(decision));
   }
 
+  /// Issue #119 PLAYTHROUGH-BLOCKER-1: asks before a month-close attempt
+  /// proceeds while `recommended`-level items are outstanding. Returns
+  /// `true` when the caller may close the month — either nothing is
+  /// outstanding, or the player chose to proceed anyway. A `required` item
+  /// is never passed to this: the caller (`july()`) resolves it first and
+  /// never reaches this check while one remains.
+  Future<bool> _confirmMonthCloseIfRecommendedOutstanding() async {
+    final recommended = _monthGuardItems
+        .where(
+          (item) => item.level == PublicDemoMonthGuardLevel.recommended,
+        )
+        .toList();
+    if (recommended.isEmpty) return true;
+    final proceed = await showDialog<bool>(
+      context: context,
+      builder: (context) =>
+          PublicDemoMonthGuardWarningDialog(items: recommended),
+    );
+    if (!mounted) return false;
+    return proceed ?? false;
+  }
+
   Future<void> july() async {
     // Month Guard enforcement lives here, above `closeJuly` — the aggregate
     // entry point itself stays ungated (Issue #119 PR1).
+    //
+    // Issue #119 PLAYTHROUGH-BLOCKER-1 deliberately does NOT add the new
+    // `recommended`-level confirmation here: July already has its own
+    // required decision gate above, and July's canonical CTA closing into
+    // August on a single, unconditional tap (once that decision is made)
+    // is an existing, heavily-pinned contract across this suite (#118's
+    // single-CTA guarantee, #133's "none" route, and every trajectory
+    // helper that closes July as one atomic step). The gap this issue
+    // names ("7月以外でも…警告なしで月末処理できる") is `closeOrdinaryMonth`
+    // below, which had no Month Guard check of any kind before this change
+    // — that is where the new `recommended` confirmation lives.
     if (_summerBonusDecisionRequired) {
       await decideSummerBonus();
       return;
@@ -1134,7 +1198,13 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
   /// common `PublicDemoAggregate.closeOrdinaryMonth` entry point instead of
   /// a dedicated per-month handler, since September onward has no
   /// month-specific event the way July's bonus does.
-  void closeOrdinaryMonth() {
+  ///
+  /// Issue #119 PLAYTHROUGH-BLOCKER-1: unlike July, August-March never had
+  /// any Month Guard check at all before this — this is the extension that
+  /// closes that gap, at the `recommended` level only (there is no required
+  /// rule outside July).
+  Future<void> closeOrdinaryMonth() async {
+    if (!await _confirmMonthCloseIfRecommendedOutstanding()) return;
     _commitAggregate(
       _game.closeOrdinaryMonth(monthlyExpenses: _ordinaryMonthlyExpenses),
     );
@@ -1538,6 +1608,22 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
       }
     }
 
+    // ---- months 7-14: every economically-waiting engineer's sales-flow
+    // card (RECOVERY-LOOP-1's own window), verbatim the same filter the
+    // `ec(i, showTrainingCard: false)` render site further down uses
+    // (Issue #119 PLAYTHROUGH-BLOCKER-2). Before this, nothing in this
+    // window — including the `案件へ復帰` Recovery button once an engineer
+    // reaches `ordered` — was ever visible to the recommended-action
+    // authority at all, regardless of cash shortage.
+    if (s.month >= 7 && s.month <= 14) {
+      for (final e in workflow.engineers) {
+        if (workflow.assignedEngineerIds(month: s.month).contains(e.id)) {
+          continue;
+        }
+        _addEngineerStageCandidate(add, e);
+      }
+    }
+
     return candidates;
   }
 
@@ -1613,8 +1699,24 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
           () => _beginSelling(e.id),
         );
       case PublicDemoSalesStage.ordered:
-        // No button on the card at this stage, so no candidate.
-        break;
+        // Issue #119 PLAYTHROUGH-BLOCKER-2: the same `案件へ復帰` button
+        // `ec()` renders (WORKFLOW months 7-14) once
+        // `PublicDemoRecoveryEligibility.isEligible` holds — the exact
+        // authority the button itself already re-checks before acting.
+        // Calling it here for month 4/6 emissions too is safe: it always
+        // returns false outside its own month window
+        // (`PublicDemoRecoveryEligibility.isMonthEligible`), matching the
+        // fact that no such button is rendered there either.
+        if (PublicDemoRecoveryEligibility.isEligible(
+          state: s,
+          workflow: workflow,
+          engineerId: e.id,
+        )) {
+          emit(
+            HomeRecommendedActionKind.recoveryAssignment,
+            () => _recoverAssignment(e.id),
+          );
+        }
     }
   }
 

@@ -92,12 +92,34 @@ import 'package:flutter/foundation.dart' show VoidCallback, immutable;
 ///    slot never offers a dead CTA. Being *enabled* is necessary, not
 ///    sufficient: the July case above is enabled and still excluded.
 enum HomeRecommendedActionKind {
+  // ---- P(-1): the one deliberate exception to "P0 outranks everything"--
+  /// RECOVERY-LOOP-1 + Issue #119: a genuine, mutating Recovery step
+  /// (`PublicDemoRecoveryEligibility.isEligible` already holds; this is the
+  /// exact same `案件へ復帰` button, never a reconstructed predicate) for an
+  /// engineer who has walked the real sales pipeline back to `ordered`
+  /// while economically waiting (July–February).
+  ///
+  /// This is the one kind ranked ABOVE [cashShortageResponse] — see
+  /// [isInformational]'s doc for why: [cashShortageResponse] never changes
+  /// any authoritative state (PLAYTEST-BLOCKER-1B), so it must never be the
+  /// only thing the recommended-action slot shows forever while a real,
+  /// mutating recovery step is sitting right there, reachable, and legal.
+  /// Every other kind's relative order versus [cashShortageResponse] is
+  /// unchanged — this is a single, narrow, documented exception, not a
+  /// general "actionable beats informational" rule.
+  recoveryAssignment(
+    presentationPriority: -1,
+    ctaLabel: '案件へ復帰',
+    headline: '{name}を案件へ復帰させる',
+  ),
+
   // ---- P0: terminal / critical -----------------------------------------
   /// Design row P0. The FINANCE-FAILURE-1C shortage card is the action.
   cashShortageResponse(
     presentationPriority: 0,
     ctaLabel: '資金不足を確認',
     headline: '資金不足の対応を確認',
+    informational: true,
   ),
 
   // ---- P1: a deadline or an answer somebody is waiting for -------------
@@ -264,11 +286,39 @@ enum HomeRecommendedActionKind {
     required this.presentationPriority,
     required this.ctaLabel,
     required String headline,
+    this.informational = false,
   }) : _headline = headline;
 
   /// Total presentation order, **lower wins**. See the class doc for the
   /// bands and why this is presentation-only.
   final int presentationPriority;
+
+  /// Issue #119 PLAYTHROUGH-BLOCKER-2: whether this kind only lets the
+  /// player *check* something (never mutates authoritative state) rather
+  /// than *do* something. `true` for exactly [cashShortageResponse] today.
+  ///
+  /// This is the single central classification the owner screen consults
+  /// before handing outstanding actions to the Domain-owned Month Guard
+  /// (`PublicDemoMonthGuard`): an informational candidate is filtered out
+  /// there, so it can never produce a "recommended" month-close warning —
+  /// matching the guard's own contract that an informational item never
+  /// warns. [selectHomeRecommendedAction] needs no separate consult of this
+  /// flag: [recoveryAssignment]'s own negative [presentationPriority]
+  /// already keeps it from ever losing the recommended-action slot to
+  /// [cashShortageResponse], so the ranking itself stays the single,
+  /// numeric, total order it always was — see [recoveryAssignment]'s doc.
+  ///
+  /// A `bool` getter, not a third [PublicDemoMonthGuardLevel]-shaped enum,
+  /// because this file must stay free of any dependency on `game/`/
+  /// `domain/` types (see the class doc) — the Month Guard never sees a
+  /// [HomeRecommendedActionKind] at all, only the plain id/name pairs the
+  /// owner already filtered with this flag.
+  final bool informational;
+
+  /// Alias kept for call-site readability at consult sites outside this
+  /// file (`kind.isInformational` reads better than `kind.informational`
+  /// at a distance from this declaration).
+  bool get isInformational => informational;
 
   /// The CTA button's label — the verb, kept short so the button reads at a
   /// glance.

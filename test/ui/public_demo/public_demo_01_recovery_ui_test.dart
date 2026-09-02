@@ -66,6 +66,19 @@ Future<void> _tapAndSettle(WidgetTester tester, String text) async {
     await tester.tap(find.widgetWithText(FilledButton, '内容を確認'));
     await tester.pumpAndSettle();
   }
+  // Issue #119: a month-close tap now truthfully names app-01's own
+  // outstanding "案件へ復帰" step as a `recommended`-level Month Guard
+  // warning whenever this test has deliberately left them un-recovered —
+  // exactly what PLAYTHROUGH-BLOCKER-2 exists to surface. This suite's own
+  // assertions are about button visibility, not this warning, so proceed
+  // through it exactly as "このまま月末処理を進める" would.
+  final monthGuardProceed = find.byKey(
+    const Key('public-demo-month-guard-proceed'),
+  );
+  if (monthGuardProceed.evaluate().isNotEmpty) {
+    await tester.tap(monthGuardProceed);
+    await tester.pumpAndSettle();
+  }
 }
 
 Future<void> _tapKeyAndSettle(WidgetTester tester, Key key) async {

@@ -450,12 +450,17 @@ export async function confirmSatoJulyContinuationOnly(page: Page): Promise<void>
  * HOME Recommended Action's differently-worded `SkillSheetを確認`/
  * `営業を開始`, which `sellFoundingEngineerInApril` above targets instead —
  * the two are genuinely different on-screen strings for the same two
- * underlying commands, not a typo). RECOVERY-LOOP-1 deliberately does not
- * wire the month 7-14 waiting-engineer card into HOME (see
+ * underlying commands, not a typo). RECOVERY-LOOP-1 originally did not wire
+ * the month 7-14 waiting-engineer card into HOME at all (see
  * `docs/reports/SES_RECOVERY-LOOP-1_Implementation_Result.md`'s PRODUCTION
- * CHANGES section), so this raw-card path is the only one a Recovery-
- * eligible engineer redoing this same chain in July or later can ever
- * reach. */
+ * CHANGES section for that original state); Issue #119
+ * (PUBLIC-DEMO-MONTH-GUARD-1A, PLAYTHROUGH-BLOCKER-2) wired it in so a
+ * genuinely-outstanding Recovery step is no longer invisible to HOME's one
+ * recommended-action slot, including once cash shortage hits — see
+ * `docs/reports/SES_ISSUE-119_MONTH-GUARD_Implementation_Result.md`. This
+ * raw-card path remains valid and is still exercised directly here; it is
+ * simply no longer the *only* entry point for this same chain in July or
+ * later. */
 export async function runWaitingEngineerSalesPipelineToOrdered(
   page: Page,
   root: Page | Locator = page,

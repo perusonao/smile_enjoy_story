@@ -122,6 +122,17 @@ Future<void> tapAndSettle(WidgetTester tester, String text) async {
     await tester.tap(find.widgetWithText(FilledButton, '内容を確認'));
     await tester.pumpAndSettle();
   }
+  // Issue #119: proceed through the Month Guard's `recommended`-level
+  // warning if a month-close tap surfaced one — this suite is not
+  // exercising that warning itself. See the identical clause in
+  // public_demo_01_home_recommended_action_test.dart's own tapAndSettle.
+  final monthGuardProceed = find.byKey(
+    const Key('public-demo-month-guard-proceed'),
+  );
+  if (monthGuardProceed.evaluate().isNotEmpty) {
+    await tester.tap(monthGuardProceed);
+    await tester.pumpAndSettle();
+  }
 }
 
 Future<void> dismiss(WidgetTester tester) async {

@@ -191,10 +191,6 @@ void main() {
         find.byKey(const Key('home-recommended-action-cta')),
         findsNothing,
       );
-      expect(
-        find.byKey(const Key('home-navigator-open-advice')),
-        findsNothing,
-      );
     });
 
     testWidgets('the greeting fallback is the same string for every '
@@ -223,16 +219,17 @@ void main() {
     });
   });
 
-  group('NAVIGATOR-1B: local inline advice interaction', () {
-    testWidgets('suppressed advice exposes no local advice control', (
-      tester,
-    ) async {
+  group('NAVIGATOR-1B / PUBLIC-DEMO-HOME-UI-3A: the advice explanation is '
+      'always visible, with no collapse control', () {
+    testWidgets('suppressed advice exposes no advice bubble', (tester) async {
       await pumpNavigator(tester, advice: null);
-      expect(find.byKey(const Key('home-navigator-open-advice')), findsNothing);
+      expect(
+        find.byKey(const Key('home-navigator-advice-bubble')),
+        findsNothing,
+      );
     });
 
-    testWidgets('a CTA runs only its supplied callback, with no tap needed '
-        'to reveal it', (tester) async {
+    testWidgets('a CTA runs only its supplied callback', (tester) async {
       var calls = 0;
       await pumpNavigator(
         tester,
@@ -243,20 +240,17 @@ void main() {
           onCtaPressed: () => calls++,
         ),
       );
-      // SES-FIRST-FUN-YEAR-UI-PHASE-2: the CTA used to sit behind the same
-      // "詳しく見る" tap as the explanation. It is now always visible — this
-      // advice carries no explanation, so the expand control does not even
-      // render.
-      expect(
-        find.byKey(const Key('home-navigator-open-advice')),
-        findsNothing,
-      );
       await tester.tap(find.byKey(const Key('home-recommended-action-cta')));
       await tester.pumpAndSettle();
       expect(calls, 1);
     });
+
     testWidgets(
-      'explanation is hidden while collapsed and shown when expanded',
+      // PUBLIC-DEMO-HOME-UI-3A: the approved visual target shows the
+      // "ひよりからのアドバイス" box open at all times, with no "詳しく見る"/
+      // "閉じる" tap-to-reveal — matching this is the whole point of this
+      // group.
+      'the explanation renders immediately, with no tap required',
       (tester) async {
         const explanation = 'この操作が一般的に重要な理由です。';
         await pumpNavigator(
@@ -267,10 +261,11 @@ void main() {
             explanation: explanation,
           ),
         );
-        expect(find.text(explanation), findsNothing);
-        await tester.tap(find.byKey(const Key('home-navigator-open-advice')));
-        await tester.pumpAndSettle();
         expect(find.text(explanation), findsOneWidget);
+        expect(
+          find.byKey(const Key('home-navigator-advice-bubble')),
+          findsOneWidget,
+        );
         expect(
           tester
               .getRect(
@@ -283,8 +278,9 @@ void main() {
         );
       },
     );
+
     testWidgets(
-      'without an explanation no expand control renders at all',
+      'without an explanation no advice bubble renders at all',
       (tester) async {
         await pumpNavigator(
           tester,
@@ -294,7 +290,7 @@ void main() {
           ),
         );
         expect(
-          find.byKey(const Key('home-navigator-open-advice')),
+          find.byKey(const Key('home-navigator-advice-bubble')),
           findsNothing,
         );
         expect(
@@ -304,61 +300,40 @@ void main() {
         expect(tester.takeException(), isNull);
       },
     );
-    testWidgets(
-      'starts collapsed, expands and collapses with one fixed identity',
-      (tester) async {
-        await pumpNavigator(tester);
-        final section = find.byType(HomeNavigatorSection);
-        expect(
-          find.byKey(const Key('home-navigator-open-advice')),
-          findsOneWidget,
-        );
-        expect(
-          find.byKey(const Key('home-navigator-advice-bubble')),
-          findsNothing,
-        );
-        await tester.tap(find.byKey(const Key('home-navigator-open-advice')));
-        await tester.pumpAndSettle();
-        expect(
-          find.byKey(const Key('home-navigator-advice-bubble')),
-          findsOneWidget,
-        );
-        // SES-FIRST-FUN-YEAR-UI-PHASE-2: the bubble no longer restates the
-        // title or the message — both already render, once, above it. Only
-        // the explanation is genuinely new content inside the bubble.
-        expect(
-          find.text(HomeNavigatorAdvice.neutral.explanation!),
-          findsOneWidget,
-        );
-        expect(
-          find.text(HomeNavigatorAdvice.neutral.message),
-          findsOneWidget,
-        );
-        expect(
-          find.descendant(of: section, matching: find.text('佐倉 ひより')),
-          findsOneWidget,
-        );
-        await tester.tap(find.byKey(const Key('home-navigator-close-advice')));
-        await tester.pumpAndSettle();
-        expect(
-          find.byKey(const Key('home-navigator-advice-bubble')),
-          findsNothing,
-        );
-      },
-    );
 
-    testWidgets('repeated expansion and image failure keep advice usable', (
+    testWidgets('there is no collapse control anywhere in the widget', (
       tester,
     ) async {
       await pumpNavigator(tester);
-      for (var i = 0; i < 2; i++) {
-        await tester.tap(find.byKey(const Key('home-navigator-open-advice')));
-        await tester.pumpAndSettle();
-        await tester.tap(find.byKey(const Key('home-navigator-close-advice')));
-        await tester.pumpAndSettle();
-      }
+      final section = find.byType(HomeNavigatorSection);
+      expect(
+        find.byKey(const Key('home-navigator-advice-bubble')),
+        findsOneWidget,
+      );
+      // SES-FIRST-FUN-YEAR-UI-PHASE-2: the bubble does not restate the
+      // title or the message — both already render, once, above it. Only
+      // the explanation is genuinely new content inside the bubble.
+      expect(
+        find.text(HomeNavigatorAdvice.neutral.explanation!),
+        findsOneWidget,
+      );
+      expect(find.text(HomeNavigatorAdvice.neutral.message), findsOneWidget);
+      expect(
+        find.descendant(of: section, matching: find.text('佐倉 ひより')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('home-navigator-open-advice')),
+        findsNothing,
+      );
+      expect(
+        find.byKey(const Key('home-navigator-close-advice')),
+        findsNothing,
+      );
+    });
+
+    testWidgets('image failure keeps advice usable', (tester) async {
       await pumpNavigator(tester, bundle: _FailingAssetBundle());
-      await tester.tap(find.byKey(const Key('home-navigator-open-advice')));
       await tester.pumpAndSettle();
       expect(find.text(HomeNavigatorAdvice.neutral.message), findsOneWidget);
     });
@@ -367,7 +342,7 @@ void main() {
       testWidgets(
         'the always-visible message line stays inside $size for long advice',
         (tester) async {
-          const longMessage = '非常に長い推奨理由でも、ひよりの案内は画面幅に収まって表示され、詳しい内容は展開後に確認できます。';
+          const longMessage = '非常に長い推奨理由でも、ひよりの案内は画面幅に収まって表示され、詳しい内容も確認できます。';
           await pumpNavigator(
             tester,
             size: size,
@@ -389,27 +364,86 @@ void main() {
 
     for (final size in _sizes) {
       for (final scale in _scales) {
-        testWidgets('expanded advice fits horizontally at '
-            '${size.width.toInt()}x${size.height.toInt()} / textScale $scale', (
-          tester,
-        ) async {
-          await pumpNavigator(tester, size: size, textScale: scale);
-          await tester.tap(find.byKey(const Key('home-navigator-open-advice')));
-          await tester.pumpAndSettle();
-          expect(tester.takeException(), isNull);
-          for (final key in const [
-            'home-navigator',
-            'home-navigator-advice-bubble',
-            'home-navigator-advice-explanation',
-            'home-navigator-close-advice',
-          ]) {
-            final rect = tester.getRect(find.byKey(Key(key)));
-            expect(rect.left, greaterThanOrEqualTo(0.0), reason: key);
-            expect(rect.right, lessThanOrEqualTo(size.width), reason: key);
-          }
-        });
+        testWidgets(
+          'advice bubble fits horizontally at '
+          '${size.width.toInt()}x${size.height.toInt()} / textScale $scale',
+          (tester) async {
+            await pumpNavigator(tester, size: size, textScale: scale);
+            expect(tester.takeException(), isNull);
+            for (final key in const [
+              'home-navigator',
+              'home-navigator-advice-bubble',
+              'home-navigator-advice-explanation',
+            ]) {
+              final rect = tester.getRect(find.byKey(Key(key)));
+              expect(rect.left, greaterThanOrEqualTo(0.0), reason: key);
+              expect(rect.right, lessThanOrEqualTo(size.width), reason: key);
+            }
+          },
+        );
       }
     }
+  });
+
+  group('PUBLIC-DEMO-HOME-UI-3A: the secondary route ("他の行動を確認する")', () {
+    testWidgets('renders only when both label and callback are supplied', (
+      tester,
+    ) async {
+      await pumpNavigator(tester); // HomeNavigatorAdvice.neutral: no secondary
+      expect(
+        find.byKey(const Key('home-navigator-secondary-cta')),
+        findsNothing,
+      );
+    });
+
+    testWidgets('runs only its supplied callback, independent of the '
+        'primary CTA', (tester) async {
+      var primaryCalls = 0, secondaryCalls = 0;
+      await pumpNavigator(
+        tester,
+        advice: HomeNavigatorAdvice(
+          title: 'ひよりからのご案内',
+          message: '既存の案内です。',
+          ctaLabel: 'SkillSheetを確認する',
+          onCtaPressed: () => primaryCalls++,
+          secondaryLabel: '他の行動を確認する',
+          onSecondaryPressed: () => secondaryCalls++,
+        ),
+      );
+      final secondary = find.byKey(
+        const Key('home-navigator-secondary-cta'),
+      );
+      expect(secondary, findsOneWidget);
+      expect(find.text('他の行動を確認する'), findsOneWidget);
+      await tester.tap(secondary);
+      await tester.pumpAndSettle();
+      expect(secondaryCalls, 1);
+      expect(primaryCalls, 0);
+    });
+
+    testWidgets('renders below the primary CTA and is at least 48pt tall', (
+      tester,
+    ) async {
+      await pumpNavigator(
+        tester,
+        advice: HomeNavigatorAdvice(
+          title: 'ひよりからのご案内',
+          message: '既存の案内です。',
+          ctaLabel: 'SkillSheetを確認する',
+          onCtaPressed: () {},
+          secondaryLabel: '他の行動を確認する',
+          onSecondaryPressed: () {},
+        ),
+      );
+      final primaryRect = tester.getRect(
+        find.byKey(const Key('home-recommended-action-cta')),
+      );
+      final secondaryRect = tester.getRect(
+        find.byKey(const Key('home-navigator-secondary-cta')),
+      );
+      expect(secondaryRect.top, greaterThanOrEqualTo(primaryRect.bottom));
+      expect(secondaryRect.height, greaterThanOrEqualTo(48));
+    });
   });
 
   group('G: a portrait that cannot be drawn degrades, never blocks', () {

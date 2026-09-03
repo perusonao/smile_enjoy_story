@@ -202,4 +202,4 @@ no expected CI surprises, but CI is the final gate as it was for #157.
 
 ## PR
 
-See PR description for the URL.
+https://github.com/perusonao/smile_enjoy_story/pull/158

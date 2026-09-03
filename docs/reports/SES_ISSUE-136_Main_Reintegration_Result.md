@@ -196,7 +196,8 @@ rather than silently skipped.
 
 ## PR
 
-<!-- PR_URL_PLACEHOLDER -->
+[#157](https://github.com/perusonao/smile_enjoy_story/pull/157) — `feat(public-demo): re-integrate SkillSheet Phase A (#136) onto main with Issue #148`
+branch: `claude/pr-136-skillsheet-reintegration-kk6fl5`
 
 ## Merge readiness
 

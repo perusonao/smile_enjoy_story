@@ -59,8 +59,8 @@ else already outranks it.
 |---|---|---|---|
 | 7 | July | 夏季賞与の対応を終えたら、待機中の技術者がいれば案件復帰できないか確認しましょう | Recovery window opens in July (`PublicDemoRecoveryEligibility.firstEligibleMonth == 7`); summer bonus itself is a higher-priority Recommended Action (`summerBonusDecision`) while undecided, so this only shows once that's already resolved. |
 | 8 | August | 今月の営業活動の状況と、待機中の技術者がいないか確認しましょう | Generic but truthful nudge toward the always-visible `salesRemaining`/waiting-headcount facts; deliberately does **not** mention recruitment media (see below). |
-| 9 | September | 下半期に入りました。資金の増減と案件の稼働状況を見直しましょう | Calendar-position framing ("下半期") + cash (`cash`) and assignment (`assignedEmployeeCount`) awareness, both already-projected fields. |
-| 10 | October | 案件の稼働状況を確認し、待機中の技術者がいれば案件復帰を検討しましょう | Mid-Recovery-window reminder (month 10 is inside `PublicDemoRecoveryEligibility`'s July-February range). |
+| 9 | September | 上半期最終月です。ここまでの資金の増減と案件の稼働状況を振り返りましょう | Calendar-position framing (fiscal year is April-March, so September is the first half's *closing* month, not the second half's start) + cash (`cash`) and assignment (`assignedEmployeeCount`) awareness, both already-projected fields. |
+| 10 | October | 下半期がスタートしました。案件の稼働状況を確認し、待機中の技術者がいれば案件復帰を検討しましょう | Calendar-position framing (October is genuinely the second half's first month under the April-March fiscal year) + Mid-Recovery-window reminder (month 10 is inside `PublicDemoRecoveryEligibility`'s July-February range). |
 | 11 | November | 資金の増減を確認し、年度末までの運転資金を意識しましょう | Cash/runway awareness using the existing `cash` field. |
 | 12 | December | 年内最後の月です。ここまでの稼働状況と資金の推移を振り返りましょう | Calendar-position framing (last calendar-year month) + look-back framing consistent with `DEVELOPMENT_PLAN.md` §3.4's "less tutorial intervention" guidance strength. |
 | 13 | January | 年度末まで残り3か月。案件と待機中の技術者の状況を点検しましょう | Fiscal-year-end countdown, matching `DEVELOPMENT_PLAN.md` §3.5's "Survive your first year — N weeks remaining" framing, without inventing a week counter this projection cannot compute. |
@@ -205,6 +205,28 @@ chat response for confirmation status at the time this report was written.
 - This report (final branch HEAD at push time): committed on top of the code
   change commit above; see the PR's commit list / `git log` on
   `claude/ses-monthly-guidance-7-3-9rkoa5` for its exact SHA.
+
+## PR #152 review fix (P2)
+
+- **Finding**: `chatgpt-codex-connector` review (PR #152, P2) flagged that the
+  September (month 9) fallback said "下半期に入りました" ("the second half has
+  begun"), which is factually wrong under this game's April-March fiscal
+  year: September is the *first* half's final month, and October is the
+  second half's actual start.
+- **Fix**: September's line now reads
+  "上半期最終月です。ここまでの資金の増減と案件の稼働状況を振り返りましょう"
+  (first-half close / look-back framing, same `cash`/`assignedEmployeeCount`
+  grounding as before). October's line now reads
+  "下半期がスタートしました。案件の稼働状況を確認し、待機中の技術者がいれば案件復帰を検討しましょう"
+  — it now states the (correct) second-half start while keeping the original
+  Recovery-window consideration text unchanged in substance.
+- No other month, Recommended Action selection/priority logic, or
+  game/domain/finance/save/navigation code was touched.
+- `test/presentation/home/home_dashboard_display_data_test.dart`'s
+  `expectedByMonth` map (months 9 and 10) was updated to match.
+- See "Commit SHA" below for the fix commit; `flutter analyze` and the
+  focused test remain un-runnable in this environment (no Flutter/Dart SDK)
+  — left to CI, same as the rest of this PR.
 
 ## PR / Merge readiness
 

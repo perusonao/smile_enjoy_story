@@ -224,9 +224,9 @@ chat response for confirmation status at the time this report was written.
   game/domain/finance/save/navigation code was touched.
 - `test/presentation/home/home_dashboard_display_data_test.dart`'s
   `expectedByMonth` map (months 9 and 10) was updated to match.
-- See "Commit SHA" below for the fix commit; `flutter analyze` and the
-  focused test remain un-runnable in this environment (no Flutter/Dart SDK)
-  — left to CI, same as the rest of this PR.
+- Fix commit: `eb314c9f0a1f6db3e41e5fe9937f0425fd9ed81e`. `flutter analyze` and
+  the focused test remain un-runnable in this environment (no Flutter/Dart
+  SDK) — left to CI, same as the rest of this PR.
 
 ## PR / Merge readiness
 

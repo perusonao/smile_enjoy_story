@@ -31,7 +31,7 @@ Issue #148本体（HOME警告カード・ひより文言・Phase 2含む全体�
 **入力**
 
 - `state: PublicDemoState` — 現在のゲーム状態（cash・pendingRevenue・engineersAssigned・summerBonusSelection・summerBonusPaid・isCloseBlockedを読む）。
-- `joinedApplicants: Iterable<PublicDemoApplicant>` — 現時点で参画確定済みの中途社員（`workflow.joinedApplicants`をそのまま渡す想定。将来の採用成功は含めない）。
+- `workflow: PublicDemoWorkflowState` — authoritativeなworkflow全体。予測内部で`workflow.joinedApplicants`を導出する（Follow-up以降。詳細は「Follow-up: joinedApplicants authority統一」参照）。
 - `monthsAhead`（既定値3）— 予測する決算回数。
 
 **出力（`PublicDemoCashForecastResult`）**
@@ -65,10 +65,10 @@ Issue #148本体（HOME警告カード・ひより文言・Phase 2含む全体�
 ## 変更ファイル
 
 - 追加: `lib/game/public_demo/public_demo_cash_forecast.dart`（新規、純粋モデルのみ。既存ファイルへの変更なし）
-- 追加: `test/game/public_demo/public_demo_cash_forecast_test.dart`（focused test、15ケース）
+- 追加: `test/game/public_demo/public_demo_cash_forecast_test.dart`（focused test。Follow-upで18ケースに拡張）
 - 追加: 本report `docs/reports/SES_ISSUE-148A_Cash-Forecast_Result.md`
 
-既存ファイル（`PublicDemoState`／`PublicDemoMonthlyClose`／`PublicDemoRevenuePayment`／`PublicDemoSalaryFinance`／`PublicDemoSummerBonusPayment`／save schema／PR #136関連）は一切変更していない。
+既存ファイル（`PublicDemoState`／`PublicDemoMonthlyClose`／`PublicDemoRevenuePayment`／`PublicDemoSalaryFinance`／`PublicDemoSummerBonusPayment`／`PublicDemoWorkflowState`／save schema／PR #136関連）は一切変更していない。Follow-upも`public_demo_cash_forecast.dart`と対応するテストのみを変更している。
 
 ## テスト結果
 
@@ -124,15 +124,56 @@ Issue #148本体（HOME警告カード・ひより文言・Phase 2含む全体�
 - 本モデルはPhase 1Aのスコープ通り、HOMEへの警告カード表示・ひよりの文言/CTA・Phase 2（案件Fit詳細、面談選択肢の狙い表示等）を一切含まない。後続PRでこの`PublicDemoCashForecast`を消費するUI層を実装する必要がある。
 - 7月賞与の予測値は、実際の決算が持つ「支払不能なら決算自体を拒否する」というブロック挙動を再現していない（意図的な設計判断。上記「予測ロジックの設計判断」参照）。後続UIで「このプランのままだと資金不足になる」という警告と、「実際にはその決算はブロックされる」という違いを混同しないよう文言設計が必要（Phase 1B/2の課題）。
 - `monthsAhead`が3を超える場合の年度末truncation・close-blocked時の空予測はテスト済みだが、将来UIがどの`monthsAhead`を使うかは未確定（Issue #148本文は「最低でも3回」とだけ指定）。
-- `lib/game/models/accounts_receivable.dart`（`AccountsReceivable`/`ArStatus`、支払サイト別売掛金）はPublic Demo 0.1では未使用の別系統（`game_engine.dart`/`finance_engine.dart`側）であることを確認済みだが、リポジトリ内に両方の会計系統が併存している事実は今回の変更範囲外として現状のまま残した。
+- `lib/game/models/accounts_receivable.dart`（`AccountsReceivable`/`ArStatus`、支払サイト別売掛金）はPublic Demo 0.1では未使用の別系統（`game_engine.dart`/`finance_engine.dart`側）であることを確認済みだが、リポジトリ内に両方の会計系統が併存している事実は今回の変更範囲外として現状のまま残した。（Follow-up時点でも未解決）
+
+## Follow-up: joinedApplicants authority統一
+
+### authority不一致の内容
+
+初回実装の`PublicDemoCashForecast.forecast`は`joinedApplicants: Iterable<PublicDemoApplicant>`を外部から直接受け取っていた。これは同じ「入社済み中途社員一覧」を渡す既存の`PublicDemoSummerBonusPayment`/`PublicDemoMonthlyClose.closeJuly`とは異なり、`PublicDemoMonthlyClose.closeMay`が採用しているauthority方針（呼び出し側に`joinedApplicants`という生の subset 選択肢を与えず、authoritativeな`PublicDemoWorkflowState`全体を受け取ってその内部で`workflow.joinedApplicants`を導出する）とズレていた。
+
+このズレにより、呼び出し側が
+
+- 入社済み社員の一部だけを渡す
+- 空配列を渡す
+- 古いスナップショットを渡す
+
+のいずれも型システム上可能で、実際の月次決算（`workflow.joinedApplicants`を必ず使う）と予測給与が乖離しうる状態だった。
+
+### 修正方法
+
+- `PublicDemoCashForecast.forecast`のシグネチャから`joinedApplicants`パラメータを廃止し、代わりに`workflow: PublicDemoWorkflowState`を必須paramとして受け取るよう変更（`lib/game/public_demo/public_demo_cash_forecast.dart`）。
+- 予測処理内部で`workflow.joinedApplicants`（`PublicDemoWorkflowState`が公開する既存の導出getter、`applicants.where((a) => a.hasJoined)`）を1回だけ取得し、それを`PublicDemoSalaryFinance.monthlyExpenses`と`PublicDemoSummerBonusPayment.calculateSummerBonus`双方へそのまま渡す。
+- `PublicDemoMonthlyClose.closeMay`と同じ形（「対象社員のsubsetを呼び出し側が選べない」API）になり、呼び出し側がpayrollに含める社員を個別に選ぶ手段はAPI上存在しない。
+- クラスdocコメントに、`closeMay`と同じauthority契約であることと、その理由（stale/空/部分集合を渡す余地を型で塞ぐこと）を明記。
+- 予測モデルの計算式・予測期間・UI・ひより文言・CTA・ゲームバランスは変更していない。PR #136も変更していない。
+
+### 追加・更新したテスト
+
+`test/game/public_demo/public_demo_cash_forecast_test.dart`を更新（既存15ケースを新API`workflow:`へ移行、全て維持）した上で、次の3ケースを追加した（計18ケース）。
+
+1. **入社済み中途社員の給与が必ず予測へ入る** — `PublicDemoWorkflowState(applicants: [2名の入社済applicant], engineers: [])`を渡し、両名の給与が`monthlyExpenses`合計に含まれることを確認（「every joined mid-career employee ... is always included, with no way to pass a subset」）。
+2. **呼び出し側が入社済み社員を省略する余地がAPI上なくなっている** — 上記1のケース自体が、`workflow`という単一の authoritative な入力からしか給与を取得できないこと（部分集合を渡す独立したパラメータが存在しないこと）を実証する。加えて、内定承諾済みだが未入社（`hasJoined == false`）のapplicantと、面談すら受けていない`applied`ステージのみのapplicantをそれぞれworkflowに含めても、その給与が予測へ一切混入しないことを確認（「a pre-join applicant ... is excluded」「an applicant with no interview/offer/join at all ... never contributes」）。
+3. **実際の月次決算と、同じworkflowを使う予測の給与・賞与・closingCashが一致する** — 入社済みapplicant1名を含む`workflow`から`workflow.joinedApplicants`を`PublicDemoMonthlyClose.closeJuly`へ渡した実決算と、同じ`workflow`を渡した予測の7月分の給与・賞与・closingCashが一致することを確認（「the July forecast, including a joined engineer bonus-eligible salary, matches PublicDemoMonthlyClose.closeJuly exactly」）。既存の`closeApril`/`closeOrdinaryMonth`との一致テスト2件もそのまま維持。
+
+既存15件は全てAPI呼び出し部分（`joinedApplicants: [...]` → `workflow: PublicDemoWorkflowState(applicants: [...], engineers: [])`）のみ更新し、期待値・アサーションは変更していない。
+
+### 検証結果
+
+- `flutter analyze` — **No issues found!**
+- `flutter test test/game/public_demo/public_demo_cash_forecast_test.dart` — **18/18 pass**
+- 既存 focused test 14ファイル（前回13ファイル＋`public_demo_workflow_state_test.dart`を追加）— **134/134 pass**（`public_demo_revenue_payment_test.dart`／`public_demo_salary_finance_test.dart`／`public_demo_salary_test.dart`／`public_demo_summer_bonus_payment_test.dart`／`public_demo_monthly_close_test.dart`／`public_demo_monthly_close_ordinary_month_test.dart`／`public_demo_monthly_close_revenue_test.dart`／`public_demo_financial_status_test.dart`／`public_demo_state_test.dart`／`public_demo_save_codec_test.dart`／`public_demo_fiscal_year_completion_lock_test.dart`／`public_demo_fiscal_year_save_test.dart`／`public_demo_workflow_state_test.dart`／`public_demo_save_service_test.dart`）
+- フルテスト・PlaywrightはPR CIへ一任（本セッションでは未実行）。
+
+`PublicDemoCashForecast`は本Follow-up時点でもまだUI層から消費されていない（`grep`で確認済み）ため、この破壊的シグネチャ変更が既存の呼び出し元へ与える影響はない。
 
 ## commit SHA
 
-`fe583ca2d070b07a1575fc3cfe52f60a7e7ac535`（本コミット自身。フォーマット上、内容確定後の自己参照SHAは1回のみ記載）
+（コミット後に追記）
 
 ## PR / Merge Readiness
 
 - 変更はPhase 1Aのスコープ内（純粋モデル＋テストのみ）に収まっており、既存の会計・save schema・PR #136・採用/営業/面談成功率には一切触れていない。
-- `flutter analyze`・関連focused test（新規15件＋既存133件）が全てgreenであることを確認済み。
+- `flutter analyze`・関連focused test（新規18件＋既存134件）が全てgreenであることを確認済み。
 - フルテスト・PlaywrightはPR CIでの実行に委ねる。
 - HOME UI・ひより連携・Phase 2は本PRの対象外であり、Merge可能と判断する（CI green確認後）。

@@ -1,26 +1,28 @@
-import 'public_demo_recruitment.dart';
 import 'public_demo_revenue.dart';
 import 'public_demo_salary.dart';
 import 'public_demo_salary_finance.dart';
 import 'public_demo_state.dart';
 import 'public_demo_summer_bonus_payment.dart';
+import 'public_demo_workflow_state.dart';
 
 /// Pure, confirmed-information-only cash forecast for Public Demo 0.1
 /// (Issue #148 Phase 1A).
 ///
 /// This projects future monthly closes using only facts [PublicDemoState]
-/// (plus the currently joined applicants) already carries as SSOT:
+/// and [PublicDemoWorkflowState] already carry as SSOT:
 ///
 ///  * current cash and [PublicDemoState.pendingRevenue] (the existing
 ///    fixed 30-day collection lag — see [PublicDemoRevenuePayment]),
 ///  * revenue for the currently assigned engineer count (held constant —
 ///    a future assignment change is a recruitment/sales outcome this
 ///    forecast never predicts),
-///  * payroll and fixed costs for the currently joined roster, computed
-///    with the exact same [PublicDemoSalaryFinance.monthlyExpenses] the
-///    real monthly close uses (including any already-decided, month-dated
-///    raise — [PublicDemoApplicant.salaryForMonth] — since that is a fixed
-///    future obligation, not an uncertain success),
+///  * payroll and fixed costs for the currently joined roster, read from
+///    [PublicDemoWorkflowState.joinedApplicants] (never a caller-chosen
+///    subset — see below) and computed with the exact same
+///    [PublicDemoSalaryFinance.monthlyExpenses] the real monthly close
+///    uses (including any already-decided, month-dated raise —
+///    [PublicDemoApplicant.salaryForMonth] — since that is a fixed future
+///    obligation, not an uncertain success),
 ///  * the currently selected July summer bonus
 ///    ([PublicDemoState.summerBonusSelection]), calculated with the exact
 ///    same [PublicDemoSummerBonusPayment.calculateSummerBonus] the real
@@ -33,13 +35,24 @@ import 'public_demo_summer_bonus_payment.dart';
 /// confirmed-information projection (see Issue #148 Phase 1 design
 /// principle).
 ///
+/// [forecast] deliberately has no `joinedApplicants`/`hires` parameter of
+/// its own — only the whole authoritative [workflow] — matching
+/// [PublicDemoMonthlyClose.closeMay]'s authority contract exactly. A
+/// caller-supplied subset of joined applicants (a stale snapshot, an
+/// accidentally-empty list, one employee omitted) would make the
+/// forecasted payroll/bonus diverge from what the real close actually
+/// charges; deriving [PublicDemoWorkflowState.joinedApplicants] internally
+/// from the complete authoritative roster closes that off entirely — there
+/// is no parameter through which a caller could shrink, empty, or
+/// stale-date the set.
+///
 /// This model never reads or writes any UI state and never mutates
-/// [state] — [forecast] is a pure function over its arguments. It also
-/// never re-derives monthly expense/revenue/bonus formulas of its own: it
-/// calls the exact same pure helpers [PublicDemoMonthlyClose] and
-/// [PublicDemoSummerBonusPayment] already call, so a forecast can never
-/// diverge from what the real monthly close would charge for the same
-/// confirmed facts.
+/// [state] or [workflow] — [forecast] is a pure function over its
+/// arguments. It also never re-derives monthly expense/revenue/bonus
+/// formulas of its own: it calls the exact same pure helpers
+/// [PublicDemoMonthlyClose] and [PublicDemoSummerBonusPayment] already
+/// call, so a forecast can never diverge from what the real monthly close
+/// would charge for the same confirmed facts.
 class PublicDemoCashForecast {
   const PublicDemoCashForecast._();
 
@@ -52,11 +65,11 @@ class PublicDemoCashForecast {
 
   static PublicDemoCashForecastResult forecast({
     required PublicDemoState state,
-    required Iterable<PublicDemoApplicant> joinedApplicants,
+    required PublicDemoWorkflowState workflow,
     int monthsAhead = defaultMonthsAhead,
   }) {
     assert(monthsAhead > 0, 'monthsAhead must be positive');
-    final applicants = joinedApplicants.toList(growable: false);
+    final applicants = workflow.joinedApplicants.toList(growable: false);
     final months = <PublicDemoCashForecastMonth>[];
 
     // A close-blocked state (fiscal year completed, or a terminal financial

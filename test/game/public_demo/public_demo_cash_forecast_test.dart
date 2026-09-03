@@ -9,8 +9,34 @@ import 'package:smile_enjoy_story/game/public_demo/public_demo_salary_finance.da
 import 'package:smile_enjoy_story/game/public_demo/public_demo_state.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_summer_bonus_payment.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_summer_bonus_plan.dart';
+import 'package:smile_enjoy_story/game/public_demo/public_demo_workflow_state.dart';
 
 import 'test_support/public_demo_offer_test_helpers.dart';
+
+/// Empty authoritative workflow — the production shape ([forecast] has no
+/// `joinedApplicants`/`hires` parameter of its own, only this whole
+/// [PublicDemoWorkflowState]).
+PublicDemoWorkflowState _emptyWorkflow() =>
+    PublicDemoWorkflowState(applicants: const [], engineers: const []);
+
+PublicDemoWorkflowState _workflowWith(List<PublicDemoApplicant> applicants) =>
+    PublicDemoWorkflowState(applicants: applicants, engineers: const []);
+
+PublicDemoApplicant _joinedApplicant({
+  required String id,
+  required int offeredMonthlySalary,
+}) => acceptTestOffer(
+  PublicDemoApplicant(
+    id: id,
+    name: id,
+    resumeSummary: 'Java 3年',
+    interviewScore: 70,
+    acceptanceScore: 70,
+    salesSkillFit: 70,
+    requestedMonthlySalary: offeredMonthlySalary,
+  ),
+  offeredMonthlySalary: offeredMonthlySalary,
+).join(week: 9, currentFiscalCloseId: PublicDemoFiscalCloseId.forMonth(5));
 
 void main() {
   final baseline = PublicDemoSalary.baselineMonthlyExpenses;
@@ -27,7 +53,7 @@ void main() {
         );
         final result = PublicDemoCashForecast.forecast(
           state: state,
-          joinedApplicants: const [],
+          workflow: _emptyWorkflow(),
         );
         expect(result.months.first.cashReceived, 500000);
         expect(result.months.first.revenueRecognized, 1000000);
@@ -44,7 +70,7 @@ void main() {
       );
       final result = PublicDemoCashForecast.forecast(
         state: state,
-        joinedApplicants: const [],
+        workflow: _emptyWorkflow(),
       );
       for (final month in result.months) {
         expect(month.cashReceived, 0);
@@ -63,7 +89,7 @@ void main() {
           final state = PublicDemoState.aprilStart();
           final result = PublicDemoCashForecast.forecast(
             state: state,
-            joinedApplicants: const [],
+            workflow: _emptyWorkflow(),
           );
           final expectedExpenses = PublicDemoSalaryFinance.monthlyExpenses(
             baselineExpenses: baseline,
@@ -85,26 +111,15 @@ void main() {
         "a joined hire's salary is included in the forecasted month exactly "
         'as PublicDemoSalaryFinance.monthlyExpenses computes it',
         () {
-          final hired = acceptTestOffer(
-            const PublicDemoApplicant(
-              id: 'hire-01',
-              name: 'Hire',
-              resumeSummary: 'Java 3年',
-              interviewScore: 70,
-              acceptanceScore: 70,
-              salesSkillFit: 70,
-              requestedMonthlySalary: 320000,
-            ),
+          final hired = _joinedApplicant(
+            id: 'hire-01',
             offeredMonthlySalary: 320000,
-          ).join(
-            week: 9,
-            currentFiscalCloseId: PublicDemoFiscalCloseId.forMonth(5),
           );
 
           final state = PublicDemoState.aprilStart().copyWith(month: 8);
           final result = PublicDemoCashForecast.forecast(
             state: state,
-            joinedApplicants: [hired],
+            workflow: _workflowWith([hired]),
           );
           final expected = PublicDemoSalaryFinance.monthlyExpenses(
             baselineExpenses: baseline,
@@ -130,7 +145,7 @@ void main() {
               .selectSummerBonus(PublicDemoSummerBonusPlan.one);
           final result = PublicDemoCashForecast.forecast(
             state: state,
-            joinedApplicants: const [],
+            workflow: _emptyWorkflow(),
             monthsAhead: 3,
           );
           final julyMonth = result.months.firstWhere((m) => m.month == 7);
@@ -149,6 +164,49 @@ void main() {
         },
       );
 
+      test(
+        'the July forecast, including a joined engineer bonus-eligible salary, '
+        'matches PublicDemoMonthlyClose.closeJuly exactly for salary, bonus, '
+        'and closing cash — using the same authoritative workflow',
+        () {
+          final hired = _joinedApplicant(
+            id: 'hire-02',
+            offeredMonthlySalary: 320000,
+          );
+          final workflow = _workflowWith([hired]);
+          final state = PublicDemoState.aprilStart()
+              .copyWith(month: 7, cash: 5000000)
+              .selectSummerBonus(PublicDemoSummerBonusPlan.half);
+
+          final expenses = PublicDemoSalaryFinance.monthlyExpenses(
+            baselineExpenses: baseline,
+            hires: workflow.joinedApplicants,
+            month: 7,
+          );
+          final result = PublicDemoCashForecast.forecast(
+            state: state,
+            workflow: workflow,
+            monthsAhead: 1,
+          );
+          final forecastJuly = result.months.single;
+          expect(forecastJuly.monthlyExpenses, expenses);
+
+          final realClose = PublicDemoMonthlyClose.closeJuly(
+            state: state,
+            monthlyExpenses: expenses,
+            applicants: workflow.joinedApplicants,
+          );
+          expect(realClose.isClosed, isTrue);
+          expect(forecastJuly.bonusPaid, greaterThan(0));
+          expect(
+            forecastJuly.openingCash -
+                forecastJuly.monthlyExpenses -
+                forecastJuly.bonusPaid,
+            realClose.state.cash,
+          );
+        },
+      );
+
       test('an already-paid July bonus is never charged again in the forecast', () {
         // month is still 6 (before July's close), but the bonus record
         // already shows it settled — the forecast must trust that fact
@@ -161,7 +219,7 @@ void main() {
         expect(state.summerBonusPaid, isTrue);
         final result = PublicDemoCashForecast.forecast(
           state: state,
-          joinedApplicants: const [],
+          workflow: _emptyWorkflow(),
           monthsAhead: 3,
         );
         expect(result.months.map((m) => m.month), [6, 7, 8]);
@@ -171,6 +229,99 @@ void main() {
       });
     },
   );
+
+  group('PublicDemoCashForecast.forecast — joined-roster authority', () {
+    test(
+      'every joined mid-career employee in the workflow is always included, '
+      'with no way to pass a subset — two joined applicants both count',
+      () {
+        final first = _joinedApplicant(id: 'hire-a', offeredMonthlySalary: 300000);
+        final second = _joinedApplicant(id: 'hire-b', offeredMonthlySalary: 280000);
+        final workflow = _workflowWith([first, second]);
+
+        final state = PublicDemoState.aprilStart().copyWith(month: 9);
+        final result = PublicDemoCashForecast.forecast(
+          state: state,
+          workflow: workflow,
+        );
+
+        final expected = PublicDemoSalaryFinance.monthlyExpenses(
+          baselineExpenses: baseline,
+          hires: [first, second],
+          month: 9,
+        );
+        expect(result.months.first.monthlyExpenses, expected);
+        // Both salaries are actually in the total — not just one of them.
+        expect(
+          expected,
+          baseline + 300000 + 280000,
+        );
+      },
+    );
+
+    test(
+      'a pre-join applicant (offer accepted but not yet joined) is excluded '
+      'from the forecasted payroll, exactly like PublicDemoSalaryFinance '
+      'excludes anyone whose hasJoined is false',
+      () {
+        final joined = _joinedApplicant(id: 'hire-c', offeredMonthlySalary: 300000);
+        final notYetJoined = acceptTestOffer(
+          const PublicDemoApplicant(
+            id: 'pending-01',
+            name: 'Pending',
+            resumeSummary: 'Java 2年',
+            interviewScore: 70,
+            acceptanceScore: 70,
+            salesSkillFit: 70,
+            requestedMonthlySalary: 350000,
+          ),
+          offeredMonthlySalary: 350000,
+        );
+        expect(notYetJoined.hasJoined, isFalse);
+
+        final workflow = _workflowWith([joined, notYetJoined]);
+        final state = PublicDemoState.aprilStart().copyWith(month: 8);
+        final result = PublicDemoCashForecast.forecast(
+          state: state,
+          workflow: workflow,
+        );
+
+        final expectedWithoutPending = PublicDemoSalaryFinance.monthlyExpenses(
+          baselineExpenses: baseline,
+          hires: [joined],
+          month: 8,
+        );
+        // The pending applicant's requested salary (350,000) never enters
+        // the total: only the joined applicant's 300,000 does.
+        expect(expectedWithoutPending, baseline + 300000);
+        expect(result.months.first.monthlyExpenses, expectedWithoutPending);
+      },
+    );
+
+    test(
+      'an applicant with no interview/offer/join at all (bare applied stage) '
+      'never contributes to the forecast either',
+      () {
+        const untouched = PublicDemoApplicant(
+          id: 'applied-only',
+          name: 'Applied Only',
+          resumeSummary: 'Java 1年',
+          interviewScore: 50,
+          acceptanceScore: 50,
+          salesSkillFit: 50,
+          requestedMonthlySalary: 400000,
+        );
+        expect(untouched.hasJoined, isFalse);
+        final workflow = _workflowWith([untouched]);
+        final state = PublicDemoState.aprilStart().copyWith(month: 8);
+        final result = PublicDemoCashForecast.forecast(
+          state: state,
+          workflow: workflow,
+        );
+        expect(result.months.first.monthlyExpenses, baseline);
+      },
+    );
+  });
 
   group('PublicDemoCashForecast.forecast — shortage detection', () {
     test(
@@ -185,7 +336,7 @@ void main() {
         );
         final result = PublicDemoCashForecast.forecast(
           state: state,
-          joinedApplicants: const [],
+          workflow: _emptyWorkflow(),
           monthsAhead: 3,
         );
         expect(result.hasShortage, isTrue);
@@ -211,7 +362,7 @@ void main() {
         );
         final result = PublicDemoCashForecast.forecast(
           state: state,
-          joinedApplicants: const [],
+          workflow: _emptyWorkflow(),
           monthsAhead: 3,
         );
         expect(result.hasShortage, isFalse);
@@ -230,7 +381,7 @@ void main() {
       );
       final result = PublicDemoCashForecast.forecast(
         state: state,
-        joinedApplicants: const [],
+        workflow: _emptyWorkflow(),
       );
       expect(result.months, isEmpty);
       expect(result.hasShortage, isFalse);
@@ -244,7 +395,7 @@ void main() {
       );
       final result = PublicDemoCashForecast.forecast(
         state: state,
-        joinedApplicants: const [],
+        workflow: _emptyWorkflow(),
       );
       expect(result.months, isEmpty);
     });
@@ -256,7 +407,7 @@ void main() {
       );
       final result = PublicDemoCashForecast.forecast(
         state: state,
-        joinedApplicants: const [],
+        workflow: _emptyWorkflow(),
         monthsAhead: 5,
       );
       expect(result.months.length, 2);
@@ -265,15 +416,19 @@ void main() {
   });
 
   group('PublicDemoCashForecast.forecast — purity', () {
-    test('never mutates the input state', () {
+    test('never mutates the input state or workflow', () {
+      final hired = _joinedApplicant(id: 'hire-d', offeredMonthlySalary: 300000);
+      final workflow = _workflowWith([hired]);
       final state = PublicDemoState.aprilStart().copyWith(
         cash: 1000000,
         pendingRevenue: 500000,
         engineersAssigned: 2,
       );
-      final beforeJson = state.toJson();
-      PublicDemoCashForecast.forecast(state: state, joinedApplicants: const []);
-      expect(state.toJson(), beforeJson);
+      final beforeStateJson = state.toJson();
+      final beforeWorkflowJson = workflow.toJson();
+      PublicDemoCashForecast.forecast(state: state, workflow: workflow);
+      expect(state.toJson(), beforeStateJson);
+      expect(workflow.toJson(), beforeWorkflowJson);
     });
 
     test('calling it twice with identical inputs returns identical results', () {
@@ -282,13 +437,14 @@ void main() {
         pendingRevenue: 300000,
         engineersAssigned: 1,
       );
+      final workflow = _emptyWorkflow();
       final first = PublicDemoCashForecast.forecast(
         state: state,
-        joinedApplicants: const [],
+        workflow: workflow,
       );
       final second = PublicDemoCashForecast.forecast(
         state: state,
-        joinedApplicants: const [],
+        workflow: workflow,
       );
       expect(
         first.months.map((m) => m.closingCash).toList(),
@@ -302,7 +458,7 @@ void main() {
     test('every result exposes an explicit confirmed-only basis marker', () {
       final result = PublicDemoCashForecast.forecast(
         state: PublicDemoState.aprilStart(),
-        joinedApplicants: const [],
+        workflow: _emptyWorkflow(),
       );
       expect(result.basis, PublicDemoCashForecastBasis.confirmedOnly);
     });

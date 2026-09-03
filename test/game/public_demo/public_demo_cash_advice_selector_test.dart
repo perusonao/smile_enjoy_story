@@ -2,6 +2,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_cash_advice_selector.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_cash_forecast.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_cash_status_presentation.dart';
+import 'package:smile_enjoy_story/game/public_demo/public_demo_financial_status.dart';
+import 'package:smile_enjoy_story/game/public_demo/public_demo_internal_training_transaction.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_sales.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_state.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_workflow_state.dart';
@@ -101,122 +103,209 @@ void main() {
   group(
     'PublicDemoCashAdviceSelector.select — waiting employees before sales',
     () {
-      test(
-        'a waiting engineer whose measured capability has not yet reached '
-        'the field-sales threshold is recommended internal training',
-        () {
-          final candidate = PublicDemoCashAdviceSelector.select(
-            cashStatus: _statusOf(PublicDemoCashStatus.shortage, shortageMonth: 6),
-            workflow: _workflowWithEngineers([_notReadyEngineer]),
-            state: PublicDemoState.aprilStart(),
-          );
-          expect(candidate, isNotNull);
-          expect(candidate!.employeeId, 'eng-02');
-          expect(
-            candidate.actionType,
-            PublicDemoAdviceActionType.startInternalTraining,
-          );
-          expect(
-            candidate.reason,
-            PublicDemoAdviceReason.waitingBelowFieldSalesReadiness,
-          );
-          expect(candidate.shortageMonth, 6);
-        },
-      );
+      test('a waiting engineer whose measured capability has not yet reached '
+          'the field-sales threshold is recommended internal training', () {
+        final candidate = PublicDemoCashAdviceSelector.select(
+          cashStatus: _statusOf(
+            PublicDemoCashStatus.shortage,
+            shortageMonth: 6,
+          ),
+          workflow: _workflowWithEngineers([_notReadyEngineer]),
+          state: PublicDemoState.aprilStart(),
+        );
+        expect(candidate, isNotNull);
+        expect(candidate!.employeeId, 'eng-02');
+        expect(
+          candidate.actionType,
+          PublicDemoAdviceActionType.startInternalTraining,
+        );
+        expect(
+          candidate.reason,
+          PublicDemoAdviceReason.waitingBelowFieldSalesReadiness,
+        );
+        expect(candidate.shortageMonth, 6);
+      });
+
+      test('a waiting engineer already field-sales ready is recommended '
+          'SkillSheet confirmation instead of training', () {
+        final candidate = PublicDemoCashAdviceSelector.select(
+          cashStatus: _statusOf(
+            PublicDemoCashStatus.shortage,
+            shortageMonth: 7,
+          ),
+          workflow: _workflowWithEngineers([_readyEngineer]),
+          state: PublicDemoState.aprilStart(),
+        );
+        expect(candidate, isNotNull);
+        expect(candidate!.employeeId, 'eng-01');
+        expect(
+          candidate.actionType,
+          PublicDemoAdviceActionType.confirmSkillSheet,
+        );
+        expect(
+          candidate.reason,
+          PublicDemoAdviceReason.waitingReadyForSkillSheet,
+        );
+      });
+
+      test('a waiting engineer not yet field-sales ready but who already has a '
+          'training selection this month is never recommended a second '
+          'training purchase, and never falls back to SkillSheet confirmation '
+          'either — that action is not actually available until capability '
+          'genuinely rises at monthly close (Codex P2 finding)', () {
+        final state = PublicDemoState.aprilStart().selectInternalTraining(
+          'eng-02',
+        );
+        expect(state.trainingSelections.containsKey('eng-02'), isTrue);
+        expect(
+          state.engineerRuntimes
+              .firstWhere((r) => r.engineerId == 'eng-02')
+              .isReadyForFieldSales,
+          isFalse,
+        );
+
+        final candidate = PublicDemoCashAdviceSelector.select(
+          cashStatus: _statusOf(
+            PublicDemoCashStatus.shortage,
+            shortageMonth: 6,
+          ),
+          workflow: _workflowWithEngineers([_notReadyEngineer]),
+          state: state,
+        );
+        expect(candidate, isNull);
+      });
+
+      test('a not-yet-ready waiting engineer who already has a training '
+          'selection this month is skipped in favor of another waiting '
+          'engineer who does have a valid action', () {
+        final trainingState = PublicDemoState.aprilStart()
+            .selectInternalTraining('eng-02');
+        final candidate = PublicDemoCashAdviceSelector.select(
+          cashStatus: _statusOf(
+            PublicDemoCashStatus.shortage,
+            shortageMonth: 6,
+          ),
+          workflow: _workflowWithEngineers([_notReadyEngineer, _readyEngineer]),
+          state: trainingState,
+        );
+        expect(candidate, isNotNull);
+        expect(candidate!.employeeId, 'eng-01');
+        expect(
+          candidate.actionType,
+          PublicDemoAdviceActionType.confirmSkillSheet,
+        );
+      });
 
       test(
-        'a waiting engineer already field-sales ready is recommended '
-        'SkillSheet confirmation instead of training',
+        'a not-yet-ready waiting engineer is never recommended training when '
+        'cash is below the transaction cost — the domain would reject it '
+        '(Codex P1 finding)',
         () {
+          final state = PublicDemoState.aprilStart().copyWith(
+            cash: PublicDemoInternalTrainingTransaction.cost - 1,
+          );
           final candidate = PublicDemoCashAdviceSelector.select(
-            cashStatus: _statusOf(PublicDemoCashStatus.shortage, shortageMonth: 7),
-            workflow: _workflowWithEngineers([_readyEngineer]),
-            state: PublicDemoState.aprilStart(),
-          );
-          expect(candidate, isNotNull);
-          expect(candidate!.employeeId, 'eng-01');
-          expect(
-            candidate.actionType,
-            PublicDemoAdviceActionType.confirmSkillSheet,
-          );
-          expect(
-            candidate.reason,
-            PublicDemoAdviceReason.waitingReadyForSkillSheet,
-          );
-        },
-      );
-
-      test(
-        'a waiting engineer not yet field-sales ready but who already has a '
-        'training selection this month is recommended SkillSheet '
-        'confirmation, not a second training purchase',
-        () {
-          final state = PublicDemoState.aprilStart().selectInternalTraining(
-            'eng-02',
-          );
-          expect(state.trainingSelections.containsKey('eng-02'), isTrue);
-
-          final candidate = PublicDemoCashAdviceSelector.select(
-            cashStatus: _statusOf(PublicDemoCashStatus.shortage, shortageMonth: 6),
+            cashStatus: _statusOf(
+              PublicDemoCashStatus.shortage,
+              shortageMonth: 6,
+            ),
             workflow: _workflowWithEngineers([_notReadyEngineer]),
             state: state,
           );
-          expect(candidate, isNotNull);
-          expect(
-            candidate!.actionType,
-            PublicDemoAdviceActionType.confirmSkillSheet,
-          );
+          expect(candidate, isNull);
         },
       );
+
+      test(
+        'a not-yet-ready waiting engineer is never recommended training '
+        'while financially restricted (cash-shortage grace period or a '
+        'terminal status) — the domain would reject it (Codex P1 finding)',
+        () {
+          final state = PublicDemoState.aprilStart().copyWith(
+            financialStatus: PublicDemoFinancialStatus.cashShortage,
+          );
+          expect(state.isFinanciallyRestricted, isTrue);
+
+          final candidate = PublicDemoCashAdviceSelector.select(
+            cashStatus: _statusOf(
+              PublicDemoCashStatus.shortage,
+              shortageMonth: 6,
+            ),
+            workflow: _workflowWithEngineers([_notReadyEngineer]),
+            state: state,
+          );
+          expect(candidate, isNull);
+        },
+      );
+
+      test('a not-yet-ready waiting engineer IS recommended training once cash '
+          'and financial status both clear the domain preconditions', () {
+        final state = PublicDemoState.aprilStart().copyWith(
+          cash: PublicDemoInternalTrainingTransaction.cost,
+        );
+        final candidate = PublicDemoCashAdviceSelector.select(
+          cashStatus: _statusOf(
+            PublicDemoCashStatus.shortage,
+            shortageMonth: 6,
+          ),
+          workflow: _workflowWithEngineers([_notReadyEngineer]),
+          state: state,
+        );
+        expect(candidate, isNotNull);
+        expect(
+          candidate!.actionType,
+          PublicDemoAdviceActionType.startInternalTraining,
+        );
+      });
     },
   );
 
   group(
     'PublicDemoCashAdviceSelector.select — sales-ready-but-unsold employee',
     () {
-      test(
-        'an engineer who completed SkillSheet review but never went up for '
-        'sale is recommended beginSelling',
-        () {
-          final skillSheetReady = _readyEngineer.copyWith(
-            stage: PublicDemoSalesStage.skillSheet,
-          );
-          final candidate = PublicDemoCashAdviceSelector.select(
-            cashStatus: _statusOf(PublicDemoCashStatus.shortage, shortageMonth: 8),
-            workflow: _workflowWithEngineers([skillSheetReady]),
-            state: PublicDemoState.aprilStart(),
-          );
-          expect(candidate, isNotNull);
-          expect(candidate!.employeeId, skillSheetReady.id);
-          expect(candidate.actionType, PublicDemoAdviceActionType.beginSelling);
-          expect(
-            candidate.reason,
-            PublicDemoAdviceReason.skillSheetReadyToBeginSelling,
-          );
-          expect(candidate.shortageMonth, 8);
-        },
-      );
+      test('an engineer who completed SkillSheet review but never went up for '
+          'sale is recommended beginSelling', () {
+        final skillSheetReady = _readyEngineer.copyWith(
+          stage: PublicDemoSalesStage.skillSheet,
+        );
+        final candidate = PublicDemoCashAdviceSelector.select(
+          cashStatus: _statusOf(
+            PublicDemoCashStatus.shortage,
+            shortageMonth: 8,
+          ),
+          workflow: _workflowWithEngineers([skillSheetReady]),
+          state: PublicDemoState.aprilStart(),
+        );
+        expect(candidate, isNotNull);
+        expect(candidate!.employeeId, skillSheetReady.id);
+        expect(candidate.actionType, PublicDemoAdviceActionType.beginSelling);
+        expect(
+          candidate.reason,
+          PublicDemoAdviceReason.skillSheetReadyToBeginSelling,
+        );
+        expect(candidate.shortageMonth, 8);
+      });
 
-      test(
-        'a waiting engineer takes priority over a skillSheet-ready one when '
-        'both exist',
-        () {
-          final skillSheetReady = _notReadyEngineer.copyWith(
-            stage: PublicDemoSalesStage.skillSheet,
-          );
-          final candidate = PublicDemoCashAdviceSelector.select(
-            cashStatus: _statusOf(PublicDemoCashStatus.shortage, shortageMonth: 6),
-            workflow: _workflowWithEngineers([skillSheetReady, _readyEngineer]),
-            state: PublicDemoState.aprilStart(),
-          );
-          expect(candidate, isNotNull);
-          expect(candidate!.employeeId, _readyEngineer.id);
-          expect(
-            candidate.actionType,
-            PublicDemoAdviceActionType.confirmSkillSheet,
-          );
-        },
-      );
+      test('a waiting engineer takes priority over a skillSheet-ready one when '
+          'both exist', () {
+        final skillSheetReady = _notReadyEngineer.copyWith(
+          stage: PublicDemoSalesStage.skillSheet,
+        );
+        final candidate = PublicDemoCashAdviceSelector.select(
+          cashStatus: _statusOf(
+            PublicDemoCashStatus.shortage,
+            shortageMonth: 6,
+          ),
+          workflow: _workflowWithEngineers([skillSheetReady, _readyEngineer]),
+          state: PublicDemoState.aprilStart(),
+        );
+        expect(candidate, isNotNull);
+        expect(candidate!.employeeId, _readyEngineer.id);
+        expect(
+          candidate.actionType,
+          PublicDemoAdviceActionType.confirmSkillSheet,
+        );
+      });
     },
   );
 
@@ -232,64 +321,76 @@ void main() {
         PublicDemoSalesStage.clientInterviewPassed,
         PublicDemoSalesStage.ordered,
       ]) {
-        test(
-          'an engineer at stage $stage is never chosen as a re-selling '
-          'candidate',
-          () {
-            final engineer = _readyEngineer.copyWith(stage: stage);
-            final candidate = PublicDemoCashAdviceSelector.select(
-              cashStatus: _statusOf(PublicDemoCashStatus.shortage, shortageMonth: 6),
-              workflow: _workflowWithEngineers([engineer]),
-              state: PublicDemoState.aprilStart(),
-            );
-            expect(candidate, isNull);
-          },
-        );
-      }
-
-      test(
-        'returns null when every engineer is already selling, screening, or '
-        'assigned, even under a shortage status',
-        () {
-          final engineers = [
-            _readyEngineer.copyWith(stage: PublicDemoSalesStage.selling),
-            _notReadyEngineer.copyWith(stage: PublicDemoSalesStage.ordered),
-          ];
+        test('an engineer at stage $stage is never chosen as a re-selling '
+            'candidate', () {
+          final engineer = _readyEngineer.copyWith(stage: stage);
           final candidate = PublicDemoCashAdviceSelector.select(
-            cashStatus: _statusOf(PublicDemoCashStatus.shortage, shortageMonth: 9),
-            workflow: _workflowWithEngineers(engineers),
+            cashStatus: _statusOf(
+              PublicDemoCashStatus.shortage,
+              shortageMonth: 6,
+            ),
+            workflow: _workflowWithEngineers([engineer]),
             state: PublicDemoState.aprilStart(),
           );
           expect(candidate, isNull);
-        },
-      );
+        });
+      }
+
+      test('returns null when every engineer is already selling, screening, or '
+          'assigned, even under a shortage status', () {
+        final engineers = [
+          _readyEngineer.copyWith(stage: PublicDemoSalesStage.selling),
+          _notReadyEngineer.copyWith(stage: PublicDemoSalesStage.ordered),
+        ];
+        final candidate = PublicDemoCashAdviceSelector.select(
+          cashStatus: _statusOf(
+            PublicDemoCashStatus.shortage,
+            shortageMonth: 9,
+          ),
+          workflow: _workflowWithEngineers(engineers),
+          state: PublicDemoState.aprilStart(),
+        );
+        expect(candidate, isNull);
+      });
     },
   );
 
   group('PublicDemoCashAdviceSelector.select — determinism and purity', () {
-    test('calling it twice with identical inputs returns an identical candidate', () {
-      final workflow = _workflowWithEngineers([_notReadyEngineer, _readyEngineer]);
-      final state = PublicDemoState.aprilStart();
-      final cashStatus = _statusOf(PublicDemoCashStatus.shortage, shortageMonth: 6);
+    test(
+      'calling it twice with identical inputs returns an identical candidate',
+      () {
+        final workflow = _workflowWithEngineers([
+          _notReadyEngineer,
+          _readyEngineer,
+        ]);
+        final state = PublicDemoState.aprilStart();
+        final cashStatus = _statusOf(
+          PublicDemoCashStatus.shortage,
+          shortageMonth: 6,
+        );
 
-      final first = PublicDemoCashAdviceSelector.select(
-        cashStatus: cashStatus,
-        workflow: workflow,
-        state: state,
-      );
-      final second = PublicDemoCashAdviceSelector.select(
-        cashStatus: cashStatus,
-        workflow: workflow,
-        state: state,
-      );
-      expect(first!.employeeId, second!.employeeId);
-      expect(first.actionType, second.actionType);
-      expect(first.reason, second.reason);
-      expect(first.shortageMonth, second.shortageMonth);
-    });
+        final first = PublicDemoCashAdviceSelector.select(
+          cashStatus: cashStatus,
+          workflow: workflow,
+          state: state,
+        );
+        final second = PublicDemoCashAdviceSelector.select(
+          cashStatus: cashStatus,
+          workflow: workflow,
+          state: state,
+        );
+        expect(first!.employeeId, second!.employeeId);
+        expect(first.actionType, second.actionType);
+        expect(first.reason, second.reason);
+        expect(first.shortageMonth, second.shortageMonth);
+      },
+    );
 
     test('never mutates the input workflow or state', () {
-      final workflow = _workflowWithEngineers([_notReadyEngineer, _readyEngineer]);
+      final workflow = _workflowWithEngineers([
+        _notReadyEngineer,
+        _readyEngineer,
+      ]);
       final state = PublicDemoState.aprilStart();
       final beforeWorkflowJson = workflow.toJson();
       final beforeStateJson = state.toJson();

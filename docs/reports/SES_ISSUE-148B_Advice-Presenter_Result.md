@@ -150,9 +150,43 @@ Completed（Phase 1B.1 + 1B.2 スコープのみ。HOME Widget・文言表示・
 - **HOME Widget・文言・CTA連携は未実装**: 指示通り、本PRは`PublicDemoCashStatusPresentation`／`PublicDemoCashAdviceCandidate`という純粋モデルの追加までであり、これらを消費するUI層・日本語文言・CTA遷移は後続PRの対象。
 - **`monthsAhead`が既定の3以外の場合の助言優先順は未検証**: 1B.2のテストはPhase 1Aの既定`shortageMonth`値をそのまま使っているが、より長い予測窓での優先順の妥当性は本Phaseでは検証していない（Phase 1A自体の制約を引き継ぐのみで、1B側で新たな制約を追加してはいない）。
 
+## Follow-up: Codex Review (PR #154) 2件のP1/P2 finding修正
+
+初回push後、`chatgpt-codex-connector[bot]`によるPR #154のレビューで、`PublicDemoCashAdviceSelector.select`の待機社員判定ロジックに対し2件の妥当なfindingが指摘され、両方を修正した。
+
+### P1（財務ガード未複製）
+
+**指摘内容**: `needsTraining`の判定が`PublicDemoInternalTrainingTransaction.execute`が実際に持つ財務系ガード（`state.isFinanciallyRestricted`、`state.cash < cost`）を複製していなかった。本selectorは資金`shortage`のときにしか動作しないため、まさに資金不足で`isFinanciallyRestricted`や現金不足が起きやすい状況で、ドメインが拒否するはずの研修（`startInternalTraining`）を助言してしまう可能性があった。
+
+**修正**: `needsTraining`（`canAffordTraining`に改名）へ`!state.isFinanciallyRestricted && state.cash >= PublicDemoInternalTrainingTransaction.cost`を追加。この2条件を満たさない場合は研修を推薦しない。
+
+### P2（研修選択済みでもcapabilityは未上昇）
+
+**指摘内容**: 待機社員が既にfield-sales閾値未満で、かつ今月既に研修を選択済みの場合、修正前ロジックは`needsTraining`を`false`にして`confirmSkillSheet`（SkillSheet確認）へフォールバックしていた。しかし研修の効果（capability上昇）は月次決算時にしか適用されないため、この時点でも実際の`readyForFieldSales`はまだ`false`のまま。既存の実装（`lib/ui/public_demo/public_demo_01_placeholder_screen.dart` 2279-2288行）では、SkillSheet確認ボタンは`readyForFieldSales`が`true`のときにしか描画されないため、この助言は実際には選べないアクションを指していた。
+
+**修正**: ロジックを「`ready`なら`confirmSkillSheet`を返す／`ready`でなければ研修が選択可能なときだけ`startInternalTraining`を返す／どちらも成立しなければこの社員をスキップして次の待機社員を試す」という構造に変更。`ready`でも研修可能でもない社員には、この月は安全に選べる直接アクションが存在しないため、`confirmSkillSheet`への強制フォールバックを廃止した。
+
+### 追加・修正したテスト
+
+`test/game/public_demo/public_demo_cash_advice_selector_test.dart`を更新（既存の「training selected → confirmSkillSheet」ケースを、修正後の正しい期待値`null`へ修正）した上で、次の4ケースを追加した（計21ケース、presentation側6ケースと合わせて計27ケース）。
+
+1. 研修選択済み・未readyの唯一の社員では候補が`null`になること（P2回帰）。
+2. 研修選択済み・未readyの社員がいても、他に有効な待機社員（ready）がいればそちらを選ぶこと（フォールスルーの確認）。
+3. 現金が研修コスト未満のとき、未ready社員へ研修を推薦しないこと（P1回帰・現金不足）。
+4. `financialStatus == cashShortage`（財務制限中）のとき、未ready社員へ研修を推薦しないこと（P1回帰・財務制限）。
+5. 現金・財務状態ともに条件を満たすときは、引き続き研修を正しく推薦すること（既存の安全系ケースの回帰確認）。
+
+### 検証結果
+
+- `flutter analyze` — **No issues found!**
+- `flutter test test/game/public_demo/public_demo_cash_advice_selector_test.dart test/game/public_demo/public_demo_cash_status_presentation_test.dart` — **27/27 pass**
+- `test/game/public_demo/` ディレクトリ全体（55ファイル）— **500/500 pass**（回帰なし）
+- `dart format`（変更対象2ファイル）
+
 ## commit SHA
 
-- Phase 1B.1 + 1B.2 実装（コード＋テスト＋report、単一commit）: `6d514203dbb2cbd2ab775355526d034ec941312f`
+- Phase 1B.1 + 1B.2 初回実装（コード＋テスト＋report、単一commit）: `6d514203dbb2cbd2ab775355526d034ec941312f`
+- Codex Review P1/P2 finding修正: （push後に追記）
 
 ## PR URL
 

@@ -1,4 +1,5 @@
 import 'public_demo_cash_status_presentation.dart';
+import 'public_demo_internal_training_transaction.dart';
 import 'public_demo_sales.dart';
 import 'public_demo_state.dart';
 import 'public_demo_workflow_state.dart';
@@ -13,22 +14,34 @@ import 'public_demo_workflow_state.dart';
 /// facts, and only ever recommends an action already reachable through the
 /// existing domain API:
 ///
+///  * [PublicDemoAdviceActionType.confirmSkillSheet] — the existing
+///    [PublicDemoWorkflowState.startSkillSheetReview] transition, for a
+///    waiting engineer whose already-measured runtime capability
+///    ([PublicDemoEngineerRuntime.isReadyForFieldSales]) has already
+///    reached the field-sales threshold.
 ///  * [PublicDemoAdviceActionType.startInternalTraining] — an existing,
 ///    already-selectable next step (see
 ///    `PublicDemoInternalTrainingTransaction`) for a waiting engineer whose
-///    already-measured runtime capability
-///    ([PublicDemoEngineerRuntime.isReadyForFieldSales]) has not yet
-///    reached the field-sales threshold and has not already been given a
-///    training selection this month.
-///  * [PublicDemoAdviceActionType.confirmSkillSheet] — the existing
-///    [PublicDemoWorkflowState.startSkillSheetReview] transition, for any
-///    other waiting engineer (already field-sales ready, or already has a
-///    training selection recorded).
+///    capability has not yet reached that threshold, has not already been
+///    given a training selection this month, and for whom the transaction's
+///    own financial preconditions ([PublicDemoState.isFinanciallyRestricted]
+///    and an affordable [PublicDemoInternalTrainingTransaction.cost]) are
+///    both currently satisfied — so this is never recommended when the
+///    domain would reject it outright.
 ///  * [PublicDemoAdviceActionType.beginSelling] — the existing
 ///    [PublicDemoWorkflowState.beginSelling] transition, for an engineer
 ///    who has completed SkillSheet review
 ///    ([PublicDemoSalesStage.skillSheet]) but has never yet been put up
 ///    for sale.
+///
+/// A waiting engineer who is not yet field-sales ready AND for whom
+/// training is currently unavailable (already selected this month —
+/// growth from it has not been applied yet, so capability has not actually
+/// risen — or currently unaffordable/financially restricted) has no
+/// currently valid direct action at all: [select] never falls back to
+/// recommending SkillSheet review for such an engineer (that button does
+/// not even render for a not-yet-ready engineer in the existing employee
+/// screen), it simply moves on to the next waiting engineer.
 ///
 /// Deliberately excluded: any engineer currently selling, in interview
 /// screening, or already ordered (assigned to a project) — never re-offered
@@ -39,7 +52,7 @@ import 'public_demo_workflow_state.dart';
 /// betting on a retry succeeding, which this Phase does not do. Those
 /// engineers, like every other non-waiting/non-skillSheet stage, simply
 /// contribute no candidate — [select] returns `null` when nobody currently
-/// waiting or skillSheet-ready exists.
+/// waiting-with-a-valid-action or skillSheet-ready exists.
 ///
 /// [select] never mutates [workflow] or [state]; candidate selection over
 /// [workflow.engineers] is in that list's own order, so the same inputs
@@ -61,20 +74,37 @@ class PublicDemoCashAdviceSelector {
       final runtime = state.engineerRuntimes
           .where((candidate) => candidate.engineerId == engineer.id)
           .firstOrNull;
-      final needsTraining =
-          runtime != null &&
-          !runtime.isReadyForFieldSales &&
-          !state.trainingSelections.containsKey(engineer.id);
-      return PublicDemoCashAdviceCandidate._(
-        employeeId: engineer.id,
-        actionType: needsTraining
-            ? PublicDemoAdviceActionType.startInternalTraining
-            : PublicDemoAdviceActionType.confirmSkillSheet,
-        shortageMonth: shortageMonth,
-        reason: needsTraining
-            ? PublicDemoAdviceReason.waitingBelowFieldSalesReadiness
-            : PublicDemoAdviceReason.waitingReadyForSkillSheet,
-      );
+      final ready = runtime != null && runtime.isReadyForFieldSales;
+      if (ready) {
+        return PublicDemoCashAdviceCandidate._(
+          employeeId: engineer.id,
+          actionType: PublicDemoAdviceActionType.confirmSkillSheet,
+          shortageMonth: shortageMonth,
+          reason: PublicDemoAdviceReason.waitingReadyForSkillSheet,
+        );
+      }
+
+      // Not yet field-sales ready: the only other currently valid action is
+      // starting training, and only when the domain would actually accept
+      // it — mirroring PublicDemoInternalTrainingTransaction.execute's own
+      // preconditions (already-selected, financially-restricted,
+      // insufficient cash) rather than recommending an action it would
+      // reject. A training selection already recorded this month does not
+      // make this engineer ready either — growth from it is applied at
+      // monthly close, not immediately — so this never falls back to
+      // confirmSkillSheet: it simply tries the next waiting engineer.
+      final alreadyTraining = state.trainingSelections.containsKey(engineer.id);
+      final canAffordTraining =
+          !state.isFinanciallyRestricted &&
+          state.cash >= PublicDemoInternalTrainingTransaction.cost;
+      if (!alreadyTraining && canAffordTraining) {
+        return PublicDemoCashAdviceCandidate._(
+          employeeId: engineer.id,
+          actionType: PublicDemoAdviceActionType.startInternalTraining,
+          shortageMonth: shortageMonth,
+          reason: PublicDemoAdviceReason.waitingBelowFieldSalesReadiness,
+        );
+      }
     }
 
     for (final engineer in workflow.engineers) {
@@ -137,9 +167,8 @@ enum PublicDemoAdviceReason {
   /// reached [PublicDemoEngineerRuntime.fieldSalesCapabilityRequirement].
   waitingBelowFieldSalesReadiness,
 
-  /// A waiting engineer already field-sales ready (or already has a
-  /// training selection recorded) — SkillSheet review is the next existing
-  /// step.
+  /// A waiting engineer already field-sales ready — SkillSheet review is
+  /// the next existing step.
   waitingReadyForSkillSheet,
 
   /// An engineer who has completed SkillSheet review and has never yet

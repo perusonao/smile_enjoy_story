@@ -128,7 +128,7 @@ Issue #148本体（HOME警告カード・ひより文言・Phase 2含む全体�
 
 ## commit SHA
 
-`165b8d02a44fd3ff53273a188e888b1bdaf2e830`
+`fe583ca2d070b07a1575fc3cfe52f60a7e7ac535`（本コミット自身。フォーマット上、内容確定後の自己参照SHAは1回のみ記載）
 
 ## PR / Merge Readiness
 

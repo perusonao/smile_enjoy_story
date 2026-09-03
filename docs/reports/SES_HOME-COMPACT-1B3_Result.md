@@ -10,8 +10,8 @@ card.
 
 - **Base SHA:** `dbbe25904c25deee2b7cd0ce6f3d0ccb54183872` (`origin/main` HEAD
   at task start — confirmed to already carry PR #153/#154/#157/#158).
-- **Head SHA:** `5985ee1d489985e6b2d7b96462d4e7a026614669` (the implementation
-  commit this report ships in).
+- **Head SHA (implementation commit):** `5985ee1d489985e6b2d7b96462d4e7a026614669`.
+- **Head SHA (final, incl. the Codex P2 fix below):** `ca4800dde9d04a71223662cf31af07467a157286`.
 
 ## Start-condition verification (performed before any implementation)
 
@@ -210,6 +210,18 @@ Report:
   `ses-148-1b3-home-360-{caution,shortage}.png` (real-Chromium evidence,
   see Verification)
 
+### Codex P2 fix (commit `ca4800d`)
+
+- `lib/ui/public_demo/public_demo_01_placeholder_screen.dart` — the sole
+  production file touched: `_cashForecastAdvice` now excludes
+  `workflow.assignedEngineerIds(month: s.month)` from the engineer pool it
+  passes to `PublicDemoCashAdviceSelector.select`. No other function in
+  this file was changed.
+- `test/ui/public_demo/public_demo_01_home_cash_forecast_advice_test.dart`
+  — added the `_FixedSaveService`/aggregate-fixture helpers and the new
+  "P2 fix (Codex review on PR #159)" test group (2 tests); the file's
+  pre-existing 3 tests are unchanged.
+
 ## Not changed
 
 `GameState`, monthly close/finance rules, save schema, sales success rate,
@@ -217,6 +229,80 @@ the existing E2E harness, `PublicDemoCashForecast`,
 `PublicDemoCashStatusPresentation`, `PublicDemoCashAdviceSelector`,
 SkillSheet's confirm/開始 business rules, Phase 2/B/C scope — none of these
 were touched. No unrelated refactoring was performed.
+
+## Codex P2 fix: exclude already-assigned engineers from cash advice
+
+Codex review on PR #159:
+https://github.com/perusonao/smile_enjoy_story/pull/159#discussion_r3924337236
+
+**Problem.** An applicant who wins a June pre-entry order joins as an
+engineer at `PublicDemoSalesStage.waiting` (`withJoinedEngineers` always
+creates a freshly-joined engineer at `waiting`, regardless of the
+applicant's own pre-entry sales stage) in the very same `closeMay` that
+also adds them to the assignment roster (`assignOrderedForMay`, which
+reads the applicant's `juneOrdered` stage independently of the new
+engineer object's `stage` field). So `engineer.stage == waiting` alone no
+longer means "not currently on a project" for that engineer.
+`PublicDemoCashAdviceSelector.select` only reads `stage`, so it could
+surface this already-assigned engineer as the cash-advice CTA target —
+confirming their SkillSheet or starting their training would either be a
+silent no-op (the aggregate's own guards reject re-advancing an assigned
+engineer) or push them back into the sales pipeline for a project they
+are already on.
+
+**Fix (minimal, single file).** Only
+`lib/ui/public_demo/public_demo_01_placeholder_screen.dart`'s
+`_cashForecastAdvice` getter was touched — the one HOME binding site the
+task scoped this to. `PublicDemoCashForecast`, `PublicDemoCashStatus
+Presentation`, and `PublicDemoCashAdviceSelector` are untouched.
+
+**Exclusion condition.** Before calling
+`PublicDemoCashAdviceSelector.select`, the getter now computes
+`workflow.assignedEngineerIds(month: s.month)` (the same existing SSOT
+already used by this screen's own training card and the P2-fix month-6/
+Recovery filters — see `_currentlyAssignedEngineerIds`'s own doc) and, when
+non-empty, builds a throwaway `PublicDemoWorkflowState` whose `engineers`
+list omits every engineer in that set, then passes *that* into the
+selector instead of the raw `workflow`. The selector's own logic, order,
+and eligibility rules are completely unchanged — it simply never sees an
+already-assigned engineer, so it naturally falls through to the next
+genuinely eligible waiting/skillSheet engineer on its own. When none
+remain, it returns `null` exactly as it already does for "no candidate",
+which the existing `candidate == null` branch already renders safely (the
+finance-detail scroll-jump CTA, never a CTA bound to a fabricated action)
+— so "除外後に候補がない場合は、無効なCTAを表示しない" holds without any
+extra branching.
+
+**Regression tests** (`test/ui/public_demo/public_demo_01_home_cash_
+forecast_advice_test.dart`, new group "P2 fix (Codex review on PR #159)"):
+both build a `PublicDemoAggregate` via a real command chain (interview →
+offer → pre-entry SkillSheet/selling/partner+client interview → June
+order → `closeMay`, mirroring `public_demo_aggregate_test.dart`'s own
+"TEST E: genuine applicant happy path") that reproduces the exact
+join/assignment mismatch, injected via the existing `_FixedSaveService`
+pattern (`public_demo_01_single_month_advance_cta_test.dart`'s own
+technique):
+
+1. *Only the assigned engineer is nominally eligible* — after the June
+   order + `closeMay`, `app-01` (高橋 翔) is the sole `waiting`-stage
+   engineer and is already on the assignment roster. Asserts: a caution
+   advice genuinely renders (the fixture's forecast is confirmed to go
+   negative while `financialStatus` is still `normal`), 高橋 翔's name never
+   appears anywhere inside the Navigator card, and the CTA is specifically
+   the safe `資金計画を確認する` finance-detail fallback (not merely absent),
+   which is confirmed tappable without throwing.
+2. *A second, genuinely idle waiting engineer exists after exclusion* — a
+   second applicant (`app-02`, 田中 美咲) joins via accept-offer only (no
+   further pre-entry steps), appended *after* `app-01` in
+   `workflow.engineers`' own order — the exact ordering that would let a
+   naive first-match scan return the wrong engineer. Asserts: the Navigator
+   names 田中 美咲 (headline and/or advice-bubble explanation) and never 高橋
+   翔, with a real CTA present.
+
+Both tests were verified to **fail** against the pre-fix binding (temporarily
+feeding the raw, unfiltered `workflow` into the selector, confirmed via a
+local revert-and-rerun) and **pass** with the fix applied — they are a
+genuine regression guard, not vacuously-true assertions.
 
 ## Test results
 
@@ -240,6 +326,24 @@ Flutter nor Dart by default).
 - Combined run of all three required scopes together (`test/ui/public_demo/
   test/presentation/ test/game/public_demo/`): **924/924 passed**, 0
   failures.
+
+### Codex P2 fix re-verification (this update)
+
+- `dart format` (both files this fix changed): 0 files needed changes.
+- `flutter analyze` (repo-wide): **No issues found.**
+- `flutter test test/ui/public_demo/` (now includes the 2 new P2
+  regression tests added to `public_demo_01_home_cash_forecast_advice_test
+  .dart`): **226/226 passed.**
+- `flutter test test/game/public_demo/ test/presentation/`:
+  **700/700 passed** (500 + 200, unchanged from before this fix — this fix
+  touches no domain/presentation-component file).
+- `flutter test test/ui/public_demo/public_demo_01_issue_124_screen_
+  verification_test.dart test/ui/public_demo/public_demo_01_skill_sheet_
+  flow_test.dart` (360px/390px no-scroll requirement + SkillSheet flow,
+  re-confirmed unaffected by this fix): **7/7 passed.**
+- The two new P2 regression tests were confirmed to **fail** when the fix
+  is reverted (raw `workflow` fed to the selector) and **pass** with it
+  restored — verified locally before pushing.
 
 ## 360px / 390px confirmation
 
@@ -307,6 +411,14 @@ suite):
   (`test/ui/public_demo/`, `test/presentation/`, `test/game/public_demo/`)
   were run in full and are green.
 - No manual/eyeball QA on a physical device.
+- **(Codex P2 fix)** The real-Chromium manual verification above (normal/
+  caution/shortage screenshots) was not re-run after this fix — it exercises
+  a different fixture (the founding-engineer trajectory, which never hits
+  the June-join mismatch this fix addresses) and its outcome is unaffected;
+  the fix's own correctness is instead proven by the two new widget-level
+  regression tests (confirmed to fail pre-fix and pass post-fix). WebKit
+  and the full Playwright suite remain deferred to PR CI, unchanged from
+  before this fix.
 
 ## PR URL
 
@@ -315,7 +427,9 @@ https://github.com/perusonao/smile_enjoy_story/pull/159
 ## Merge readiness
 
 **Not merged by this session**, per the task's own instruction. Local
-evidence — all four required test scopes green (924/924), `flutter
+evidence — all four required test scopes green (924/924 at the initial
+implementation commit `5985ee1`; re-confirmed green after the Codex P2 fix
+at `ca4800d`, including the 2 new targeted regression tests), `flutter
 analyze` clean, `dart format` clean on every changed file, and a real
 Chromium render confirming all three financial states (normal/preventive
 caution/real shortage) at both 360px and 390px with no horizontal overflow

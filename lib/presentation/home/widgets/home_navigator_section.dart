@@ -51,8 +51,8 @@ class HomeNavigatorMetrics {
   static const double textGap = 3;
 
   /// The height at which the navigator would be costing the first view more
-  /// than a compact identity plus one accessible local control is worth at
-  /// the default text scale.
+  /// than a compact identity plus its advice is worth at the default text
+  /// scale.
   ///
   /// A ceiling, not a target, in the same sense as the Office Stage's: it
   /// exists so growth shows up as a failing test rather than as a silently
@@ -60,7 +60,14 @@ class HomeNavigatorMetrics {
   /// card is *supposed* to grow past it, because the design explicitly
   /// permits the navigator to be pushed out of the first view rather than
   /// have its text truncated.
-  static const double compactCeiling = 140;
+  ///
+  /// PUBLIC-DEMO-HOME-UI-3A raises this from 140: the approved visual
+  /// target requires the advice explanation bubble to be always visible
+  /// (replacing the former "詳しく見る" tap-to-reveal control), which is a
+  /// real, required structural addition, not slack. The default (neutral,
+  /// no CTA) card now measures ~171pt at 360x800; 200pt keeps real margin
+  /// while still failing the moment something else is added to the card.
+  static const double compactCeiling = 200;
 
   static HomeNavigatorLayout of(BuildContext context) =>
       MediaQuery.sizeOf(context).width < compactWidthThreshold
@@ -118,7 +125,13 @@ class HomeNavigatorLayout {
 /// She is the existing general-affairs employee made visible, not a fourth
 /// hire — see [HomeNavigatorIdentity] for why that costs the domain
 /// nothing.
-class HomeNavigatorSection extends StatefulWidget {
+///
+/// PUBLIC-DEMO-HOME-UI-3A: the approved visual target shows the "ひよりから
+/// のアドバイス" explanation open by default, with no collapse control — so
+/// this is now a [StatelessWidget]. The former "詳しく見る"/"閉じる" local
+/// toggle is gone entirely; [_AdviceBubble] renders unconditionally whenever
+/// [HomeNavigatorAdvice.explanation] is non-null.
+class HomeNavigatorSection extends StatelessWidget {
   const HomeNavigatorSection({
     super.key,
     this.expression = NavigatorExpression.normal,
@@ -132,17 +145,6 @@ class HomeNavigatorSection extends StatefulWidget {
 
   /// `null` is the already-resolved suppression outcome, without a reason.
   final HomeNavigatorAdvice? advice;
-
-  @override
-  State<HomeNavigatorSection> createState() => _HomeNavigatorSectionState();
-}
-
-class _HomeNavigatorSectionState extends State<HomeNavigatorSection> {
-  bool _isAdviceExpanded = false;
-
-  void _setAdviceExpanded(bool value) {
-    setState(() => _isAdviceExpanded = value);
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -160,7 +162,7 @@ class _HomeNavigatorSectionState extends State<HomeNavigatorSection> {
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _NavigatorPortrait(expression: widget.expression, layout: layout),
+            _NavigatorPortrait(expression: expression, layout: layout),
             SizedBox(width: layout.horizontalGap),
             Expanded(
               child: Column(
@@ -189,7 +191,7 @@ class _HomeNavigatorSectionState extends State<HomeNavigatorSection> {
                     ],
                   ),
                   const SizedBox(height: HomeNavigatorMetrics.textGap),
-                  if (widget.advice case final advice?) ...[
+                  if (advice case final advice?) ...[
                     // The eyebrow names which of the two roles this line
                     // plays: a concrete next step (a CTA follows) or the
                     // month's general goal (nothing is eligible right now).
@@ -260,33 +262,36 @@ class _HomeNavigatorSectionState extends State<HomeNavigatorSection> {
                         ),
                       ),
                     ],
-                    if (advice.explanation != null) ...[
-                      const SizedBox(height: HomeNavigatorMetrics.textGap),
-                      if (_isAdviceExpanded)
-                        _AdviceBubble(
-                          advice: advice,
-                          onCollapse: () => _setAdviceExpanded(false),
-                        )
-                      else
-                        Align(
-                          alignment: Alignment.centerLeft,
-                          child: TextButton.icon(
-                            key: const Key('home-navigator-open-advice'),
-                            onPressed: () => _setAdviceExpanded(true),
-                            icon: const Icon(
-                              Icons.chat_bubble_outline,
-                              size: 18,
-                            ),
-                            label: const Text('詳しく見る'),
-                            style: TextButton.styleFrom(
-                              minimumSize: const Size(48, 48),
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 8,
-                              ),
-                              tapTargetSize: MaterialTapTargetSize.padded,
+                    if (advice.secondaryLabel case final secondaryLabel?) ...[
+                      const SizedBox(height: 8),
+                      SizedBox(
+                        width: double.infinity,
+                        child: OutlinedButton(
+                          key: const Key('home-navigator-secondary-cta'),
+                          style: OutlinedButton.styleFrom(
+                            minimumSize: const Size(0, 48),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 16,
+                              vertical: 12,
                             ),
                           ),
+                          onPressed: advice.onSecondaryPressed,
+                          child: Text(
+                            secondaryLabel,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            textAlign: TextAlign.center,
+                          ),
                         ),
+                      ),
+                    ],
+                    // PUBLIC-DEMO-HOME-UI-3A: the approved visual target
+                    // shows this explanation open, always, with no collapse
+                    // control — the former "詳しく見る" tap-to-reveal is
+                    // gone. A `null` explanation still renders nothing here.
+                    if (advice.explanation != null) ...[
+                      const SizedBox(height: HomeNavigatorMetrics.textGap),
+                      _AdviceBubble(advice: advice),
                     ],
                   ] else
                     // Suppressed (advice is null — a terminal financial
@@ -317,17 +322,20 @@ class _HomeNavigatorSectionState extends State<HomeNavigatorSection> {
 ///
 /// SES-FIRST-FUN-YEAR-UI-PHASE-2: this used to also restate [advice.title]
 /// and [advice.message] and carry its own nested CTA button. All three are
-/// gone: the message is now always visible above (never hidden behind this
-/// expand), and the CTA is now a single always-visible button in the same
-/// card — duplicating either here would recreate the exact "same fact,
-/// shown twice" problem the merge exists to remove. What is left here is
-/// genuinely additional: the educational explanation, which the always-
-/// visible line deliberately does not state.
+/// gone: the message is now always visible above, and the CTA is a single
+/// always-visible button in the same card — duplicating either here would
+/// recreate the exact "same fact, shown twice" problem the merge exists to
+/// remove. What is left here is genuinely additional: the educational
+/// explanation, which the always-visible line deliberately does not state.
+///
+/// PUBLIC-DEMO-HOME-UI-3A: this bubble is now always rendered (whenever
+/// [HomeNavigatorAdvice.explanation] is non-null) instead of behind a
+/// collapse tap — the approved visual target shows "ひよりからのアドバイス"
+/// permanently on screen, so there is no `onCollapse` control left to wire.
 class _AdviceBubble extends StatelessWidget {
-  const _AdviceBubble({required this.advice, required this.onCollapse});
+  const _AdviceBubble({required this.advice});
 
   final HomeNavigatorAdvice advice;
-  final VoidCallback onCollapse;
 
   @override
   Widget build(BuildContext context) {
@@ -344,11 +352,35 @@ class _AdviceBubble extends StatelessWidget {
           border: Border.all(color: scheme.outlineVariant),
         ),
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(12, 8, 6, 6),
+          padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
+              Row(
+                children: [
+                  Icon(
+                    Icons.chat_bubble_outline,
+                    size: 14,
+                    color: scheme.onSurfaceVariant,
+                  ),
+                  const SizedBox(width: 4),
+                  // Flexible, not a bare Text: at a large text scale the
+                  // title alone can exceed the bubble's width, and this is
+                  // what lets it wrap instead of overflowing the Row.
+                  Flexible(
+                    child: Text(
+                      'ひよりからのアドバイス',
+                      key: const Key('home-navigator-advice-title'),
+                      style: theme.textTheme.labelSmall?.copyWith(
+                        fontWeight: FontWeight.bold,
+                        color: scheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: HomeNavigatorMetrics.textGap),
               if (advice.explanation case final explanation?)
                 Text(
                   explanation,
@@ -358,20 +390,6 @@ class _AdviceBubble extends StatelessWidget {
                     color: scheme.onSurfaceVariant,
                   ),
                 ),
-              Align(
-                alignment: Alignment.centerRight,
-                child: TextButton.icon(
-                  key: const Key('home-navigator-close-advice'),
-                  onPressed: onCollapse,
-                  icon: const Icon(Icons.expand_less, size: 18),
-                  label: const Text('閉じる'),
-                  style: TextButton.styleFrom(
-                    minimumSize: const Size(48, 48),
-                    padding: const EdgeInsets.symmetric(horizontal: 8),
-                    tapTargetSize: MaterialTapTargetSize.padded,
-                  ),
-                ),
-              ),
             ],
           ),
         ),

@@ -4,6 +4,9 @@
 *.pyc
 *.swp
 .DS_Store
+
+# Claude Code local tooling state (agent worktrees etc.) — never project content
+.claude/
 .atom/
 .build/
 .buildlog/

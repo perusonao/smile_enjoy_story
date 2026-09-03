@@ -392,17 +392,24 @@ void main() {
         isA<HomeDashboardDisplayData>(),
       );
 
-      // Structural: HOME has the resolved action CTA and Hiyori's local
-      // detail control. The latter only expands presentation; it receives no
-      // domain API and its expanded CTA reuses the same owner callback.
+      // Structural: HOME has the resolved action CTA and, below it, the
+      // secondary "他の行動を確認する" scroll-jump control (PUBLIC-DEMO-HOME-
+      // UI-3A — the former "詳しく見る" local advice-detail toggle is gone;
+      // the explanation is always visible now). Neither receives a domain
+      // API: the primary CTA reuses the resolved action's own owner
+      // callback, and the secondary control is the screen's own
+      // already-bound scroll-jump — not a new mutation path.
       final cta = find.byKey(const Key('home-recommended-action-cta'));
-      final openAdvice = find.byKey(const Key('home-navigator-open-advice'));
+      final secondaryCta = find.byKey(
+        const Key('home-navigator-secondary-cta'),
+      );
       expect(inHome(cta), findsOneWidget);
-      expect(inHome(openAdvice), findsOneWidget);
+      expect(inHome(secondaryCta), findsOneWidget);
       expect(
         inHome(find.byWidgetPredicate((w) => w is ButtonStyleButton)),
         findsNWidgets(2),
-        reason: 'the action CTA and local advice expander are the only buttons',
+        reason: 'the primary action CTA and the secondary scroll-jump '
+            'control are the only buttons',
       );
       // ...and it is genuinely enabled, not a decorative disabled control.
       expect(tester.widget<FilledButton>(cta).onPressed, isNotNull);

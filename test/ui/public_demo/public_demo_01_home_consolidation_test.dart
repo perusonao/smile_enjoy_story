@@ -42,6 +42,7 @@
 // the Office Stage itself to be fully painted inside the same budget.
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:smile_enjoy_story/app/app_entry.dart';
@@ -185,10 +186,18 @@ const _targets = <({Size size, double contentBudget})>[
 /// month-goal card). HOME-RUNTIME-2C swaps the last of those for the
 /// recommended-action card, whose only structural addition is one CTA row.
 /// 320pt is that block plus that row: enough for the phase, and not enough
-/// for a second card to reappear in the slot. It is still barely half of
-/// the 615pt browser-chrome content budget, so the screen's own content
-/// keeps the rest.
-const double _homeBlockCeiling = 500;
+/// for a second card to reappear in the slot.
+///
+/// PUBLIC-DEMO-HOME-UI-3A raises this ceiling once more, deliberately: the
+/// approved visual target requires the advice explanation ("ひよりからの
+/// アドバイス") to be always visible (replacing the former "詳しく見る" tap
+/// -to-reveal control) AND a second, always-visible secondary CTA ("他の
+/// 行動を確認する") below the primary one — both real, required structural
+/// additions, not slack. The block now measures ~510pt at 360x800; 560pt
+/// keeps real margin while still failing the moment a THIRD element is
+/// added to the slot. It remains well under the 615pt browser-chrome
+/// content budget, so the screen's own content still keeps real room.
+const double _homeBlockCeiling = 560;
 
 void main() {
   group('1-2: the Public Demo entry point is preserved', () {
@@ -249,10 +258,25 @@ void main() {
       expect(find.text('社員数'), findsNothing);
 
       // The merged KPI carries every label exactly once, inside HOME.
-      for (final label in ['現金', '参画', '営業残', '社員', '売上', '入金予定']) {
+      //
+      // PUBLIC-DEMO-HOME-UI-3A: '社員' is the one label that legitimately
+      // gains a second, different-purpose appearance outside HOME — it is
+      // also the bottom nav's own destination label (section 8), which
+      // states a navigation target, not a second restatement of the KPI
+      // fact. Scoped the same way '待機' already is just below.
+      for (final label in ['現金', '参画', '営業残', '売上', '入金予定']) {
         expect(find.text(label), findsOneWidget, reason: label);
         expect(inHome(find.text(label)), findsOneWidget, reason: label);
       }
+      expect(inHome(find.text('社員')), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byKey(const Key('public-demo-bottom-nav')),
+          matching: find.text('社員'),
+        ),
+        findsOneWidget,
+      );
+      expect(find.text('社員'), findsNWidgets(2));
 
       // 待機 is the one label that legitimately appears outside HOME: it is
       // also each waiting engineer's own status badge, which is a different
@@ -463,12 +487,20 @@ void main() {
 
       final cta = find.byKey(const Key('home-recommended-action-cta'));
       expect(inHome(cta), findsOneWidget);
-      final openAdvice = find.byKey(const Key('home-navigator-open-advice'));
-      expect(inHome(openAdvice), findsOneWidget);
+      // PUBLIC-DEMO-HOME-UI-3A: the "詳しく見る" local advice-detail toggle
+      // is gone — the advice explanation is always visible now. What HOME
+      // gained instead is the mockup's "他の行動を確認する" secondary route,
+      // wired by the owning screen to the same truthful scroll-jump every
+      // other on-page destination uses — still no new gameplay entry point.
+      final secondaryCta = find.byKey(
+        const Key('home-navigator-secondary-cta'),
+      );
+      expect(inHome(secondaryCta), findsOneWidget);
       expect(
         inHome(find.byWidgetPredicate((w) => w is ButtonStyleButton)),
         findsNWidgets(2),
-        reason: 'HOME has one action CTA and Hiyori\'s local detail control',
+        reason: 'HOME has one primary action CTA and one secondary '
+            'scroll-jump control',
       );
 
       // The non-CTA parts of HOME remain completely inert.
@@ -668,12 +700,15 @@ void main() {
   });
 
   group('18, 24: every action the cleanup touched is still reachable', () {
-    testWidgets('Employee Status, Finance Summary, and the month-close '
+    testWidgets('the Office Stage, Finance Summary, and the month-close '
         'control remain reachable', (tester) async {
       await pumpDemoAt(tester, const Size(360, 800));
 
       for (final finder in <Finder>[
-        find.text('社員ステージ'),
+        // PUBLIC-DEMO-HOME-UI-3A: the duplicate "社員ステージ" list is
+        // deleted — home-office-stage is the sole employee-roster
+        // presentation this group now asserts stays reachable.
+        find.byKey(const Key('home-office-stage')),
         find.byKey(const Key('public-demo-finance-summary')),
         find.byKey(const Key('public-demo-monthly-primary-cta')),
       ]) {
@@ -686,21 +721,44 @@ void main() {
       }
     });
 
-    testWidgets('a populated Important Events section remains reachable', (
-      tester,
-    ) async {
-      await pumpDemoAt(tester, const Size(390, 844));
-      await playApril(tester);
-      await tapAndSettle(tester, '4月を終了して5月へ');
-      await dismiss(tester);
+    testWidgets(
+      // PUBLIC-DEMO-HOME-UI-3A: PublicDemoImportantEventsSection ("重要イベ
+      // ント", at most the latest month-close event) is replaced by
+      // PublicDemoImportantTasksSection ("今月の重要タスク", up to three
+      // truthful tasks) — this now pins that the new section, and its
+      // scroll-jump CTA, remain reachable after a month closes.
+      //
+      // PUBLIC-DEMO-HOME-UI-3A P2 fix (PR #150 review): the 営業/採用 rows
+      // are each gated on whether `_recommendedActionCandidates` (the same
+      // authority the Recommended Action slot itself uses) still has a
+      // matching eligible entry — see `_S._importantTasks`'s own doc. May
+      // genuinely has none in the 営業 (existing-employee sales/assignment)
+      // category: the domain's own month gates only emit those candidates
+      // in April and from month 6 on (see
+      // `_S._recommendedActionCandidates`'s own `if (s.month == ...)`
+      // branches), so May correctly omits that row instead of offering a
+      // CTA into a section with nothing left to do there. This test asserts
+      // 資金計画 instead — the one row that is never gated, because viewing
+      // the finance summary never becomes illegal.
+      'the important tasks section remains reachable after a month closes',
+      (tester) async {
+        await pumpDemoAt(tester, const Size(390, 844));
+        await playApril(tester);
+        await tapAndSettle(tester, '4月を終了して5月へ');
+        await dismiss(tester);
 
-      final events = find.byKey(const Key('public-demo-important-events'));
-      await tester.ensureVisible(events.first);
-      await tester.pumpAndSettle();
-      expect(events, findsOneWidget);
-      expect(find.text('月次'), findsOneWidget);
-      expect(find.text('収支を見る'), findsOneWidget);
-    });
+        final tasks = find.byKey(const Key('public-demo-important-tasks'));
+        await tester.ensureVisible(tasks.first);
+        await tester.pumpAndSettle();
+        expect(tasks, findsOneWidget);
+        expect(find.text('今月の重要タスク'), findsOneWidget);
+        // Scoped to the section itself: '資金' only ever appears here.
+        expect(
+          find.descendant(of: tasks, matching: find.text('資金')),
+          findsOneWidget,
+        );
+      },
+    );
 
     testWidgets('2B: the legacy SkillSheet確認 button still exists, still '
         'sits below the Office Stage, and still works after scrolling', (
@@ -1074,4 +1132,90 @@ void main() {
       });
     }
   });
+
+  group(
+    'PUBLIC-DEMO-HOME-UI-3A: the compact KPI icon badge must not silently '
+    'truncate or over-shrink the value it sits beside',
+    () {
+      // `find.text(value)` alone cannot catch this class of regression:
+      // an earlier iteration painted the value beside the icon with fixed-
+      // size TextOverflow.ellipsis text, which only changes what is
+      // PAINTED, never the widget's own `data` string — a truncated "¥4…"
+      // and a fully painted "¥400万" both satisfy `find.text('¥400万')`, as
+      // the icon badge proved in real-device review (PR screenshot) while
+      // every existing `kpiTileValue`-style assertion kept passing.
+      //
+      // The value now renders inside a `FittedBox(fit: scaleDown)` instead
+      // (see _CompactKpiTile's own doc), which makes silent truncation
+      // structurally impossible — the full string always paints, just
+      // smaller if the tile is narrow. What that trades away is a floor on
+      // how small "smaller" may get, so this test asserts the OTHER real
+      // constraint instead: the effective on-screen font size the scale-
+      // down settles on never drops below the design's own 10px essential-
+      // text minimum.
+      for (final size in const [Size(360, 800), Size(390, 844)]) {
+        final label = '${size.width.toInt()}x${size.height.toInt()}';
+
+        testWidgets('every compact KPI value stays >= 10px effective font '
+            'size, at $label', (tester) async {
+          await pumpDemoAt(tester, size);
+          expect(tester.takeException(), isNull);
+
+          for (final tile in const [
+            'cash',
+            'assigned',
+            'waiting',
+            'sales-remaining',
+            'employees',
+            'revenue',
+            'pending-revenue',
+          ]) {
+            final textFinder = find
+                .descendant(
+                  of: find.byKey(Key('home-kpi-compact-$tile')),
+                  matching: find.byType(Text),
+                )
+                // The tile's Text descendants are [label, value] in tree
+                // order (icon+label row first, value line below) — see
+                // _CompactKpiTile's own class doc.
+                .last;
+            final valueText = tester.widget<Text>(textFinder);
+            final fittedBox = tester.renderObject<RenderFittedBox>(
+              find.ancestor(
+                of: textFinder,
+                matching: find.byType(FittedBox),
+              ),
+            );
+
+            // The value's natural (unconstrained) size at its base style —
+            // what FittedBox scales down from.
+            final natural = TextPainter(
+              text: TextSpan(text: valueText.data, style: valueText.style),
+              textDirection: TextDirection.ltr,
+            )..layout();
+
+            // scaleDown only ever shrinks (or leaves at 1.0), and preserves
+            // aspect ratio — the binding constraint here is always width,
+            // since these tiles are far wider than one text line is tall.
+            final availableWidth = fittedBox.constraints.maxWidth;
+            final scale = availableWidth >= natural.width
+                ? 1.0
+                : availableWidth / natural.width;
+            final baseFontSize = valueText.style!.fontSize!;
+            final effectiveFontSize = baseFontSize * scale;
+
+            expect(
+              effectiveFontSize,
+              greaterThanOrEqualTo(10.0),
+              reason:
+                  '$tile value "${valueText.data}" scales to '
+                  '${effectiveFontSize.toStringAsFixed(1)}px at $label '
+                  '(available width ${availableWidth.toStringAsFixed(1)}pt, '
+                  'natural width ${natural.width.toStringAsFixed(1)}pt)',
+            );
+          }
+        });
+      }
+    },
+  );
 }

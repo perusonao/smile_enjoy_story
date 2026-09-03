@@ -183,6 +183,31 @@ class KpiSection extends StatelessWidget {
   }
 }
 
+/// Above this ambient [TextScaler] factor, [_CompactKpi] stops packing
+/// [_compactRowsFor]'s 4-and-3 tiles into two single rows and instead wraps
+/// them into narrower sub-rows of [_wideColumnsPerRow] (then
+/// [_narrowColumnsPerRow] past [_veryLargeTextScaleThreshold]) — see
+/// [_CompactKpiTile]'s own doc for why the *value* text stops being wrapped
+/// in `FittedBox(scaleDown)` at the very same threshold. The two changes
+/// are one fix: extra column width is what keeps an enlarged value fitting
+/// once the tile is no longer allowed to shrink it back down.
+const double _largeTextScaleThreshold = 1.3;
+
+/// Past this factor, tiles drop to one per sub-row instead of two — 2.0x
+/// (Issue #147's own upper accessibility target) needs the full row width,
+/// not just double, to keep the longest realistic value on one line.
+const double _veryLargeTextScaleThreshold = 1.7;
+
+const int _wideColumnsPerRow = 2;
+const int _narrowColumnsPerRow = 1;
+
+/// A practical linear scale factor for ambient [TextScaler] — used only to
+/// choose a column count / whether to fit-shrink, never to resize text
+/// ourselves (actual sizing stays the framework's job via the ambient
+/// [TextScaler] every [Text] widget already honors).
+double _effectiveTextScale(BuildContext context) =>
+    MediaQuery.textScalerOf(context).scale(100) / 100;
+
 class _CompactKpi extends StatelessWidget {
   const _CompactKpi({required this.data});
 
@@ -191,6 +216,12 @@ class _CompactKpi extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final rows = _compactRowsFor(data);
+    final scale = _effectiveTextScale(context);
+    final columnsPerRow = scale >= _veryLargeTextScaleThreshold
+        ? _narrowColumnsPerRow
+        : scale >= _largeTextScaleThreshold
+        ? _wideColumnsPerRow
+        : null; // null: each row keeps its own natural width (4, then 3).
     return Card(
       key: const Key('home-kpi-compact'),
       margin: EdgeInsets.zero,
@@ -201,14 +232,9 @@ class _CompactKpi extends StatelessWidget {
           children: [
             for (var i = 0; i < rows.length; i++) ...[
               if (i > 0) const SizedBox(height: 6),
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  for (var j = 0; j < rows[i].length; j++) ...[
-                    if (j > 0) const SizedBox(width: 6),
-                    Expanded(child: _CompactKpiTile(data: rows[i][j])),
-                  ],
-                ],
+              _CompactKpiRow(
+                tiles: rows[i],
+                columnsPerRow: columnsPerRow ?? rows[i].length,
               ),
             ],
           ],
@@ -218,10 +244,68 @@ class _CompactKpi extends StatelessWidget {
   }
 }
 
-/// Value-over-label, no icon, single line each: the densest readable form
-/// of a KPI figure. Both lines keep `maxLines: 1` + ellipsis so a long
-/// value can never wrap a tile taller than its row-mates (four tiles share
-/// ~328pt of inner width at 360x800).
+/// One logical KPI row (4 tiles, or 3), chunked into [columnsPerRow]-wide
+/// sub-rows stacked vertically. [columnsPerRow] equal to the tile count
+/// renders exactly the original single Row; a smaller value is how
+/// [_CompactKpi] gives each tile more width at a large text scale, per its
+/// own doc.
+class _CompactKpiRow extends StatelessWidget {
+  const _CompactKpiRow({required this.tiles, required this.columnsPerRow});
+
+  final List<_KpiTileData> tiles;
+  final int columnsPerRow;
+
+  @override
+  Widget build(BuildContext context) {
+    final chunks = <List<_KpiTileData>>[
+      for (var i = 0; i < tiles.length; i += columnsPerRow)
+        tiles.sublist(
+          i,
+          i + columnsPerRow > tiles.length ? tiles.length : i + columnsPerRow,
+        ),
+    ];
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        for (var c = 0; c < chunks.length; c++) ...[
+          if (c > 0) const SizedBox(height: 6),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              for (var j = 0; j < chunks[c].length; j++) ...[
+                if (j > 0) const SizedBox(width: 6),
+                Expanded(child: _CompactKpiTile(data: chunks[c][j])),
+              ],
+            ],
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+/// Icon-led label row, with the value on its own full-width line below:
+/// the densest readable form of a KPI figure that still reads as icon-led,
+/// per the approved PUBLIC-DEMO-HOME-UI-3A visual target. The label always
+/// keeps `maxLines: 1` + ellipsis. Below [_largeTextScaleThreshold] the
+/// value does too (wrapped in a shrink-to-fit `FittedBox`, since four tiles
+/// share ~328pt of inner width at 360x800 at the default scale); at or
+/// above it, the value is allowed to wrap onto a second line instead — see
+/// the `Builder` in [build] for why.
+///
+/// PUBLIC-DEMO-HOME-UI-3A: adds the icon badge [_KpiTileData.icon] already
+/// carried but never painted before this change. No `Key`, value format, or
+/// label text changed — existing finders for `home-kpi-compact-*` keep
+/// working unmodified.
+///
+/// The icon sits beside the LABEL, not the value: an earlier iteration put
+/// it beside the value instead, which left too little width for a figure
+/// like "¥400万" at 390pt and silently ellipsized it (caught by a dedicated
+/// TextPainter-based regression test, since `find.text` alone cannot detect
+/// paint-time ellipsis truncation). The value keeps the tile's full
+/// content width instead — every label here ("現金","参画","待機",...) is
+/// short enough to share its own line with a small badge without doing the
+/// same.
 class _CompactKpiTile extends StatelessWidget {
   const _CompactKpiTile({required this.data});
 
@@ -242,21 +326,79 @@ class _CompactKpiTile extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            data.value ?? '—',
-            style: theme.textTheme.titleSmall?.copyWith(
-              fontWeight: FontWeight.bold,
-            ),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
+          Row(
+            children: [
+              DecoratedBox(
+                decoration: BoxDecoration(
+                  color: colorScheme.primary.withValues(alpha: 0.14),
+                  shape: BoxShape.circle,
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.all(2.5),
+                  child: Icon(
+                    data.icon,
+                    size: 10,
+                    color: colorScheme.primary,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 4),
+              Flexible(
+                child: Text(
+                  data.label,
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: colorScheme.onSurfaceVariant,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
           ),
-          Text(
-            data.label,
-            style: theme.textTheme.labelSmall?.copyWith(
-              color: colorScheme.onSurfaceVariant,
-            ),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
+          const SizedBox(height: 2),
+          Builder(
+            builder: (context) {
+              final valueText = Text(
+                data.value ?? '—',
+                style: theme.textTheme.titleSmall?.copyWith(
+                  fontWeight: FontWeight.bold,
+                ),
+                // A P2 fix (Issue #147 PR #150 review): at an enlarged
+                // ambient TextScaler, this used to stay wrapped in
+                // `FittedBox(scaleDown)` below, which measured the
+                // enlarged value and then shrank it straight back down to
+                // fit the same ~60pt tile — silently cancelling most or
+                // all of the requested accessibility scale. Past
+                // [_largeTextScaleThreshold], `_CompactKpiRow` above
+                // already gives this tile a wider column (and, past
+                // [_veryLargeTextScaleThreshold], the full row) instead,
+                // so the enlarged value fits on its own — the value text
+                // is left unshrunk and allowed to wrap to a second line
+                // rather than being measured against a box no longer
+                // guaranteed to hold it on one.
+                maxLines: _effectiveTextScale(context) >=
+                        _largeTextScaleThreshold
+                    ? 2
+                    : 1,
+              );
+              if (_effectiveTextScale(context) >= _largeTextScaleThreshold) {
+                return valueText;
+              }
+              // Below the threshold: unchanged from before this fix — the
+              // four/three-across row leaves as little as ~60pt for a
+              // value like "¥400万", comfortable most months but tight
+              // enough at the widest figures that a fixed font size
+              // ellipsized real digits instead of a rare rounding
+              // artifact (see this tile's own regression test in
+              // public_demo_01_home_consolidation_test.dart). Scaling
+              // down keeps every digit visible at the *default* scale,
+              // where there is no wider column to grow into instead.
+              return FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: Alignment.centerLeft,
+                child: valueText,
+              );
+            },
           ),
         ],
       ),

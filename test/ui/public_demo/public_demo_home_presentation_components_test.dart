@@ -16,87 +16,115 @@ Widget host(Widget child, {double scale = 1}) => MaterialApp(
   ),
 );
 
+/// The fixed three-item "今月の重要タスク" list — the same shape the owning
+/// screen always builds (PUBLIC-DEMO-HOME-UI-3A). Tests below use a small
+/// helper to build fixture items rather than repeating the three literals.
+List<PublicDemoImportantTaskItem> _tasks({
+  required void Function() onSalesPressed,
+  required void Function() onFinancePressed,
+}) => [
+  PublicDemoImportantTaskItem(
+    title: '営業活動を進める',
+    fact: '営業残: 4回',
+    category: '営業',
+    ctaLabel: '対応する',
+    onPressed: onSalesPressed,
+  ),
+  PublicDemoImportantTaskItem(
+    title: '採用・面談に対応する',
+    fact: '待機: 2名',
+    category: '採用',
+    ctaLabel: '対応する',
+    onPressed: onSalesPressed,
+  ),
+  PublicDemoImportantTaskItem(
+    title: '資金計画を確認する',
+    fact: '今月の固定費: ¥85,000',
+    category: '資金',
+    ctaLabel: '確認する',
+    onPressed: onFinancePressed,
+  ),
+];
+
 void main() {
   testWidgets(
-    'employee stage renders empty, normal, multiple statuses, and a long name',
+    'quick access renders all items and calls each callback once, '
+    'with a 48x48 tap target',
     (tester) async {
-      await tester.pumpWidget(
-        host(const PublicDemoEmployeeStageSection(employees: [])),
-      );
-      expect(find.text('表示できる社員はいません'), findsOneWidget);
+      var officeCalls = 0, financeCalls = 0;
       await tester.pumpWidget(
         host(
-          const PublicDemoEmployeeStageSection(
-            employees: [
-              PublicDemoEmployeeStageItem(
-                name: '非常に長い名前を持つ代表社員テストエンジニア太郎',
-                status: '営業中',
+          PublicDemoQuickAccessSection(
+            items: [
+              PublicDemoQuickAccessItem(
+                itemKey: const Key('qa-office'),
+                icon: Icons.groups_outlined,
+                label: '社員の様子',
+                onPressed: () => officeCalls++,
               ),
-              PublicDemoEmployeeStageItem(name: '鈴木花子', status: 'Offer'),
-              PublicDemoEmployeeStageItem(name: '佐藤次郎', status: '参画'),
+              PublicDemoQuickAccessItem(
+                itemKey: const Key('qa-finance'),
+                icon: Icons.account_balance_wallet_outlined,
+                label: '収支・会計',
+                onPressed: () => financeCalls++,
+              ),
             ],
           ),
         ),
       );
-      expect(find.text('営業中'), findsOneWidget);
-      expect(find.text('Offer'), findsOneWidget);
-      expect(find.text('参画'), findsOneWidget);
+      expect(find.text('クイックアクセス'), findsOneWidget);
+      expect(find.text('社員の様子'), findsOneWidget);
+      expect(find.text('収支・会計'), findsOneWidget);
+      await tester.tap(find.byKey(const Key('qa-office')));
+      expect(officeCalls, 1);
+      await tester.tap(find.byKey(const Key('qa-finance')));
+      expect(financeCalls, 1);
+      final officeRect = tester.getSize(find.byKey(const Key('qa-office')));
+      expect(officeRect.height, greaterThanOrEqualTo(48));
       expect(tester.takeException(), isNull);
     },
   );
 
   testWidgets(
-    // SES-ISSUE-124 P1 fix: the empty state used to be an invisible,
-    // zero-footprint SizedBox — a real-device Screen Verification review
-    // found that satisfied only the layout-budget tests, not the actual
-    // "今月何が変わったか" question a player needs answered on screen. It
-    // is now a real, visible line of text (still no full card — see the
-    // widget's own doc comment for why).
-    'important events shows a visible "no changes yet" line when empty, '
-    'renders populated events, and calls CTA once',
+    // PUBLIC-DEMO-HOME-UI-3A: replaces the former "重要イベント" section
+    // (an invisible empty-state marker, or at most one month-close event)
+    // with the approved visual target's "今月の重要タスク" — always exactly
+    // the caller's items, no empty state, no fabricated priority/deadline.
+    'important tasks always renders all items with neutral category chips '
+    'and calls each CTA once',
     (tester) async {
-      var calls = 0;
+      var salesCalls = 0, financeCalls = 0;
       await tester.pumpWidget(
-        host(const PublicDemoImportantEventsSection(events: [])),
-      );
-      final emptyState = find.byKey(
-        const Key('public-demo-important-events-empty'),
-      );
-      expect(emptyState, findsOneWidget);
-      // The empty state must be genuinely visible text a player can read,
-      // not merely present as an inert marker in the widget tree.
-      expect(tester.widget<Text>(emptyState).data, isNotEmpty);
-      expect(find.text('今月の変化：まだありません'), findsOneWidget);
-      expect(find.byType(Card), findsNothing);
-      final events = [
-        PublicDemoImportantEventItem(
-          title: '長い重要イベントのタイトルでも画面からはみ出さずに内容を確認できます',
-          summary: '対応内容の説明も十分に長い場合がありますが、プレゼンテーションコンポーネントは表示だけを行います。',
-          category: '優先',
-          ctaLabel: '確認する',
-          onPressed: () => calls++,
-          isHighPriority: true,
+        host(
+          PublicDemoImportantTasksSection(
+            items: _tasks(
+              onSalesPressed: () => salesCalls++,
+              onFinancePressed: () => financeCalls++,
+            ),
+          ),
         ),
-        const PublicDemoImportantEventItem(
-          title: '月末処理',
-          summary: '今月の処理を確認してください。',
-          category: '経営',
-          ctaLabel: '開く',
-          onPressed: _noOp,
-        ),
-      ];
-      await tester.pumpWidget(
-        host(PublicDemoImportantEventsSection(events: events)),
       );
       expect(
-        find.byKey(const Key('public-demo-important-events')),
+        find.byKey(const Key('public-demo-important-tasks')),
         findsOneWidget,
       );
-      expect(find.text('重要イベント'), findsOneWidget);
-      expect(find.text('優先'), findsOneWidget);
-      expect(find.text('月末処理'), findsOneWidget);
+      expect(find.text('今月の重要タスク'), findsOneWidget);
+      expect(find.text('営業活動を進める'), findsOneWidget);
+      expect(find.text('採用・面談に対応する'), findsOneWidget);
+      expect(find.text('資金計画を確認する'), findsOneWidget);
+      expect(find.text('営業残: 4回'), findsOneWidget);
+      expect(find.text('待機: 2名'), findsOneWidget);
+      expect(find.text('今月の固定費: ¥85,000'), findsOneWidget);
+      // Neutral category chips, not a priority/urgency claim.
+      expect(find.text('営業'), findsOneWidget);
+      expect(find.text('採用'), findsOneWidget);
+      expect(find.text('資金'), findsOneWidget);
+      expect(find.text('High Priority'), findsNothing);
+      expect(find.text('重要'), findsNothing);
+      await tester.tap(find.text('対応する').first);
+      expect(salesCalls, 1);
       await tester.tap(find.text('確認する'));
-      expect(calls, 1);
+      expect(financeCalls, 1);
       expect(tester.takeException(), isNull);
     },
   );
@@ -126,32 +154,18 @@ void main() {
   });
 
   testWidgets(
-    'employee stage caps the visible roster and summarizes the rest, '
-    'matching the Office Stage overflow idiom',
+    'important tasks separates rows with a divider and never duplicates '
+    'a category chip as a priority claim across items',
     (tester) async {
       await tester.pumpWidget(
         host(
-          const PublicDemoEmployeeStageSection(
-            employees: [
-              PublicDemoEmployeeStageItem(name: '社員A', status: '営業中'),
-              PublicDemoEmployeeStageItem(name: '社員B', status: '営業中'),
-              PublicDemoEmployeeStageItem(name: '社員C', status: '営業中'),
-              PublicDemoEmployeeStageItem(name: '社員D', status: '営業中'),
-              PublicDemoEmployeeStageItem(name: '社員E', status: '営業中'),
-              PublicDemoEmployeeStageItem(name: '社員F', status: '営業中'),
-            ],
+          PublicDemoImportantTasksSection(
+            items: _tasks(onSalesPressed: _noOp, onFinancePressed: _noOp),
           ),
         ),
       );
-      expect(find.text('社員A'), findsOneWidget);
-      expect(find.text('社員D'), findsOneWidget);
-      expect(find.text('社員E'), findsNothing);
-      expect(find.text('社員F'), findsNothing);
-      expect(
-        find.byKey(const Key('public-demo-employee-stage-more')),
-        findsOneWidget,
-      );
-      expect(find.text('他2名'), findsOneWidget);
+      expect(find.byType(Divider), findsNWidgets(2));
+      expect(tester.takeException(), isNull);
     },
   );
 
@@ -210,21 +224,21 @@ void main() {
           host(
             Column(
               children: [
-                const PublicDemoEmployeeStageSection(
-                  employees: [
-                    PublicDemoEmployeeStageItem(
-                      name: '長い名前の代表社員エンジニア',
-                      status: '客先面談通過',
-                    ),
-                  ],
+                PublicDemoImportantTasksSection(
+                  items: _tasks(onSalesPressed: _noOp, onFinancePressed: _noOp),
                 ),
-                PublicDemoImportantEventsSection(
-                  events: [
-                    PublicDemoImportantEventItem(
-                      title: '長いイベント名',
-                      summary: '長い説明文を表示しても安全です。',
-                      category: '重要',
-                      ctaLabel: '詳細を確認',
+                PublicDemoQuickAccessSection(
+                  items: [
+                    PublicDemoQuickAccessItem(
+                      itemKey: const Key('qa-scale-office'),
+                      icon: Icons.groups_outlined,
+                      label: '社員の様子',
+                      onPressed: _noOp,
+                    ),
+                    PublicDemoQuickAccessItem(
+                      itemKey: const Key('qa-scale-finance'),
+                      icon: Icons.account_balance_wallet_outlined,
+                      label: '収支・会計',
                       onPressed: _noOp,
                     ),
                   ],

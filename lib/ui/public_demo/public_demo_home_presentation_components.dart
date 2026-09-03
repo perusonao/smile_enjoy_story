@@ -2,35 +2,35 @@ import 'package:flutter/material.dart';
 
 import '../theme.dart';
 
-/// Resolved, display-only data for one employee on the Public Demo HOME.
-///
-/// The HOME/controller decides both who appears here and which status label is
-/// appropriate. This model deliberately contains no game-state reference.
-class PublicDemoEmployeeStageItem {
-  const PublicDemoEmployeeStageItem({required this.name, required this.status});
-
-  final String name;
-  final String status;
-}
-
-/// Presentation data for an important event. [onPressed] remains owned by
-/// the caller so this widget never decides a route or event outcome.
-class PublicDemoImportantEventItem {
-  const PublicDemoImportantEventItem({
+/// PUBLIC-DEMO-HOME-UI-3A: replaces the former `PublicDemoImportantEventItem`
+/// / `PublicDemoImportantEventsSection` ("重要イベント" — at most the latest
+/// month-close event) with the approved visual target's "今月の重要タスク"
+/// list. Every field here is display-only data the caller already owns; this
+/// model invents no priority ranking, deadline, or progress value — see
+/// [PublicDemoImportantTasksSection]'s own doc for exactly which three
+/// truthful facts back the fixed three items.
+class PublicDemoImportantTaskItem {
+  const PublicDemoImportantTaskItem({
     required this.title,
-    required this.summary,
+    required this.fact,
     required this.category,
     required this.ctaLabel,
     required this.onPressed,
-    this.isHighPriority = false,
   });
 
   final String title;
-  final String summary;
+
+  /// The one already-authoritative fact this task is about (e.g.
+  /// "営業残: 4回"), never a fabricated priority/deadline/percentage.
+  final String fact;
+
+  /// A neutral category label ("営業"/"採用"/"資金") — not a priority claim.
+  /// The approved mockup's "High Priority"/"重要" chips have no ranking
+  /// authority behind them in Public Demo's current model, so every task
+  /// here renders the same neutral chip style instead of inventing one.
   final String category;
   final String ctaLabel;
   final VoidCallback onPressed;
-  final bool isHighPriority;
 }
 
 /// Finance values already calculated by the finance/state authority.
@@ -67,111 +67,151 @@ class PublicDemoMonthlyPrimaryCtaModel {
   final VoidCallback onPressed;
 }
 
-class PublicDemoEmployeeStageSection extends StatelessWidget {
-  const PublicDemoEmployeeStageSection({super.key, required this.employees});
+/// Section 6 of the approved PUBLIC-DEMO-HOME-UI-3A target: "今月の重要タスク".
+///
+/// Replaces the former `PublicDemoImportantEventsSection` ("重要イベント" —
+/// at most one item, the latest month-close event, or an empty-state line).
+/// This renders exactly [items] (in practice up to the fixed three the
+/// owning screen builds from `salesRemaining`/`waitingEmployeeCount`/
+/// `fixedCosts` — see `_S._importantTasks`'s own doc for why the 営業/採用
+/// rows are each omitted, not disabled, once nothing eligible backs them;
+/// 資金計画 always renders). No priority/deadline/percentage is invented for
+/// any item that does render.
+class PublicDemoImportantTasksSection extends StatelessWidget {
+  const PublicDemoImportantTasksSection({super.key, required this.items});
 
-  final List<PublicDemoEmployeeStageItem> employees;
+  final List<PublicDemoImportantTaskItem> items;
 
-  /// SES-FIRST-FUN-YEAR-UI-PHASE-1: this HOME summary used to render every
-  /// employee unconditionally, so the card's height grew without bound as
-  /// the roster grew across the fiscal year — the "大型employee card" the
-  /// First Fun Year UI review named as HOME bloat. Capped at the same
-  /// overflow idiom the Office Stage above it already uses ("+N名"), so the
-  /// card stays a bounded summary rather than a second full roster list;
-  /// the always-reachable per-employee cards further down the screen are
-  /// still where every individual employee's detail and actions live.
-  static const int _maxVisible = 4;
+  @override
+  Widget build(BuildContext context) => _HomeSectionCard(
+    cardKey: const Key('public-demo-important-tasks'),
+    title: '今月の重要タスク',
+    accent: true,
+    child: Column(
+      children: [
+        for (var i = 0; i < items.length; i++) ...[
+          if (i > 0) const Divider(height: 16),
+          _ImportantTaskRow(item: items[i]),
+        ],
+      ],
+    ),
+  );
+}
+
+class _ImportantTaskRow extends StatelessWidget {
+  const _ImportantTaskRow({required this.item});
+  final PublicDemoImportantTaskItem item;
 
   @override
   Widget build(BuildContext context) {
-    final visible = employees.take(_maxVisible).toList(growable: false);
-    final hidden = employees.length - visible.length;
-    return _HomeSectionCard(
-      cardKey: const Key('public-demo-employee-stage'),
-      title: '社員ステージ',
-      dense: true,
-      child: employees.isEmpty
-          ? const Text('表示できる社員はいません')
-          : Column(
-              children: [
-                // SES-ISSUE-124 (Screen Verification follow-up): one row per
-                // employee instead of a name row plus an indented status
-                // row — this card used to duplicate the picture-based
-                // "社員の様子" summary directly above it at roughly twice
-                // the height a single "誰が・どんな状態か" line needs.
-                for (final employee in visible)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 2),
-                    child: Row(
-                      children: [
-                        const Icon(Icons.person_outline, size: 16),
-                        const SizedBox(width: 6),
-                        Expanded(
-                          child: Text(
-                            employee.name,
-                            overflow: TextOverflow.ellipsis,
-                            style: Theme.of(context).textTheme.bodyMedium
-                                ?.copyWith(fontSize: 13),
-                          ),
-                        ),
-                        const SizedBox(width: 6),
-                        _StatusChip(label: employee.status, compact: true),
-                      ],
-                    ),
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Wrap(
+                crossAxisAlignment: WrapCrossAlignment.center,
+                spacing: 6,
+                runSpacing: 2,
+                children: [
+                  Text(
+                    item.title,
+                    style: const TextStyle(fontWeight: FontWeight.bold),
                   ),
-                if (hidden > 0)
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: Text(
-                      '他$hidden名',
-                      key: const Key('public-demo-employee-stage-more'),
-                      style: Theme.of(context).textTheme.bodySmall,
-                    ),
-                  ),
-              ],
-            ),
+                  _StatusChip(label: item.category, compact: true),
+                ],
+              ),
+              const SizedBox(height: 3),
+              Text(
+                item.fact,
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(width: 4),
+        TextButton(onPressed: item.onPressed, child: Text(item.ctaLabel)),
+      ],
     );
   }
 }
 
-class PublicDemoImportantEventsSection extends StatelessWidget {
-  const PublicDemoImportantEventsSection({super.key, required this.events});
+/// Section 7 of the approved PUBLIC-DEMO-HOME-UI-3A target: "クイックアクセス".
+///
+/// Public Demo is a genuinely single-screen experience with no second route
+/// — every item here is an on-page scroll-jump to an existing section
+/// (never a fabricated destination/placeholder), via the same already-owned
+/// callback the owning screen's other scroll-to-section affordances use.
+class PublicDemoQuickAccessSection extends StatelessWidget {
+  const PublicDemoQuickAccessSection({super.key, required this.items});
 
-  final List<PublicDemoImportantEventItem> events;
+  final List<PublicDemoQuickAccessItem> items;
+
+  @override
+  Widget build(BuildContext context) => _HomeSectionCard(
+    cardKey: const Key('public-demo-quick-access'),
+    title: 'クイックアクセス',
+    child: Row(
+      children: [
+        for (var i = 0; i < items.length; i++) ...[
+          if (i > 0) const SizedBox(width: 4),
+          Expanded(child: _QuickAccessButton(item: items[i])),
+        ],
+      ],
+    ),
+  );
+}
+
+/// One quick-access destination — an icon, a short label, and the owning
+/// screen's already-bound scroll-jump callback.
+class PublicDemoQuickAccessItem {
+  const PublicDemoQuickAccessItem({
+    required this.itemKey,
+    required this.icon,
+    required this.label,
+    required this.onPressed,
+  });
+
+  final Key itemKey;
+  final IconData icon;
+  final String label;
+  final VoidCallback onPressed;
+}
+
+class _QuickAccessButton extends StatelessWidget {
+  const _QuickAccessButton({required this.item});
+  final PublicDemoQuickAccessItem item;
 
   @override
   Widget build(BuildContext context) {
-    // SES-ISSUE-124 P1 fix: an absence of meaningful events is still an
-    // answer to "今月何が変わったか", and the player must actually be able
-    // to read that answer without scrolling — a zero-footprint,
-    // invisible marker satisfied only the layout-budget tests, not the
-    // real Screen Verification question. This stays a single line rather
-    // than a full `_HomeSectionCard` (title + card chrome) precisely
-    // because the initial-viewport budget those cards were already
-    // spending elsewhere left only a few points of margin at 360×800 —
-    // see the Issue #124 result report for the exact numbers.
-    if (events.isEmpty) {
-      return Text(
-        '今月の変化：まだありません',
-        key: const Key('public-demo-important-events-empty'),
-        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-          color: Theme.of(context).colorScheme.onSurfaceVariant,
+    final scheme = Theme.of(context).colorScheme;
+    return InkWell(
+      key: item.itemKey,
+      onTap: item.onPressed,
+      borderRadius: BorderRadius.circular(10),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(minHeight: 48, minWidth: 48),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 6),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(item.icon, color: scheme.primary, size: 22),
+              const SizedBox(height: 4),
+              Text(
+                item.label,
+                textAlign: TextAlign.center,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context).textTheme.labelSmall,
+              ),
+            ],
+          ),
         ),
-      );
-    }
-
-    return _HomeSectionCard(
-      cardKey: const Key('public-demo-important-events'),
-      title: '重要イベント',
-      accent: true,
-      child: Column(
-        children: [
-          for (final event in events.take(2))
-            Padding(
-              padding: const EdgeInsets.only(bottom: 12),
-              child: _ImportantEventCard(event: event),
-            ),
-        ],
       ),
     );
   }
@@ -222,48 +262,6 @@ class PublicDemoMonthlyPrimaryCtaSection extends StatelessWidget {
   );
 }
 
-class _ImportantEventCard extends StatelessWidget {
-  const _ImportantEventCard({required this.event});
-  final PublicDemoImportantEventItem event;
-
-  @override
-  Widget build(BuildContext context) {
-    final color = event.isHighPriority
-        ? Colors.red.shade700
-        : SesTheme.primaryBlue;
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: .07),
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: color.withValues(alpha: .30)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _StatusChip(label: event.category, color: color),
-          const SizedBox(height: 6),
-          Text(
-            event.title,
-            style: const TextStyle(fontWeight: FontWeight.bold),
-          ),
-          const SizedBox(height: 3),
-          Text(event.summary),
-          const SizedBox(height: 8),
-          Align(
-            alignment: Alignment.centerRight,
-            child: TextButton(
-              onPressed: event.onPressed,
-              child: Text(event.ctaLabel),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 /// One "支出" (expense) line: a bold label and its bold, negatively-signed
 /// yen amount. Both remaining callers (給与, 固定費) are expense rows, so
 /// SES-FIRST-FUN-YEAR-UI-PHASE-1 dropped the `emphasis`/`expense`/`subdued`
@@ -297,16 +295,17 @@ class _FinanceRow extends StatelessWidget {
   );
 }
 
+/// A small neutral category chip. Deliberately styled identically for every
+/// caller (PUBLIC-DEMO-HOME-UI-3A): the approved mockup's "High Priority" /
+/// "重要" chip color implies a priority ranking Public Demo's current model
+/// has no authority for, so this never varies its color as a priority
+/// signal — see [PublicDemoImportantTaskItem]'s own doc.
 class _StatusChip extends StatelessWidget {
-  const _StatusChip({required this.label, this.color, this.compact = false});
+  const _StatusChip({required this.label, this.compact = false});
   final String label;
-  final Color? color;
 
-  /// SES-ISSUE-124 (Screen Verification follow-up P1 fix): a slightly
-  /// smaller variant used only by the compacted per-employee stage row,
-  /// which needed the last couple of points of margin to keep the new
-  /// visible "今月の変化" line inside the 360×800 content budget. The
-  /// 重要イベント category chip keeps its original size.
+  /// A slightly smaller variant used by dense inline rows (the important
+  /// task list). The default size is used elsewhere.
   final bool compact;
 
   @override
@@ -316,7 +315,7 @@ class _StatusChip extends StatelessWidget {
       vertical: compact ? 1 : 3,
     ),
     decoration: BoxDecoration(
-      color: (color ?? SesTheme.primaryBlue).withValues(alpha: .12),
+      color: SesTheme.primaryBlue.withValues(alpha: .12),
       borderRadius: BorderRadius.circular(12),
     ),
     child: Text(
@@ -324,7 +323,7 @@ class _StatusChip extends StatelessWidget {
       style: TextStyle(
         fontSize: compact ? 11 : 12,
         fontWeight: FontWeight.w600,
-        color: color,
+        color: SesTheme.primaryBlue,
       ),
     ),
   );
@@ -336,26 +335,17 @@ class _HomeSectionCard extends StatelessWidget {
     required this.title,
     required this.child,
     this.accent = false,
-    this.dense = false,
   });
   final Key? cardKey;
   final String title;
   final Widget child;
   final bool accent;
 
-  /// SES-ISSUE-124 (Screen Verification follow-up): a tighter padding/gap
-  /// variant for the one card in the initial viewport whose own chrome
-  /// otherwise outweighs its now-compacted content — see
-  /// [PublicDemoEmployeeStageSection]. Sections with real per-row content
-  /// (finance, events, the monthly CTA) keep the original spacing.
-  final bool dense;
-
   @override
   Widget build(BuildContext context) => Card(
     key: cardKey,
-    margin: dense ? EdgeInsets.zero : null,
     child: Padding(
-      padding: EdgeInsets.all(dense ? 2 : 14),
+      padding: const EdgeInsets.all(14),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -363,11 +353,10 @@ class _HomeSectionCard extends StatelessWidget {
             title,
             style: TextStyle(
               fontWeight: FontWeight.bold,
-              fontSize: dense ? 12 : null,
               color: accent ? SesTheme.primaryBlue : null,
             ),
           ),
-          SizedBox(height: dense ? 2 : 10),
+          const SizedBox(height: 10),
           child,
         ],
       ),

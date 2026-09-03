@@ -307,6 +307,26 @@ assertion にも触れていない。
 - `e2e/playwright.config.ts`
 - 本レポート
 
+## Slice D — PR / CI verification（進行中）
+
+### PR URL
+
+[#155](https://github.com/perusonao/smile_enjoy_story/pull/155)
+
+### CI結果
+
+CI実行結果待ち。結果が確定次第、本節と PERFORMANCE REPORT / FINAL REPORT を
+実測値で更新する。
+
+## PERFORMANCE REPORT（実測値のみ、CI結果待ち）
+
+- validate 時間: (CI結果待ち)
+- smoke-e2e 時間: (CI結果待ち)
+- Pages build 時間: (CI結果待ち)
+- merge/push → deploy までの wall-clock: (CI結果待ち)
+- 削減時間 / 削減率: (CI結果待ち。参考値 #381 約24分54秒、#385 約15分07秒
+  との比較は実測値が揃い次第記載する)
+
 ## commit SHA（Slice A）
 
 `dd590b8`（`docs(ci): audit Fast CI Web build duplication (SES-CI-SPEED-2 Slice A)`）

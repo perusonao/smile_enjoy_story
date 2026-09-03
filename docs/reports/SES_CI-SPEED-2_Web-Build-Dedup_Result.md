@@ -125,7 +125,110 @@ Pages deployの両方で安全に再利用できるか？」
 
 Slice B へ進む。
 
-## 変更ファイル（想定, Slice B/C時点で更新）
+## Slice B — 実装結果
+
+### changed files
+
+- `e2e/scripts/static-server.js` — 4番目の任意引数（CLI）/
+  `SES_E2E_BASE_PATH`（env）で `basePath`（例:
+  `/smile_enjoy_story/`）を受け取れるようにした。リクエストパスを
+  まず `root` 直下にそのまま解決し、見つからず `basePath` prefix と一致する
+  場合のみ prefix を除いた相対パスで再解決、それでも見つからなければ従来
+  通り `index.html` へ SPA fallback する。`basePath` 未指定（デフォルト
+  `''`）時は解決ロジックが従来の「直接 stat → 見つからなければ
+  index.html」と完全に同じ経路を通るため、ローカル開発フロー
+  （`flutter build web` を base-href なしで実行するケース）は無変更。
+- `e2e/playwright.config.ts` — `SES_E2E_BASE_PATH` を読み取り、
+  `static-server.js` の第3引数として渡すよう `webServer.command` を拡張。
+  `baseURL` はルート (`http://localhost:<port>`) のまま変更していない
+  （`page.goto('/...')` は先頭 `/` の絶対パスなので、`baseURL` に
+  サブパスを足しても意味がないため — Slice A の監査結果通り）。
+- `.github/workflows/e2e.yml`
+  - `validate` ジョブの `flutter build web` に
+    `--base-href "/${{ github.event.repository.name }}/"` を追加
+    （Pages 用 `build` ジョブと同一の式）。これにより `validate` が
+    upload する `build-web` artifact は Pages 配信用と同じ
+    `<base href>` を持つ。
+  - `smoke-e2e` ジョブの Playwright 実行ステップに
+    `SES_E2E_BASE_PATH: "/${{ github.event.repository.name }}/"` を追加
+    し、ローカル静的サーバがその base-href を解決できるようにした。
+  - Slice C ではないため、Pages 用 `build` ジョブの `flutter build web`
+    自体はまだ削除していない（次 Slice の対象）。
+
+### implementation
+
+Slice A で確認した通り、base-href の違いは `index.html` の
+`<base href>` 文字列 1箇所のみで、他の参照は全て相対パスのためブラウザが
+その `<base>` を基準に解決する。したがって:
+
+- `validate` の build を Pages と同じ `--base-href` に揃えれば、
+  `validate` が生成する1つの artifact が Pages 配信物と **同一内容**になる
+- `smoke-e2e` 側は、`page.goto('/...')`（先頭 `/` の絶対パス）で常に
+  サーバルートの `index.html` を取得し、その `<base href>` に従って
+  ブラウザが発行する後続リクエスト（`main.dart.js` 等）だけが
+  サブパス付きになる。ローカル静的サーバがそのサブパスを認識して
+  同じファイルを返せれば、ゲーム側コード・テストの assertion には
+  一切触れずに base-href 差異を吸収できる
+
+この設計により、production routing（Pages の実際の配信）や
+gameplay テストの内容は変更していない。`static-server.js` の変更は
+「見つからなければ prefix を1回だけ剥がして再試行」という E2E harness
+専用の追加ロジックであり、GitHub Pages 専用 hack をゲームコード
+（`lib/`, `web/index.html` 含む）へ入れる形にはなっていない
+（`web/index.html` は無変更）。
+
+### verification（focused）
+
+このセッションには Flutter SDK が存在しないため、実際の
+`flutter build web --base-href ...` は実行できていない（Slice D の
+実 CI 実行で最終確認する）。Flutter に依存しない範囲で以下を実施した:
+
+- `python3 -c "import yaml; yaml.safe_load(open('.github/workflows/e2e.yml'))"`
+  — YAML構文の妥当性、既存6ジョブ
+  (`validate/smoke-e2e/replay-package/check-latest/build/deploy`) が
+  変更後も揃っていることを確認
+- `cd e2e && npx tsc --noEmit -p tsconfig.json` — `playwright.config.ts`
+  の型チェックが通ることを確認
+- `cd e2e && npm run test:replay-unit` — 112件全て pass
+  （`check-latest-main.mjs` 等 stale-SHA guard 関連のユニットテストを
+  含む。本 Slice ではこのスクリプトを変更していないため無影響である
+  ことの再確認）
+- `static-server.js` を実際に起動し、`flutter build web
+  --base-href "/smile_enjoy_story/"` の出力を模した最小限のダミー
+  `build/web`（`<base href="/smile_enjoy_story/">` を持つ `index.html`
+  + 相対パス参照の JS/JSON/PNG）に対して手動 HTTP リクエストで検証:
+  - `GET /` → ルートで `index.html`（ダミー実装が期待通りその base href
+    を含む）を返す
+  - `GET /smile_enjoy_story/flutter_bootstrap.js` →
+    prefix を剥がして `root` 直下の同名ファイルを実体で返す
+    （index.html への SPA fallback ではなく実際の JS 内容）
+  - `GET /smile_enjoy_story/icons/Icon-192.png` → ネストした
+    パスでも同様に解決
+  - `GET /smile_enjoy_story/../../etc/passwd` → `root` 外への脱出は
+    ブロックされ SPA fallback（`index.html`）が返る（既存の path
+    traversal ガードが `basePath` 剥がし後の再解決にも適用されている
+    ことを確認）
+  - `basePath` 引数を省略した場合、`GET /manifest.json` や
+    存在しないパスへの fallback がいずれも変更前と同じ挙動であることを
+    確認（後方互換）
+
+### remaining risk
+
+- 実際の `flutter build web --base-href` 出力に、`index.html` 以外にも
+  base-href が焼き込まれる箇所がないかは、ソースコード調査
+  （`web/index.html` の相対参照、Flutter Web bootstrap の一般的挙動）
+  ベースの結論であり、本セッションで実ビルドを比較検証してはいない。
+  Slice D の実 CI 実行（`smoke-e2e` の GREEN/RED）で最終確認する
+- `smoke-e2e` の 3 seed founding-first-assignment を含む実際の
+  Playwright 実行そのものは、この環境に Flutter SDK も
+  Playwright ブラウザバイナリの新規取得手段もないため未実施。
+  Slice D の CI 実行に委ねる
+
+### commit SHA（Slice B）
+
+（このコミットで記録）
+
+## 変更ファイル（累計, Slice B時点）
 
 - `.github/workflows/e2e.yml`
 - `e2e/scripts/static-server.js`
@@ -134,4 +237,4 @@ Slice B へ進む。
 
 ## commit SHA（Slice A）
 
-（このコミットで記録）
+`dd590b8`（`docs(ci): audit Fast CI Web build duplication (SES-CI-SPEED-2 Slice A)`）

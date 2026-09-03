@@ -11,6 +11,13 @@ import path from 'path';
 const PORT = Number(process.env.SES_E2E_PORT || 4173);
 const WEB_DIR = process.env.SES_E2E_WEB_DIR || path.resolve(__dirname, '../build/web');
 const BASE_URL = `http://localhost:${PORT}`;
+// SES-CI-SPEED-2: set only when WEB_DIR was built with a matching
+// `flutter build web --base-href "/<value>/"` (e.g. in CI, so the same
+// artifact GitHub Pages deploys can be reused here) — see
+// scripts/static-server.js's header. Empty/unset (plain local `flutter
+// build web`, no --base-href) keeps today's root-relative serving exactly
+// as before.
+const BASE_PATH = process.env.SES_E2E_BASE_PATH || '';
 
 // Always record video for failed runs (§14 of the E2E brief); set
 // SES_E2E_VIDEO=on to additionally keep video for passing runs (useful when
@@ -66,7 +73,7 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: `node scripts/static-server.js ${PORT} ${JSON.stringify(WEB_DIR)}`,
+    command: `node scripts/static-server.js ${PORT} ${JSON.stringify(WEB_DIR)} ${JSON.stringify(BASE_PATH)}`,
     url: BASE_URL,
     reuseExistingServer: !process.env.CI,
     timeout: 30_000,

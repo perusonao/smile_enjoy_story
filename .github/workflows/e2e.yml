@@ -101,7 +101,13 @@ jobs:
         working-directory: .
         run: flutter test
 
-      - name: flutter build web (release, no CDN — self-contained for the local static server)
+      # SES-CI-SPEED-2: built with the same --base-href GitHub Pages deploys
+      # (see `build` job below), so this one artifact can be reused there
+      # instead of a second `flutter build web` — no CDN, self-contained.
+      # smoke-e2e's local static server is base-href-aware (see
+      # e2e/scripts/static-server.js) specifically so this base-href
+      # doesn't have to be root ("/") just to suit the local smoke run.
+      - name: flutter build web (release, no CDN — Pages base-href, reused by smoke-e2e and the Pages deploy)
         working-directory: .
         env:
           EVENT_PR_NUMBER: ${{ github.event.pull_request.number }}
@@ -118,7 +124,10 @@ jobs:
           if [[ -n "$pr_number" ]]; then
             build_info+=(--dart-define="BUILD_PR_NUMBER=$pr_number")
           fi
-          flutter build web --release --no-web-resources-cdn "${build_info[@]}"
+          flutter build web --release \
+            --base-href "/${{ github.event.repository.name }}/" \
+            --no-web-resources-cdn \
+            "${build_info[@]}"
 
       # smoke-e2e runs on its own separate runner, so the just-built web app
       # has to travel to it as an artifact rather than being found on disk.
@@ -182,9 +191,15 @@ jobs:
       # the heavy workflow so a harness regression is caught on every PR).
       # Every other spec (WebKit, annual route, Recovery, multi-viewport,
       # the other gameplay-flow specs) runs in e2e-heavy.yml instead.
+      # SES-CI-SPEED-2: validate's artifact was built with
+      # --base-href "/<repo>/" (matching the Pages deploy) — tell the local
+      # static server to also serve it under that prefix (see
+      # e2e/scripts/static-server.js's header) so the browser's own
+      # base-href-relative asset requests resolve.
       - name: Run Playwright E2E (smoke, mobile-chromium)
         env:
           SES_E2E_SEEDS: ${{ github.event.inputs.seeds }}
+          SES_E2E_BASE_PATH: "/${{ github.event.repository.name }}/"
           CI: "true"
         run: |
           npx playwright test --project=mobile-chromium \

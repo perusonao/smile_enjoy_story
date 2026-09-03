@@ -407,16 +407,44 @@ items 参照）。
 `validate` に `--base-href` を追加したことによる所要時間の悪化は
 確認されなかった（旧 10m57s → 新 10m46s、誤差の範囲内）。
 
-### merge後に確定する値（未実測）
+### After（merge後、実際の push トリガー run — 実測確定）
 
-`build`/`deploy`（実際に第2 Flutter buildを省いた状態でのPages配信経路）
-は、本PRが実際に `main` へ merge され push トリガーの run が実行される
-まで実測できない。merge 後の同一構造の run で `build` ジョブの所要時間を
-再測定し、上記 before の `build` 1m48s と比較することで、実際の
-削減時間・削減率を確定する（見込みとしては、上記「削除対象の実測 1m40s」
-がほぼそのまま `build` ジョブから、ひいては push→deploy wall-clock から
-減る計算になるが、これは実測ではなく上記実測値からの算術であるため、
-確定した「削減時間/削減率」としては merge 後に再測定するまで報告しない）。
+PR #155 は 2026-09-03T07:31:40Z に merge された。その push で実行された
+GitHub Actions run #404（id `33728560888`, head_sha `9d1b9933`,
+`Merge pull request #155 ...`）で、Slice C が変更した `build` ジョブの
+実際の動作を実測確認した。
+
+| job | conclusion | 所要時間（実測） |
+|---|---|---|
+| `validate` | ✅ success | 11m06s（07:31:46→07:42:52、うち `flutter test` 8m57s） |
+| `smoke-e2e` | ✅ success | 1m56s（07:42:52→07:44:48） |
+| `check-latest` | ✅ success | 6s（07:44:48→07:44:54） |
+| `replay-package` | ✅ success | 1m31s（07:44:48→07:46:19、`build`と並行実行） |
+| `build`（**第2 Flutter build削除後**） | ✅ success | **16s**（07:44:55→07:45:11） |
+| `deploy` | ✅ success | 15s（07:45:11→07:45:26） |
+| **push→deploy wall-clock** | — | **13m44s**（created_at 07:31:42 → deploy completed_at 07:45:26） |
+
+`build` ジョブのステップ列を実行ログから直接確認し、
+`flutter-action`/`pub get`/`flutter build web` が一切存在せず、
+`checkout → Download build/web (validate's build, same --base-href as
+this deploy) → Download e2e-replay-package → (Assemble Replay Viewer:
+このrunではreplay-package側のartifactアップロードが`build`実行時点で
+間に合わず、既存の`continue-on-error`設計通りskip → "Replay package
+unavailable for this deployment"警告) → configure-pages →
+upload-pages-artifact` という設計通りの構成になっていることを確認した。
+このReplay Viewer fold-inのbest-effort skipはSlice Cの変更とは無関係の
+既存動作（`replay-package`は`build`をブロックしない設計、ワークフロー
+冒頭コメント参照）であり、Pages配信自体（`deploy`のsuccess）には影響して
+いない。
+
+**削減時間・削減率（実測、before run #396 vs after run #404 の比較）**:
+
+- `build` ジョブ: 1m48s（108秒） → 16秒 = **92秒短縮**（約85%短縮）
+- push→deploy wall-clock: 15m20s（920秒） → 13m44s（824秒） =
+  **96秒（1分36秒）短縮**（約10.4%短縮）
+
+この数値は両方とも実際のGitHub Actions実行ログから直接取得した実測値の
+比較であり、推測やSlice D時点での見込み値からの算術ではない。
 
 ## commit SHA（Slice A）
 
@@ -431,8 +459,13 @@ MAIN と一致、`git rev-parse origin/main` で確認済み）
 
 ### FINAL HEAD SHA
 
-`2f4a59bb00e2e5a26c355f7268df6d2a6ac442d4`（PR #155 head, このレポート更新
-コミット自体は別途追記する）
+PR #155 は `2f4a59bb00e2e5a26c355f7268df6d2a6ac442d4`（head）で
+2026-09-03T07:31:40Z に `main` へ merge された（merge commit
+`9d1b9933c22da64fe7294b1ff30f8cc998725947`, GitHub Actions run #404 /
+id `33728560888` で実測確認済み — 下記 performance実測 参照）。本レポートの
+この post-merge 更新自体は別ブランチ
+`claude/web-build-dedup-ci-svlywe-postmerge`（`origin/main` = `9d1b993`
+から作成、ドキュメントのみの追記）で記録している。
 
 ### branch
 
@@ -454,10 +487,13 @@ MAIN と一致、`git rev-parse origin/main` で確認済み）
 - **Slice D（PR/CI検証）**: PR [#155](https://github.com/perusonao/smile_enjoy_story/pull/155)
   を作成し購読。`validate`/`smoke-e2e` は実 CI で GREEN
   （実測 10m46s / 2m04s）。`check-latest`/`build`/`deploy` は
-  ワークフロー設計上 pull_request イベントでは実行されず（push/
-  workflow_dispatch 限定 かつ stale-SHA guard の意図的な安全機構）、
-  Slice C の直接的な実行検証（`build` ジョブの GREEN）は merge 後の
-  push run でのみ確認できる状態のまま残っている。
+  ワークフロー設計上 pull_request イベントでは実行されず、その場では
+  未検証のまま残っていたが、2026-09-03T07:31:40Z の merge 後、実際の
+  main push run（#404, id `33728560888`）で `validate`/`smoke-e2e`/
+  `check-latest`/`replay-package`/`build`/`deploy` の全6ジョブが GREEN、
+  かつ `build` ジョブが設計通り Flutter build 抜き（16秒）で完走した
+  ことを実測確認した。push→deploy wall-clock は 15m20s → 13m44s
+  （**96秒短縮**）。詳細は下記 performance実測 参照。
 
 ### changed files
 
@@ -499,15 +535,23 @@ push(main)
   （analyze/test/build web with Pages base-href）GREEN、`smoke-e2e`
   （3-seed founding-first-assignment 含む curated spec 一式、base-href
   対応 static server 経由）GREEN
+- 実CI（merge後, push event, run #404, id `33728560888`）: 6ジョブ全て
+  GREEN。`build` ジョブのステップ列を実行ログから直接確認し、
+  `flutter-action`/`pub get`/`flutter build web` が存在せず、
+  `validate` の `build-web` artifact（Pages base-href付き）を download
+  して `upload-pages-artifact` にそのまま使う構成で実際に動作することを
+  確認した
 
 ### CI結果
 
 - PR #155 run #398（head `2f4a59bb`）: `validate` success (10m46s) /
   `smoke-e2e` success (2m04s) / `check-latest`・`build`・`deploy`・
   `replay-package` は設計通り skipped（pull_request イベントのため）
-- `build`/`deploy`（Slice C の直接検証）は merge 後の main push run で
-  確認が必要（未実施・未実測。DO NOT: 自動merge禁止のため本セッションでは
-  実施していない）
+- merge後 run #404（head `9d1b9933`, push event）: `validate`/
+  `smoke-e2e`/`check-latest`/`replay-package`/`build`/`deploy` の
+  6ジョブ全て success。`build`（第2 Flutter build削除後）16秒、
+  `deploy` 15秒。Pages配信経路（`configure-pages`→
+  `upload-pages-artifact`→`deploy-pages`）は正常に完走した
 
 ### performance実測
 
@@ -515,25 +559,34 @@ push(main)
   push→deploy wall-clock **15m20s**（`validate` 10m57s / `smoke-e2e`
   2m07s / `check-latest` 8s / `build` 1m48s(うち2回目のFlutter build
   関連ステップ実測 1m40s) / `deploy` 17s）
-- After（PR #155, pull_requestイベントで検証できた範囲）: `validate`
-  10m46s / `smoke-e2e` 2m04s（`validate`へのbase-href追加による有意な
-  遅化なし）
-- `build`/`deploy` を含む push→deploy 全体の after wall-clock、および
-  削減時間・削減率の確定値: **未測定**（merge後のpush run待ち。推測値は
-  本レポートに記載しない）
+- After（merge後 main push run #404, head `9d1b9933`, 新ワークフロー）:
+  push→deploy wall-clock **13m44s**（`validate` 11m06s / `smoke-e2e`
+  1m56s / `check-latest` 6s / **`build` 16s**（第2 Flutter build削除後）
+  / `deploy` 15s）
+- **削減時間・削減率（実測 before vs after）**:
+  - `build` ジョブ単体: 1m48s → 16s = **92秒短縮**（約85%短縮）
+  - push→deploy wall-clock全体: 15m20s → 13m44s =
+    **96秒（1分36秒）短縮**（約10.4%短縮）
+  - `validate` の所要時間（`--base-href` 追加後）は 10m57s → 11m06s と
+    誤差の範囲内の変動で、有意な悪化は確認されなかった
+    （`flutter test` 自体の実行時間のばらつきが支配的で、`--base-href`
+    追加によるものではない）
 - 参考値（#381 約24分54秒、#385 約15分07秒）との比較: 直前の同日 main
   push run（#396, 15m20s）の方がより公正な比較対象と判断し、そちらを
-  beforeとして採用した
+  beforeとして採用した。参考値ベースでは #385（15分07秒）比でも
+  push→deploy wall-clockは短縮している
 
 ### unresolved items
 
-- `build`/`deploy` ジョブの実際の push-triggered GREEN 実行、および
-  push→deploy wall-clock の削減時間・削減率の実測確定は merge 後の
-  フォローアップとして残っている
 - `e2e-heavy.yml`（週次フルリグレッション・WebKit）は本タスクの対象外で
   無変更のまま
 - Issue #149 本文にある「テスト分類ごとの計測」「Tier運用ルール明文化」等は
   引き続き未着手（本タスクのスコープ外）
+- `build` ジョブ実行時、`replay-package` job のartifactアップロードが
+  間に合わず Replay Viewer fold-in が best-effort skip されるケースを
+  実際のmerge後runで観測した（`build`は`replay-package`を`needs`
+  しない既存設計通りの動作であり、Slice A〜Cの変更や今回のバグではない。
+  Pages配信自体は正常に完了しているため、追加対応は不要と判断する）
 
 ### rollback方法
 
@@ -548,16 +601,20 @@ push(main)
 ### PR URL
 
 [https://github.com/perusonao/smile_enjoy_story/pull/155](https://github.com/perusonao/smile_enjoy_story/pull/155)
+（2026-09-03T07:31:40Z に `perusonao` により merge 済み）
 
 ### MERGE READINESS
 
-**B. READY WITH MINOR FOLLOW-UP**
+**A. READY**（merge済み、post-merge実行で確認完了）
 
 理由: コード変更自体は安全性の前提（stale-SHA guard・base-href差異の範囲・
-既存テストassertion無変更）を保った設計であり、PRで検証可能な範囲
-（`validate`/`smoke-e2e`）は実CIでGREENを確認済み。ただし本タスクが
-対象とする「第2 Flutter build削除」そのものの実行確認（`build`ジョブの
-実CI GREEN）と、それに伴う実際の削減時間・削減率の実測は、ワークフローの
-設計上 merge後のpush runでしか行えず、本セッションでは（自動merge禁止の
-ため）未実施のまま残っている。これはコードの欠陥ではなく確認の未完了で
-あり、"minor follow-up" として記録する。
+既存テストassertion無変更）を保った設計であり、PR時点で検証可能な範囲
+（`validate`/`smoke-e2e`）は実CIでGREENを確認済みだった。PRはユーザー
+（`perusonao`）により merge され、その後の main push run（#404, id
+`33728560888`）で `validate`/`smoke-e2e`/`check-latest`/
+`replay-package`/`build`/`deploy` の6ジョブ全てが実際に GREEN、かつ
+`build` ジョブが設計通り第2 Flutter buildなしで完走（16秒）し、
+Pages配信（`deploy-pages`）も正常に完了したことを実測確認した。
+push→deploy wall-clockは実測で15m20s→13m44s（96秒短縮）。
+本タスクの目的（Web build 1回化によるmain→Pages deploy高速化）は
+達成され、確認も完了している。

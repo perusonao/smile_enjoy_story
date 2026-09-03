@@ -71,11 +71,12 @@ class PublicDemoMonthlyPrimaryCtaModel {
 ///
 /// Replaces the former `PublicDemoImportantEventsSection` ("重要イベント" —
 /// at most one item, the latest month-close event, or an empty-state line).
-/// This always renders exactly [items] (in practice the fixed three the
+/// This renders exactly [items] (in practice up to the fixed three the
 /// owning screen builds from `salesRemaining`/`waitingEmployeeCount`/
-/// `fixedCosts`, all of which are always-defined ints) — there is no "no
-/// tasks" empty state to fall back to, and no priority/deadline/percentage
-/// invented for any of them.
+/// `fixedCosts` — see `_S._importantTasks`'s own doc for why the 営業/採用
+/// rows are each omitted, not disabled, once nothing eligible backs them;
+/// 資金計画 always renders). No priority/deadline/percentage is invented for
+/// any item that does render.
 class PublicDemoImportantTasksSection extends StatelessWidget {
   const PublicDemoImportantTasksSection({super.key, required this.items});
 

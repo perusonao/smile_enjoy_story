@@ -936,4 +936,151 @@ void main() {
       });
     }
   });
+
+  // =====================================================================
+  // 9: PUBLIC-DEMO-HOME-UI-3A P2 fix (PR #150 review) — the important-
+  // tasks section's 営業/採用 rows must never invite the player into a
+  // section with nothing eligible left in it.
+  // =====================================================================
+  group(
+    '9: important-task rows never invite the player into a dead end',
+    () {
+      test(
+        'homeImportantTaskHasEligibleAction is false for every terminal/'
+        'completed state the design names, regardless of the candidate list',
+        () {
+          // Same three states public_demo_01_home_recommended_action_test's
+          // own group 6 already pins as isCloseBlocked — reused here rather
+          // than re-derived, so this test and that one cannot silently
+          // disagree about which states are terminal/completed.
+          final bankruptcy = PublicDemoState.aprilStart().copyWith(
+            financialStatus: PublicDemoFinancialStatus.bankruptcy,
+          );
+          final marchFailure = PublicDemoState.aprilStart().copyWith(
+            financialStatus: PublicDemoFinancialStatus.marchCashShortageFailure,
+          );
+          final fiscalSuccess = PublicDemoState.aprilStart().copyWith(
+            fiscalYearCompleted: true,
+          );
+          final eligibleCandidate = [
+            HomeRecommendedActionCandidate(
+              action: const HomeRecommendedAction(
+                kind: HomeRecommendedActionKind.employeeAcceptOrder,
+              ),
+              invoke: () {},
+            ),
+          ];
+          for (final state in [bankruptcy, marchFailure, fiscalSuccess]) {
+            expect(state.isCloseBlocked, isTrue);
+            expect(
+              homeImportantTaskHasEligibleAction(state, eligibleCandidate, {
+                HomeRecommendedActionKind.employeeAcceptOrder,
+              }),
+              isFalse,
+              reason: '${state.financialStatus}/'
+                  'fiscalYearCompleted=${state.fiscalYearCompleted} must '
+                  'suppress the row even though an eligible candidate '
+                  'exists',
+            );
+          }
+        },
+      );
+
+      test(
+        'homeImportantTaskHasEligibleAction is false once the requested '
+        'category is exhausted — no matching candidate, or none at all',
+        () {
+          final notBlocked = PublicDemoState.aprilStart();
+          expect(notBlocked.isCloseBlocked, isFalse);
+          final unrelatedCandidate = [
+            HomeRecommendedActionCandidate(
+              action: const HomeRecommendedAction(
+                kind: HomeRecommendedActionKind.raiseRequest,
+              ),
+              invoke: () {},
+            ),
+          ];
+          expect(
+            homeImportantTaskHasEligibleAction(notBlocked, unrelatedCandidate, {
+              HomeRecommendedActionKind.employeeAcceptOrder,
+            }),
+            isFalse,
+          );
+          expect(
+            homeImportantTaskHasEligibleAction(
+              notBlocked,
+              const <HomeRecommendedActionCandidate>[],
+              {HomeRecommendedActionKind.employeeAcceptOrder},
+            ),
+            isFalse,
+          );
+        },
+      );
+
+      test(
+        'homeImportantTaskHasEligibleAction is true only once both '
+        'conditions hold: not blocked, and a matching candidate exists',
+        () {
+          final notBlocked = PublicDemoState.aprilStart();
+          final matching = [
+            HomeRecommendedActionCandidate(
+              action: const HomeRecommendedAction(
+                kind: HomeRecommendedActionKind.employeeAcceptOrder,
+              ),
+              invoke: () {},
+            ),
+          ];
+          expect(
+            homeImportantTaskHasEligibleAction(notBlocked, matching, {
+              HomeRecommendedActionKind.employeeAcceptOrder,
+            }),
+            isTrue,
+          );
+        },
+      );
+
+      testWidgets(
+        'after bankruptcy, the important-tasks section drops the 営業/採用 '
+        'rows instead of offering a CTA into a section with nothing left '
+        'to do',
+        (tester) async {
+          await pumpDemo(tester);
+          await playIntoCashShortage(tester);
+          await tapAndSettle(tester, '11月を終了して翌月へ');
+          await settle(tester);
+          expect(
+            currentState(tester).financialStatus,
+            PublicDemoFinancialStatus.bankruptcy,
+          );
+          expect(currentState(tester).isCloseBlocked, isTrue);
+
+          final tasks = find.byKey(
+            const Key('public-demo-important-tasks'),
+          );
+          await tester.ensureVisible(tasks);
+          await tester.pumpAndSettle();
+          expect(tasks, findsOneWidget);
+
+          // 資金計画 is never gated — viewing the finance summary never
+          // becomes illegal.
+          expect(
+            find.descendant(of: tasks, matching: find.text('資金')),
+            findsOneWidget,
+          );
+          // '営業' is also the bottom nav's own destination label (section
+          // 8) — scoped strictly to the important-tasks section so this
+          // cannot pass by matching that unrelated, always-present label
+          // instead.
+          expect(
+            find.descendant(of: tasks, matching: find.text('営業')),
+            findsNothing,
+          );
+          expect(
+            find.descendant(of: tasks, matching: find.text('採用')),
+            findsNothing,
+          );
+        },
+      );
+    },
+  );
 }

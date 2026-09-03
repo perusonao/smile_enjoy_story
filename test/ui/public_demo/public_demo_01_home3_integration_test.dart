@@ -224,5 +224,90 @@ void main() {
         },
       );
     }
+
+    // PUBLIC-DEMO-HOME-UI-3A P2 fix (PR #150 review): the compact KPI
+    // value used to stay wrapped in `FittedBox(fit: scaleDown)` at every
+    // text scale, which measured the enlarged value and then shrank it
+    // straight back down to fit the same ~60pt tile — silently cancelling
+    // most or all of an increased ambient TextScaler. `find.text(value)`
+    // alone cannot catch that class of regression (the widget's `data`
+    // string is unchanged either way); this group instead compares each
+    // value's rendered height at the ambient scale under test against its
+    // own height at scale 1.0, which only reads as larger if the enlarged
+    // text was genuinely allowed to render larger — see kpi_section.dart's
+    // `_CompactKpiTile` doc for the fix this pins.
+    for (final width in [360.0, 390.0]) {
+      for (final scale in [1.3, 2.0]) {
+        testWidgets(
+          'at ${width.toInt()}px and ${scale}x text scale, the compact KPI '
+          'value grows with the scale instead of being shrunk back down',
+          (tester) async {
+            await pumpDemo(tester, size: Size(width, 844));
+            final baselineHeight = tester
+                .getRect(
+                  find
+                      .descendant(
+                        of: find.byKey(const Key('home-kpi-compact-cash')),
+                        matching: find.byType(Text),
+                      )
+                      .last,
+                )
+                .height;
+
+            await pumpDemo(tester, size: Size(width, 844), textScale: scale);
+            expect(tester.takeException(), isNull);
+
+            final valueFinder = find
+                .descendant(
+                  of: find.byKey(const Key('home-kpi-compact-cash')),
+                  matching: find.byType(Text),
+                )
+                .last;
+
+            // The whole point of the fix: no `FittedBox` stands between the
+            // value and its tile at an enlarged scale, so nothing can scale
+            // the framework's own text-scale growth back down.
+            expect(
+              find.ancestor(of: valueFinder, matching: find.byType(FittedBox)),
+              findsNothing,
+              reason:
+                  'a FittedBox here would be free to shrink the enlarged '
+                  'value straight back down, defeating TextScaler '
+                  '${scale}x',
+            );
+
+            final scaledHeight = tester.getRect(valueFinder).height;
+            expect(
+              scaledHeight,
+              greaterThanOrEqualTo(baselineHeight * scale * 0.9),
+              reason:
+                  'the ${scale}x value rendered at ${scaledHeight.toStringAsFixed(1)}pt '
+                  'tall vs a 1.0x baseline of ${baselineHeight.toStringAsFixed(1)}pt — '
+                  'that is not the requested scale, so something between the '
+                  'text and the tile is still shrinking it back down',
+            );
+
+            // The value's full text must still be present verbatim (no
+            // fabricated ellipsis truncation either) — every compact tile,
+            // not just cash, across every value/label.
+            for (final tile in const [
+              'cash',
+              'assigned',
+              'waiting',
+              'sales-remaining',
+              'employees',
+              'revenue',
+              'pending-revenue',
+            ]) {
+              final tileFinder = find.byKey(Key('home-kpi-compact-$tile'));
+              await tester.ensureVisible(tileFinder);
+              final rect = tester.getRect(tileFinder);
+              expect(rect.left, greaterThanOrEqualTo(0), reason: tile);
+              expect(rect.right, lessThanOrEqualTo(width), reason: tile);
+            }
+          },
+        );
+      }
+    }
   });
 }

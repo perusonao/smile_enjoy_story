@@ -724,9 +724,22 @@ void main() {
     testWidgets(
       // PUBLIC-DEMO-HOME-UI-3A: PublicDemoImportantEventsSection ("重要イベ
       // ント", at most the latest month-close event) is replaced by
-      // PublicDemoImportantTasksSection ("今月の重要タスク", always exactly
-      // three truthful tasks) — this now pins that the new section, and its
+      // PublicDemoImportantTasksSection ("今月の重要タスク", up to three
+      // truthful tasks) — this now pins that the new section, and its
       // scroll-jump CTA, remain reachable after a month closes.
+      //
+      // PUBLIC-DEMO-HOME-UI-3A P2 fix (PR #150 review): the 営業/採用 rows
+      // are each gated on whether `_recommendedActionCandidates` (the same
+      // authority the Recommended Action slot itself uses) still has a
+      // matching eligible entry — see `_S._importantTasks`'s own doc. May
+      // genuinely has none in the 営業 (existing-employee sales/assignment)
+      // category: the domain's own month gates only emit those candidates
+      // in April and from month 6 on (see
+      // `_S._recommendedActionCandidates`'s own `if (s.month == ...)`
+      // branches), so May correctly omits that row instead of offering a
+      // CTA into a section with nothing left to do there. This test asserts
+      // 資金計画 instead — the one row that is never gated, because viewing
+      // the finance summary never becomes illegal.
       'the important tasks section remains reachable after a month closes',
       (tester) async {
         await pumpDemoAt(tester, const Size(390, 844));
@@ -739,11 +752,9 @@ void main() {
         await tester.pumpAndSettle();
         expect(tasks, findsOneWidget);
         expect(find.text('今月の重要タスク'), findsOneWidget);
-        // Scoped to the section itself: '営業' is also the bottom nav's own
-        // destination label (section 8), a different, legitimate second
-        // appearance of the same string.
+        // Scoped to the section itself: '資金' only ever appears here.
         expect(
-          find.descendant(of: tasks, matching: find.text('営業')),
+          find.descendant(of: tasks, matching: find.text('資金')),
           findsOneWidget,
         );
       },

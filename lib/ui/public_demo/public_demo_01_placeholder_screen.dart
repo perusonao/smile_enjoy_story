@@ -54,6 +54,80 @@ typedef _AddCandidate =
       String? targetId,
     });
 
+// ---------------------------------------------------------------------------
+// PUBLIC-DEMO-HOME-UI-3A P2 fix (PR #150 review): "今月の重要タスク"'s 営業/採用
+// rows used to be unconditional — always rendered, always pointing at
+// `_scrollToOtherActions`, regardless of whether anything reachable there
+// was actually still legal. In a terminal/completed month (`isCloseBlocked`
+// — bankruptcy, March cash-shortage failure, or fiscal-year completion) or a
+// month where every sales/recruitment step for that category has already
+// been taken, that CTA looked pressable but led to a section with no
+// matching eligible action in it: a dead end, not a shortcut.
+//
+// This does not invent a new eligibility rule. `_recommendedActionCandidates`
+// already IS the authority for "is this specific action legal and on screen
+// right now" — every kind it emits comes from the exact same predicate that
+// gates the corresponding legacy button (see that getter's own doc). These
+// two sets are a pure *category* read of that already-legal list: which of
+// its kinds are the "営業" (existing-employee sales/assignment pipeline) vs
+// "採用" (recruitment/pre-entry pipeline) family the mockup's two rows are
+// about. No kind is added to or removed from `_recommendedActionCandidates`
+// itself, and no new game rule decides who is eligible for what.
+
+/// The sales-pipeline (existing-employee/assignment) [HomeRecommendedActionKind]s
+/// — every kind [_S._recommendedActionCandidates] emits from an engineer or
+/// assignment card. Used only to decide whether the "営業活動を進める" task has
+/// anywhere left to send the player; see the section doc above.
+const Set<HomeRecommendedActionKind> _salesTaskActionKinds = {
+  HomeRecommendedActionKind.recoveryAssignment,
+  HomeRecommendedActionKind.employeeAcceptOrder,
+  HomeRecommendedActionKind.employeeClientInterview,
+  HomeRecommendedActionKind.employeePartnerInterview,
+  HomeRecommendedActionKind.employeeIntroduceProject,
+  HomeRecommendedActionKind.employeeResumeSelling,
+  HomeRecommendedActionKind.employeeBeginSelling,
+  HomeRecommendedActionKind.employeeSkillSheetReview,
+  HomeRecommendedActionKind.assignmentAcceptNextOrder,
+  HomeRecommendedActionKind.assignmentAcceptReplacementOrder,
+  HomeRecommendedActionKind.assignmentReplacementClientInterview,
+  HomeRecommendedActionKind.assignmentReplacementPartnerInterview,
+  HomeRecommendedActionKind.assignmentIntroduceReplacementProject,
+  HomeRecommendedActionKind.assignmentResumeReplacementSelling,
+  HomeRecommendedActionKind.assignmentBeginReplacementSelling,
+  HomeRecommendedActionKind.assignmentConfirmNextOrder,
+};
+
+/// The recruitment/pre-entry-pipeline [HomeRecommendedActionKind]s — every
+/// kind [_S._recommendedActionCandidates] emits from an applicant card or
+/// the recruitment-media button. Used only to decide whether the
+/// "採用・面談に対応する" task has anywhere left to send the player; see the
+/// section doc above.
+const Set<HomeRecommendedActionKind> _recruitmentTaskActionKinds = {
+  HomeRecommendedActionKind.applicantJuneOrder,
+  HomeRecommendedActionKind.applicantClientInterview,
+  HomeRecommendedActionKind.applicantPartnerInterview,
+  HomeRecommendedActionKind.applicantIntroduceProject,
+  HomeRecommendedActionKind.applicantBeginPreEntrySelling,
+  HomeRecommendedActionKind.applicantBeginPreEntrySkillSheet,
+  HomeRecommendedActionKind.applicantSalaryOffer,
+  HomeRecommendedActionKind.applicantInterview,
+  HomeRecommendedActionKind.applicantReviewResume,
+  HomeRecommendedActionKind.recruitmentMedia,
+};
+
+/// Whether an important-task row backed by [kinds] should render at all:
+/// not close-blocked (the same terminal/completed gate
+/// [_S._recommendedActionSlot] already suppresses on), and at least one
+/// already-legal [candidates] entry falls into [kinds]. Top-level and pure
+/// so a `test()` can assert it directly against a constructed
+/// [PublicDemoState] and a hand-built candidate list, with no widget pump
+/// required for the terminal/exhausted cases.
+bool homeImportantTaskHasEligibleAction(
+  PublicDemoState state,
+  Iterable<HomeRecommendedActionCandidate> candidates,
+  Set<HomeRecommendedActionKind> kinds,
+) => !state.isCloseBlocked && candidates.any((c) => kinds.contains(c.action.kind));
+
 class PublicDemo01PlaceholderScreen extends StatefulWidget {
   const PublicDemo01PlaceholderScreen({
     super.key,
@@ -223,30 +297,51 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
     ],
   );
 
-  /// Section 6 ("今月の重要タスク") — exactly the three fixed, truthful items
+  /// Section 6 ("今月の重要タスク") — up to the three fixed, truthful items
   /// specified for PUBLIC-DEMO-HOME-UI-3A, each built only from an
   /// already-authoritative, always-defined int this screen already reads
   /// for the compact KPI / finance summary. No priority, deadline, or
   /// progress percentage is invented for any of them (see
   /// [PublicDemoImportantTaskItem]'s own doc for why the category chip is
   /// neutral rather than a priority claim).
+  ///
+  /// PUBLIC-DEMO-HOME-UI-3A P2 fix (PR #150 review): the 営業/採用 rows are
+  /// now each gated on [homeImportantTaskHasEligibleAction] — the same
+  /// [_recommendedActionCandidates] authority the Recommended Action slot
+  /// itself uses — so HOME never advertises a "対応する" CTA into a section
+  /// with no matching eligible action left in it (a terminal/completed
+  /// month, or a month where that pipeline is genuinely exhausted). 資金計画
+  /// is never gated the same way: viewing the finance summary is not an
+  /// action that becomes illegal, only a scroll to a section that always
+  /// renders (see [_financeSummaryKey]'s own site).
   List<PublicDemoImportantTaskItem> get _importantTasks {
     final data = _homeDashboardData;
+    final candidates = _recommendedActionCandidates;
     return [
-      PublicDemoImportantTaskItem(
-        title: '営業活動を進める',
-        fact: '営業残: ${data.salesRemaining}回',
-        category: '営業',
-        ctaLabel: '対応する',
-        onPressed: _scrollToOtherActions,
-      ),
-      PublicDemoImportantTaskItem(
-        title: '採用・面談に対応する',
-        fact: '待機: ${data.waitingEmployeeCount}名',
-        category: '採用',
-        ctaLabel: '対応する',
-        onPressed: _scrollToOtherActions,
-      ),
+      if (homeImportantTaskHasEligibleAction(
+        s,
+        candidates,
+        _salesTaskActionKinds,
+      ))
+        PublicDemoImportantTaskItem(
+          title: '営業活動を進める',
+          fact: '営業残: ${data.salesRemaining}回',
+          category: '営業',
+          ctaLabel: '対応する',
+          onPressed: _scrollToOtherActions,
+        ),
+      if (homeImportantTaskHasEligibleAction(
+        s,
+        candidates,
+        _recruitmentTaskActionKinds,
+      ))
+        PublicDemoImportantTaskItem(
+          title: '採用・面談に対応する',
+          fact: '待機: ${data.waitingEmployeeCount}名',
+          category: '採用',
+          ctaLabel: '対応する',
+          onPressed: _scrollToOtherActions,
+        ),
       PublicDemoImportantTaskItem(
         title: '資金計画を確認する',
         fact: '固定費: ${formatYen(_financeSummary.fixedCosts)}',

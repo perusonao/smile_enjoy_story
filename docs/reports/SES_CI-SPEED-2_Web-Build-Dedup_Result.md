@@ -307,26 +307,257 @@ assertion にも触れていない。
 - `e2e/playwright.config.ts`
 - 本レポート
 
-## Slice D — PR / CI verification（進行中）
+## Slice D — PR / CI verification
 
 ### PR URL
 
 [#155](https://github.com/perusonao/smile_enjoy_story/pull/155)
+（base: `main`、head: `claude/web-build-dedup-ci-svlywe`, `mergeable_state:
+clean`）
 
-### CI結果
+### base の追従について
 
-CI実行結果待ち。結果が確定次第、本節と PERFORMANCE REPORT / FINAL REPORT を
-実測値で更新する。
+PR作成後、`origin/main` が `e60dbe38`（本タスクの CURRENT EXPECTED MAIN）
+から `8d510e6a`（Issue #148 Phase 1B.1 + 1B.2, 本タスクの DO NOT 対象）へ
+進んだことを確認した。差分は `docs/` 配下の別レポートと
+`lib/game/public_demo/` 関連のみで、本 PR が変更する
+`.github/workflows/e2e.yml` / `e2e/scripts/static-server.js` /
+`e2e/playwright.config.ts` / 本レポートとはファイルの重なりが一切なく
+（`git diff --stat e60dbe38..origin/main -- <本PRの変更ファイル>` が空）、
+GitHub 側も `mergeable_state: "clean"` を報告しているため、コンフリクト
+解消のための追加 merge commit は行っていない。Issue #148 Phase 1B の内容
+自体には一切触れていない。
 
-## PERFORMANCE REPORT（実測値のみ、CI結果待ち）
+### CI結果（実測、GitHub Actions run #398 / id 33721434923, event:
+pull_request, head_sha `2f4a59bb`）
 
-- validate 時間: (CI結果待ち)
-- smoke-e2e 時間: (CI結果待ち)
-- Pages build 時間: (CI結果待ち)
-- merge/push → deploy までの wall-clock: (CI結果待ち)
-- 削減時間 / 削減率: (CI結果待ち。参考値 #381 約24分54秒、#385 約15分07秒
-  との比較は実測値が揃い次第記載する)
+| job | conclusion | 所要時間 |
+|---|---|---|
+| `validate` | ✅ success | 10m46s（06:02:50 → 06:13:36） |
+| `smoke-e2e` | ✅ success | 2m04s（06:13:39 → 06:15:43） |
+| `check-latest` | skipped | — |
+| `build` | skipped | — |
+| `deploy` | skipped | — |
+| `replay-package` | skipped | — |
+
+`check-latest`/`build`/`deploy`/`replay-package` の skip は
+`e2e.yml` の設計通り（`pull_request` イベントでは
+`validate`/`smoke-e2e` のみ実行し、Pages deploy 経路は push/
+workflow_dispatch 限定 — ワークフロー冒頭のコメント参照）であり、
+異常ではない。PR run 全体の wall-clock は 13m12s（created_at 06:02:32 →
+updated_at 06:15:44）。
+
+**`smoke-e2e` が GREEN だったことが Slice B/C 設計全体の最重要な実地検証**
+である: `validate` が Pages と同じ base-href
+(`/smile_enjoy_story/`) でビルドした artifact を、base-href 対応させた
+`e2e/scripts/static-server.js` 経由で実際に Playwright
+(`founding-first-assignment.spec.ts` 3-seed サンプル,
+`public-demo-fresh-start.spec.ts`, 各種 harness fixture spec) が
+問題なく操作できることを実 CI 上で確認できた。ゲームコード・テストの
+assertion は無変更のまま成功している。
+
+`build`/`deploy`（Slice C が変更した第2 Flutter build 削除の直接検証）は、
+`check-latest`/`build`/`deploy` が push/workflow_dispatch 限定という
+既存ワークフロー設計上、pull_request イベントの CI では実行できない
+（`check-latest` の stale-SHA guard は「対象 SHA が origin/main の実際の
+tip であること」を要求するため、main 未 merge のコミットに対して
+workflow_dispatch を手動実行しても `is_latest=false` となり同様に
+skip される — これは意図された安全機構であり、本 PR 固有の問題ではない。
+PR #151 の結果報告でも同様の制約が記録されている）。したがって
+`build`/`deploy` ジョブの実行結果は、実際に `main` へ merge された後の
+push トリガー run でのみ確認できる。本タスクでは「mainへの直接
+commit禁止・自動merge禁止」のため、この最終確認は merge 後のフォロー
+アップとして未確定のまま記録する（下記 remaining risk / unresolved
+items 参照）。
+
+## PERFORMANCE REPORT（実測値のみ）
+
+### Before（直前の main push run, 本PRの変更を含まない旧ワークフロー）
+
+参考として、本PR作成の直前（同日）に発生した最新の main push run
+（GitHub Actions run #396, id `33719460784`, head_sha `8d510e6a`,
+`Issue #148 Phase 1B.1 + 1B.2`）の実測値を「before」として採用した
+（過去の参考値 #381 約24分54秒・#385 約15分07秒より新しく、同一リポジトリ・
+同日の実行環境という条件が近いため、より公正な比較値と判断した）。
+
+| job | 所要時間 | 内訳（旧ワークフロー） |
+|---|---|---|
+| `validate` | 10m57s（05:35:00→05:45:57） | flutter-action setup 59s + pub get 8s + analyze 11s + **test 8m45s** + build web 37s + upload/replay unit ~7s |
+| `smoke-e2e` | 2m07s（05:45:57→05:48:04） | |
+| `check-latest` | 8s（05:48:04→05:48:12） | |
+| `replay-package` | 41s（05:48:04→05:48:45） | `build`と並行実行 |
+| `build`（Pages, 旧＝2回目のFlutter build含む） | 1m48s（05:48:13→05:50:01） | flutter-action setup 59s + pub get 6s + **build web 35s** + replay fold-in/pages artifact ~8s |
+| `deploy` | 17s（05:50:02→05:50:19） | |
+| **push→deploy wall-clock** | **15m20s**（created_at 05:34:59 → deploy completed_at 05:50:19） | |
+
+`build` ジョブが2回目の `flutter build web` のために費やしていた時間
+（`flutter-action` セットアップ 59s + `pub get` 6s + `flutter build web`
+35s = **1m40s**）が、Slice C により `build` ジョブの critical path から
+削除される対象である。これは実測値（旧ワークフローの実行ログ）に基づく
+「削除したステップの実測所要時間」であり、削減後の合計を推測して書いた
+値ではない。
+
+### After（本PR, pull_requestイベントで検証できた範囲の実測値）
+
+| job | 所要時間 |
+|---|---|
+| `validate`（Pages base-hrefでのbuild込み） | 10m46s（06:02:50→06:13:36） |
+| `smoke-e2e`（base-href対応static server経由） | 2m04s（06:13:39→06:15:43） |
+
+`validate` に `--base-href` を追加したことによる所要時間の悪化は
+確認されなかった（旧 10m57s → 新 10m46s、誤差の範囲内）。
+
+### merge後に確定する値（未実測）
+
+`build`/`deploy`（実際に第2 Flutter buildを省いた状態でのPages配信経路）
+は、本PRが実際に `main` へ merge され push トリガーの run が実行される
+まで実測できない。merge 後の同一構造の run で `build` ジョブの所要時間を
+再測定し、上記 before の `build` 1m48s と比較することで、実際の
+削減時間・削減率を確定する（見込みとしては、上記「削除対象の実測 1m40s」
+がほぼそのまま `build` ジョブから、ひいては push→deploy wall-clock から
+減る計算になるが、これは実測ではなく上記実測値からの算術であるため、
+確定した「削減時間/削減率」としては merge 後に再測定するまで報告しない）。
 
 ## commit SHA（Slice A）
 
 `dd590b8`（`docs(ci): audit Fast CI Web build duplication (SES-CI-SPEED-2 Slice A)`）
+
+## FINAL REPORT
+
+### BASE SHA
+
+`e60dbe38c0eee05d12ba34a241373d3a9dfd1731`（タスク記載の CURRENT EXPECTED
+MAIN と一致、`git rev-parse origin/main` で確認済み）
+
+### FINAL HEAD SHA
+
+`2f4a59bb00e2e5a26c355f7268df6d2a6ac442d4`（PR #155 head, このレポート更新
+コミット自体は別途追記する）
+
+### branch
+
+`claude/web-build-dedup-ci-svlywe`
+
+### Slice A/B/C/D の結果
+
+- **Slice A（監査）**: 判定 A「安全に1回化可能」。base-href の差異は
+  `web/index.html` の `<base href>` 1箇所のみで、他は全て相対パス参照。
+  commit `dd590b8`。
+- **Slice B（共有artifact化）**: `validate` の build を Pages と同じ
+  `--base-href` に統一し、`e2e/scripts/static-server.js` を base-href
+  対応化。commit `6d8deb2`。focused verification（YAML構文・tsc・
+  replay-unit 112件）はローカルで完了、実 CI 検証は Slice D 実施。
+- **Slice C（第2 build削除）**: `build`（Pages）ジョブから
+  `flutter pub get`/`flutter build web` を削除し、`validate` の
+  `build-web` artifact を download して再利用する構成に変更。
+  commit `56880aa`。
+- **Slice D（PR/CI検証）**: PR [#155](https://github.com/perusonao/smile_enjoy_story/pull/155)
+  を作成し購読。`validate`/`smoke-e2e` は実 CI で GREEN
+  （実測 10m46s / 2m04s）。`check-latest`/`build`/`deploy` は
+  ワークフロー設計上 pull_request イベントでは実行されず（push/
+  workflow_dispatch 限定 かつ stale-SHA guard の意図的な安全機構）、
+  Slice C の直接的な実行検証（`build` ジョブの GREEN）は merge 後の
+  push run でのみ確認できる状態のまま残っている。
+
+### changed files
+
+- `.github/workflows/e2e.yml`
+- `e2e/scripts/static-server.js`
+- `e2e/playwright.config.ts`
+- `docs/reports/SES_CI-SPEED-2_Web-Build-Dedup_Result.md`（本レポート）
+
+ゲームコード（`lib/`）・`web/index.html` を含む production 資産・save
+schema・PR #136・Issue #148 Phase 1B には一切触れていない。
+
+### before/after CI構造
+
+```
+[before]
+push(main)
+  validate  : analyze/test/build web(base-href "/")
+    smoke-e2e
+      check-latest
+        build : pub get → build web(base-href "/repo/") ← 2回目のFlutter build
+          deploy
+
+[after]
+push(main)
+  validate  : analyze/test/build web(base-href "/repo/", Pages と共通)
+    smoke-e2e (base-href対応 static server 経由でこのartifactをそのまま検証)
+      check-latest
+        build : validateのbuild-web artifactをdownloadして再利用（Flutter build なし）
+          deploy
+```
+
+### tests / verification
+
+- ローカル（Flutter SDK非搭載環境）: YAML構文チェック（python3 yaml）、
+  `npx tsc --noEmit`、`npm run test:replay-unit`（112/112 pass）、
+  `static-server.js` の base-path fallback / path-traversal / 後方互換を
+  ダミー build dir に対する手動 HTTP リクエストで確認
+- 実CI（PR #155, pull_request event, run #398）: `validate`
+  （analyze/test/build web with Pages base-href）GREEN、`smoke-e2e`
+  （3-seed founding-first-assignment 含む curated spec 一式、base-href
+  対応 static server 経由）GREEN
+
+### CI結果
+
+- PR #155 run #398（head `2f4a59bb`）: `validate` success (10m46s) /
+  `smoke-e2e` success (2m04s) / `check-latest`・`build`・`deploy`・
+  `replay-package` は設計通り skipped（pull_request イベントのため）
+- `build`/`deploy`（Slice C の直接検証）は merge 後の main push run で
+  確認が必要（未実施・未実測。DO NOT: 自動merge禁止のため本セッションでは
+  実施していない）
+
+### performance実測
+
+- Before（直前の main push run #396, head `8d510e6a`, 旧ワークフロー）:
+  push→deploy wall-clock **15m20s**（`validate` 10m57s / `smoke-e2e`
+  2m07s / `check-latest` 8s / `build` 1m48s(うち2回目のFlutter build
+  関連ステップ実測 1m40s) / `deploy` 17s）
+- After（PR #155, pull_requestイベントで検証できた範囲）: `validate`
+  10m46s / `smoke-e2e` 2m04s（`validate`へのbase-href追加による有意な
+  遅化なし）
+- `build`/`deploy` を含む push→deploy 全体の after wall-clock、および
+  削減時間・削減率の確定値: **未測定**（merge後のpush run待ち。推測値は
+  本レポートに記載しない）
+- 参考値（#381 約24分54秒、#385 約15分07秒）との比較: 直前の同日 main
+  push run（#396, 15m20s）の方がより公正な比較対象と判断し、そちらを
+  beforeとして採用した
+
+### unresolved items
+
+- `build`/`deploy` ジョブの実際の push-triggered GREEN 実行、および
+  push→deploy wall-clock の削減時間・削減率の実測確定は merge 後の
+  フォローアップとして残っている
+- `e2e-heavy.yml`（週次フルリグレッション・WebKit）は本タスクの対象外で
+  無変更のまま
+- Issue #149 本文にある「テスト分類ごとの計測」「Tier運用ルール明文化」等は
+  引き続き未着手（本タスクのスコープ外）
+
+### rollback方法
+
+`.github/workflows/e2e.yml` / `e2e/scripts/static-server.js` /
+`e2e/playwright.config.ts` の3ファイルを、Slice B開始前のコミット
+（`dd590b8`、Slice A完了時点）の内容に戻せば、変更前の「2回build」構成に
+即座に復元できる。stale-SHA guard・Replay Viewer組み込み・
+`e2e-heavy.yml`・ゲームコードはいずれの Slice でも変更していないため、
+このrevertはCI構造のみに閉じる。GitHub操作としては本PRのrevert commit、
+またはこの3ファイルのみを対象にした個別revertのいずれでも可能。
+
+### PR URL
+
+[https://github.com/perusonao/smile_enjoy_story/pull/155](https://github.com/perusonao/smile_enjoy_story/pull/155)
+
+### MERGE READINESS
+
+**B. READY WITH MINOR FOLLOW-UP**
+
+理由: コード変更自体は安全性の前提（stale-SHA guard・base-href差異の範囲・
+既存テストassertion無変更）を保った設計であり、PRで検証可能な範囲
+（`validate`/`smoke-e2e`）は実CIでGREENを確認済み。ただし本タスクが
+対象とする「第2 Flutter build削除」そのものの実行確認（`build`ジョブの
+実CI GREEN）と、それに伴う実際の削減時間・削減率の実測は、ワークフローの
+設計上 merge後のpush runでしか行えず、本セッションでは（自動merge禁止の
+ため）未実施のまま残っている。これはコードの欠陥ではなく確認の未完了で
+あり、"minor follow-up" として記録する。

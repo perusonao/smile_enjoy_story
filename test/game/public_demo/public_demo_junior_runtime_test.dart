@@ -43,22 +43,29 @@ void main() {
       expect(runtime.actualCapability, 76);
       expect(runtime.hidden.growthPotential, 3);
       expect(runtime.abilities, isEmpty);
-      // SKILLSHEET-UX-2A P2 fix: an experienced hire's actual/displayed
-      // experience must come from the applicant's authoritative
-      // experienceMonths, not a fabricated 0 (which would contradict the
-      // SkillSheet showing them as an experienced hire).
+      // SKILLSHEET-UX-2A P2 fix (round 2): PublicDemoApplicant carries no
+      // confirmed per-language breakdown, only one aggregate
+      // experienceMonths figure — copying it onto Java would fabricate
+      // language-specific experience for a non-Java hire (Codex review
+      // https://github.com/perusonao/smile_enjoy_story/pull/158#discussion_r3922332482,
+      // e.g. app-02's Flutter/JavaScript résumé). The capability entry is
+      // still seeded (actualCapability above proves it), but its months
+      // stay 0 and it is deliberately left out of confirmedLanguages so the
+      // SkillSheet shows an honest "not confirmed" empty state instead of
+      // this unconfirmed data.
       expect(
         runtime
             .languageSkills[ProgrammingLanguage.java]!
             .actualExperienceMonths,
-        24,
+        0,
       );
       expect(
         runtime
             .languageSkills[ProgrammingLanguage.java]!
             .displayedExperienceMonths,
-        24,
+        0,
       );
+      expect(runtime.confirmedLanguages, isEmpty);
     });
 
     test(

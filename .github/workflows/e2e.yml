@@ -34,11 +34,15 @@ name: Fast CI (S.E.S.)
 #   check-latest — push / workflow_dispatch only. Stale-run guard (see
 #                e2e/scripts/check-latest-main.mjs): is this run's commit
 #                still origin/main's actual tip?
-#   build      — Flutter web release build + best-effort fold-in of this
-#                *same run's* e2e-replay-package artifact + upload-pages-
-#                artifact. Does NOT `needs: replay-package` — replay
-#                packaging is a QA convenience, not a game-deploy gate (see
-#                the original design rationale preserved below).
+#   build      — Flutter web release build (no analyze/test — SES-TEST-
+#                STRATEGY-1: `validate` already ran them on this exact SHA,
+#                and `check-latest` already confirmed it's still main's
+#                tip, so re-running them here would be a same-SHA
+#                duplicate) + best-effort fold-in of this *same run's*
+#                e2e-replay-package artifact + upload-pages-artifact. Does
+#                NOT `needs: replay-package` — replay packaging is a QA
+#                convenience, not a game-deploy gate (see the original
+#                design rationale preserved below).
 #   deploy     — re-verify the stale guard immediately before
 #                actions/deploy-pages, then deploy.
 #
@@ -354,11 +358,16 @@ jobs:
 
       - run: flutter pub get
 
-      - name: Analyze
-        run: flutter analyze
-
-      - name: Test
-        run: flutter test
+      # No `flutter analyze` / `flutter test` here (SES-TEST-STRATEGY-1):
+      # this job only runs after `check-latest` confirms
+      # `needs.check-latest.outputs.target_sha` (this checkout's ref) is
+      # still origin/main's current tip — i.e. the exact same commit
+      # `validate` already ran analyze+test on earlier in this same run.
+      # Re-running them here would be a same-SHA duplicate with zero added
+      # coverage, not extra safety. `flutter build web` still runs again
+      # below because it needs a different `--base-href` than `validate`'s
+      # build (Pages subpath vs. the local static server smoke-e2e uses at
+      # root) — that output can't be reused as-is.
 
       - name: Build web (release)
         env:

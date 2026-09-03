@@ -12,7 +12,7 @@ Issue #148 Phase 1B.3 で月・KPI・ひよりの主行動・月次CTAは初期�
   `git fetch origin` で確認済み。指定 SHA と一致)
 - **Head SHA**: `04e9d92e7433ba3d4c41c8ec05a656f5ef74df53`
 - **Branch**: `claude/home-compact-1b4-visual-polish-qrn9ki`
-- **PR**: (このレポート内で後述のPR URLを参照)
+- **PR**: https://github.com/perusonao/smile_enjoy_story/pull/160
 
 ## 変更方針・スコープ
 
@@ -159,7 +159,7 @@ CI ワークフロー `.github/workflows/public-demo-validation.yml` が固定�
 
 - ブランチ `claude/home-compact-1b4-visual-polish-qrn9ki` は `origin/main`
   (`eb275ae`) から分岐し、コミット `04e9d92` を1件プッシュ済み。
-- PR: (作成後にURLを追記)
+- PR: https://github.com/perusonao/smile_enjoy_story/pull/160
 - **merge readiness**: 上記テストはすべてグリーン。実資金不足状態での「社員概要も
   初期表示」は未達（前述の理由により本フェーズでは意図的に対象外）。マージ判断は
   リポジトリオーナーに委ねる。マージは実施していない。

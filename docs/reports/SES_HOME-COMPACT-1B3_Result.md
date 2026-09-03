@@ -10,9 +10,8 @@ card.
 
 - **Base SHA:** `dbbe25904c25deee2b7cd0ce6f3d0ccb54183872` (`origin/main` HEAD
   at task start — confirmed to already carry PR #153/#154/#157/#158).
-- **Head SHA:** recorded in this PR's own commit (see the PR description /
-  `git log` on this branch — this report is written before that commit, so
-  it cannot self-reference its own final hash).
+- **Head SHA:** `5985ee1d489985e6b2d7b96462d4e7a026614669` (the implementation
+  commit this report ships in).
 
 ## Start-condition verification (performed before any implementation)
 
@@ -311,8 +310,7 @@ suite):
 
 ## PR URL
 
-Recorded after the PR is opened (this report is written before creating
-the PR — see the commit/PR that follows).
+https://github.com/perusonao/smile_enjoy_story/pull/159
 
 ## Merge readiness
 

@@ -298,7 +298,7 @@ assertion にも触れていない。
 
 ### commit SHA（Slice C）
 
-（このコミットで記録）
+`56880aa`（`perf(ci): drop second Flutter web build from Pages deploy job (SES-CI-SPEED-2 Slice C)`）
 
 ## 変更ファイル（累計, Slice C時点）
 

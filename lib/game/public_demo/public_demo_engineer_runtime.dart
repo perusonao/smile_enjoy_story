@@ -45,7 +45,16 @@ class PublicDemoEngineerRuntime {
       actualCapability >= fieldSalesCapabilityRequirement;
 
   /// Creates the single runtime representation used after a Public Demo hire
-  /// joins. Experienced applicants retain the pre-JUNIOR-3 values exactly.
+  /// joins. Experienced applicants retain the pre-JUNIOR-3 `actualSkill`
+  /// value exactly.
+  ///
+  /// SKILLSHEET-UX-2A P2 fix: [PublicDemoApplicant.experienceMonths] is
+  /// Public Demo's only authoritative experience figure for an applicant
+  /// (there is no separate résumé-vs-actual distinction at this layer), so
+  /// an experienced hire's [LanguageSkill] starts from that value for both
+  /// fields rather than the placeholder `0` — otherwise the SkillSheet would
+  /// show a fabricated `実経験 0ヶ月 → SkillSheet記載 0ヶ月` that contradicts
+  /// the applicant being hired as experienced in the first place.
   factory PublicDemoEngineerRuntime.fromApplicant(
     PublicDemoApplicant applicant,
   ) {
@@ -56,8 +65,8 @@ class PublicDemoEngineerRuntime {
         languageSkills: {
           ProgrammingLanguage.java: LanguageSkill(
             language: ProgrammingLanguage.java,
-            displayedExperienceMonths: 0,
-            actualExperienceMonths: 0,
+            displayedExperienceMonths: applicant.experienceMonths,
+            actualExperienceMonths: applicant.experienceMonths,
             actualSkill: applicant.salesSkillFit,
           ),
         },

@@ -43,11 +43,21 @@ void main() {
       expect(runtime.actualCapability, 76);
       expect(runtime.hidden.growthPotential, 3);
       expect(runtime.abilities, isEmpty);
+      // SKILLSHEET-UX-2A P2 fix: an experienced hire's actual/displayed
+      // experience must come from the applicant's authoritative
+      // experienceMonths, not a fabricated 0 (which would contradict the
+      // SkillSheet showing them as an experienced hire).
       expect(
         runtime
             .languageSkills[ProgrammingLanguage.java]!
             .actualExperienceMonths,
-        0,
+        24,
+      );
+      expect(
+        runtime
+            .languageSkills[ProgrammingLanguage.java]!
+            .displayedExperienceMonths,
+        24,
       );
     });
 

@@ -169,7 +169,9 @@ Issue #148本体（HOME警告カード・ひより文言・Phase 2含む全体�
 
 ## commit SHA
 
-（コミット後に追記）
+- Phase 1A 初回実装: `fe583ca2d070b07a1575fc3cfe52f60a7e7ac535`
+- Follow-up（joinedApplicants authority統一・コード＋テスト）: `50dd0e2`
+- Follow-up 最終（本SHA追記コミット自身）: `7e8d423055f2edc0e3fafda8ec7c3810983046d6`
 
 ## PR / Merge Readiness
 

@@ -186,7 +186,7 @@ Completed（Phase 1B.1 + 1B.2 スコープのみ。HOME Widget・文言表示・
 ## commit SHA
 
 - Phase 1B.1 + 1B.2 初回実装（コード＋テスト＋report、単一commit）: `6d514203dbb2cbd2ab775355526d034ec941312f`
-- Codex Review P1/P2 finding修正: （push後に追記）
+- Codex Review P1/P2 finding修正（コード＋テスト＋report、単一commit）: `2dbb36b`
 
 ## PR URL
 

@@ -10,9 +10,53 @@ Issue #148 Phase 1B.3 で月・KPI・ひよりの主行動・月次CTAは初期�
 
 - **Base SHA**: `eb275aeb0ca6156d29d171b70f33ef19d0740c16` (`origin/main`。作業開始前に
   `git fetch origin` で確認済み。指定 SHA と一致)
-- **Head SHA**: `04e9d92e7433ba3d4c41c8ec05a656f5ef74df53`
+- **Head SHA**: `1390fdcf81cce6762203fb53f06735f5c4fb3e2f`（初回実装 `04e9d92` +
+  FIX1 `1390fdc`。下記「FIX1」節を参照）
 - **Branch**: `claude/home-compact-1b4-visual-polish-qrn9ki`
 - **PR**: https://github.com/perusonao/smile_enjoy_story/pull/160
+
+## FIX1（追記）: 実資金不足時の社員概要初期可視化
+
+初回実装（`04e9d92`）では、実資金不足状態（`financialStatus == cashShortage`）
+のときだけ既存の `PublicDemoCashShortageCard` が画面最上部に表示され、その
+カード単体が360×800で約245ptを占めるため、社員概要（`HomeOfficeStageSection`）
+が初期表示外になっていた（下記「初回実装時点の既知の制限」参照）。
+
+追加のPRコメント依頼（PR #160）を受け、`PublicDemoCashShortageCard` **自体の
+表示密度のみ**を圧縮し、実資金不足時だけ `HomeNavigatorSection` 側の重複説明も
+省略することで、実資金不足状態でも社員概要が初期表示に収まるようにした
+（コミット `1390fdc`）。
+
+### 変更内容（FIX1）
+
+| ファイル | 変更内容 |
+|---|---|
+| `lib/ui/public_demo/public_demo_cash_shortage_card.dart` | 3本の根拠数値行（現在の現預金／不足額／次回入金予定）を、縦積みの3行からKPIコンパクトタイルと同じ「ラベル上・値下・FittedBoxで縮小」形式の横並び3タイルへ再設計。ラベル・値は元のまま個別の`Text`ウィジェットとして保持しているため、既存の`find.text('現在の現預金')`等の個別assertionは無変更で通過する。2つの説明文を1つの段落へ統合（両方の必須部分文字列は維持）。padding/gap/フォントサイズを圧縮。360×800で **約245pt → 約123pt**。警告文言・根拠数値・CTA・カードの優先順位（`MonthHeaderBar`/`PublicDemoHomeDashboardSection`より上、Keyも同じ）は無変更。 |
+| `lib/ui/public_demo/public_demo_01_placeholder_screen.dart` | `_isActualCashShortage`（`s.financialStatus == PublicDemoFinancialStatus.cashShortage`、`PublicDemoCashShortageCard`自身と同じ authoritative なフィールドを参照）を追加。この状態のときだけ: (1) ひよりカードの補助CTA「他の行動を確認する」を非表示（`PublicDemoCashShortageCard`が既に同じ収支詳細への導線を提供しているため）、(2) 「ひよりからのアドバイス」説明バブルを非表示（`PublicDemoCashShortageCard`の詳細説明と重複するジェネリックな一般論のため）。主メッセージ・見出し・CTA・その dispatch 先は無変更。通常・予防的資金注意状態はこの2つの省略の対象外（`_compactedForShortage`は`_isActualCashShortage`が`false`のとき何もしない）。 |
+
+### FIX1のテスト
+
+`test/ui/public_demo/public_demo_01_issue_124_screen_verification_test.dart` に
+新しいグループを追加。`public_demo_01_bankruptcy_ux_test.dart`の
+`_driveToNovemberBankruptcy`と同じ実際のUI操作列（4月のSkillSheet確認〜受注、
+5〜7月の月次決算、8〜2月の通常決算）を2月決算の直後（3月開始、
+`financialStatus == cashShortage`、`isCloseBlocked == false`）で止め、
+360×800／390×844の両方で以下を検証:
+
+- `public-demo-cash-shortage-card`（既存の優先導線）が初期ビューポート内
+- 月表示「1年目 3月」が初期ビューポート内
+- `home-recommended-action-cta`（内容は「資金不足を確認」、既存の
+  `cashShortageResponse` candidate）が初期ビューポート内
+- `public-demo-monthly-primary-cta` が初期ビューポート内、かつ画面内に1つだけ
+- `home-office-stage` と `home-office-stage-headcount-summary`（社員概要）が
+  初期ビューポート内
+- `home-navigator-secondary-cta` が存在しない（重複CTAを追加していないことの
+  裏付け）
+
+既存の `public_demo_cash_shortage_card_test.dart`（根拠数値の個別assertion含む）、
+`public_demo_01_home_cash_forecast_advice_test.dart`（予防的caution状態の
+既存導線）、`public_demo_01_bankruptcy_ux_test.dart`（実資金不足〜倒産の遷移・
+Recommended Actionダイアログ）はすべて無変更のまま green。
 
 ## 変更方針・スコープ
 
@@ -57,7 +101,7 @@ Issue #148 Phase 1B.3 で月・KPI・ひよりの主行動・月次CTAは初期�
 
 `PublicDemo01PlaceholderScreen` の `ListView` 内、上から:
 
-1. （資金不足/倒産時のみ）`PublicDemoCashShortageCard` / 倒産カード — 既存のまま、最優先で表示
+1. （資金不足/倒産時のみ）`PublicDemoCashShortageCard`（FIX1で表示密度を圧縮） / 倒産カード — 優先順位は既存のまま、最優先で表示
 2. `MonthHeaderBar`（月表示、36pt）
 3. `KpiSection.compact`（現金/参画/待機/営業残 を色分け表示 + 社員/売上/入金予定）
 4. `HomeNavigatorSection`（ひよりの拡大ポートレート＋主CTA＋補助CTA＋圧縮したアドバイスバブル）
@@ -72,7 +116,7 @@ Issue #148 Phase 1B.3 で月・KPI・ひよりの主行動・月次CTAは初期�
 | A. KPIの優先度が分かるコンパクトな帯 | 行Aを色分け（現金=ブルー、参画=グリーン、待機=オレンジ、営業残=シアン）。360pxで横はみ出しなし（既存レイアウト構造を維持） |
 | B. ひよりが案内役として認識できるサイズ・配置 | ポートレート 44/48→60/68pt。既存の優先順位・文言契約（通常/caution/shortage）は無変更 |
 | C. 月次進行CTAがひよりの案内と視覚的に連続 | 薄型バーへ再設計し、ひようのカード直後（gap=2px）に配置。ひよりのCTA（青）と色を分離し混同を防止 |
-| D. 社員の様子が初期表示で見える | オフィス写真＋集計チップを圧縮済みレイアウトの中で初期ビューポート内に収めた（通常・予防的caution状態で確認済み。下記「未達成事項」参照） |
+| D. 社員の様子が初期表示で見える | オフィス写真＋集計チップを圧縮済みレイアウトの中で初期ビューポート内に収めた（通常・予防的caution・実資金不足の全3状態で確認済み。実資金不足時はFIX1で`PublicDemoCashShortageCard`自体の表示密度圧縮も併せて実施） |
 | E. 重要タスク・クイックアクセス・支出予定・個別操作は初期表示外 | 変更なし（元々初期表示外） |
 
 ## 360px / 390pxの結果
@@ -86,29 +130,18 @@ Issue #148 Phase 1B.3 で月・KPI・ひよりの主行動・月次CTAは初期�
 |---|---|---|
 | 通常 (4月開始) | ✅ 月・KPI・ひよりの主CTA・月次CTA・社員概要すべて初期表示で確認可能 | ✅ 同左 |
 | 予防的資金注意 (10月、`financialStatus` はまだ `normal`、フォーキャストが将来の資金ショートを検知) | ✅ 同上。ひよりのカードが `PublicDemoCashForecast`/`CashAdviceSelector` 由来の警告CTAへ切り替わり、月次CTA・社員概要とも初期表示内 | ✅ 同左 |
-| 実資金不足 (2月決算直後、`financialStatus == cashShortage`、`isCloseBlocked == false`) | ⚠️ 下記参照 | ⚠️ 下記参照 |
+| 実資金不足 (2月決算直後、`financialStatus == cashShortage`、`isCloseBlocked == false`) | ✅ **FIX1で解消**。資金不足の優先導線（`PublicDemoCashShortageCard`）・月・KPI・ひよりの主CTA「資金不足を確認」・月次CTA・社員概要（"社員2名・待機1名"集計含む）すべて初期表示で確認可能 | ✅ 同左 |
 
-### 未達成事項（実資金不足状態）
+全6パターン（3状態×2解像度）とも受け入れ条件1（5要素すべての初期可視性）・
+条件3（優先導線・CTA重複防止の維持）・条件4（月次CTAは1つだけ）を満たす。
 
-実際の資金不足状態では、既存の `PublicDemoCashShortageCard`（本フェーズの変更対象
-外・維持指示のある既存の大型カード）が画面最上部に表示され、月・KPI・ひよりの
-主CTA・月次CTAまでは初期表示内に収まるが、**社員概要はスクロールしないと見えない**。
-これは以下の理由により本フェーズでは意図的に対応していない:
+### 初回実装時点の既知の制限（FIX1で解消済み）
 
-- `PublicDemoCashShortageCard` はタスク指示で明示的に保護されたクラスではないが、
-  実装方針セクションに「既存の資金注意は、ひより領域の優先表示として維持する。
-  新しい大型資金警告カードは追加しない」とあり、これは *予防的* caution（ひより
-  領域内のアドバイス）についての指示であって、*実資金不足* 時の独立した既存
-  警告カードを圧縮・再配置する指示ではない。
-- このカードを圧縮するには、その独自の警告コピー・レイアウトへ踏み込む必要が
-  あり、「無関係なリファクタリングをしない」「最小変更」という方針と、
-  実資金不足という緊急事態でこそ警告を画面の大部分に優先表示するという既存の
-  意図的な設計（`PublicDemoCashShortageCard`, `PLAYTEST-BLOCKER-1A` 由来）に反する。
-- 受け入れ条件3（「通常・予防的資金注意・実資金不足の各状態で、既存の優先導線と
-  CTA重複防止が維持される」）は実資金不足状態でも確認済み（下記スクリーン
-  ショット参照。ひよりのCTAは「資金不足を確認」一本のみ、月次CTAも1つのみ）。
-  受け入れ条件1（5要素すべての初期可視性）は実資金不足状態では部分的（4/5、
-  社員概要のみ未達）。
+初回実装（`04e9d92`、PR #160オープン時点）では、実際の資金不足状態において
+既存の `PublicDemoCashShortageCard`（当時は変更対象外としていた既存の大型
+カード）が画面最上部を占め、月・KPI・ひよりの主CTA・月次CTAまでは初期表示内に
+収まるが社員概要はスクロールしないと見えない、という制限があった。この制限は
+上記「FIX1」節の変更により解消済み。
 
 ## スクリーンショット
 
@@ -133,13 +166,14 @@ fabricatedなデータではない。
 CI ワークフロー `.github/workflows/public-demo-validation.yml` が固定しているバージョンに
 合わせた）。
 
-- `dart format`（変更対象ファイルのみ）: 適用済み（4ファイルに整形差分）
+- `dart format`（変更対象ファイルのみ）: 適用済み
 - `flutter analyze`: No issues found
-- `flutter test test/ui/public_demo/`: 226 tests, all pass
+- `flutter test test/ui/public_demo/`: 228 tests, all pass（FIX1で2件追加）
 - `flutter test test/presentation/`: 200 tests, all pass
 - `flutter test test/game/public_demo/`: 500 tests, all pass
 - 既存 SkillSheet flow test (`test/ui/public_demo/public_demo_01_skill_sheet_flow_test.dart`): 2 tests, all pass（開く→戻る→確認→営業開始のフローは無変更）
-- 上記3ディレクトリ合計: **926 tests, all pass**
+- 既存 `public_demo_cash_shortage_card_test.dart` / `public_demo_01_home_cash_forecast_advice_test.dart` / `public_demo_01_bankruptcy_ux_test.dart`: all pass（優先導線・CTA重複防止の既存契約を無変更で確認）
+- 上記3ディレクトリ合計: **928 tests, all pass**（初回実装時926件 + FIX1で2件追加）
 
 ## 未実行の検証
 
@@ -158,8 +192,13 @@ CI ワークフロー `.github/workflows/public-demo-validation.yml` が固定�
 ## PR / merge readiness
 
 - ブランチ `claude/home-compact-1b4-visual-polish-qrn9ki` は `origin/main`
-  (`eb275ae`) から分岐し、コミット `04e9d92` を1件プッシュ済み。
-- PR: https://github.com/perusonao/smile_enjoy_story/pull/160
-- **merge readiness**: 上記テストはすべてグリーン。実資金不足状態での「社員概要も
-  初期表示」は未達（前述の理由により本フェーズでは意図的に対象外）。マージ判断は
-  リポジトリオーナーに委ねる。マージは実施していない。
+  (`eb275ae`) から分岐し、コミット `04e9d92`（初回実装）→ `288d43a`／`2d68ee4`
+  （レポート・スクリーンショット）→ `1390fdc`（FIX1: 実資金不足時の社員概要
+  初期可視化）をプッシュ済み。最終HEAD: `1390fdcf81cce6762203fb53f06735f5c4fb3e2f`。
+- PR: https://github.com/perusonao/smile_enjoy_story/pull/160（オープンのまま。
+  マージは実施していない）
+- **merge readiness**: 受け入れ条件1〜5すべて、通常・予防的資金注意・実資金不足の
+  全3状態×360px/390pxの全6パターンで達成済み。`flutter analyze`問題なし、
+  対象テストディレクトリ合計928件すべてグリーン、既存SkillSheetフロー・
+  資金不足優先導線・CTA重複防止の既存契約は無変更で確認済み。マージ判断は
+  リポジトリオーナーに委ねる。

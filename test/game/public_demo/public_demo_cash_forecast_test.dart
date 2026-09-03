@@ -1,7 +1,9 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:smile_enjoy_story/game/public_demo/public_demo_aggregate.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_cash_forecast.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_financial_status.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_fiscal_close_id.dart';
+import 'package:smile_enjoy_story/game/public_demo/public_demo_interview.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_monthly_close.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_recruitment.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_salary.dart';
@@ -21,6 +23,31 @@ PublicDemoWorkflowState _emptyWorkflow() =>
 
 PublicDemoWorkflowState _workflowWith(List<PublicDemoApplicant> applicants) =>
     PublicDemoWorkflowState(applicants: applicants, engineers: const []);
+
+/// Reaches [PublicDemoSalesStage.ordered] for the first founding engineer
+/// through the real sales-pipeline chain (never a stage shortcut) — the
+/// exact sequence `public_demo_aggregate_test.dart`'s own "valid assignment
+/// succeeds" fixture uses. eng-01's fixed interview profile (skillFit 78)
+/// deterministically passes both the partner and client interview
+/// thresholds, so no `actualCapability` override is needed. Still month 4,
+/// with `state.engineersAssigned == 0` — the order is confirmed in
+/// [PublicDemoWorkflowState], but April's own close has not run yet.
+PublicDemoAggregate _aprilWithOneConfirmedOrder() {
+  final engineerId = PublicDemoAggregate.initial().workflow.engineers.first.id;
+  return PublicDemoAggregate.initial()
+      .startSkillSheetReview(engineerId)
+      .beginSelling(engineerId)
+      .introduceProject(engineerId)
+      .recordEngineerInterviewResult(
+        engineerId: engineerId,
+        type: PublicDemoInterviewType.partner,
+      )
+      .recordEngineerInterviewResult(
+        engineerId: engineerId,
+        type: PublicDemoInterviewType.client,
+      )
+      .recordOrder(engineerId);
+}
 
 PublicDemoApplicant _joinedApplicant({
   required String id,
@@ -322,6 +349,143 @@ void main() {
       },
     );
   });
+
+  group(
+    'PublicDemoCashForecast.forecast — confirmed assignment transition '
+    '(PR #153 P1 fix)',
+    () {
+      test(
+        'a confirmed April order (workflow engineer already at ordered) '
+        "becomes May's forecasted revenue, and June's forecasted cash "
+        'receipt reflects it — even though state.engineersAssigned is '
+        'still 0 in April',
+        () {
+          final ordered = _aprilWithOneConfirmedOrder();
+          expect(ordered.workflow.orderedEngineerCount, 1);
+          expect(ordered.state.month, 4);
+          expect(ordered.state.engineersAssigned, 0);
+
+          final beforeStateJson = ordered.state.toJson();
+          final beforeWorkflowJson = ordered.workflow.toJson();
+          final result = PublicDemoCashForecast.forecast(
+            state: ordered.state,
+            workflow: ordered.workflow,
+            monthsAhead: 3,
+          );
+          // Purity holds for this scenario too, not just the empty-workflow
+          // cases above.
+          expect(ordered.state.toJson(), beforeStateJson);
+          expect(ordered.workflow.toJson(), beforeWorkflowJson);
+
+          expect(result.months.map((m) => m.month), [4, 5, 6]);
+          // April itself still recognizes 0 revenue: the confirmed order
+          // only installs as assigned once April's own close runs.
+          expect(result.months[0].revenueRecognized, 0);
+          // May recognizes revenue for the now-confirmed 1 assigned
+          // engineer — the bug this fix closes: previously this stayed 0
+          // because engineersAssigned was frozen at April's pre-close value.
+          expect(result.months[1].revenueRecognized, 500000);
+          // June collects exactly what May recognized (30-day site lag).
+          expect(result.months[2].cashReceived, 500000);
+        },
+      );
+
+      test(
+        'the same scenario agrees with the actual April -> May -> June '
+        'close path (PublicDemoAggregate.closeApril/closeMay/closeJune)',
+        () {
+          final ordered = _aprilWithOneConfirmedOrder();
+          final result = PublicDemoCashForecast.forecast(
+            state: ordered.state,
+            workflow: ordered.workflow,
+            monthsAhead: 3,
+          );
+
+          final afterApril = ordered.closeApril(monthlyExpenses: baseline);
+          expect(result.months[0].closingCash, afterApril.state.cash);
+
+          final afterMay = afterApril.closeMay(week: 9, monthlyExpenses: baseline);
+          expect(result.months[1].closingCash, afterMay.state.cash);
+
+          final afterJune = afterMay.closeJune(
+            assignedInJuly: 0,
+            monthlyExpenses: baseline,
+          );
+          expect(result.months[2].closingCash, afterJune.state.cash);
+        },
+      );
+
+      test(
+        'an engineer that never reaches the ordered stage contributes no '
+        'predicted revenue in the forecasted May/June months',
+        () {
+          final engineerId =
+              PublicDemoAggregate.initial().workflow.engineers.first.id;
+          // Only partway through the pipeline (selling) — never ordered.
+          final notOrdered = PublicDemoAggregate.initial()
+              .startSkillSheetReview(engineerId)
+              .beginSelling(engineerId);
+          expect(notOrdered.workflow.orderedEngineerCount, 0);
+
+          final result = PublicDemoCashForecast.forecast(
+            state: notOrdered.state,
+            workflow: notOrdered.workflow,
+            monthsAhead: 3,
+          );
+          for (final month in result.months) {
+            expect(month.revenueRecognized, 0);
+            expect(month.cashReceived, 0);
+          }
+        },
+      );
+
+      test(
+        'both founding engineers confirmed-ordered means May forecasts '
+        "revenue for both — the transition counts every ordered engineer, "
+        'not just the first',
+        () {
+          // Uses PublicDemoWorkflowState's own transition methods directly
+          // (with an explicit high actualCapability) rather than the
+          // aggregate-level convenience wrapper, so this does not depend on
+          // either founding engineer's specific interview-profile threshold
+          // — only on genuinely walking the real sales-pipeline chain to
+          // `ordered` for both.
+          var workflow = PublicDemoWorkflowState.initial();
+          final engineerIds = workflow.engineers
+              .map((engineer) => engineer.id)
+              .toList();
+          for (final engineerId in engineerIds) {
+            workflow = workflow
+                .startSkillSheetReview(engineerId)
+                .beginSelling(engineerId)
+                .introduceProject(engineerId)
+                .recordEngineerInterviewResult(
+                  engineerId: engineerId,
+                  type: PublicDemoInterviewType.partner,
+                  actualCapability: 100,
+                )
+                .recordEngineerInterviewResult(
+                  engineerId: engineerId,
+                  type: PublicDemoInterviewType.client,
+                  actualCapability: 100,
+                )
+                .recordOrder(engineerId);
+          }
+          expect(workflow.orderedEngineerCount, 2);
+
+          final state = PublicDemoState.aprilStart();
+          expect(state.engineerCount, 2);
+
+          final result = PublicDemoCashForecast.forecast(
+            state: state,
+            workflow: workflow,
+            monthsAhead: 2,
+          );
+          expect(result.months[1].revenueRecognized, 1000000); // 2 * 500,000
+        },
+      );
+    },
+  );
 
   group('PublicDemoCashForecast.forecast — shortage detection', () {
     test(

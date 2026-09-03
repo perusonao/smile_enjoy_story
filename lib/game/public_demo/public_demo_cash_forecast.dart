@@ -13,9 +13,23 @@ import 'public_demo_workflow_state.dart';
 ///
 ///  * current cash and [PublicDemoState.pendingRevenue] (the existing
 ///    fixed 30-day collection lag — see [PublicDemoRevenuePayment]),
-///  * revenue for the currently assigned engineer count (held constant —
-///    a future assignment change is a recruitment/sales outcome this
-///    forecast never predicts),
+///  * revenue for the currently assigned engineer count, held constant
+///    EXCEPT across the one month-boundary transition Public Demo 0.1's
+///    real close already applies unconditionally from already-confirmed
+///    workflow facts: April's close installs
+///    [PublicDemoWorkflowState.orderedEngineerCount] — every engineer that
+///    has already reached [PublicDemoSalesStage.ordered] through a genuine
+///    sales-pipeline pass — as May's assigned count (see
+///    [PublicDemoState.advanceToMay]). A forecast that starts in April
+///    (or earlier) applies that exact same transition once its projected
+///    April close resolves, using the identical pure fact
+///    [PublicDemoAggregate.closeApril] itself reads — never a
+///    forecast-local reinterpretation of "ordered". Every other month
+///    boundary (May onward) still holds the assigned count constant: no
+///    other transition in this range is a plain, already-confirmed fact
+///    derivable without also simulating join/assignment-roster mechanics
+///    that have not actually run yet, which would cross into predicting
+///    uncertain future success,
 ///  * payroll and fixed costs for the currently joined roster, read from
 ///    [PublicDemoWorkflowState.joinedApplicants] (never a caller-chosen
 ///    subset — see below) and computed with the exact same
@@ -87,13 +101,19 @@ class PublicDemoCashForecast {
       var cash = state.cash;
       var pendingRevenue = state.pendingRevenue;
       var bonusSettled = state.summerBonusPaid;
+      // Confirmed-transition tracking (P1 fix): starts at the current,
+      // already-settled assigned count and only ever changes at the one
+      // month boundary (April -> May) where the real close already
+      // installs a new value from already-confirmed workflow facts — see
+      // this class's own doc comment.
+      var assignedCount = state.engineersAssigned;
 
       for (var step = 0; step < steps; step++) {
         final closedMonth = state.month + step;
         final openingCash = cash;
         final cashReceived = pendingRevenue;
         final revenueRecognized = PublicDemoRevenue.monthlyRevenueForAssignedCount(
-          state.engineersAssigned,
+          assignedCount,
         );
         final monthlyExpenses = PublicDemoSalaryFinance.monthlyExpenses(
           baselineExpenses: PublicDemoSalary.baselineMonthlyExpenses,
@@ -124,6 +144,16 @@ class PublicDemoCashForecast {
         cash = closingCash;
         pendingRevenue = revenueRecognized;
         if (closedMonth == 7) bonusSettled = true;
+        // April's close (closedMonth 4) always installs
+        // workflow.orderedEngineerCount as the following month's assigned
+        // count — see PublicDemoState.advanceToMay and
+        // PublicDemoAggregate.closeApril, which read the exact same fact.
+        if (closedMonth == 4) {
+          assignedCount = workflow.orderedEngineerCount.clamp(
+            0,
+            state.engineerCount,
+          );
+        }
       }
     }
 

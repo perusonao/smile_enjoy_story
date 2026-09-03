@@ -167,15 +167,62 @@ Issue #148本体（HOME警告カード・ひより文言・Phase 2含む全体�
 
 `PublicDemoCashForecast`は本Follow-up時点でもまだUI層から消費されていない（`grep`で確認済み）ため、この破壊的シグネチャ変更が既存の呼び出し元へ与える影響はない。
 
+## PR #153 P1 Fix: 確定済み参画移行（April→May）を資金予測へ反映
+
+### P1defectの内容と、なぜ誤った「資金は安全」表示を生みうるか
+
+Codexレビューが指摘したP1: `PublicDemoCashForecast`は予測期間の全月にわたって`state.engineersAssigned`を固定値として扱っていた。しかし実際のPublic Demo 0.1では、4月時点で`state.engineersAssigned`が0であっても、`workflow.engineers`に既に`PublicDemoSalesStage.ordered`（案件受注確定）まで進んだエンジニアがいれば、4月決算（`PublicDemoAggregate.closeApril` → `PublicDemoState.advanceToMay`）がその確定済み受注を**5月の**`engineersAssigned`として自動的にインストールする。これは既存の営業パイプライン上、既に確定した事実であり、「今後の営業成功」のような不確実な将来ではない。
+
+修正前の予測は、この4月→5月の確定済み遷移を無視し、5月・6月の予測`engineersAssigned`を常に「4月の(通常0の)値」に固定していた。その結果:
+
+- 実際には5月に売上が発生し、6月にその現金が回収されるにもかかわらず、予測は5月・6月ともに売上0・回収0を返す。
+- これは予測の目的（「このまま確定済みの予定だけで進めた場合、いつ資金が不足するか」を事前に把握する）に対して**危険側ではなく安全側に誤る**バグであり、実際には資金不足に陥らないはずの月を「不足」と誤判定することはないが、逆に実際に発生するはずの入金を見落とし、資金繰りを実際より悪く見せる（過度に悲観的な誤警告）方向に作用する。深刻度としては、逆方向（実際は危険なのに安全と誤判定）ではない点は重要だが、既に確定している情報を無視すること自体がPhase 1Aの「確定情報ベース」という核心の契約に反するため、P1として修正した。
+
+### 各確定済み遷移に使ったauthority
+
+- **April→May（必須・実装済み）**: `PublicDemoAggregate.closeApril`（`lib/game/public_demo/public_demo_aggregate.dart`）が実際に読んでいた`workflow.engineers.where((engineer) => engineer.stage == PublicDemoSalesStage.ordered).length`という一行を、`PublicDemoWorkflowState`（`lib/game/public_demo/public_demo_workflow_state.dart`）に`orderedEngineerCount`という新しい pure getter として抽出した。`PublicDemoAggregate.closeApril`自身もこの新しいgetterを呼ぶように書き換え、実際の月次決算と予測が**文字通り同じ式**を読むようにした（「別解釈を作らない」の指示に対応）。`PublicDemoState.advanceToMay`が行うのと同じ`.clamp(0, engineerCount)`を予測側でも適用。
+- **May→June以降（意図的に対象外）**: `PublicDemoAggregate.closeMay`が読む`hiredWithOrders`/`acceptedHires`は、UI側にのみ存在する`accepted`ステージ集合（`offerAccepted`・`preEntrySkillSheet`等8ステージ）を判定する述語に依存しており、ドメイン層に抽出済みのpure helperが存在しない。`PublicDemoAggregate.closeJune`が読む`assignedInJuly`も同様に、UI側でのみ`workflow.assignments`から都度導出されている。これらをこのFixの一部として新たに抽出・実装することは、「Do not create a parallel interpretation」の指示に反するリスクがあり（既存のUI述語を予測側にコピーすれば、両者が将来ズレる新たな不一致を生みかねない）、かつ本PRの必須テストは4月→5月→6月シナリオのみを要求している。既定の`monthsAhead=3`（4月開始なら4・5・6月）はこの境界に到達しないため、この制限は既定の3か月予測には影響しない。詳細は下記「未解決事項」に記載。
+
+### 修正方法
+
+1. `lib/game/public_demo/public_demo_workflow_state.dart` — `PublicDemoWorkflowState.orderedEngineerCount`（pure getter）を追加。`assignedEngineerIds`と同じ「Cross-cutting projections」節に配置。
+2. `lib/game/public_demo/public_demo_aggregate.dart` — `closeApril`内のインライン`where().length`式を`workflow.orderedEngineerCount`の呼び出しに置き換え（挙動は完全に同一、実際の値の計算式を1箇所に統一しただけ）。
+3. `lib/game/public_demo/public_demo_cash_forecast.dart` — `forecast`内で`state.engineersAssigned`を毎月そのまま使う代わりに、ループ内でミュータブルな`assignedCount`変数を導入。4月分（`closedMonth == 4`）の予測月を処理した直後にのみ、`assignedCount`を`workflow.orderedEngineerCount.clamp(0, state.engineerCount)`で置き換える（`PublicDemoState.advanceToMay`と同じ置換〈加算ではない〉ロジック）。それ以外の月境界では従来通り一定に保つ。
+4. ゲームバランス・save schema・UI・ひより文言・CTA・PR #136は一切変更していない。
+
+### 追加したテスト
+
+`test/game/public_demo/public_demo_cash_forecast_test.dart`に新グループ「confirmed assignment transition (PR #153 P1 fix)」として4ケースを追加（計22ケース）。
+
+1. **必須シナリオ**: 4月時点で`state.engineersAssigned == 0`、`workflow`に1名の確定受注エンジニア（`PublicDemoAggregate.initial()`から実際の営業パイプライン〈`startSkillSheetReview`→`beginSelling`→`introduceProject`→partner面談→client面談→`recordOrder`〉を通して`ordered`へ到達させたもの — ステージのショートカットなし）を持つ状態で、4月の予測売上が0のまま、5月の予測売上が500,000（1名分）、6月の予測`cashReceived`が500,000になることを確認。かつ予測前後で`state`/`workflow`のJSONが不変であることも確認（purity）。
+2. **実際の決算との一致**: 同じシナリオで、予測の4月・5月・6月`closingCash`が、実際に`PublicDemoAggregate.closeApril` → `closeMay` → `closeJune`を実行した結果の`state.cash`とそれぞれ一致することを確認。
+3. **否定ケース**: `ordered`まで到達していないエンジニア（`selling`ステージで停止）では、予測期間の全月で売上・回収が0のままであることを確認。
+4. **複数人**: 2名の創業エンジニア双方が確定受注（`recordOrder`）に到達した場合、5月の予測売上が1,000,000（2名分）になることを確認 — 変換が最初の1名だけでなく全ての確定受注エンジニアを数えることの確認（`PublicDemoWorkflowState`の生の遷移メソッドに`actualCapability: 100`を明示指定することで、各創業エンジニア個別の面談合格閾値に依存しない決定的な検証にしている）。
+
+既存18ケース（Phase 1A初回＋Follow-up）は無変更で全て維持。
+
+### 検証結果
+
+- `flutter analyze` — **No issues found!**
+- `flutter test test/game/public_demo/public_demo_cash_forecast_test.dart` — **22/22 pass**
+- 関連focused test 17ファイル — **179/179 pass**（`public_demo_aggregate_test.dart`／`public_demo_workflow_state_test.dart`／`public_demo_monthly_close_test.dart`／`public_demo_monthly_close_ordinary_month_test.dart`／`public_demo_monthly_close_revenue_test.dart`／`public_demo_revenue_payment_test.dart`／`public_demo_salary_finance_test.dart`／`public_demo_salary_test.dart`／`public_demo_summer_bonus_payment_test.dart`／`public_demo_financial_status_test.dart`／`public_demo_state_test.dart`／`public_demo_save_codec_test.dart`／`public_demo_fiscal_year_completion_lock_test.dart`／`public_demo_fiscal_year_save_test.dart`／`public_demo_assignment_test.dart`／`public_demo_join_test.dart`／`public_demo_save_service_test.dart`）。`public_demo_aggregate_test.dart`・`public_demo_workflow_state_test.dart`を新たに含めたのは、`closeApril`と`PublicDemoWorkflowState`自体を変更したため。
+- フルテスト・PlaywrightはPR CIへ一任（本セッションでは未実行）。
+
+### 未解決事項（この修正後も残るもの）
+
+- **May→June以降の確定済み遷移は未対応**（上記「対象外」の理由を参照）。既定の3か月予測（4月開始なら4・5・6月）には影響しないが、5月または6月を予測開始点とした場合、あるいは`monthsAhead`を4以上に広げてJuly以降を含めた場合、`hiredWithOrders`/`assignedInJuly`由来の確定済み参画増加は依然として予測へ反映されない。これはPhase 1B以降で、UIの`accepted`ステージ集合と`assignedInJuly`導出をドメイン層のpure helperとして抽出したうえで、同じパターンで拡張する対象として記録する。
+- 7月賞与の可否判定を予測が複製しない設計判断は初回実装時のまま変更していない。
+
 ## commit SHA
 
 - Phase 1A 初回実装: `fe583ca2d070b07a1575fc3cfe52f60a7e7ac535`
-- Follow-up（joinedApplicants authority統一・コード＋テスト）: `50dd0e2`
-- Follow-up 最終（本SHA追記コミット自身）: `7e8d423055f2edc0e3fafda8ec7c3810983046d6`
+- Follow-up（joinedApplicants authority統一）: `50dd0e2`／`170c76c611536e4c9f4b31162c7fa0fe7b1b89ca`
+- PR #153 P1 Fix: `db549e0ebdec3f9b25c116f853cbd50aab531359`（コード＋テスト＋report更新を含む単一コミット。push後の最終HEAD）
 
 ## PR / Merge Readiness
 
-- 変更はPhase 1Aのスコープ内（純粋モデル＋テストのみ）に収まっており、既存の会計・save schema・PR #136・採用/営業/面談成功率には一切触れていない。
-- `flutter analyze`・関連focused test（新規18件＋既存134件）が全てgreenであることを確認済み。
+- 変更はPhase 1Aのスコープ内（純粋モデル＋テストのみ、および実際の月次決算との整合性を高める最小限のリファクタ`workflow.orderedEngineerCount`抽出）に収まっており、ゲームバランス・save schema・PR #136・採用/営業/面談成功率には一切触れていない。
+- `flutter analyze`・関連focused test（新規22件＋既存179件）が全てgreenであることを確認済み。
 - フルテスト・PlaywrightはPR CIでの実行に委ねる。
-- HOME UI・ひより連携・Phase 2は本PRの対象外であり、Merge可能と判断する（CI green確認後）。
+- **本PRはまだmergeしない**（ユーザー指示）。Issue #148 Phase 1Bも本branch/セッションでは着手していない。
+- HOME UI・ひより連携・Phase 2・May以降の確定済み遷移拡張は本PRの対象外。

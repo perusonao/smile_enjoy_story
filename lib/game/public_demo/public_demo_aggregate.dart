@@ -616,9 +616,7 @@ class PublicDemoAggregate {
       state: PublicDemoMonthlyClose.closeApril(
         state: _closeGrowth(const {}),
         monthlyExpenses: monthlyExpenses,
-        orderedEngineers: workflow.engineers
-            .where((engineer) => engineer.stage == PublicDemoSalesStage.ordered)
-            .length,
+        orderedEngineers: workflow.orderedEngineerCount,
       ).state,
     );
   }

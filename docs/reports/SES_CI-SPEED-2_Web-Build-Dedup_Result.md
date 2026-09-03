@@ -228,7 +228,79 @@ gameplay テストの内容は変更していない。`static-server.js` の変�
 
 `6d8deb2`（`feat(ci): make one Pages-base-href Web build reusable by smoke-e2e (SES-CI-SPEED-2 Slice B)`）
 
-## 変更ファイル（累計, Slice B時点）
+## Slice C — 実装結果
+
+### changed files
+
+- `.github/workflows/e2e.yml`
+  - `build` ジョブから `subosito/flutter-action@v2` / `flutter pub get` /
+    `Build web (release)`（`flutter build web --release --base-href ...`）
+    の3ステップを完全に削除した。
+  - 代わりに `actions/download-artifact@v4`（`name: build-web`,
+    `path: build/web`）を追加し、`validate` が同一 run 内でアップロード
+    済みの `build-web` artifact（Slice B により Pages と同じ base-href で
+    ビルド済み）をそのまま `build/web` へ展開する。
+  - ジョブ冒頭のコメントブロック（jobs 一覧）と `build` ジョブ内の
+    インラインコメントを、実際の構造（Flutter build 自体が無くなった）に
+    合わせて更新した。
+  - `build` ジョブの `permissions`（`contents: read` /
+    `pages: write` / `actions: read`）・`needs`
+    (`[smoke-e2e, check-latest]`)・`if` 条件・`concurrency` 設定は
+    無変更。Replay Viewer の fold-in（`e2e-replay-package` の
+    download → `build/web/e2e-replays/` への組み込み）と
+    `actions/configure-pages@v5` / `actions/upload-pages-artifact@v3` も
+    無変更。
+
+### implementation
+
+Slice B で `validate` の build は Pages と同一の `--base-href` を持つ
+ようになったため、`check-latest` が保証する「`build` が使う SHA は
+`validate` が検証した SHA と常に同一」という既存の安全性前提と組み合わせる
+と、`build` ジョブは自前で `flutter build web` を再実行する必要が完全に
+なくなる。`build` ジョブは `checkout`（`ref:
+needs.check-latest.outputs.target_sha`、`e2e/replay-viewer/` ソースの
+fold-in に必要なため維持）の直後に `build-web` artifact を download する
+だけになった。
+
+stale-SHA guard（`check-latest`/`deploy` 直前の再検証）・`needs`/`if` の
+依存関係・Replay Viewer 組み込みロジック・`upload-pages-artifact` の呼び出し
+方はいずれも変更していない。ゲームコード（`lib/`, `web/`）・テストの
+assertion にも触れていない。
+
+### verification（focused）
+
+- `python3 -c "import yaml; yaml.safe_load(open('.github/workflows/e2e.yml'))"`
+  — YAML構文の妥当性、既存6ジョブが変更後も揃っていることを再確認
+- 変更後の `build` ジョブの `needs`/`steps`/`permissions` を Python 経由で
+  抽出し、`checkout → Download build/web → Download e2e-replay-package →
+  Assemble Replay Viewer → configure-pages → upload-pages-artifact` の順に
+  Flutter 関連ステップが一切存在しないこと、`permissions` が無変更である
+  ことを直接確認した
+- `mkdir -p build/web/e2e-replays`（Replay Viewer 組み込みステップ）は
+  `build/web` が既に存在する前提だったが、artifact download 後も
+  `build/web` は同じディレクトリ構造で存在するため、この後続ステップの
+  ロジックは変更不要であることをコードレビューで確認した
+- Flutter SDK が本環境に存在しないため、`build-web` artifact の実際の
+  download → `upload-pages-artifact` までの結合動作は Slice D の実 CI 実行
+  （`build`/`deploy` ジョブの GREEN）で最終確認する
+
+### remaining risk
+
+- `actions/download-artifact@v4` が同一 workflow run 内の `validate` の
+  artifact を正しく取得できることは、既存の `smoke-e2e`/`replay-package`
+  ジョブの同パターンから安全であると判断しているが、`build` ジョブでの
+  実際の download 成功は Slice D の実 CI で確認する
+- base-href 以外に build 成果物の差異が無いという Slice A/B の結論
+  （ソースコード調査ベース）が実際の Pages 配信で問題ないかは、Slice D の
+  Pages deploy 実行結果（配信URLでの実アクセス確認は本タスクの範囲外だが、
+  `build`/`deploy` ジョブ自体のGREEN化で構造的な健全性は確認できる）で
+  引き続き検証する
+
+### commit SHA（Slice C）
+
+（このコミットで記録）
+
+## 変更ファイル（累計, Slice C時点）
 
 - `.github/workflows/e2e.yml`
 - `e2e/scripts/static-server.js`

@@ -82,13 +82,19 @@ void main() {
       // PublicDemoImportantEventsSection is replaced by
       // PublicDemoImportantTasksSection ("今月の重要タスク"), and
       // PublicDemoQuickAccessSection (section 7) is new.
+      //
+      // HOME-COMPACT-1B.3: PublicDemoMonthlyPrimaryCtaSection moves directly
+      // under HomeNavigatorSection so it is visible in the initial no-scroll
+      // 390px view alongside 月/KPI/ひより — see Issue #148 Phase 1B.3's own
+      // acceptance criteria. The summary sections below it are unchanged in
+      // relative order and stay reachable by scroll/quick-access/bottom nav.
       final order = [
         find.byType(HomeNavigatorSection),
+        find.byType(PublicDemoMonthlyPrimaryCtaSection),
         find.byType(HomeOfficeStageSection),
         find.byType(PublicDemoImportantTasksSection),
         find.byType(PublicDemoQuickAccessSection),
         find.byType(PublicDemoFinanceSummarySection),
-        find.byType(PublicDemoMonthlyPrimaryCtaSection),
       ];
       for (final section in order) {
         expect(section, findsOneWidget);

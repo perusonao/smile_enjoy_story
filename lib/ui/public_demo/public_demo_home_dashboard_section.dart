@@ -71,6 +71,7 @@ class PublicDemoHomeDashboardSection extends StatelessWidget {
     required this.data,
     required this.recommendedAction,
     required this.navigatorAdvice,
+    this.cashAdvice,
     this.onShowOtherActions,
   });
 
@@ -87,6 +88,21 @@ class PublicDemoHomeDashboardSection extends StatelessWidget {
   /// same owner-bound callback carried by [recommendedAction]; [_effectiveAdvice]
   /// is what actually reaches [HomeNavigatorSection].
   final HomeNavigatorAdvice? navigatorAdvice;
+
+  /// Issue #148 Phase 1B.3 — the Navigator's already-resolved cash-forecast
+  /// advice (see `PublicDemo01PlaceholderScreen._cashForecastAdvice`'s own
+  /// doc for exactly when the owner produces one). Rebuilt on every build
+  /// for the same reason [navigatorAdvice] is.
+  ///
+  /// When non-null, [_effectiveAdvice] shows this INSTEAD of
+  /// [navigatorAdvice]/[recommendedAction]'s own guidance — a forecasted
+  /// cash shortage outranks the normal "next thing to do" line, exactly as
+  /// Issue #148 Phase 1B.3 specifies ("優先度付きで統合"). It is `null` in
+  /// every other case (normal cash health, an already-realized shortage/
+  /// bankruptcy already carrying its own strong lead elsewhere on screen, or
+  /// a close-blocked/terminal state), in which case this section's existing
+  /// behavior is completely unchanged.
+  final HomeNavigatorAdvice? cashAdvice;
 
   /// PUBLIC-DEMO-HOME-UI-3A: the mockup's "他の行動を確認する" secondary route
   /// under the primary CTA. Already an owner-bound callback (the screen's
@@ -109,18 +125,12 @@ class PublicDemoHomeDashboardSection extends StatelessWidget {
   /// Also attaches [onShowOtherActions] (as '他の行動を確認する') whenever both
   /// the resolved advice and the callback are non-null.
   HomeNavigatorAdvice? get _effectiveAdvice {
-    final advice = navigatorAdvice;
-    if (advice == null) return null;
-    final base = recommendedAction is HomeRecommendedActionNone
-        ? (data.monthGoalText.isEmpty
-              ? advice
-              : HomeNavigatorAdvice(
-                  title: advice.title,
-                  message: data.monthGoalText,
-                  explanation: advice.explanation,
-                  semantic: advice.semantic,
-                ))
-        : advice;
+    // Issue #148 Phase 1B.3: a forecasted cash shortage takes the slot over
+    // the normal next-action guidance entirely — see [cashAdvice]'s own doc
+    // for why this is never additive with the logic below.
+    final cash = cashAdvice;
+    final base = cash ?? _baseAdvice;
+    if (base == null) return null;
     final onShowOther = onShowOtherActions;
     if (onShowOther == null) return base;
     return HomeNavigatorAdvice(
@@ -136,8 +146,26 @@ class PublicDemoHomeDashboardSection extends StatelessWidget {
     );
   }
 
+  /// [navigatorAdvice] as resolved by [navigatorAdviceFor], with the
+  /// month-goal substitution [_effectiveAdvice]'s own doc (pre-1B.3)
+  /// already described. Split out from [_effectiveAdvice] unchanged so the
+  /// cash-advice priority added above it stays a single, obvious `??`.
+  HomeNavigatorAdvice? get _baseAdvice {
+    final advice = navigatorAdvice;
+    if (advice == null) return null;
+    if (recommendedAction is! HomeRecommendedActionNone) return advice;
+    if (data.monthGoalText.isEmpty) return advice;
+    return HomeNavigatorAdvice(
+      title: advice.title,
+      message: data.monthGoalText,
+      explanation: advice.explanation,
+      semantic: advice.semantic,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    final effectiveAdvice = _effectiveAdvice;
     return Column(
       key: const Key('public-demo-home-dashboard-section'),
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -147,8 +175,8 @@ class PublicDemoHomeDashboardSection extends StatelessWidget {
         KpiSection.compact(data: data),
         const SizedBox(height: 8),
         HomeNavigatorSection(
-          expression: navigatorExpressionFor(navigatorAdvice?.semantic),
-          advice: _effectiveAdvice,
+          expression: navigatorExpressionFor(effectiveAdvice?.semantic),
+          advice: effectiveAdvice,
         ),
         const SizedBox(height: 4),
       ],

@@ -21,11 +21,21 @@
 // ("今月の重要タスク", "クイックアクセス") between the Office Stage and the
 // finance detail, which legitimately grow the page taller than the old
 // content budget — so the strict "everything fits inside 615/660pt" pixel
-// assertion is retired along with the sections it was measuring. What
-// survives from #124's intent — that the core "what do I need to know
-// right now" facts (month, cash, next action + its CTA, who is on staff)
-// are genuinely painted in the unscrolled initial viewport, not merely
-// present somewhere on a long scroll — is kept below.
+// assertion is retired along with the sections it was measuring.
+//
+// Issue #148 Phase 1B.3 (HOME-COMPACT-1B.3) re-prioritizes the initial
+// viewport once more: the monthly progression CTA moves directly under the
+// Navigator card so it — not the Office Stage picture — is guaranteed
+// visible with no scroll. The Office Stage remains reachable (by scroll,
+// quick access, and the bottom nav — see the other suites that pin that),
+// but it is no longer required to be painted inside the very first frame;
+// "誰が待機/利用可能か" is dropped from the list this test checks and
+// replaced with the monthly CTA, which Issue #148 Phase 1B.3's acceptance
+// criteria explicitly requires in the initial view. What survives from
+// #124's original intent — that the core "what do I need to know right
+// now" facts are genuinely painted in the unscrolled initial viewport, not
+// merely present somewhere on a long scroll — is kept below, updated for
+// the current required set.
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -48,8 +58,9 @@ void main() {
     final label = '${size.width.toInt()}x${size.height.toInt()}';
 
     testWidgets(
-      'Issue #124/#147: month, cash, next action, and who is on staff are '
-      'all painted in the unscrolled initial viewport at $label',
+      'Issue #124/#147/#148 Phase 1B.3: month, cash, next action, and the '
+      'monthly progression CTA are all painted in the unscrolled initial '
+      'viewport at $label',
       (tester) async {
         await pumpDemoAt(tester, size);
 
@@ -100,34 +111,34 @@ void main() {
           '次にやること CTA',
         );
 
-        // 4: who is on staff and available — the Office Stage photo strip,
-        // now the ONLY employee-roster presentation on HOME (Issue #147
-        // deletes the duplicate "社員ステージ" list #124 used to compact).
+        // 4: the monthly progression CTA — Issue #148 Phase 1B.3 requires
+        // it visible with no scroll, alongside 月/KPI/ひより. It replaces
+        // the Office Stage photo strip in this required set: the Office
+        // Stage remains reachable (by scroll/quick-access/bottom-nav — see
+        // the Office Stage's own suites), but is no longer required inside
+        // the very first frame now that the CTA occupies that budget.
         expectInFirstView(
-          find.byKey(const Key('home-office-stage')),
-          '誰が待機/利用可能か (Office Stage)',
+          find.byKey(const Key('public-demo-monthly-primary-cta')),
+          '月次進行CTA (monthly close CTA)',
         );
+
+        // The Office Stage (reachable by scroll — see above) still shows
+        // both founding engineers somewhere on screen.
         expect(find.text('佐藤 健'), findsWidgets);
         expect(find.text('鈴木 葵'), findsWidgets);
       },
     );
 
-    testWidgets(
-      'Issue #147: the Office Stage is the only employee-roster '
-      'presentation on HOME at $label — no duplicate full-size roster '
-      'section exists any more',
-      (tester) async {
-        await pumpDemoAt(tester, size);
+    testWidgets('Issue #147: the Office Stage is the only employee-roster '
+        'presentation on HOME at $label — no duplicate full-size roster '
+        'section exists any more', (tester) async {
+      await pumpDemoAt(tester, size);
 
-        expect(find.byKey(const Key('home-office-stage')), findsOneWidget);
-        // The deleted duplicate list used this key; it must not exist in
-        // any form, under any name, on the rebuilt screen.
-        expect(
-          find.byKey(const Key('public-demo-employee-stage')),
-          findsNothing,
-        );
-      },
-    );
+      expect(find.byKey(const Key('home-office-stage')), findsOneWidget);
+      // The deleted duplicate list used this key; it must not exist in
+      // any form, under any name, on the rebuilt screen.
+      expect(find.byKey(const Key('public-demo-employee-stage')), findsNothing);
+    });
   }
 
   testWidgets(
@@ -138,7 +149,7 @@ void main() {
 
       final workflowBefore =
           (tester.state(find.byType(PublicDemo01PlaceholderScreen)) as dynamic)
-                  .workflow;
+              .workflow;
       final stageBefore = workflowBefore.engineers.first.stage;
 
       await tester.tap(find.byKey(const Key('home-recommended-action-cta')));
@@ -148,7 +159,7 @@ void main() {
 
       final workflowAfter =
           (tester.state(find.byType(PublicDemo01PlaceholderScreen)) as dynamic)
-                  .workflow;
+              .workflow;
       expect(workflowAfter.engineers.first.stage, isNot(stageBefore));
     },
   );

@@ -228,19 +228,19 @@ void main() {
   });
 
   group('K: the office background', () {
-    testWidgets('defaults to the one office asset that exists', (tester) async {
+    testWidgets('defaults to the dedicated HOME banner asset', (tester) async {
       await pumpStage(tester, displayOf(2));
       final background = tester.widget<Image>(
         find.byKey(const Key('home-office-stage-background')),
       );
       expect(
         (background.image as AssetImage).assetName,
-        AssetPaths.locationOfficeDay,
+        AssetPaths.locationOfficeDayHomeBanner,
       );
-      expect(AssetPaths.all, contains(AssetPaths.locationOfficeDay));
+      expect(AssetPaths.all, contains(AssetPaths.locationOfficeDayHomeBanner));
       expect(
         HomeOfficeStageDisplay(members: const []).backgroundAssetPath,
-        AssetPaths.locationOfficeDay,
+        AssetPaths.locationOfficeDayHomeBanner,
       );
     });
 

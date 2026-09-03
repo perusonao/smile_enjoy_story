@@ -83,7 +83,7 @@ class HomeOfficeStageMember {
 class HomeOfficeStageDisplay {
   const HomeOfficeStageDisplay({
     required this.members,
-    this.backgroundAssetPath = AssetPaths.locationOfficeDay,
+    this.backgroundAssetPath = AssetPaths.locationOfficeDayHomeBanner,
   });
 
   /// The company's employees in authoritative emission order — see
@@ -92,14 +92,14 @@ class HomeOfficeStageDisplay {
 
   /// The office scene behind the employees.
   ///
-  /// Public Demo 0.1 has no office-tier concept and the asset catalogue
-  /// holds no tier-specific office art (only `locations/office_day.jpg` and
-  /// `locations/office_night.jpg`), so this defaults to the one background
-  /// that actually exists. It is a constructor parameter rather than a
-  /// constant inside the widget precisely so a later phase that *does*
-  /// introduce tiers can choose the scene at this construction site,
-  /// without the rendering widget gaining any knowledge of tiers — and
-  /// without inventing an asset name that is not in the bundle today.
+  /// HOME-COMPACT-1B.3 defaults this to [AssetPaths.locationOfficeDayHomeBanner]
+  /// — a wide-aspect crop made specifically for this section's horizontal
+  /// banner, with no text baked into the image. It is a constructor
+  /// parameter rather than a constant inside the widget precisely so a
+  /// later phase that introduces office tiers can choose the scene at this
+  /// construction site, without the rendering widget gaining any knowledge
+  /// of tiers — and without inventing an asset name that is not in the
+  /// bundle today.
   final String backgroundAssetPath;
 
   /// How many employees the stage draws at most.

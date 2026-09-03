@@ -69,7 +69,12 @@ class HomeNavigatorIdentity {
   /// value comes back.
   static String? portraitAssetFor(NavigatorExpression expression) =>
       switch (expression) {
-        NavigatorExpression.normal => AssetPaths.navigatorNormal,
+        // HOME-COMPACT-1B.3: the compact-avatar artwork sized specifically
+        // for this card's small circular portrait. [NavigatorExpression
+        // .worried] keeps its own distinct [AssetPaths.navigatorCaution]
+        // image below — the cash-advice integration's caution/normal visual
+        // distinction depends on the two staying different assets.
+        NavigatorExpression.normal => AssetPaths.navigatorHomeCompact,
         NavigatorExpression.worried => AssetPaths.navigatorCaution,
         // NAVIGATOR-1A ships one image. Callers must treat null as "draw the
         // fallback", which is what HomeNavigatorSection does.

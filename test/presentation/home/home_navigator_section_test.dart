@@ -115,7 +115,7 @@ void main() {
     test('1D ships artwork for normal and worried only', () {
       expect(
         HomeNavigatorIdentity.portraitAssetFor(NavigatorExpression.normal),
-        AssetPaths.navigatorNormal,
+        AssetPaths.navigatorHomeCompact,
       );
       expect(
         HomeNavigatorIdentity.portraitAssetFor(NavigatorExpression.worried),
@@ -149,14 +149,17 @@ void main() {
     test('the portrait asset is registered for bundling', () {
       expect(
         AssetPaths.all,
-        containsAll([AssetPaths.navigatorNormal, AssetPaths.navigatorCaution]),
+        containsAll([
+          AssetPaths.navigatorHomeCompact,
+          AssetPaths.navigatorCaution,
+        ]),
       );
     });
 
     testWidgets('the registered portrait actually exists in the bundle', (
       tester,
     ) async {
-      final data = await rootBundle.load(AssetPaths.navigatorNormal);
+      final data = await rootBundle.load(AssetPaths.navigatorHomeCompact);
       expect(data.lengthInBytes, greaterThan(0));
     });
   });
@@ -205,7 +208,9 @@ void main() {
 
     testWidgets('with advice present she states it instead of the generic '
         'greeting, behind a labelled eyebrow', (tester) async {
-      await pumpNavigator(tester); // default advice: HomeNavigatorAdvice.neutral
+      await pumpNavigator(
+        tester,
+      ); // default advice: HomeNavigatorAdvice.neutral
 
       expect(find.text(HomeNavigatorIdentity.greeting), findsNothing);
       expect(
@@ -273,33 +278,34 @@ void main() {
               )
               .top,
           greaterThan(
-            tester.getRect(find.byKey(const Key('home-navigator-message'))).bottom,
+            tester
+                .getRect(find.byKey(const Key('home-navigator-message')))
+                .bottom,
           ),
         );
       },
     );
 
-    testWidgets(
-      'without an explanation no advice bubble renders at all',
-      (tester) async {
-        await pumpNavigator(
-          tester,
-          advice: const HomeNavigatorAdvice(
-            title: 'ひよりからのご案内',
-            message: '説明のない既存の案内です。',
-          ),
-        );
-        expect(
-          find.byKey(const Key('home-navigator-advice-bubble')),
-          findsNothing,
-        );
-        expect(
-          find.byKey(const Key('home-navigator-advice-explanation')),
-          findsNothing,
-        );
-        expect(tester.takeException(), isNull);
-      },
-    );
+    testWidgets('without an explanation no advice bubble renders at all', (
+      tester,
+    ) async {
+      await pumpNavigator(
+        tester,
+        advice: const HomeNavigatorAdvice(
+          title: 'ひよりからのご案内',
+          message: '説明のない既存の案内です。',
+        ),
+      );
+      expect(
+        find.byKey(const Key('home-navigator-advice-bubble')),
+        findsNothing,
+      );
+      expect(
+        find.byKey(const Key('home-navigator-advice-explanation')),
+        findsNothing,
+      );
+      expect(tester.takeException(), isNull);
+    });
 
     testWidgets('there is no collapse control anywhere in the widget', (
       tester,
@@ -322,10 +328,7 @@ void main() {
         find.descendant(of: section, matching: find.text('佐倉 ひより')),
         findsOneWidget,
       );
-      expect(
-        find.byKey(const Key('home-navigator-open-advice')),
-        findsNothing,
-      );
+      expect(find.byKey(const Key('home-navigator-open-advice')), findsNothing);
       expect(
         find.byKey(const Key('home-navigator-close-advice')),
         findsNothing,
@@ -364,23 +367,22 @@ void main() {
 
     for (final size in _sizes) {
       for (final scale in _scales) {
-        testWidgets(
-          'advice bubble fits horizontally at '
-          '${size.width.toInt()}x${size.height.toInt()} / textScale $scale',
-          (tester) async {
-            await pumpNavigator(tester, size: size, textScale: scale);
-            expect(tester.takeException(), isNull);
-            for (final key in const [
-              'home-navigator',
-              'home-navigator-advice-bubble',
-              'home-navigator-advice-explanation',
-            ]) {
-              final rect = tester.getRect(find.byKey(Key(key)));
-              expect(rect.left, greaterThanOrEqualTo(0.0), reason: key);
-              expect(rect.right, lessThanOrEqualTo(size.width), reason: key);
-            }
-          },
-        );
+        testWidgets('advice bubble fits horizontally at '
+            '${size.width.toInt()}x${size.height.toInt()} / textScale $scale', (
+          tester,
+        ) async {
+          await pumpNavigator(tester, size: size, textScale: scale);
+          expect(tester.takeException(), isNull);
+          for (final key in const [
+            'home-navigator',
+            'home-navigator-advice-bubble',
+            'home-navigator-advice-explanation',
+          ]) {
+            final rect = tester.getRect(find.byKey(Key(key)));
+            expect(rect.left, greaterThanOrEqualTo(0.0), reason: key);
+            expect(rect.right, lessThanOrEqualTo(size.width), reason: key);
+          }
+        });
       }
     }
   });
@@ -410,9 +412,7 @@ void main() {
           onSecondaryPressed: () => secondaryCalls++,
         ),
       );
-      final secondary = find.byKey(
-        const Key('home-navigator-secondary-cta'),
-      );
+      final secondary = find.byKey(const Key('home-navigator-secondary-cta'));
       expect(secondary, findsOneWidget);
       expect(find.text('他の行動を確認する'), findsOneWidget);
       await tester.tap(secondary);
@@ -455,7 +455,7 @@ void main() {
       final image = find.byKey(const Key('home-navigator-portrait'));
       expect(image, findsOneWidget);
       final provider = tester.widget<Image>(image).image as AssetImage;
-      expect(provider.assetName, AssetPaths.navigatorNormal);
+      expect(provider.assetName, AssetPaths.navigatorHomeCompact);
       expect(
         find.byKey(const Key('home-navigator-portrait-fallback')),
         findsNothing,
@@ -513,7 +513,7 @@ void main() {
                   )
                   .image
               as AssetImage;
-      expect(provider.assetName, AssetPaths.navigatorNormal);
+      expect(provider.assetName, AssetPaths.navigatorHomeCompact);
     });
 
     for (final (label, bundle) in <(String, AssetBundle Function())>[

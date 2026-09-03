@@ -3,6 +3,9 @@ import 'dart:async' show unawaited;
 import 'package:flutter/material.dart';
 import '../../game/public_demo/public_demo_aggregate.dart';
 import '../../game/public_demo/public_demo_assignment.dart';
+import '../../game/public_demo/public_demo_cash_advice_selector.dart';
+import '../../game/public_demo/public_demo_cash_forecast.dart';
+import '../../game/public_demo/public_demo_cash_status_presentation.dart';
 import '../../game/public_demo/public_demo_engineer_runtime.dart';
 import '../../game/public_demo/public_demo_fiscal_close_id.dart';
 import '../../game/public_demo/public_demo_interview.dart';
@@ -127,7 +130,9 @@ bool homeImportantTaskHasEligibleAction(
   PublicDemoState state,
   Iterable<HomeRecommendedActionCandidate> candidates,
   Set<HomeRecommendedActionKind> kinds,
-) => !state.isCloseBlocked && candidates.any((c) => kinds.contains(c.action.kind));
+) =>
+    !state.isCloseBlocked &&
+    candidates.any((c) => kinds.contains(c.action.kind));
 
 class PublicDemo01PlaceholderScreen extends StatefulWidget {
   const PublicDemo01PlaceholderScreen({
@@ -297,6 +302,169 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
         ),
     ],
   );
+
+  /// Issue #148 Phase 1B.3 — connects the existing confirmed-information
+  /// cash forecast ([PublicDemoCashForecast], PR #153) through the existing
+  /// presentation/advice layer ([PublicDemoCashStatusPresentation],
+  /// [PublicDemoCashAdviceSelector], both PR #154) into the one guidance
+  /// slot HOME already has: the Navigator card. This never recomputes a
+  /// forecast, a safety threshold, or an advice eligibility rule of its own
+  /// — every fact below is read verbatim from those three already-tested
+  /// pure models. This getter's only job is turning their already-decided
+  /// output into the `HomeNavigatorAdvice` HOME already knows how to
+  /// render, and deciding *when* it should take that slot over the normal
+  /// next-action guidance.
+  ///
+  /// Deliberately suppressed whenever [PublicDemoState.financialStatus] is
+  /// not [PublicDemoFinancialStatus.normal]: once an actual shortage,
+  /// bankruptcy, or March cash-shortage failure has happened, it already has
+  /// its own strong, pre-existing lead — [PublicDemoCashShortageCard], the
+  /// bankruptcy terminal card, and (inside this very Navigator) the
+  /// existing `cashShortageResponse` recommended-action candidate emitted
+  /// in [_recommendedActionCandidates]'s own P0 block. Showing this
+  /// forecast-based advice on top of any of those would be exactly the
+  /// duplicate strong cash lead Issue #148 Phase 1B.3 forbids. This getter
+  /// exists for the *preventive* window before any of that happens, while
+  /// [PublicDemoState.financialStatus] is still `normal` — the one case
+  /// none of those existing leads cover.
+  HomeNavigatorAdvice? get _cashForecastAdvice {
+    if (s.financialStatus != PublicDemoFinancialStatus.normal) return null;
+    final forecast = PublicDemoCashForecast.forecast(
+      state: s,
+      workflow: workflow,
+    );
+    final cashStatus = PublicDemoCashStatusPresentation.fromForecast(forecast);
+    if (cashStatus.status != PublicDemoCashStatus.shortage) return null;
+    final shortageMonth = cashStatus.shortageMonth;
+    if (shortageMonth == null) return null;
+
+    final shortageEntry = forecast.months
+        .where((month) => month.month == shortageMonth)
+        .firstOrNull;
+    // "根拠となる短い数値" (Issue #148 Phase 1B.3 acceptance criteria): the
+    // forecast's own projected closing cash for the shortage month, never a
+    // separately recomputed figure.
+    final evidence = shortageEntry == null
+        ? null
+        : '${publicDemoMonthLabel(shortageMonth)}末の現預金見込み '
+              '${formatYen(shortageEntry.closingCash)}';
+    final message = '${publicDemoMonthLabel(shortageMonth)}に資金がマイナスになる見込みです。';
+
+    // Codex review (PR #159, P2): an applicant who won a pre-entry order
+    // joins as an engineer at [PublicDemoSalesStage.waiting]
+    // (`withJoinedEngineers`) in the very same close that
+    // `assignOrderedForMay` also adds them to the assignment roster — so
+    // `stage == waiting` alone does not mean "not currently on a project".
+    // [PublicDemoCashAdviceSelector.select] only reads `stage`, so passing
+    // it the raw [workflow] could surface an already-assigned engineer as
+    // the advice target: confirming their SkillSheet or starting their
+    // training would either be a silent no-op (the aggregate's own guards
+    // reject re-advancing an assigned engineer) or push them back into the
+    // sales pipeline for a project they are already on.
+    //
+    // [workflow.assignedEngineerIds] is the existing SSOT for "currently on
+    // a project" (already used the same way by this screen's own training
+    // card and P2-fix month-6/Recovery filters — see
+    // `_currentlyAssignedEngineerIds`'s own doc). Excluding those engineers
+    // from the pool the selector sees — rather than discarding whatever
+    // single candidate it happens to return — lets it fall through to the
+    // next genuinely eligible waiting/skillSheet engineer on its own, with
+    // no change to its selection logic or order. If none remain, it
+    // returns `null` exactly as it already does when no candidate exists,
+    // which the existing `candidate == null` branch below already renders
+    // safely (no CTA bound to a fabricated action).
+    final assignedEngineerIds = workflow.assignedEngineerIds(month: s.month);
+    final adviceWorkflow = assignedEngineerIds.isEmpty
+        ? workflow
+        : PublicDemoWorkflowState(
+            applicants: workflow.applicants,
+            engineers: [
+              for (final engineer in workflow.engineers)
+                if (!assignedEngineerIds.contains(engineer.id)) engineer,
+            ],
+          );
+    final candidate = PublicDemoCashAdviceSelector.select(
+      cashStatus: cashStatus,
+      workflow: adviceWorkflow,
+      state: s,
+    );
+    if (candidate == null) {
+      // A forecasted shortage with no currently valid next action (see
+      // PublicDemoCashAdviceSelector's own doc for when this happens) still
+      // states the reason; its only safe CTA is the existing finance-detail
+      // scroll-jump, never a fabricated command.
+      return HomeNavigatorAdvice(
+        title: 'ひよりからのご案内',
+        message: message,
+        explanation: evidence == null
+            ? '資金計画を確認し、支出や営業状況を見直しましょう。'
+            : '$evidence。資金計画を確認し、支出や営業状況を見直しましょう。',
+        semantic: HomeNavigatorAdviceSemantic.caution,
+        ctaLabel: '資金計画を確認する',
+        onCtaPressed: () => _scrollToSection(_financeSummaryKey),
+      );
+    }
+
+    final name = _engineerName(candidate.employeeId);
+    // Only [confirmSkillSheet] needs the full engineer object (to open the
+    // SkillSheet sheet the same way the production button does); the other
+    // two existing bound handlers already take a bare id.
+    final skillSheetEngineer =
+        candidate.actionType == PublicDemoAdviceActionType.confirmSkillSheet
+        ? _engineerById(candidate.employeeId)
+        : null;
+    final (ctaLabel, headline, onPressed) = switch (candidate.actionType) {
+      PublicDemoAdviceActionType.confirmSkillSheet => (
+        'SkillSheetを確認',
+        '$nameのSkillSheetを確認',
+        skillSheetEngineer == null
+            ? null
+            : () => unawaited(_openSkillSheetReview(skillSheetEngineer)),
+      ),
+      PublicDemoAdviceActionType.startInternalTraining => (
+        '研修する',
+        '$nameの社内研修',
+        () => _selectInternalTraining(candidate.employeeId),
+      ),
+      PublicDemoAdviceActionType.beginSelling => (
+        '営業を開始',
+        '$nameの営業を開始',
+        () => _beginSelling(candidate.employeeId),
+      ),
+    };
+    // The engineer backing a confirmSkillSheet candidate could not be
+    // resolved (should not happen — see the doc above — but this never
+    // renders a CTA with no bound action rather than assume it cannot).
+    if (onPressed == null) {
+      return HomeNavigatorAdvice(
+        title: 'ひよりからのご案内',
+        message: message,
+        explanation: evidence,
+        semantic: HomeNavigatorAdviceSemantic.caution,
+      );
+    }
+
+    return HomeNavigatorAdvice(
+      title: 'ひよりからのご案内',
+      headline: headline,
+      message: message,
+      explanation: evidence == null
+          ? null
+          : '$evidence。次の一手として$nameの対応を進めましょう。',
+      semantic: HomeNavigatorAdviceSemantic.caution,
+      ctaLabel: ctaLabel,
+      onCtaPressed: onPressed,
+    );
+  }
+
+  /// Looks up an engineer by id in [workflow.engineers], or `null` if none
+  /// matches. Mirrors [_assignmentForOrNull]'s own loop-based shape.
+  PublicDemoEngineerSales? _engineerById(String engineerId) {
+    for (final engineer in workflow.engineers) {
+      if (engineer.id == engineerId) return engineer;
+    }
+    return null;
+  }
 
   /// Section 6 ("今月の重要タスク") — up to the three fixed, truthful items
   /// specified for PUBLIC-DEMO-HOME-UI-3A, each built only from an
@@ -848,9 +1016,7 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
         key: const Key('public-demo-dev-menu-toggle'),
         onPressed: () =>
             setState(() => _isDevMenuExpanded = !_isDevMenuExpanded),
-        icon: Icon(
-          _isDevMenuExpanded ? Icons.expand_less : Icons.expand_more,
-        ),
+        icon: Icon(_isDevMenuExpanded ? Icons.expand_less : Icons.expand_more),
         label: const Text('開発・テストメニュー'),
       ),
       if (_isDevMenuExpanded) _publicDemoTestControlsCard(),
@@ -878,10 +1044,7 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
             children: [
               Icon(Icons.science_outlined, size: 20),
               SizedBox(width: 8),
-              Text(
-                'テスト用操作',
-                style: TextStyle(fontWeight: FontWeight.bold),
-              ),
+              Text('テスト用操作', style: TextStyle(fontWeight: FontWeight.bold)),
             ],
           ),
           const SizedBox(height: 4),
@@ -1309,7 +1472,8 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
   List<PublicDemoMonthGuardCandidate> get _monthGuardRecommendedCandidates => [
     for (final candidate in _recommendedActionCandidates)
       if (!candidate.action.kind.isInformational &&
-          candidate.action.kind != HomeRecommendedActionKind.summerBonusDecision)
+          candidate.action.kind !=
+              HomeRecommendedActionKind.summerBonusDecision)
         PublicDemoMonthGuardCandidate(
           id: candidate.action.targetId == null
               ? candidate.action.kind.name
@@ -1357,9 +1521,7 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
   /// never reaches this check while one remains.
   Future<bool> _confirmMonthCloseIfRecommendedOutstanding() async {
     final recommended = _monthGuardItems
-        .where(
-          (item) => item.level == PublicDemoMonthGuardLevel.recommended,
-        )
+        .where((item) => item.level == PublicDemoMonthGuardLevel.recommended)
         .toList();
     if (recommended.isEmpty) return true;
     final proceed = await showDialog<bool>(
@@ -2569,8 +2731,30 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
                           data: _homeDashboardData,
                           recommendedAction: _recommendedActionSlot,
                           navigatorAdvice: navigatorAdvice,
+                          cashAdvice: _cashForecastAdvice,
                           onShowOtherActions: _scrollToOtherActions,
                         ),
+                        // HOME-COMPACT-1B.3: the monthly progression CTA
+                        // moves directly under the Navigator card — the
+                        // acceptance requirement is that it is visible in
+                        // the initial 390px-wide view with no scroll, next
+                        // to 月/KPI/ひより. It is bound exactly once on this
+                        // screen (see `_monthlyPrimaryAction`'s own site);
+                        // moving where that one binding renders does not
+                        // create a second CTA. The summary sections below
+                        // (社員の様子/重要タスク/クイックアクセス/収支) stay reachable by
+                        // scroll, quick access, and the bottom nav exactly
+                        // as before — none of them is in the required
+                        // initial-view list, so moving the CTA above them
+                        // costs nothing on screen. No extra gap is added
+                        // here — PublicDemoHomeDashboardSection already ends
+                        // with its own trailing spacer, and every pixel
+                        // matters for fitting the 360x800 target with no
+                        // scroll.
+                        if (_monthlyPrimaryAction case final monthlyAction?)
+                          PublicDemoMonthlyPrimaryCtaSection(
+                            action: monthlyAction,
+                          ),
                         const SizedBox(height: 8),
                         // Section 5: employee summary. This office-scene
                         // card is now the ONLY roster-like presentation on
@@ -2607,13 +2791,6 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
                             summary: _financeSummary,
                           ),
                         ),
-                        if (_monthlyPrimaryAction
-                            case final monthlyAction?) ...[
-                          const SizedBox(height: 8),
-                          PublicDemoMonthlyPrimaryCtaSection(
-                            action: monthlyAction,
-                          ),
-                        ],
                         const SizedBox(height: 8),
                         // The real, interactive per-person gameplay action
                         // surface (SkillSheet review, selling, interviews,
@@ -2650,157 +2827,177 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
                                   ac(i),
                               ],
                               if (s.month == 6)
-                          for (final a in workflow.applicants.where(
-                            (a) =>
-                                s.joinedApplicantIds.contains(a.id) &&
-                                a.hasJoined,
-                          ))
-                            employeeConditionCard(a),
-                        if (s.month == 6) ...[
-                          for (var i = 0; i < workflow.engineers.length; i++)
-                            if (s.joinedApplicantIds.contains(
-                                  workflow.engineers[i].id,
-                                ) &&
-                                workflow.engineers[i].stage !=
-                                    PublicDemoSalesStage.ordered &&
-                                !workflow.assignments.any(
-                                  (assignment) =>
-                                      assignment.engineerId ==
-                                      workflow.engineers[i].id,
+                                for (final a in workflow.applicants.where(
+                                  (a) =>
+                                      s.joinedApplicantIds.contains(a.id) &&
+                                      a.hasJoined,
                                 ))
-                              ec(i),
-                          for (var i = 0; i < workflow.assignments.length; i++)
-                            assignmentCard(i),
-                        ],
-                        // RECOVERY-LOOP-1: from July (7) through February
-                        // (14) — the same window
-                        // `PublicDemoRecoveryEligibility` enforces — every
-                        // economically-waiting engineer's card is rendered
-                        // here, mirroring month 6's own filter
-                        // (`!assignedEngineerIds.contains(...)`) so the
-                        // existing sales-flow buttons (`ec(i)`'s own
-                        // `waiting` → `ordered` branches, plus the new
-                        // Recovery button once `ordered`) are reachable at
-                        // all past June — no month past June otherwise
-                        // renders an engineer card for anyone still
-                        // waiting. `showTrainingCard: false` because the
-                        // `s.month >= 6` block below already renders every
-                        // engineer runtime's training card unconditionally
-                        // — rendering it a second time here would duplicate
-                        // that same card's key.
-                        if (s.month >= 7 && s.month <= 14)
-                          for (var i = 0; i < workflow.engineers.length; i++)
-                            if (!workflow
-                                .assignedEngineerIds(month: s.month)
-                                .contains(workflow.engineers[i].id))
-                              ec(i, showTrainingCard: false),
-                        if (s.month == 7) ...[
-                          Text(
-                            '7月開始結果',
-                            style: Theme.of(c).textTheme.titleLarge,
-                          ),
-                          // SES-FIRST-FUN-YEAR-UI-PHASE-1: the 参画/待機
-                          // headcount line that used to render here is
-                          // removed — it duplicated the always-visible
-                          // compact KPI's 参画/待機 tiles verbatim.
-                          for (final a in workflow.assignments)
-                            ListTile(
-                              title: Text(a.engineerName),
-                              subtitle: Text(julyResult(a)),
-                            ),
-                          Card(
-                            child: Padding(
-                              padding: const EdgeInsets.all(12),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  const Text(
-                                    '夏季賞与',
-                                    style: TextStyle(
-                                      fontWeight: FontWeight.bold,
+                                  employeeConditionCard(a),
+                              if (s.month == 6) ...[
+                                for (
+                                  var i = 0;
+                                  i < workflow.engineers.length;
+                                  i++
+                                )
+                                  if (s.joinedApplicantIds.contains(
+                                        workflow.engineers[i].id,
+                                      ) &&
+                                      workflow.engineers[i].stage !=
+                                          PublicDemoSalesStage.ordered &&
+                                      !workflow.assignments.any(
+                                        (assignment) =>
+                                            assignment.engineerId ==
+                                            workflow.engineers[i].id,
+                                      ))
+                                    ec(i),
+                                for (
+                                  var i = 0;
+                                  i < workflow.assignments.length;
+                                  i++
+                                )
+                                  assignmentCard(i),
+                              ],
+                              // RECOVERY-LOOP-1: from July (7) through February
+                              // (14) — the same window
+                              // `PublicDemoRecoveryEligibility` enforces — every
+                              // economically-waiting engineer's card is rendered
+                              // here, mirroring month 6's own filter
+                              // (`!assignedEngineerIds.contains(...)`) so the
+                              // existing sales-flow buttons (`ec(i)`'s own
+                              // `waiting` → `ordered` branches, plus the new
+                              // Recovery button once `ordered`) are reachable at
+                              // all past June — no month past June otherwise
+                              // renders an engineer card for anyone still
+                              // waiting. `showTrainingCard: false` because the
+                              // `s.month >= 6` block below already renders every
+                              // engineer runtime's training card unconditionally
+                              // — rendering it a second time here would duplicate
+                              // that same card's key.
+                              if (s.month >= 7 && s.month <= 14)
+                                for (
+                                  var i = 0;
+                                  i < workflow.engineers.length;
+                                  i++
+                                )
+                                  if (!workflow
+                                      .assignedEngineerIds(month: s.month)
+                                      .contains(workflow.engineers[i].id))
+                                    ec(i, showTrainingCard: false),
+                              if (s.month == 7) ...[
+                                Text(
+                                  '7月開始結果',
+                                  style: Theme.of(c).textTheme.titleLarge,
+                                ),
+                                // SES-FIRST-FUN-YEAR-UI-PHASE-1: the 参画/待機
+                                // headcount line that used to render here is
+                                // removed — it duplicated the always-visible
+                                // compact KPI's 参画/待機 tiles verbatim.
+                                for (final a in workflow.assignments)
+                                  ListTile(
+                                    title: Text(a.engineerName),
+                                    subtitle: Text(julyResult(a)),
+                                  ),
+                                Card(
+                                  child: Padding(
+                                    padding: const EdgeInsets.all(12),
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        const Text(
+                                          '夏季賞与',
+                                          style: TextStyle(
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 4),
+                                        Text(
+                                          _summerBonusDecisionRequired
+                                              ? '7月終了前に支給内容を選びましょう。'
+                                              : '選択済み：${switch (s.summerBonusSelection) {
+                                                  PublicDemoSummerBonusPlan.none => 'なし',
+                                                  PublicDemoSummerBonusPlan.half => '0.5か月',
+                                                  PublicDemoSummerBonusPlan.one => '1か月',
+                                                }}',
+                                        ),
+                                        const SizedBox(height: 8),
+                                        FilledButton(
+                                          key: const Key(
+                                            'public-demo-summer-bonus-decision',
+                                          ),
+                                          onPressed: decideSummerBonus,
+                                          child: Text(
+                                            _summerBonusDecisionRequired
+                                                ? '夏季賞与を決める'
+                                                : '夏季賞与を変更',
+                                          ),
+                                        ),
+                                      ],
                                     ),
                                   ),
-                                  const SizedBox(height: 4),
+                                ),
+                              ],
+                              if (s.month >= 8 && s.month <= 14) ...[
+                                Text(
+                                  '${publicDemoMonthLabel(s.month)}開始結果',
+                                  style: Theme.of(c).textTheme.titleLarge,
+                                ),
+                                if (s.month == 8) ...[
+                                  const Text('7月分の給与を反映しました'),
                                   Text(
-                                    _summerBonusDecisionRequired
-                                        ? '7月終了前に支給内容を選びましょう。'
-                                        : '選択済み：${switch (s.summerBonusSelection) {
-                                            PublicDemoSummerBonusPlan.none => 'なし',
-                                            PublicDemoSummerBonusPlan.half => '0.5か月',
-                                            PublicDemoSummerBonusPlan.one => '1か月',
-                                          }}',
-                                  ),
-                                  const SizedBox(height: 8),
-                                  FilledButton(
-                                    key: const Key(
-                                      'public-demo-summer-bonus-decision',
-                                    ),
-                                    onPressed: decideSummerBonus,
-                                    child: Text(
-                                      _summerBonusDecisionRequired
-                                          ? '夏季賞与を決める'
-                                          : '夏季賞与を変更',
-                                    ),
+                                    s.summerBonusPaidAmount == 0
+                                        ? '夏季賞与 なし'
+                                        : '夏季賞与 ¥${s.summerBonusPaidAmount}',
                                   ),
                                 ],
-                              ),
-                            ),
-                          ),
-                        ],
-                        if (s.month >= 8 && s.month <= 14) ...[
-                          Text(
-                            '${publicDemoMonthLabel(s.month)}開始結果',
-                            style: Theme.of(c).textTheme.titleLarge,
-                          ),
-                          if (s.month == 8) ...[
-                            const Text('7月分の給与を反映しました'),
-                            Text(
-                              s.summerBonusPaidAmount == 0
-                                  ? '夏季賞与 なし'
-                                  : '夏季賞与 ¥${s.summerBonusPaidAmount}',
-                            ),
-                          ],
-                        ],
-                        if (s.month == 15 && !s.fiscalYearCompleted) ...[
-                          Text(
-                            '${publicDemoMonthLabel(s.month)}開始結果',
-                            style: Theme.of(c).textTheme.titleLarge,
-                          ),
-                        ],
-                        if (s.fiscalYearCompleted) ...[
-                          Card(
-                            key: const Key('public-demo-fiscal-year-complete'),
-                            child: Padding(
-                              padding: const EdgeInsets.all(14),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    '第1期終了',
-                                    style: Theme.of(c).textTheme.titleLarge,
+                              ],
+                              if (s.month == 15 && !s.fiscalYearCompleted) ...[
+                                Text(
+                                  '${publicDemoMonthLabel(s.month)}開始結果',
+                                  style: Theme.of(c).textTheme.titleLarge,
+                                ),
+                              ],
+                              if (s.fiscalYearCompleted) ...[
+                                Card(
+                                  key: const Key(
+                                    'public-demo-fiscal-year-complete',
                                   ),
-                                  const SizedBox(height: 8),
-                                  const Text('1年間の経営が終了しました。'),
-                                  const SizedBox(height: 8),
-                                  Text('最終現預金 ¥${s.cash}'),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ],
-                        if (s.month >= 7)
-                          for (final a in workflow.applicants.where(
-                            (a) =>
-                                s.joinedApplicantIds.contains(a.id) &&
-                                a.hasJoined,
-                          ))
-                            employeeConditionCard(a),
-                        if (s.month >= 6)
-                          for (final runtime in s.engineerRuntimes)
-                            internalTrainingCard(
-                              engineerId: runtime.engineerId,
-                              engineerName: _engineerName(runtime.engineerId),
-                            ),
+                                  child: Padding(
+                                    padding: const EdgeInsets.all(14),
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          '第1期終了',
+                                          style: Theme.of(
+                                            c,
+                                          ).textTheme.titleLarge,
+                                        ),
+                                        const SizedBox(height: 8),
+                                        const Text('1年間の経営が終了しました。'),
+                                        const SizedBox(height: 8),
+                                        Text('最終現預金 ¥${s.cash}'),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ],
+                              if (s.month >= 7)
+                                for (final a in workflow.applicants.where(
+                                  (a) =>
+                                      s.joinedApplicantIds.contains(a.id) &&
+                                      a.hasJoined,
+                                ))
+                                  employeeConditionCard(a),
+                              if (s.month >= 6)
+                                for (final runtime in s.engineerRuntimes)
+                                  internalTrainingCard(
+                                    engineerId: runtime.engineerId,
+                                    engineerName: _engineerName(
+                                      runtime.engineerId,
+                                    ),
+                                  ),
                             ],
                           ),
                         ),

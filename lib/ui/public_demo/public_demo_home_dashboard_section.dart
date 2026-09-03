@@ -171,14 +171,13 @@ class PublicDemoHomeDashboardSection extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         MonthHeaderBar(data: data),
-        const SizedBox(height: 8),
+        const SizedBox(height: 6),
         KpiSection.compact(data: data),
-        const SizedBox(height: 8),
+        const SizedBox(height: 6),
         HomeNavigatorSection(
           expression: navigatorExpressionFor(effectiveAdvice?.semantic),
           advice: effectiveAdvice,
         ),
-        const SizedBox(height: 4),
       ],
     );
   }

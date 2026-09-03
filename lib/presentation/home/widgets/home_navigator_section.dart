@@ -28,8 +28,16 @@ class HomeNavigatorMetrics {
   /// so neither target is decided by an exact-equality comparison.
   static const double compactWidthThreshold = 375;
 
+  // HOME-COMPACT-1B.4: raised from 44/48. The approved 経営ダッシュボード +
+  // 案内役 visual target asks Hiyori to read as a companion who sits beside
+  // the card's guidance, not a small status icon — real-device review of
+  // the pre-1B.4 build found the 44/48pt circle too small to register as a
+  // character at a glance. The text column next to her (eyebrow + message,
+  // often headline + CTA + advice bubble too) already measures well past
+  // either size, so growing the portrait costs no extra card height — see
+  // [compactCeiling]'s own doc for the measured total.
   static const HomeNavigatorLayout compact = HomeNavigatorLayout(
-    portraitSize: 44,
+    portraitSize: 60,
     nameFontSize: 12,
     roleFontSize: 10,
     messageFontSize: 11.5,
@@ -37,18 +45,25 @@ class HomeNavigatorMetrics {
   );
 
   static const HomeNavigatorLayout normal = HomeNavigatorLayout(
-    portraitSize: 48,
+    portraitSize: 68,
     nameFontSize: 13,
     roleFontSize: 10.5,
     messageFontSize: 12,
     horizontalGap: 10,
   );
 
-  static const double cardPaddingVertical = 8;
+  // HOME-COMPACT-1B.4: trimmed from 8 to help fit 社員概要 back into the
+  // unscrolled initial view — see [compactCeiling]'s own doc for why the
+  // bigger portrait this phase also adds costs nothing on top of this.
+  static const double cardPaddingVertical = 6;
   static const double cardPaddingHorizontal = 10;
 
   /// Gap between the name/role line and the greeting below it.
-  static const double textGap = 3;
+  ///
+  /// HOME-COMPACT-1B.4: trimmed from 3 — this constant is reused at every
+  /// internal seam in the card's text column, so shaving one point here
+  /// gives back real room across all of them at once.
+  static const double textGap = 2;
 
   /// The height at which the navigator would be costing the first view more
   /// than a compact identity plus its advice is worth at the default text
@@ -67,6 +82,12 @@ class HomeNavigatorMetrics {
   /// real, required structural addition, not slack. The default (neutral,
   /// no CTA) card now measures ~171pt at 360x800; 200pt keeps real margin
   /// while still failing the moment something else is added to the card.
+  ///
+  /// HOME-COMPACT-1B.4 keeps this same number unraised: the bigger portrait
+  /// above and the compacted [_AdviceBubble] below are a wash at 360x800 —
+  /// the text column, not the portrait, already decided this card's height,
+  /// and the bubble's own tighter padding/`maxLines` gives back roughly what
+  /// the portrait spent.
   static const double compactCeiling = 200;
 
   static HomeNavigatorLayout of(BuildContext context) =>
@@ -235,7 +256,7 @@ class HomeNavigatorSection extends StatelessWidget {
                       ),
                     ),
                     if (advice.ctaLabel case final ctaLabel?) ...[
-                      const SizedBox(height: 8),
+                      const SizedBox(height: 6),
                       SizedBox(
                         width: double.infinity,
                         child: FilledButton.icon(
@@ -263,7 +284,7 @@ class HomeNavigatorSection extends StatelessWidget {
                       ),
                     ],
                     if (advice.secondaryLabel case final secondaryLabel?) ...[
-                      const SizedBox(height: 8),
+                      const SizedBox(height: 6),
                       SizedBox(
                         width: double.infinity,
                         child: OutlinedButton(
@@ -332,6 +353,15 @@ class HomeNavigatorSection extends StatelessWidget {
 /// [HomeNavigatorAdvice.explanation] is non-null) instead of behind a
 /// collapse tap — the approved visual target shows "ひよりからのアドバイス"
 /// permanently on screen, so there is no `onCollapse` control left to wire.
+///
+/// HOME-COMPACT-1B.4: tightened padding and a two-line cap on the
+/// explanation itself — the acceptance criteria ask this bubble not to
+/// press against the card's height budget the way an unbounded paragraph
+/// could. The message above it (never capped — see the `Text` in [build]
+/// above this class) still states the actual guidance in full; this stays
+/// what it already was, the optional educational "why", just shown at a
+/// size that cannot grow past two lines. At the default text scale every
+/// existing explanation string already fits within that.
 class _AdviceBubble extends StatelessWidget {
   const _AdviceBubble({required this.advice});
 
@@ -348,11 +378,11 @@ class _AdviceBubble extends StatelessWidget {
         key: const Key('home-navigator-advice-bubble'),
         decoration: BoxDecoration(
           color: scheme.secondaryContainer.withValues(alpha: 0.55),
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(10),
           border: Border.all(color: scheme.outlineVariant),
         ),
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+          padding: const EdgeInsets.fromLTRB(10, 4, 10, 4),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
@@ -361,7 +391,7 @@ class _AdviceBubble extends StatelessWidget {
                 children: [
                   Icon(
                     Icons.chat_bubble_outline,
-                    size: 14,
+                    size: 12,
                     color: scheme.onSurfaceVariant,
                   ),
                   const SizedBox(width: 4),
@@ -380,15 +410,18 @@ class _AdviceBubble extends StatelessWidget {
                   ),
                 ],
               ),
-              const SizedBox(height: HomeNavigatorMetrics.textGap),
+              const SizedBox(height: 1),
               if (advice.explanation case final explanation?)
                 Text(
                   explanation,
                   key: const Key('home-navigator-advice-explanation'),
                   style: theme.textTheme.bodySmall?.copyWith(
-                    height: 1.3,
+                    height: 1.25,
+                    fontSize: 11,
                     color: scheme.onSurfaceVariant,
                   ),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
                 ),
             ],
           ),

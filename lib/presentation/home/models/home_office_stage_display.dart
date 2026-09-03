@@ -28,6 +28,23 @@ import '../../../ui/asset_paths.dart';
 //
 // So the Office Stage shows who works here and how many there are, and
 // leaves per-employee state to the Employee tab 2E is planned to add.
+//
+// HOME-COMPACT-1B.4 ADDS ONE AGGREGATE LINE — STILL NOT A PER-EMPLOYEE CLAIM
+//
+// The acceptance criteria for the 経営ダッシュボード visual target ask this
+// section to be readable as a company summary on its own — headcount, plus
+// whether anyone is currently idle — without requiring a scroll back up to
+// the KPI row to answer either question. [employeeCount] and [waitingCount]
+// below are the answer, and they do not reopen the question above: both are
+// read from the exact same single authority the KPI's 社員/待機 tiles
+// already use (`PublicDemoState.engineerCount` /
+// `.engineersWaiting`), passed down verbatim by the owning screen — never a
+// second count derived here, and never a per-employee "this one is
+// waiting" label, which is the actual claim the note above explains this
+// section cannot safely make. Optional and defaulted to `null` precisely so
+// every existing construction site that has no aggregate to pass (in
+// particular every widget-level test built directly from a member list)
+// keeps rendering exactly as before this addition.
 
 /// One employee as the Office Stage draws them (HOME-RUNTIME-2B) — a face
 /// and a name, and deliberately nothing else (see the note above).
@@ -84,6 +101,8 @@ class HomeOfficeStageDisplay {
   const HomeOfficeStageDisplay({
     required this.members,
     this.backgroundAssetPath = AssetPaths.locationOfficeDayHomeBanner,
+    this.employeeCount,
+    this.waitingCount,
   });
 
   /// The company's employees in authoritative emission order — see
@@ -129,14 +148,35 @@ class HomeOfficeStageDisplay {
     return hidden > 0 ? hidden : 0;
   }
 
+  /// The company's total headcount, or `null` to render no summary line at
+  /// all — see the class-group doc above [HomeOfficeStageMember] for what
+  /// this is (and, just as deliberately, is not) a claim about.
+  final int? employeeCount;
+
+  /// How many of [employeeCount] are currently idle, or `null` alongside
+  /// [employeeCount] for no summary line.
+  final int? waitingCount;
+
+  /// Whether the short aggregate status line renders at all — both counts
+  /// must be supplied together, since "3名 / 待機—" would read as a broken
+  /// fact rather than an absent one.
+  bool get hasHeadcountSummary => employeeCount != null && waitingCount != null;
+
   @override
   bool operator ==(Object other) =>
       other is HomeOfficeStageDisplay &&
       other.backgroundAssetPath == backgroundAssetPath &&
+      other.employeeCount == employeeCount &&
+      other.waitingCount == waitingCount &&
       _listEquals(other.members, members);
 
   @override
-  int get hashCode => Object.hash(backgroundAssetPath, Object.hashAll(members));
+  int get hashCode => Object.hash(
+    backgroundAssetPath,
+    employeeCount,
+    waitingCount,
+    Object.hashAll(members),
+  );
 
   static bool _listEquals(
     List<HomeOfficeStageMember> a,

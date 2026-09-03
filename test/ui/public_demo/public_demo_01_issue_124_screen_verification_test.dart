@@ -31,11 +31,20 @@
 // but it is no longer required to be painted inside the very first frame;
 // "誰が待機/利用可能か" is dropped from the list this test checks and
 // replaced with the monthly CTA, which Issue #148 Phase 1B.3's acceptance
-// criteria explicitly requires in the initial view. What survives from
-// #124's original intent — that the core "what do I need to know right
-// now" facts are genuinely painted in the unscrolled initial viewport, not
-// merely present somewhere on a long scroll — is kept below, updated for
-// the current required set.
+// criteria explicitly requires in the initial view.
+//
+// HOME-COMPACT-1B.4 restores the Office Stage to this required set — the
+// 経営ダッシュボード visual target's acceptance criteria ask for 月・KPI・
+// ひよりの主CTA・月次CTA・社員概要 to ALL be visible with no scroll, not either
+// the monthly CTA or the Office Stage. This is affordable now because the
+// phase compacted what sits above it (a bigger Hiyori portrait costs no
+// extra height — the text column already decided the card's height — and a
+// tighter advice bubble and a slimmed monthly-CTA card give real room
+// back), not because the Office Stage itself grew a new budget. What
+// survives from #124's original intent — that the core "what do I need to
+// know right now" facts are genuinely painted in the unscrolled initial
+// viewport, not merely present somewhere on a long scroll — is kept below,
+// updated for the current required set.
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -112,18 +121,27 @@ void main() {
         );
 
         // 4: the monthly progression CTA — Issue #148 Phase 1B.3 requires
-        // it visible with no scroll, alongside 月/KPI/ひより. It replaces
-        // the Office Stage photo strip in this required set: the Office
-        // Stage remains reachable (by scroll/quick-access/bottom-nav — see
-        // the Office Stage's own suites), but is no longer required inside
-        // the very first frame now that the CTA occupies that budget.
+        // it visible with no scroll, alongside 月/KPI/ひより.
         expectInFirstView(
           find.byKey(const Key('public-demo-monthly-primary-cta')),
           '月次進行CTA (monthly close CTA)',
         );
 
-        // The Office Stage (reachable by scroll — see above) still shows
-        // both founding engineers somewhere on screen.
+        // 5: HOME-COMPACT-1B.4 — the "社員の様子" employee-overview card
+        // itself, not merely a name somewhere further down the page. Its
+        // aggregate headcount/waiting summary is part of the same required
+        // fact — see the class doc above for what it does and does not
+        // claim.
+        expectInFirstView(
+          find.byKey(const Key('home-office-stage')),
+          '社員概要 (employee overview)',
+        );
+        expectInFirstView(
+          find.byKey(const Key('home-office-stage-headcount-summary')),
+          '社員概要の人数・待機状況 (employee overview headcount/waiting summary)',
+        );
+
+        // The Office Stage still shows both founding engineers.
         expect(find.text('佐藤 健'), findsWidgets);
         expect(find.text('鈴木 葵'), findsWidgets);
       },

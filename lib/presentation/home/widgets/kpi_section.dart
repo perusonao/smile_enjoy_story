@@ -10,6 +10,7 @@ class _KpiTileData {
     required this.label,
     this.value,
     this.tileKey,
+    this.emphasis = _KpiEmphasis.neutral,
   });
 
   final IconData icon;
@@ -25,6 +26,42 @@ class _KpiTileData {
   /// assert *which* tile carries a value instead of matching a bare "2名"
   /// anywhere in the card.
   final Key? tileKey;
+
+  /// HOME-COMPACT-1B.4: which color/priority family this tile paints with
+  /// in [_CompactKpi] — presentation-only, see [_KpiEmphasis]'s own doc.
+  /// Unused by the default (non-compact) grid, which keeps its original
+  /// uniform styling.
+  final _KpiEmphasis emphasis;
+}
+
+/// HOME-COMPACT-1B.4: the compact runtime KPI's four/three-tile split reads
+/// as one uniform gray grid today, which is exactly what the経営ダッシュボード
+/// visual target asks this phase to fix — 現金・参画・待機・営業残 (row A, this
+/// month's operating picture) should read as distinct, prioritized facts at
+/// a glance, not four identical tiles a player has to read one by one.
+///
+/// This enum is the only thing that changes: it picks which accent color
+/// family [_CompactKpiTile] paints a tile's icon badge and background tint
+/// with. No value, icon, label, or computed figure changes — every number
+/// still comes from [HomeDashboardDisplayData] exactly as before, and row B
+/// (社員/売上/入金予定 — slower-moving context, not this month's decision)
+/// deliberately keeps the original neutral tile styling so the contrast
+/// itself reads as "these four matter most right now".
+enum _KpiEmphasis {
+  /// 現金 — the headline figure.
+  cash,
+
+  /// 参画 — filled capacity, good news.
+  positive,
+
+  /// 待機 — idle capacity, the figure most likely to need action.
+  caution,
+
+  /// 営業残 — an opportunity still open this month.
+  action,
+
+  /// Row B and every Phase 1A placeholder tile: unchanged neutral styling.
+  neutral,
 }
 
 // `floor()` rounds toward negative infinity, so a small negative amount
@@ -89,24 +126,28 @@ List<List<_KpiTileData>> _compactRowsFor(HomeDashboardDisplayData data) => [
       label: '現金',
       value: _yen(data.cash),
       tileKey: const Key('home-kpi-compact-cash'),
+      emphasis: _KpiEmphasis.cash,
     ),
     _KpiTileData(
       icon: Icons.handshake_outlined,
       label: '参画',
       value: '${data.assignedEmployeeCount}名',
       tileKey: const Key('home-kpi-compact-assigned'),
+      emphasis: _KpiEmphasis.positive,
     ),
     _KpiTileData(
       icon: Icons.chair_outlined,
       label: '待機',
       value: '${data.waitingEmployeeCount}名',
       tileKey: const Key('home-kpi-compact-waiting'),
+      emphasis: _KpiEmphasis.caution,
     ),
     _KpiTileData(
       icon: Icons.campaign_outlined,
       label: '営業残',
       value: '${data.salesRemaining}回',
       tileKey: const Key('home-kpi-compact-sales-remaining'),
+      emphasis: _KpiEmphasis.action,
     ),
   ],
   [
@@ -226,12 +267,12 @@ class _CompactKpi extends StatelessWidget {
       key: const Key('home-kpi-compact'),
       margin: EdgeInsets.zero,
       child: Padding(
-        padding: const EdgeInsets.all(10),
+        padding: const EdgeInsets.all(6),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             for (var i = 0; i < rows.length; i++) ...[
-              if (i > 0) const SizedBox(height: 6),
+              if (i > 0) const SizedBox(height: 4),
               _CompactKpiRow(
                 tiles: rows[i],
                 columnsPerRow: columnsPerRow ?? rows[i].length,
@@ -306,6 +347,20 @@ class _CompactKpiRow extends StatelessWidget {
 /// content width instead — every label here ("現金","参画","待機",...) is
 /// short enough to share its own line with a small badge without doing the
 /// same.
+/// HOME-COMPACT-1B.4: [_KpiEmphasis]'s accent color, resolved against the
+/// live [ColorScheme] rather than a hard-coded literal so the tile still
+/// reads correctly against the app's actual seeded theme. `neutral` returns
+/// the same [ColorScheme.primary] the icon badge always used before this
+/// phase, so a Row B tile paints pixel-identically to before.
+Color _kpiAccentColor(_KpiEmphasis emphasis, ColorScheme colorScheme) =>
+    switch (emphasis) {
+      _KpiEmphasis.cash => colorScheme.primary,
+      _KpiEmphasis.positive => const Color(0xFF2E7D32), // 参画: filled, good
+      _KpiEmphasis.caution => const Color(0xFFEF6C00), // 待機: needs a look
+      _KpiEmphasis.action => const Color(0xFF00838F), // 営業残: still open
+      _KpiEmphasis.neutral => colorScheme.primary,
+    };
+
 class _CompactKpiTile extends StatelessWidget {
   const _CompactKpiTile({required this.data});
 
@@ -315,12 +370,23 @@ class _CompactKpiTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
+    // HOME-COMPACT-1B.4: row A (現金/参画/待機/営業残) reads as this month's
+    // prioritized operating picture — a light accent tint plus a matching
+    // border, instead of the same flat gray every tile used before. Row B
+    // (emphasis stays `neutral`) is pixel-identical to the pre-1B.4 tile.
+    final isEmphasized = data.emphasis != _KpiEmphasis.neutral;
+    final accent = _kpiAccentColor(data.emphasis, colorScheme);
     return Container(
       key: data.tileKey,
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
       decoration: BoxDecoration(
-        color: colorScheme.surfaceContainerHighest,
+        color: isEmphasized
+            ? accent.withValues(alpha: 0.09)
+            : colorScheme.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(10),
+        border: isEmphasized
+            ? Border.all(color: accent.withValues(alpha: 0.30))
+            : null,
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -330,16 +396,12 @@ class _CompactKpiTile extends StatelessWidget {
             children: [
               DecoratedBox(
                 decoration: BoxDecoration(
-                  color: colorScheme.primary.withValues(alpha: 0.14),
+                  color: accent.withValues(alpha: 0.16),
                   shape: BoxShape.circle,
                 ),
                 child: Padding(
                   padding: const EdgeInsets.all(2.5),
-                  child: Icon(
-                    data.icon,
-                    size: 10,
-                    color: colorScheme.primary,
-                  ),
+                  child: Icon(data.icon, size: 10, color: accent),
                 ),
               ),
               const SizedBox(width: 4),
@@ -362,6 +424,7 @@ class _CompactKpiTile extends StatelessWidget {
                 data.value ?? '—',
                 style: theme.textTheme.titleSmall?.copyWith(
                   fontWeight: FontWeight.bold,
+                  color: isEmphasized ? accent : null,
                 ),
                 // A P2 fix (Issue #147 PR #150 review): at an enlarged
                 // ambient TextScaler, this used to stay wrapped in
@@ -376,8 +439,8 @@ class _CompactKpiTile extends StatelessWidget {
                 // is left unshrunk and allowed to wrap to a second line
                 // rather than being measured against a box no longer
                 // guaranteed to hold it on one.
-                maxLines: _effectiveTextScale(context) >=
-                        _largeTextScaleThreshold
+                maxLines:
+                    _effectiveTextScale(context) >= _largeTextScaleThreshold
                     ? 2
                     : 1,
               );

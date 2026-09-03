@@ -128,7 +128,7 @@ Future<void> pumpDemoAt(
 class _NavigatorPortraitOnlyFailingBundle extends CachingAssetBundle {
   @override
   Future<ByteData> load(String key) {
-    if (key == AssetPaths.navigatorNormal) {
+    if (key == AssetPaths.navigatorHomeCompact) {
       throw FlutterError('simulated asset failure: $key');
     }
     return rootBundle.load(key);
@@ -178,7 +178,7 @@ void main() {
                   )
                   .image
               as AssetImage;
-      expect(provider.assetName, AssetPaths.navigatorNormal);
+      expect(provider.assetName, AssetPaths.navigatorHomeCompact);
     });
 
     testWidgets(
@@ -279,92 +279,85 @@ void main() {
     });
   });
 
-  group(
-    'C, D: company status → Navigator (with its resolved action) → '
-    'Employee Status',
-    () {
-      for (final size in const [Size(360, 800), Size(390, 844)]) {
-        final label = '${size.width.toInt()}x${size.height.toInt()}';
+  group('C, D: company status → Navigator (with its resolved action) → '
+      'Employee Status', () {
+    for (final size in const [Size(360, 800), Size(390, 844)]) {
+      final label = '${size.width.toInt()}x${size.height.toInt()}';
 
-        testWidgets('C: at $label the navigator states the resolved action '
-            'and its CTA in one card', (tester) async {
-          await pumpDemoAt(tester, size: size);
+      testWidgets('C: at $label the navigator states the resolved action '
+          'and its CTA in one card', (tester) async {
+        await pumpDemoAt(tester, size: size);
 
-          // SES-FIRST-FUN-YEAR-UI-PHASE-2: the CTA used to live in a
-          // separate RecommendedActionSection card below the navigator.
-          // The merge folds it into the same card, so the CTA is now a
-          // descendant of the navigator rather than sitting below it.
-          expect(
-            find.descendant(of: navigatorFinder, matching: ctaFinder),
-            findsOneWidget,
-          );
-          expect(
-            find.byKey(const Key('home-navigator-message-label')),
-            findsOneWidget,
-          );
-          expect(find.textContaining('SkillSheet'), findsWidgets);
-        });
-
-        testWidgets(
-          'D: at $label the office strip follows the navigator card',
-          (tester) async {
-            await pumpDemoAt(tester, size: size);
-
-            final stage = tester.getRect(stageFinder);
-            final navigator = tester.getRect(navigatorFinder);
-            expect(
-              stage.top,
-              greaterThanOrEqualTo(navigator.bottom),
-              reason: 'Employee Status follows the primary action',
-            );
-          },
-        );
-
-        testWidgets('at $label the full hierarchy holds in one reading', (
-          tester,
-        ) async {
-          await pumpDemoAt(tester, size: size);
-
-          final dashboard = treeIndexOf(
-            tester,
-            find.byType(PublicDemoHomeDashboardSection),
-          );
-          final stage = treeIndexOf(
-            tester,
-            find.byType(HomeOfficeStageSection),
-          );
-          final navigator = treeIndexOf(
-            tester,
-            find.byType(HomeNavigatorSection),
-          );
-          expect(dashboard, lessThan(navigator));
-          expect(navigator, lessThan(stage));
-        });
-      }
-
-      testWidgets('the navigator belongs inside the dashboard hierarchy, '
-          'but not inside the Employee Status office strip', (tester) async {
-        await pumpDemoAt(tester);
-
+        // SES-FIRST-FUN-YEAR-UI-PHASE-2: the CTA used to live in a
+        // separate RecommendedActionSection card below the navigator.
+        // The merge folds it into the same card, so the CTA is now a
+        // descendant of the navigator rather than sitting below it.
         expect(
-          find.descendant(
-            of: find.byType(PublicDemoHomeDashboardSection),
-            matching: find.byType(HomeNavigatorSection),
-          ),
+          find.descendant(of: navigatorFinder, matching: ctaFinder),
           findsOneWidget,
-          reason:
-              'Hiyori belongs between company status and the action she explains',
         );
         expect(
-          find.descendant(
-            of: find.byType(HomeOfficeStageSection),
-            matching: find.byType(HomeNavigatorSection),
-          ),
-          findsNothing,
+          find.byKey(const Key('home-navigator-message-label')),
+          findsOneWidget,
+        );
+        expect(find.textContaining('SkillSheet'), findsWidgets);
+      });
+
+      testWidgets('D: at $label the office strip follows the navigator card', (
+        tester,
+      ) async {
+        await pumpDemoAt(tester, size: size);
+
+        final stage = tester.getRect(stageFinder);
+        final navigator = tester.getRect(navigatorFinder);
+        expect(
+          stage.top,
+          greaterThanOrEqualTo(navigator.bottom),
+          reason: 'Employee Status follows the primary action',
         );
       });
-    },
-  );
+
+      testWidgets('at $label the full hierarchy holds in one reading', (
+        tester,
+      ) async {
+        await pumpDemoAt(tester, size: size);
+
+        final dashboard = treeIndexOf(
+          tester,
+          find.byType(PublicDemoHomeDashboardSection),
+        );
+        final stage = treeIndexOf(tester, find.byType(HomeOfficeStageSection));
+        final navigator = treeIndexOf(
+          tester,
+          find.byType(HomeNavigatorSection),
+        );
+        expect(dashboard, lessThan(navigator));
+        expect(navigator, lessThan(stage));
+      });
+    }
+
+    testWidgets('the navigator belongs inside the dashboard hierarchy, '
+        'but not inside the Employee Status office strip', (tester) async {
+      await pumpDemoAt(tester);
+
+      expect(
+        find.descendant(
+          of: find.byType(PublicDemoHomeDashboardSection),
+          matching: find.byType(HomeNavigatorSection),
+        ),
+        findsOneWidget,
+        reason:
+            'Hiyori belongs between company status and the action she explains',
+      );
+      expect(
+        find.descendant(
+          of: find.byType(HomeOfficeStageSection),
+          matching: find.byType(HomeNavigatorSection),
+        ),
+        findsNothing,
+      );
+    });
+  });
 
   group('F: introducing the navigator changed no game state', () {
     testWidgets('the state on arrival is the untouched April opening', (

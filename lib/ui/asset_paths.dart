@@ -14,17 +14,22 @@ class AssetPaths {
 
   static const String salesMale = '$_charactersDir/sales_male.jpg';
   static const String salesFemale = '$_charactersDir/sales_female.jpg';
-  static const String clientContactPerson = '$_charactersDir/client_contact_person.jpg';
+  static const String clientContactPerson =
+      '$_charactersDir/client_contact_person.jpg';
   static const String recruiter = '$_charactersDir/recruiter.jpg';
   static const String engineerJunior = '$_charactersDir/engineer_junior.jpg';
-  static const String engineerMidlevel = '$_charactersDir/engineer_midlevel.jpg';
+  static const String engineerMidlevel =
+      '$_charactersDir/engineer_midlevel.jpg';
   static const String engineerVeteran = '$_charactersDir/engineer_veteran.jpg';
-  static const String applicantEngineer = '$_charactersDir/applicant_engineer.jpg';
+  static const String applicantEngineer =
+      '$_charactersDir/applicant_engineer.jpg';
 
-  static const String eventCompanyManagement = '$_eventsDir/company_management.jpg';
+  static const String eventCompanyManagement =
+      '$_eventsDir/company_management.jpg';
   static const String eventClientInterview = '$_eventsDir/client_interview.jpg';
   static const String eventClientContact = '$_eventsDir/client_contact.jpg';
-  static const String eventRecruitmentApplication = '$_eventsDir/recruitment_application.jpg';
+  static const String eventRecruitmentApplication =
+      '$_eventsDir/recruitment_application.jpg';
   static const String eventSystemIncident = '$_eventsDir/system_incident.jpg';
   static const String eventOrderDecision = '$_eventsDir/order_decision.jpg';
   static const String eventFirstAssignment = '$_eventsDir/first_assignment.jpg';
@@ -34,12 +39,33 @@ class AssetPaths {
   static const String locationOfficeNight = '$_locationsDir/office_night.jpg';
   static const String locationCafeMeeting = '$_locationsDir/cafe_meeting.jpg';
 
+  /// HOME-COMPACT-1B.3 — a dedicated wide-aspect office banner for the
+  /// compact "社員の様子" summary (`HomeOfficeStageSection`), replacing
+  /// [locationOfficeDay] as that section's default background. Sourced from
+  /// `SES_HOME_COMPACT_Assets_v1.zip`'s
+  /// `location_office_day_home_banner_v1.png`, resized/re-encoded to match
+  /// this catalogue's existing small-file convention. No text is baked into
+  /// the image — every label the section shows is drawn by Flutter on top.
+  static const String locationOfficeDayHomeBanner =
+      '$_locationsDir/office_day_home_banner.jpg';
+
   /// NAVIGATOR-1A — 佐倉 ひより's normal-expression portrait, cropped from
   /// the character reference for use at small circular sizes. Resolved
   /// through `HomeNavigatorIdentity.portraitAssetFor`, never referenced as
   /// a literal, and never stored in a domain model or a save file.
   static const String navigatorNormal = '$_navigatorDir/navigator_normal.webp';
-  static const String navigatorCaution = '$_navigatorDir/navigator_caution.webp';
+  static const String navigatorCaution =
+      '$_navigatorDir/navigator_caution.webp';
+
+  /// HOME-COMPACT-1B.3 — an alternate normal-expression portrait sized and
+  /// cropped specifically for HOME's compact circular avatar
+  /// (`char_hiyori_home_compact_v1.png` in `SES_HOME_COMPACT_Assets_v1.zip`,
+  /// resized/re-encoded to match this catalogue's existing convention).
+  /// Used only for [NavigatorExpression.normal] — the distinct
+  /// [navigatorCaution] artwork is untouched, so the caution/normal visual
+  /// distinction the cash-advice integration relies on is preserved.
+  static const String navigatorHomeCompact =
+      '$_navigatorDir/navigator_home_compact.webp';
 
   static const List<String> all = [
     salesMale,
@@ -58,10 +84,12 @@ class AssetPaths {
     eventOrderDecision,
     eventFirstAssignment,
     locationOfficeDay,
+    locationOfficeDayHomeBanner,
     locationMeetingRoom,
     locationOfficeNight,
     locationCafeMeeting,
     navigatorNormal,
+    navigatorHomeCompact,
     navigatorCaution,
   ];
 }

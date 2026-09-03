@@ -452,8 +452,16 @@ class _NavigatorPortrait extends StatefulWidget {
 class _NavigatorPortraitState extends State<_NavigatorPortrait> {
   bool _useNormalFallback = false;
 
+  /// The image actually shown for [NavigatorExpression.normal] — the single
+  /// source of truth this class's own fallback also retries, so a rename of
+  /// that asset (HOME-COMPACT-1B.3 moved it to
+  /// [AssetPaths.navigatorHomeCompact]) never needs a second edit here.
+  static final String _normalPath = HomeNavigatorIdentity.portraitAssetFor(
+    NavigatorExpression.normal,
+  )!;
+
   void _fallbackFrom(String path) {
-    if (path == AssetPaths.navigatorNormal || _useNormalFallback) return;
+    if (path == _normalPath || _useNormalFallback) return;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) setState(() => _useNormalFallback = true);
     });
@@ -465,9 +473,7 @@ class _NavigatorPortraitState extends State<_NavigatorPortrait> {
     final requestedPath = HomeNavigatorIdentity.portraitAssetFor(
       widget.expression,
     );
-    final path = _useNormalFallback
-        ? AssetPaths.navigatorNormal
-        : requestedPath;
+    final path = _useNormalFallback ? _normalPath : requestedPath;
 
     final fallback = Icon(
       Icons.person,

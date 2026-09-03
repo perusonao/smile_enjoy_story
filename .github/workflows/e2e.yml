@@ -18,14 +18,20 @@ name: Fast CI (S.E.S.)
 #
 # jobs:
 #   validate   — pull_request / push / workflow_dispatch. Flutter
-#                analyze/test/build + Replay Viewer unit tests. The one
+#                analyze/test/build (SES-CI-SPEED-2: built with the same
+#                `--base-href` GitHub Pages deploys, so this one build is
+#                reused by both `smoke-e2e` and `build` below — see that
+#                step's own comment) + Replay Viewer unit tests. The one
 #                shared gate `smoke-e2e` waits on, so it doesn't pay for a
 #                second Flutter build.
 #   smoke-e2e  — needs: validate. Playwright's mobile-chromium project only,
 #                restricted to the curated smoke spec list above (see the
 #                `Run Playwright E2E (smoke, mobile-chromium)` step below for
-#                the exact file list). This is the "毎回必要な高速CI" half of
-#                SES-CI-SPEED-1; it is a blocking gate for `build`/`deploy`.
+#                the exact file list), against `validate`'s own build/web
+#                artifact served through a base-href-aware local static
+#                server (`e2e/scripts/static-server.js`). This is the "毎回
+#                必要な高速CI" half of SES-CI-SPEED-1; it is a blocking gate
+#                for `build`/`deploy`.
 #   replay-package — push only. Packages `smoke-e2e`'s own chromium results
 #                into the existing Replay Viewer output (`npm run
 #                build:replay`), same as before. Now single-browser input
@@ -34,15 +40,18 @@ name: Fast CI (S.E.S.)
 #   check-latest — push / workflow_dispatch only. Stale-run guard (see
 #                e2e/scripts/check-latest-main.mjs): is this run's commit
 #                still origin/main's actual tip?
-#   build      — Flutter web release build (no analyze/test — SES-TEST-
-#                STRATEGY-1: `validate` already ran them on this exact SHA,
-#                and `check-latest` already confirmed it's still main's
-#                tip, so re-running them here would be a same-SHA
-#                duplicate) + best-effort fold-in of this *same run's*
-#                e2e-replay-package artifact + upload-pages-artifact. Does
-#                NOT `needs: replay-package` — replay packaging is a QA
-#                convenience, not a game-deploy gate (see the original
-#                design rationale preserved below).
+#   build      — SES-CI-SPEED-2: no Flutter build here at all anymore (no
+#                analyze/test — SES-TEST-STRATEGY-1 — and, as of this
+#                change, no second `flutter build web` either): downloads
+#                `validate`'s own `build-web` artifact (same commit,
+#                already verified by `validate`/`smoke-e2e`, already
+#                confirmed by `check-latest` to still be main's tip, and
+#                already built with the exact `--base-href` Pages needs) and
+#                uses it as-is for the Pages payload, plus best-effort
+#                fold-in of this *same run's* e2e-replay-package artifact +
+#                upload-pages-artifact. Does NOT `needs: replay-package` —
+#                replay packaging is a QA convenience, not a game-deploy
+#                gate (see the original design rationale preserved below).
 #   deploy     — re-verify the stale guard immediately before
 #                actions/deploy-pages, then deploy.
 #
@@ -101,7 +110,13 @@ jobs:
         working-directory: .
         run: flutter test
 
-      - name: flutter build web (release, no CDN — self-contained for the local static server)
+      # SES-CI-SPEED-2: built with the same --base-href GitHub Pages deploys
+      # (see `build` job below), so this one artifact can be reused there
+      # instead of a second `flutter build web` — no CDN, self-contained.
+      # smoke-e2e's local static server is base-href-aware (see
+      # e2e/scripts/static-server.js) specifically so this base-href
+      # doesn't have to be root ("/") just to suit the local smoke run.
+      - name: flutter build web (release, no CDN — Pages base-href, reused by smoke-e2e and the Pages deploy)
         working-directory: .
         env:
           EVENT_PR_NUMBER: ${{ github.event.pull_request.number }}
@@ -118,7 +133,10 @@ jobs:
           if [[ -n "$pr_number" ]]; then
             build_info+=(--dart-define="BUILD_PR_NUMBER=$pr_number")
           fi
-          flutter build web --release --no-web-resources-cdn "${build_info[@]}"
+          flutter build web --release \
+            --base-href "/${{ github.event.repository.name }}/" \
+            --no-web-resources-cdn \
+            "${build_info[@]}"
 
       # smoke-e2e runs on its own separate runner, so the just-built web app
       # has to travel to it as an artifact rather than being found on disk.
@@ -182,9 +200,15 @@ jobs:
       # the heavy workflow so a harness regression is caught on every PR).
       # Every other spec (WebKit, annual route, Recovery, multi-viewport,
       # the other gameplay-flow specs) runs in e2e-heavy.yml instead.
+      # SES-CI-SPEED-2: validate's artifact was built with
+      # --base-href "/<repo>/" (matching the Pages deploy) — tell the local
+      # static server to also serve it under that prefix (see
+      # e2e/scripts/static-server.js's header) so the browser's own
+      # base-href-relative asset requests resolve.
       - name: Run Playwright E2E (smoke, mobile-chromium)
         env:
           SES_E2E_SEEDS: ${{ github.event.inputs.seeds }}
+          SES_E2E_BASE_PATH: "/${{ github.event.repository.name }}/"
           CI: "true"
         run: |
           npx playwright test --project=mobile-chromium \
@@ -351,44 +375,20 @@ jobs:
         with:
           ref: ${{ needs.check-latest.outputs.target_sha }}
 
-      - uses: subosito/flutter-action@v2
+      # SES-CI-SPEED-2: no `flutter analyze`/`flutter test`
+      # (SES-TEST-STRATEGY-1) and, as of this change, no second
+      # `flutter build web` either — this job only runs after
+      # `check-latest` confirms `needs.check-latest.outputs.target_sha`
+      # (this checkout's ref) is still origin/main's current tip, i.e. the
+      # exact same commit `validate` already built+verified earlier in this
+      # same run. `validate` now builds with the identical `--base-href`
+      # this deploy needs (see validate's own build step), so its
+      # `build-web` artifact is reused here as-is instead of rebuilding.
+      - name: Download build/web (validate's build, same --base-href as this deploy)
+        uses: actions/download-artifact@v4
         with:
-          flutter-version: "3.44.9"
-          channel: stable
-
-      - run: flutter pub get
-
-      # No `flutter analyze` / `flutter test` here (SES-TEST-STRATEGY-1):
-      # this job only runs after `check-latest` confirms
-      # `needs.check-latest.outputs.target_sha` (this checkout's ref) is
-      # still origin/main's current tip — i.e. the exact same commit
-      # `validate` already ran analyze+test on earlier in this same run.
-      # Re-running them here would be a same-SHA duplicate with zero added
-      # coverage, not extra safety. `flutter build web` still runs again
-      # below because it needs a different `--base-href` than `validate`'s
-      # build (Pages subpath vs. the local static server smoke-e2e uses at
-      # root) — that output can't be reused as-is.
-
-      - name: Build web (release)
-        env:
-          EVENT_PR_NUMBER: ${{ github.event.pull_request.number }}
-        run: |
-          pr_number="$EVENT_PR_NUMBER"
-          if [[ -z "$pr_number" ]]; then
-            subject="$(git show -s --format=%s "$GITHUB_SHA")"
-            merge_subject_pattern='^Merge pull request #([0-9]+) from '
-            if [[ "$subject" =~ $merge_subject_pattern ]]; then
-              pr_number="${BASH_REMATCH[1]}"
-            fi
-          fi
-          build_info=(--dart-define="BUILD_COMMIT_SHA=$GITHUB_SHA")
-          if [[ -n "$pr_number" ]]; then
-            build_info+=(--dart-define="BUILD_PR_NUMBER=$pr_number")
-          fi
-          flutter build web --release \
-            --base-href "/${{ github.event.repository.name }}/" \
-            --no-web-resources-cdn \
-            "${build_info[@]}"
+          name: build-web
+          path: build/web
 
       # --- E2E Replay Viewer (dev/QA tool) — folded into the same deploy ---
       #

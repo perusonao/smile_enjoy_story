@@ -206,15 +206,17 @@ merge→deploy のwall-clock短縮に直結する。具体的な秒数は環境�
 
 ## commit SHA
 
-（push後に別コミットで記録する）
+`3bd66f61684a88070eff45f72f0b3af485b55157`
+(`fix(ci): remove duplicate flutter analyze/test in Fast CI deploy build (Issue #149)`)
 
 ## push状態
 
-（push後にここへ記録する）
+`git push -u origin claude/ses-ci-optimization-i4krdw` 成功。
+`origin/claude/ses-ci-optimization-i4krdw` は上記commit SHAを指す。
 
 ## PR番号
 
-（PR作成後にここへ記録する）
+[#151](https://github.com/perusonao/smile_enjoy_story/pull/151)
 
 ## merge readiness
 

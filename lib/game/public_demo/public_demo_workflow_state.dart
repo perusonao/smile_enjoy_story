@@ -717,6 +717,24 @@ class PublicDemoWorkflowState {
   // Cross-cutting projections consumed by monthly close / Growth / Revenue
   // ---------------------------------------------------------------------
 
+  /// The engineer count already confirmed, before April's close, to become
+  /// May's assigned/revenue-generating headcount — every engineer that has
+  /// already reached [PublicDemoSalesStage.ordered] through the real sales
+  /// pipeline (reachable only via [recordOrder], itself reachable only
+  /// after a genuine client-interview pass — see [recordOrder]'s own doc).
+  ///
+  /// This is the exact derivation [PublicDemoAggregate.closeApril] already
+  /// performs inline to build April's `orderedEngineers` argument to
+  /// [PublicDemoMonthlyClose.closeApril]/[PublicDemoState.advanceToMay];
+  /// extracted here so both that real close and
+  /// [PublicDemoCashForecast] (Issue #148 Phase 1A P1 fix) read the exact
+  /// same fact instead of each maintaining its own copy of the `ordered`
+  /// stage check. Not clamped to [PublicDemoState.engineerCount] — callers
+  /// clamp exactly as [PublicDemoState.advanceToMay] already does.
+  int get orderedEngineerCount => engineers
+      .where((engineer) => engineer.stage == PublicDemoSalesStage.ordered)
+      .length;
+
   /// Every engineer id [assignments] currently names, regardless of
   /// `nextOrderStatus`/`replacementStage`. Correct through June (see
   /// [assignedEngineerIds] for why this differs from July onward).

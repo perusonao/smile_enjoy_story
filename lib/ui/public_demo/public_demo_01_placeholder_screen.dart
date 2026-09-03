@@ -2608,9 +2608,48 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
           EdgeInsets.symmetric(horizontal: 20, vertical: 14),
         ),
       );
+
+  /// HOME-COMPACT-1B.4 FIX1: whether this is the one state the fix targets
+  /// — an actual, already-realized cash shortage, not the preventive
+  /// caution window ([_cashForecastAdvice] covers that, and is unaffected
+  /// by this flag: it already returns `null` once [PublicDemoState
+  /// .financialStatus] leaves `normal`, i.e. exactly when this is `true`).
+  /// Read straight from the same authoritative field
+  /// [PublicDemoCashShortageCard] itself gates on — never a second,
+  /// independently-derived notion of "shortage".
+  bool get _isActualCashShortage =>
+      s.financialStatus == PublicDemoFinancialStatus.cashShortage;
+
+  /// The Navigator card's advice, compacted for [_isActualCashShortage]
+  /// only. [PublicDemoCashShortageCard] — rendered immediately above the
+  /// Navigator whenever this is true — already states the full reason
+  /// (the same evidence figures, the recovery rule, what stays usable and
+  /// what is restricted); the "ひよりからのアドバイス" bubble's generic
+  /// "確認してから進めましょう" explanation would only restate that a second
+  /// time while costing real height the acceptance criteria need back for
+  /// 社員概要. Every other field (title/headline/message/semantic/CTA/
+  /// secondary — the actual guidance and its dispatch) is passed through
+  /// unchanged; only [HomeNavigatorAdvice.explanation] is dropped, and only
+  /// for this one state.
+  HomeNavigatorAdvice? _compactedForShortage(HomeNavigatorAdvice? advice) {
+    if (!_isActualCashShortage || advice == null) return advice;
+    return HomeNavigatorAdvice(
+      title: advice.title,
+      headline: advice.headline,
+      message: advice.message,
+      semantic: advice.semantic,
+      ctaLabel: advice.ctaLabel,
+      onCtaPressed: advice.onCtaPressed,
+      secondaryLabel: advice.secondaryLabel,
+      onSecondaryPressed: advice.onSecondaryPressed,
+    );
+  }
+
   @override
   Widget build(BuildContext c) {
-    final navigatorAdvice = navigatorAdviceFor(_recommendedActionSlot);
+    final navigatorAdvice = _compactedForShortage(
+      navigatorAdviceFor(_recommendedActionSlot),
+    );
     return Theme(
       data: Theme.of(c).copyWith(
         filledButtonTheme: FilledButtonThemeData(
@@ -2735,12 +2774,25 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
                         // secondary route ("他の行動を確認する") is the same
                         // truthful scroll-jump every other "destination" on
                         // this screen uses — never a second mutation path.
+                        //
+                        // HOME-COMPACT-1B.4 FIX1: the secondary route is
+                        // dropped (`null`) during an actual cash shortage
+                        // only — see `_isActualCashShortage`'s own doc.
+                        // Every other action on this screen (including the
+                        // legacy section it scroll-jumps to) stays reachable
+                        // exactly as before; only this one extra 48pt
+                        // button, whose destination duplicates what
+                        // quick-access/bottom-nav already reach, is not
+                        // re-offered while the height it costs is what the
+                        // acceptance criteria need back for 社員概要.
                         PublicDemoHomeDashboardSection(
                           data: _homeDashboardData,
                           recommendedAction: _recommendedActionSlot,
                           navigatorAdvice: navigatorAdvice,
                           cashAdvice: _cashForecastAdvice,
-                          onShowOtherActions: _scrollToOtherActions,
+                          onShowOtherActions: _isActualCashShortage
+                              ? null
+                              : _scrollToOtherActions,
                         ),
                         // HOME-COMPACT-1B.3: the monthly progression CTA
                         // moves directly under the Navigator card — the

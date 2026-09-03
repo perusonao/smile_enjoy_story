@@ -45,9 +45,24 @@
 // know right now" facts are genuinely painted in the unscrolled initial
 // viewport, not merely present somewhere on a long scroll — is kept below,
 // updated for the current required set.
+//
+// HOME-COMPACT-1B.4 FIX1 extends this one state further: an ACTUAL cash
+// shortage (`financialStatus == cashShortage`) renders the pre-existing
+// PublicDemoCashShortageCard above everything else — the correct, unchanged
+// priority — but that card alone used to cost ~245pt at 360x800, enough to
+// push 社員概要 below the fold even after the trims above. The group at the
+// bottom of this file pins the same five-fact requirement for that state
+// too, now that PublicDemoCashShortageCard's own display density (never its
+// warning, evidence figures, or CTA) is compacted, and the Navigator's
+// secondary "他の行動を確認する" route and duplicate advice explanation are
+// dropped for this one state only — see PublicDemo01PlaceholderScreen
+// ._isActualCashShortage's own doc for why neither of those two omissions
+// touches the normal or preventive-caution states this file's other tests
+// already cover.
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:smile_enjoy_story/game/public_demo/public_demo_financial_status.dart';
 import 'package:smile_enjoy_story/ui/public_demo/public_demo_01_placeholder_screen.dart';
 
 Future<void> pumpDemoAt(WidgetTester tester, Size size) async {
@@ -181,4 +196,203 @@ void main() {
       expect(workflowAfter.engineers.first.stage, isNot(stageBefore));
     },
   );
+
+  group('HOME-COMPACT-1B.4 FIX1: actual cash shortage', () {
+    for (final size in _sizes) {
+      final label = '${size.width.toInt()}x${size.height.toInt()}';
+
+      testWidgets(
+        'month, KPI, the shortage-response lead, the monthly CTA, and 社員概要 '
+        'are all painted in the unscrolled initial viewport during an actual '
+        'cash shortage at $label',
+        (tester) async {
+          await pumpDemoAt(tester, size);
+          await _driveToActualCashShortage(tester);
+
+          final state =
+              (tester.state(find.byType(PublicDemo01PlaceholderScreen))
+                      as dynamic)
+                  .s;
+          expect(
+            state.financialStatus,
+            PublicDemoFinancialStatus.cashShortage,
+            reason:
+                'the driven trajectory must actually reach an actual '
+                '(not merely preventive) shortage',
+          );
+          expect(
+            state.isCloseBlocked,
+            isFalse,
+            reason: 'still mid-game, not the terminal March close',
+          );
+
+          expect(
+            tester
+                .state<ScrollableState>(find.byType(Scrollable).first)
+                .position
+                .pixels,
+            0,
+            reason: 'the assertions below must describe the unscrolled screen',
+          );
+
+          final viewport = tester.getRect(find.byType(ListView));
+          void expectInFirstView(Finder finder, String fact) {
+            expect(finder, findsOneWidget, reason: 'missing: $fact');
+            final rect = tester.getRect(finder);
+            expect(
+              rect.top,
+              greaterThanOrEqualTo(viewport.top),
+              reason: '$fact starts above the viewport',
+            );
+            expect(
+              rect.bottom,
+              lessThanOrEqualTo(viewport.bottom),
+              reason: '$fact is not painted inside the raw viewport',
+            );
+          }
+
+          // 1: the existing strong lead — unchanged priority, only its own
+          // display density is compacted.
+          expectInFirstView(
+            find.byKey(const Key('public-demo-cash-shortage-card')),
+            '資金不足の既存優先導線 (the pre-existing strong lead)',
+          );
+
+          // 2: what month is it.
+          expectInFirstView(find.text('1年目 3月'), '月 (month)');
+
+          // 3: the priority lead's own CTA — the shortage-response action,
+          // not a fabricated second one.
+          expectInFirstView(
+            find.byKey(const Key('home-recommended-action-cta')),
+            '資金不足を確認 CTA (the shortage-response action)',
+          );
+          expect(
+            find.descendant(
+              of: find.byKey(const Key('home-recommended-action-cta')),
+              matching: find.text('資金不足を確認'),
+            ),
+            findsOneWidget,
+          );
+
+          // 4: the monthly progression CTA — still exactly one on screen.
+          expectInFirstView(
+            find.byKey(const Key('public-demo-monthly-primary-cta')),
+            '月次進行CTA (monthly close CTA)',
+          );
+          expect(
+            find.byKey(const Key('public-demo-monthly-primary-cta')),
+            findsOneWidget,
+            reason: '月次CTAは画面内に1つだけ',
+          );
+
+          // 5: 社員概要 — the fact this fix restores to the initial view for
+          // this state specifically.
+          expectInFirstView(
+            find.byKey(const Key('home-office-stage')),
+            '社員概要 (employee overview)',
+          );
+          expectInFirstView(
+            find.byKey(const Key('home-office-stage-headcount-summary')),
+            '社員概要の人数・待機状況',
+          );
+
+          // No new/duplicate CTA: the Navigator's secondary route is
+          // deliberately dropped for this one state (see
+          // PublicDemo01PlaceholderScreen._isActualCashShortage), never
+          // replaced by a second primary-looking control.
+          expect(
+            find.byKey(const Key('home-navigator-secondary-cta')),
+            findsNothing,
+          );
+          expect(tester.takeException(), isNull);
+        },
+      );
+    }
+  });
+}
+
+/// Drives the real screen from April to an actual (not merely preventive)
+/// cash shortage — month 15 (3月), `financialStatus == cashShortage`,
+/// `isCloseBlocked == false` — mirroring the same real trajectory
+/// public_demo_01_bankruptcy_ux_test.dart's `_driveToNovemberBankruptcy`
+/// pins, stopped one close earlier (right after February's close, before
+/// the March fiscal-year close that would commit bankruptcy).
+Future<void> _driveToActualCashShortage(WidgetTester tester) async {
+  Finder actionButton(String text) => find.ancestor(
+    of: find.text(text),
+    matching: find.byWidgetPredicate((widget) => widget is ButtonStyleButton),
+  );
+
+  Future<void> settle() async {
+    for (var i = 0; i < 10; i++) {
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 150)),
+      );
+      await tester.pump();
+    }
+    await tester.pumpAndSettle();
+  }
+
+  Future<void> tapAndSettle(String text) async {
+    final finder = actionButton(text);
+    for (var i = 0; finder.evaluate().isEmpty && i < 20; i++) {
+      await tester.drag(find.byType(ListView), const Offset(0, -300));
+      await tester.pumpAndSettle();
+    }
+    expect(finder, findsWidgets, reason: 'Could not find action button: $text');
+    await tester.ensureVisible(finder.first);
+    await tester.pumpAndSettle();
+    await tester.tap(finder.first);
+    await settle();
+    if (text == 'SkillSheet確認') {
+      await tester.tap(find.widgetWithText(FilledButton, '内容を確認'));
+      await tester.pumpAndSettle();
+    }
+  }
+
+  Future<void> dismiss() async {
+    await tester.tap(find.widgetWithText(FilledButton, '確認'));
+    await tester.pumpAndSettle();
+  }
+
+  // April: advance Sato to receive the May order.
+  await tapAndSettle('SkillSheet確認');
+  await tapAndSettle('営業開始');
+  await tapAndSettle('案件紹介');
+  await tapAndSettle('上位会社面談');
+  await dismiss();
+  await tapAndSettle('客先面談');
+  await dismiss();
+  await tapAndSettle('受注');
+  await dismiss();
+  await tapAndSettle('4月を終了して5月へ');
+  await dismiss();
+
+  // May: no additional hiring.
+  await tapAndSettle('5月を終了して6月へ');
+
+  // June: accept July continuation for Sato (only assignment).
+  await tapAndSettle('7月分の発注を確認');
+  await tapAndSettle('受注する');
+  await tapAndSettle('6月を終了して7月へ');
+
+  // July: choose no bonus.
+  await tapAndSettle('7月を終了して8月へ');
+  await tester.tap(find.byKey(const Key('public-demo-summer-bonus-none')));
+  await tester.pumpAndSettle();
+  await tapAndSettle('7月を終了して8月へ');
+
+  // Close August through January; February closes into March shortage.
+  for (final label in [
+    '8月を終了して翌月へ',
+    '9月を終了して翌月へ',
+    '10月を終了して翌月へ',
+    '11月を終了して翌月へ',
+    '12月を終了して翌月へ',
+    '1月を終了して翌月へ',
+    '2月を終了して翌月へ',
+  ]) {
+    await tapAndSettle(label);
+  }
 }

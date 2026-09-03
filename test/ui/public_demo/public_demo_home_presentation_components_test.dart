@@ -1,7 +1,30 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:smile_enjoy_story/ui/public_demo/public_demo_home_presentation_components.dart';
 import 'package:smile_enjoy_story/ui/theme.dart';
+
+/// WCAG 2.x relative luminance (sRGB, gamma-corrected) — see
+/// https://www.w3.org/TR/WCAG21/#dfn-relative-luminance. [Color]'s `r`/`g`/`b`
+/// are already 0.0-1.0 floats on this Flutter SDK.
+double _srgbToLinear(double c) =>
+    c <= 0.04045 ? c / 12.92 : math.pow((c + 0.055) / 1.055, 2.4).toDouble();
+
+double _relativeLuminance(Color color) =>
+    0.2126 * _srgbToLinear(color.r) +
+    0.7152 * _srgbToLinear(color.g) +
+    0.0722 * _srgbToLinear(color.b);
+
+/// The WCAG contrast ratio between two colors, in [1.0, 21.0] — 4.5 is the
+/// AA threshold for normal-size text this suite pins the monthly CTA to.
+double _contrastRatio(Color a, Color b) {
+  final la = _relativeLuminance(a);
+  final lb = _relativeLuminance(b);
+  final lighter = la > lb ? la : lb;
+  final darker = la > lb ? lb : la;
+  return (lighter + 0.05) / (darker + 0.05);
+}
 
 Widget host(Widget child, {double scale = 1}) => MaterialApp(
   theme: SesTheme.build(),
@@ -47,43 +70,40 @@ List<PublicDemoImportantTaskItem> _tasks({
 ];
 
 void main() {
-  testWidgets(
-    'quick access renders all items and calls each callback once, '
-    'with a 48x48 tap target',
-    (tester) async {
-      var officeCalls = 0, financeCalls = 0;
-      await tester.pumpWidget(
-        host(
-          PublicDemoQuickAccessSection(
-            items: [
-              PublicDemoQuickAccessItem(
-                itemKey: const Key('qa-office'),
-                icon: Icons.groups_outlined,
-                label: '社員の様子',
-                onPressed: () => officeCalls++,
-              ),
-              PublicDemoQuickAccessItem(
-                itemKey: const Key('qa-finance'),
-                icon: Icons.account_balance_wallet_outlined,
-                label: '収支・会計',
-                onPressed: () => financeCalls++,
-              ),
-            ],
-          ),
+  testWidgets('quick access renders all items and calls each callback once, '
+      'with a 48x48 tap target', (tester) async {
+    var officeCalls = 0, financeCalls = 0;
+    await tester.pumpWidget(
+      host(
+        PublicDemoQuickAccessSection(
+          items: [
+            PublicDemoQuickAccessItem(
+              itemKey: const Key('qa-office'),
+              icon: Icons.groups_outlined,
+              label: '社員の様子',
+              onPressed: () => officeCalls++,
+            ),
+            PublicDemoQuickAccessItem(
+              itemKey: const Key('qa-finance'),
+              icon: Icons.account_balance_wallet_outlined,
+              label: '収支・会計',
+              onPressed: () => financeCalls++,
+            ),
+          ],
         ),
-      );
-      expect(find.text('クイックアクセス'), findsOneWidget);
-      expect(find.text('社員の様子'), findsOneWidget);
-      expect(find.text('収支・会計'), findsOneWidget);
-      await tester.tap(find.byKey(const Key('qa-office')));
-      expect(officeCalls, 1);
-      await tester.tap(find.byKey(const Key('qa-finance')));
-      expect(financeCalls, 1);
-      final officeRect = tester.getSize(find.byKey(const Key('qa-office')));
-      expect(officeRect.height, greaterThanOrEqualTo(48));
-      expect(tester.takeException(), isNull);
-    },
-  );
+      ),
+    );
+    expect(find.text('クイックアクセス'), findsOneWidget);
+    expect(find.text('社員の様子'), findsOneWidget);
+    expect(find.text('収支・会計'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('qa-office')));
+    expect(officeCalls, 1);
+    await tester.tap(find.byKey(const Key('qa-finance')));
+    expect(financeCalls, 1);
+    final officeRect = tester.getSize(find.byKey(const Key('qa-office')));
+    expect(officeRect.height, greaterThanOrEqualTo(48));
+    expect(tester.takeException(), isNull);
+  });
 
   testWidgets(
     // PUBLIC-DEMO-HOME-UI-3A: replaces the former "重要イベント" section
@@ -150,7 +170,14 @@ void main() {
     expect(find.text('現金残高'), findsNothing);
     expect(find.text('今月売上'), findsNothing);
     expect(find.text('次回入金予定'), findsNothing);
-    expect(find.byWidgetPredicate((widget) => widget is Semantics && widget.properties.label?.startsWith('資金警告') == true), findsNothing);
+    expect(
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is Semantics &&
+            widget.properties.label?.startsWith('資金警告') == true,
+      ),
+      findsNothing,
+    );
   });
 
   testWidgets(
@@ -208,6 +235,58 @@ void main() {
             )
             .onPressed,
         isNull,
+      );
+    },
+  );
+
+  testWidgets(
+    // HOME-COMPACT-1B.4 FIX2 (Codex P2): the enabled button's inherited
+    // white foreground against the card's amber/orange accent background
+    // used to measure ~3.08:1 — below WCAG AA's 4.5:1 minimum for
+    // normal-size text. Pins the real, resolved (widget style merged with
+    // the app's own FilledButtonTheme, exactly as ButtonStyleButton itself
+    // resolves it) colors' contrast, not a hard-coded hex, so a future
+    // theme or button-style change that quietly regresses this is caught
+    // here rather than only by a design review.
+    'monthly primary CTA (enabled) meets WCAG AA text contrast (>=4.5:1)',
+    (tester) async {
+      await tester.pumpWidget(
+        host(
+          const PublicDemoMonthlyPrimaryCtaSection(
+            action: PublicDemoMonthlyPrimaryCtaModel(
+              label: '4月を終了して5月へ',
+              description: '今月の対応を終えたら、月末処理へ進みます。',
+              enabled: true,
+              onPressed: _noOp,
+            ),
+          ),
+        ),
+      );
+
+      final buttonFinder = find.byKey(
+        const Key('public-demo-monthly-primary-cta'),
+      );
+      final button = tester.widget<FilledButton>(buttonFinder);
+      final theme = Theme.of(tester.element(buttonFinder));
+      // The same precedence ButtonStyleButton itself resolves with: the
+      // widget's own style (only backgroundColor/minimumSize/padding are
+      // set — see PublicDemoMonthlyPrimaryCtaSection) wins per-property,
+      // falling back to the ambient FilledButtonTheme (SesTheme's own
+      // `foregroundColor: Colors.white`) for whatever it leaves null.
+      final effectiveStyle =
+          button.style?.merge(theme.filledButtonTheme.style) ??
+          theme.filledButtonTheme.style;
+      const enabled = <WidgetState>{};
+      final background = effectiveStyle!.backgroundColor!.resolve(enabled)!;
+      final foreground = effectiveStyle.foregroundColor!.resolve(enabled)!;
+
+      final ratio = _contrastRatio(background, foreground);
+      expect(
+        ratio,
+        greaterThanOrEqualTo(4.5),
+        reason:
+            'background=$background foreground=$foreground ratio=$ratio '
+            'falls short of WCAG AA (4.5:1) for normal-size button text',
       );
     },
   );

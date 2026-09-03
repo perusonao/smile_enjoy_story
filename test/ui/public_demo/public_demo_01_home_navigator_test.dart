@@ -399,10 +399,15 @@ void main() {
     testWidgets(
       // PUBLIC-DEMO-HOME-UI-3A: the "詳しく見る"/"閉じる" local toggle is
       // gone — the approved visual target shows the explanation open at
-      // all times. The headline, the guidance line, and the explanation
-      // are all already visible without any tap; reading them changes no
-      // state, and the Recommended Action CTA remains the gameplay entry
-      // point.
+      // all times, never gated behind a tap that must be opened before it
+      // renders at all. HOME-COMPACT-1B.4 FIX2 (Codex P2) later added a
+      // one-way "続きを読む" control that can appear when an explanation
+      // would overflow two lines, but it only *reveals more of text that
+      // is already on screen* — it never has to be tapped to see the
+      // headline, the guidance line, or the explanation in the first
+      // place, and it is never a collapse-back toggle like the removed
+      // one. Reading the already-visible text changes no state, and the
+      // Recommended Action CTA remains the gameplay entry point.
       'the explanation is visible without opening anything; reading it '
       'is presentation-only and the Recommended Action CTA remains the '
       'gameplay entry point',

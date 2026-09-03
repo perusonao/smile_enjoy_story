@@ -10,8 +10,8 @@ Issue #148 Phase 1B.3 で月・KPI・ひよりの主行動・月次CTAは初期�
 
 - **Base SHA**: `eb275aeb0ca6156d29d171b70f33ef19d0740c16` (`origin/main`。作業開始前に
   `git fetch origin` で確認済み。指定 SHA と一致)
-- **Head SHA**: `1390fdcf81cce6762203fb53f06735f5c4fb3e2f`（初回実装 `04e9d92` +
-  FIX1 `1390fdc`。下記「FIX1」節を参照）
+- **Head SHA**: `<FIX2_HEAD_SHA>`（初回実装 `04e9d92` + FIX1 `1390fdc`〜`5abcf5c`
+  + FIX2（Codex P2） `<FIX2_HEAD_SHA>`。下記「FIX1」「FIX2（Codex P2）」節を参照）
 - **Branch**: `claude/home-compact-1b4-visual-polish-qrn9ki`
 - **PR**: https://github.com/perusonao/smile_enjoy_story/pull/160
 
@@ -57,6 +57,131 @@ Issue #148 Phase 1B.3 で月・KPI・ひよりの主行動・月次CTAは初期�
 `public_demo_01_home_cash_forecast_advice_test.dart`（予防的caution状態の
 既存導線）、`public_demo_01_bankruptcy_ux_test.dart`（実資金不足〜倒産の遷移・
 Recommended Actionダイアログ）はすべて無変更のまま green。
+
+## FIX2（Codex P2、追記）: 説明文の可読性と月次CTAの文字コントラスト
+
+PR #160 への Codex のP2レビュー2件（レビューコメント
+[#3926499697](https://github.com/perusonao/smile_enjoy_story/pull/160#discussion_r3926499697)、
+[#3926499702](https://github.com/perusonao/smile_enjoy_story/pull/160#discussion_r3926499702)）
+を受け、最小修正した（コミット `<FIX2_HEAD_SHA>`）。
+
+### 修正1: `_AdviceBubble` の説明文が2行で見えなくなる問題
+
+`lib/presentation/home/widgets/home_navigator_section.dart` の `_AdviceBubble`
+は `maxLines: 2` + ellipsisで説明文を切り詰めており、初期4月のSkillSheet案内
+（44文字）を含む43〜56文字程度の説明文が「次の...」のように途中で切れ、
+読めなくなっていた。
+
+- `_AdviceBubble` を `StatelessWidget` → `StatefulWidget`（`_AdviceBubbleState`、
+  `bool _expanded`）へ変更。
+- `LayoutBuilder` + `TextPainter(maxLines: 2, textDirection:
+  Directionality.of(context), textScaler: MediaQuery.textScalerOf(context))
+  ..layout(maxWidth: constraints.maxWidth)` の `didExceedMaxLines` で、
+  文字数の推測ではなく実際のレイアウト結果として2行に収まるかを判定。
+  収まる場合は何も追加表示しない（例: 10月の研修案内は今回も2行に収まり、
+  展開ボタンは出ない）。
+- 2行に収まらない場合のみ、`Key('home-navigator-advice-expand')` を持つ
+  `InkWell`「続きを読む」を表示。タップすると `_expanded = true` となり、
+  `maxLines: null` / `TextOverflow.visible` で全文を表示する（片方向の
+  展開のみ。閉じる操作は追加していない — PUBLIC-DEMO-HOME-UI-3Aで削除した
+  「詳しく見る/閉じる」トグルとは別物）。
+- 主メッセージ（常時表示・無制限、`_AdviceBubble`の外側にある見出し行）、
+  CTAの優先順位、通常／予防的資金注意／実資金不足の表示契約、FIX1で追加した
+  実資金不足時のバブル自体の非表示（重複防止）は無変更。
+
+追加で、展開ボタンの高さ分だけ通常状態の360×800初期表示がoffice-stage
+(`home-office-stage`) の下端をビューポート外（731pt、ビューポート720pt）に
+押し出す回帰が発生したため、以下の3箇所を圧縮して吸収した（警告文言・
+根拠数値・CTA・優先順位は無変更）:
+
+| ファイル | 変更 |
+|---|---|
+| `lib/presentation/home/widgets/home_navigator_section.dart` | 「続きを読む」を囲んでいた`Padding(top:2)`を削除し、文字サイズを`fontSize: 10, height: 1`に。`_AdviceBubble`のpaddingを`(10,4,10,4)`→`(10,3,10,3)`に圧縮。 |
+| `lib/ui/public_demo/public_demo_home_presentation_components.dart` | 月次CTAカードのpaddingを`(12,8,12,8)`→`(12,6,12,6)`に圧縮（修正2の色変更とは独立）。 |
+
+再測定の結果、`home-office-stage`の下端は717pt（ビューポート720pt以内）に収まった。
+
+### 修正2: 月次CTA（有効時）の文字コントラスト不足
+
+`lib/ui/public_demo/public_demo_home_presentation_components.dart` の
+`PublicDemoMonthlyPrimaryCtaSection._accent`（有効な`FilledButton`の背景色、
+白文字と組み合わせて使用）が `0xFFEF6C00`（Material Orange 800）のままだと
+白文字とのコントラスト比が約3.08:1で、通常サイズ文字に対するWCAG AAの
+4.5:1未満だった。
+
+`_accent` を `0xFFBF360C`（Material Deep Orange 900）へ変更。アンバー系で
+ひよりのCTA（青）と区別する既存の意図は維持したまま、白文字とのコントラスト
+比を約5.60:1に改善した。ボタンのラベル文言・disabled状態・Key・CTAの数・
+月次進行ロジックは無変更（`_accent`はアイコン・「月次処理」ラベル・カードの
+枠線/背景トーンにも使われているため、カード全体の配色は一貫したまま変わる）。
+
+#### コントラスト比の測定値
+
+`dart:math`ベースのWCAG相対輝度計算（sRGBガンマ補正、`(L1+0.05)/(L2+0.05)`）
+で、白 (`#FFFFFF`) との組み合わせで比較:
+
+| 背景色 | 用途 | 白文字とのコントラスト比 | WCAG AA (4.5:1) |
+|---|---|---|---|
+| `#EF6C00`（変更前） | Material Orange 800 | 3.081:1 | ❌ 不合格 |
+| `#E65100` | Material Orange 900 | 3.790:1 | ❌ 不合格 |
+| `#C1440E` | 検討候補 | 5.121:1 | ✅ |
+| `#BF360C`（**変更後**） | Material Deep Orange 900 | **5.603:1** | ✅ |
+| `#A84300` | 検討候補 | 6.056:1 | ✅ |
+| `#9A3412` | 検討候補（レビュー例示） | 7.307:1 | ✅ |
+
+`#BF360C`を採用した理由: レビューが例示した`#9A3412`よりオレンジ寄り
+（アンバー系の意図を強く残す）で、かつAA基準を余裕をもって満たす
+Material標準色（Deep Orange 900）であるため。
+
+`test/ui/public_demo/public_demo_home_presentation_components_test.dart` に
+上記と同じ計算式のヘルパー（`_srgbToLinear`/`_relativeLuminance`/
+`_contrastRatio`）と、実際の `ButtonStyle`（`button.style?.merge(theme
+.filledButtonTheme.style)`で解決した実効値）から前景・背景色を取得して
+コントラスト比を計算し `greaterThanOrEqualTo(4.5)` を検証する回帰テストを
+追加した。
+
+### FIX2のテスト
+
+- `test/presentation/home/home_navigator_section_test.dart`:
+  - 既存グループ名/テスト名を「no collapse control」→「no collapse-back
+    toggle」表現へ更新（新しい片方向展開コントロールの追加を正しく反映。
+    アサーション自体は無変更）。
+  - 新規グループ `'HOME-COMPACT-1B.4 FIX2 (Codex P2): 続きを読む reveals a
+    truncated explanation in full'` を追加（3テスト、360×800/390×844の
+    両サイズを含む）:
+    - 2行に収まる短い説明文では展開ボタンが出現しないこと
+    - 実際の44文字SkillSheet説明文では両サイズで展開ボタンが出現し、
+      `find.text(fullText)`は常に全文を検出し、タップ後は展開ボタンが
+      消え、説明文の`Rect.height`が増加すること（実際に`tester.tap`した
+      上での幾何検証）
+    - 展開後も360×800でカードが画面幅をはみ出さないこと
+  - 実行結果: 58/58 pass（追加前54、FIX2で+4）。
+- `test/ui/public_demo/public_demo_01_home_navigator_test.dart`:
+  - 既存テストの説明コメントを、「タップ不要で常に全文表示」という
+    やや古い前提から、「一方向の『続きを読む』展開が出ることはあるが、
+    最初から見出し・案内文・説明文自体はタップなしで見える」という
+    FIX2後の実態に合わせて更新（アサーション自体は無変更、全て通過）。
+  - 実行結果: 29/29 pass（変更なし）。
+- `test/ui/public_demo/public_demo_home_presentation_components_test.dart`:
+  - 新規テスト `'monthly primary CTA (enabled) meets WCAG AA text contrast
+    (>=4.5:1)'` を追加。
+  - 実行結果: 10/10 pass。
+- 回帰確認: `flutter test test/ui/public_demo/ test/presentation/`
+  合計 **433 tests, all pass**（FIX1時点の429件 + FIX2で4件追加、失敗0件）。
+- 6パターン初期表示の再確認:
+  `test/ui/public_demo/public_demo_01_issue_124_screen_verification_test.dart`
+  7/7 pass（通常360/390、実資金不足360/390を含む、office-stage下端717pt
+  ≤ 720ptを確認）。
+- `dart format`（変更対象ファイルのみ）: 適用済み。
+- `flutter analyze`: No issues found。
+- Chromiumで360×800／390×844 × 通常／予防的資金注意／実資金不足の全6パターンを
+  再スクリーンショット。通常状態（4月）で「続きを読む」が実際にレンダリング
+  され、タップ可能な位置に表示されていること、月次CTAが視覚的により濃い
+  オレンジ（旧`#EF6C00`比で明確に暗い）で表示されていることを目視確認した
+  （下記「スクリーンショット」節を参照。ファイルは同名で上書き更新）。
+  Playwright経由の実クリックはFlutter Web semanticsツリーの入れ子構造上
+  正確な座標特定が難しく安定しなかったため、実際のタップ挙動の検証は
+  上記ウィジェットテスト（実際の`tester.tap` + 幾何検証）に委ねた。
 
 ## 変更方針・スコープ
 
@@ -168,12 +293,11 @@ CI ワークフロー `.github/workflows/public-demo-validation.yml` が固定�
 
 - `dart format`（変更対象ファイルのみ）: 適用済み
 - `flutter analyze`: No issues found
-- `flutter test test/ui/public_demo/`: 228 tests, all pass（FIX1で2件追加）
-- `flutter test test/presentation/`: 200 tests, all pass
-- `flutter test test/game/public_demo/`: 500 tests, all pass
+- `flutter test test/ui/public_demo/` + `test/presentation/`（合算実行）: **433 tests, all pass**（FIX1時点429件 + FIX2で4件追加。個別実行でも `test/ui/public_demo/public_demo_home_presentation_components_test.dart` 10/10、`test/presentation/home/home_navigator_section_test.dart` 58/58、`test/ui/public_demo/public_demo_01_home_navigator_test.dart` 29/29 をそれぞれ確認済み）
+- `flutter test test/game/public_demo/`: 500 tests, all pass（FIX2では未変更、初回実装時と同じ）
 - 既存 SkillSheet flow test (`test/ui/public_demo/public_demo_01_skill_sheet_flow_test.dart`): 2 tests, all pass（開く→戻る→確認→営業開始のフローは無変更）
 - 既存 `public_demo_cash_shortage_card_test.dart` / `public_demo_01_home_cash_forecast_advice_test.dart` / `public_demo_01_bankruptcy_ux_test.dart`: all pass（優先導線・CTA重複防止の既存契約を無変更で確認）
-- 上記3ディレクトリ合計: **928 tests, all pass**（初回実装時926件 + FIX1で2件追加）
+- 上記3ディレクトリ合計: **933 tests, all pass**（初回実装時926件 + FIX1で2件 + FIX2で5件 = 933件）
 
 ## 未実行の検証
 
@@ -194,11 +318,15 @@ CI ワークフロー `.github/workflows/public-demo-validation.yml` が固定�
 - ブランチ `claude/home-compact-1b4-visual-polish-qrn9ki` は `origin/main`
   (`eb275ae`) から分岐し、コミット `04e9d92`（初回実装）→ `288d43a`／`2d68ee4`
   （レポート・スクリーンショット）→ `1390fdc`（FIX1: 実資金不足時の社員概要
-  初期可視化）をプッシュ済み。最終HEAD: `1390fdcf81cce6762203fb53f06735f5c4fb3e2f`。
+  初期可視化）→ `5abcf5c`（FIX1のレポート・スクリーンショット追記）→
+  `<FIX2_HEAD_SHA>`（FIX2: Codex P2レビュー2件の最小修正）をプッシュ済み。
+  最終HEAD: `<FIX2_HEAD_SHA>`。
 - PR: https://github.com/perusonao/smile_enjoy_story/pull/160（オープンのまま。
   マージは実施していない）
 - **merge readiness**: 受け入れ条件1〜5すべて、通常・予防的資金注意・実資金不足の
-  全3状態×360px/390pxの全6パターンで達成済み。`flutter analyze`問題なし、
-  対象テストディレクトリ合計928件すべてグリーン、既存SkillSheetフロー・
-  資金不足優先導線・CTA重複防止の既存契約は無変更で確認済み。マージ判断は
-  リポジトリオーナーに委ねる。
+  全3状態×360px/390pxの全6パターンで達成済み。Codex P2レビュー2件
+  （説明文の可読性、月次CTAの文字コントラスト）も最小修正済み。
+  `flutter analyze`問題なし、対象テストディレクトリ合計933件すべてグリーン、
+  既存SkillSheetフロー・資金不足優先導線・CTA重複防止の既存契約は無変更で
+  確認済み。月次CTA（有効時）のコントラスト比は約5.60:1でWCAG AA
+  （4.5:1）を満たす。マージ判断はリポジトリオーナーに委ねる。

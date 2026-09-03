@@ -225,7 +225,7 @@ void main() {
   });
 
   group('NAVIGATOR-1B / PUBLIC-DEMO-HOME-UI-3A: the advice explanation is '
-      'always visible, with no collapse control', () {
+      'always visible, with no collapse-back toggle', () {
     testWidgets('suppressed advice exposes no advice bubble', (tester) async {
       await pumpNavigator(tester, advice: null);
       expect(
@@ -254,8 +254,10 @@ void main() {
       // PUBLIC-DEMO-HOME-UI-3A: the approved visual target shows the
       // "ひよりからのアドバイス" box open at all times, with no "詳しく見る"/
       // "閉じる" tap-to-reveal — matching this is the whole point of this
-      // group.
-      'the explanation renders immediately, with no tap required',
+      // group. This one short explanation (well under two lines at any
+      // required width) never needs HOME-COMPACT-1B.4 FIX2's "続きを読む"
+      // reveal either — see the dedicated group below for when it does.
+      'a short explanation renders immediately, with no tap required',
       (tester) async {
         const explanation = 'この操作が一般的に重要な理由です。';
         await pumpNavigator(
@@ -307,33 +309,46 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
-    testWidgets('there is no collapse control anywhere in the widget', (
-      tester,
-    ) async {
-      await pumpNavigator(tester);
-      final section = find.byType(HomeNavigatorSection);
-      expect(
-        find.byKey(const Key('home-navigator-advice-bubble')),
-        findsOneWidget,
-      );
-      // SES-FIRST-FUN-YEAR-UI-PHASE-2: the bubble does not restate the
-      // title or the message — both already render, once, above it. Only
-      // the explanation is genuinely new content inside the bubble.
-      expect(
-        find.text(HomeNavigatorAdvice.neutral.explanation!),
-        findsOneWidget,
-      );
-      expect(find.text(HomeNavigatorAdvice.neutral.message), findsOneWidget);
-      expect(
-        find.descendant(of: section, matching: find.text('佐倉 ひより')),
-        findsOneWidget,
-      );
-      expect(find.byKey(const Key('home-navigator-open-advice')), findsNothing);
-      expect(
-        find.byKey(const Key('home-navigator-close-advice')),
-        findsNothing,
-      );
-    });
+    testWidgets(
+      'there is no collapse-back toggle (open/close pair) anywhere in the '
+      'widget',
+      (tester) async {
+        await pumpNavigator(tester);
+        final section = find.byType(HomeNavigatorSection);
+        expect(
+          find.byKey(const Key('home-navigator-advice-bubble')),
+          findsOneWidget,
+        );
+        // SES-FIRST-FUN-YEAR-UI-PHASE-2: the bubble does not restate the
+        // title or the message — both already render, once, above it. Only
+        // the explanation is genuinely new content inside the bubble. The
+        // full string is still the underlying Text's own data regardless of
+        // HOME-COMPACT-1B.4's two-line cap or FIX2's reveal control — see
+        // the "reveals the full text on tap" test below for the genuinely
+        // new claim (that it is actually *painted* in full once revealed).
+        expect(
+          find.text(HomeNavigatorAdvice.neutral.explanation!),
+          findsOneWidget,
+        );
+        expect(find.text(HomeNavigatorAdvice.neutral.message), findsOneWidget);
+        expect(
+          find.descendant(of: section, matching: find.text('佐倉 ひより')),
+          findsOneWidget,
+        );
+        // The removed SES-FIRST-FUN-YEAR-UI-PHASE-2 toggle's own two keys
+        // never come back under any name: HOME-COMPACT-1B.4 FIX2's
+        // 'home-navigator-advice-expand' (pinned by the group below) is a
+        // one-way reveal, never a pair a player can open and close again.
+        expect(
+          find.byKey(const Key('home-navigator-open-advice')),
+          findsNothing,
+        );
+        expect(
+          find.byKey(const Key('home-navigator-close-advice')),
+          findsNothing,
+        );
+      },
+    );
 
     testWidgets('image failure keeps advice usable', (tester) async {
       await pumpNavigator(tester, bundle: _FailingAssetBundle());
@@ -385,6 +400,115 @@ void main() {
         });
       }
     }
+  });
+
+  group('HOME-COMPACT-1B.4 FIX2 (Codex P2): 続きを読む reveals a truncated '
+      'explanation in full', () {
+    // April's own real SkillSheet explanation — the exact 44-character
+    // string the P2 review's screenshot showed ending in "次の…". Reused
+    // verbatim (not a synthetic long string) so this pins the actual
+    // regression, not merely a hypothetical one.
+    const skillSheetExplanation =
+        'SkillSheetは、経験やスキルを案件へ伝えるための資料です。内容を確認して次の手続きに備えます。';
+
+    testWidgets('a short explanation that already fits two lines gets no 続きを読む '
+        'control', (tester) async {
+      await pumpNavigator(
+        tester,
+        size: const Size(390, 844),
+        advice: const HomeNavigatorAdvice(
+          title: 'ひよりからのご案内',
+          message: '既に選ばれた操作です。',
+          explanation: 'この操作が一般的に重要な理由です。',
+        ),
+      );
+      expect(
+        find.byKey(const Key('home-navigator-advice-expand')),
+        findsNothing,
+      );
+    });
+
+    for (final size in _sizes) {
+      testWidgets(
+        'a long explanation that would overflow two lines shows 続きを読む, '
+        'and tapping it reveals the full text at ${size.width.toInt()}x'
+        '${size.height.toInt()}',
+        (tester) async {
+          await pumpNavigator(
+            tester,
+            size: size,
+            advice: const HomeNavigatorAdvice(
+              title: 'ひよりからのご案内',
+              message: '佐藤 健のSkillSheetを確認',
+              explanation: skillSheetExplanation,
+            ),
+          );
+
+          final explanationFinder = find.byKey(
+            const Key('home-navigator-advice-explanation'),
+          );
+          // The full string is always the underlying Text's own data — see
+          // "there is no collapse-back toggle" above for why this alone
+          // does not prove the text is actually painted in full.
+          expect(find.text(skillSheetExplanation), findsOneWidget);
+
+          final expandFinder = find.byKey(
+            const Key('home-navigator-advice-expand'),
+          );
+          expect(
+            expandFinder,
+            findsOneWidget,
+            reason:
+                'this exact string is the one the P2 review found silently '
+                'truncated at $size — the reveal control must render',
+          );
+          expect(find.text('続きを読む'), findsOneWidget);
+
+          final collapsedHeight = tester.getRect(explanationFinder).height;
+
+          await tester.tap(expandFinder);
+          await tester.pumpAndSettle();
+
+          // The reveal is one-way: the control itself is gone once
+          // expanded, never a toggle back to truncated.
+          expect(
+            find.byKey(const Key('home-navigator-advice-expand')),
+            findsNothing,
+          );
+          // Genuinely painted in full now, not just present as data: the
+          // revealed Text measures taller than its two-line collapsed form.
+          final expandedHeight = tester.getRect(explanationFinder).height;
+          expect(expandedHeight, greaterThan(collapsedHeight));
+          expect(tester.takeException(), isNull);
+        },
+      );
+    }
+
+    testWidgets('the reveal never widens the card past the screen at 360x800', (
+      tester,
+    ) async {
+      await pumpNavigator(
+        tester,
+        size: const Size(360, 800),
+        advice: const HomeNavigatorAdvice(
+          title: 'ひよりからのご案内',
+          message: '佐藤 健のSkillSheetを確認',
+          explanation: skillSheetExplanation,
+        ),
+      );
+      await tester.tap(find.byKey(const Key('home-navigator-advice-expand')));
+      await tester.pumpAndSettle();
+      for (final key in const [
+        'home-navigator',
+        'home-navigator-advice-bubble',
+        'home-navigator-advice-explanation',
+      ]) {
+        final rect = tester.getRect(find.byKey(Key(key)));
+        expect(rect.left, greaterThanOrEqualTo(0.0), reason: key);
+        expect(rect.right, lessThanOrEqualTo(360.0), reason: key);
+      }
+      expect(tester.takeException(), isNull);
+    });
   });
 
   group('PUBLIC-DEMO-HOME-UI-3A: the secondary route ("他の行動を確認する")', () {

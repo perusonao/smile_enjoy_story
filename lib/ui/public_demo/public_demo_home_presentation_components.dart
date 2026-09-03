@@ -256,7 +256,19 @@ class PublicDemoMonthlyPrimaryCtaSection extends StatelessWidget {
 
   /// Distinct from [SesTheme.primaryBlue] (Hiyori's own CTA color) on
   /// purpose — see the class doc.
-  static const Color _accent = Color(0xFFEF6C00);
+  ///
+  /// HOME-COMPACT-1B.4 FIX2 (Codex P2): darkened from `0xFFEF6C00` (Material
+  /// Orange 800), whose ~3.08:1 contrast against the enabled button's
+  /// inherited white foreground fell short of WCAG AA's 4.5:1 for
+  /// normal-size text. This is Material Deep Orange 900 — still squarely
+  /// the same amber/orange family the class doc's "never the blue" contract
+  /// asks for, but at ~5.6:1 with white (see the HOME-COMPACT-1B.4 result
+  /// report's contrast-ratio table for the measured value and the
+  /// alternatives it was checked against). Only this token changed — the
+  /// icon, the "月次処理" label, and the card's own border/background tint
+  /// all read it too, so the whole card's accent stays one consistent color
+  /// rather than the button alone drifting from its own chrome.
+  static const Color _accent = Color(0xFFBF360C);
 
   @override
   Widget build(BuildContext context) {
@@ -270,7 +282,7 @@ class PublicDemoMonthlyPrimaryCtaSection extends StatelessWidget {
         side: BorderSide(color: _accent.withValues(alpha: 0.35)),
       ),
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+        padding: const EdgeInsets.fromLTRB(12, 6, 12, 6),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,

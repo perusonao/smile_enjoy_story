@@ -349,28 +349,50 @@ class HomeNavigatorSection extends StatelessWidget {
 /// remove. What is left here is genuinely additional: the educational
 /// explanation, which the always-visible line deliberately does not state.
 ///
-/// PUBLIC-DEMO-HOME-UI-3A: this bubble is now always rendered (whenever
-/// [HomeNavigatorAdvice.explanation] is non-null) instead of behind a
-/// collapse tap — the approved visual target shows "ひよりからのアドバイス"
-/// permanently on screen, so there is no `onCollapse` control left to wire.
-///
 /// HOME-COMPACT-1B.4: tightened padding and a two-line cap on the
 /// explanation itself — the acceptance criteria ask this bubble not to
 /// press against the card's height budget the way an unbounded paragraph
 /// could. The message above it (never capped — see the `Text` in [build]
 /// above this class) still states the actual guidance in full; this stays
 /// what it already was, the optional educational "why", just shown at a
-/// size that cannot grow past two lines. At the default text scale every
-/// existing explanation string already fits within that.
-class _AdviceBubble extends StatelessWidget {
+/// size that cannot grow past two lines by default.
+///
+/// HOME-COMPACT-1B.4 FIX2 (Codex P2): the two-line cap above silently
+/// truncated real copy — several existing explanation strings (43-56
+/// characters, e.g. April's own SkillSheet guidance) run past two lines at
+/// the target widths and painted with a trailing `…` and no way to read
+/// the rest, which is exactly the "same fact, permanently harder to read"
+/// regression PUBLIC-DEMO-HOME-UI-3A's own removal of the old "詳しく見る"
+/// toggle was trying to avoid in the other direction. This restores a
+/// one-way reveal — never a collapse-back toggle, so it is not the same
+/// control PUBLIC-DEMO-HOME-UI-3A removed — and only when [explanation]
+/// would genuinely overflow two lines at the bubble's real width: a short
+/// explanation that already fits gets no button at all. Expanding costs
+/// exactly the card height the full text needs, the same way an increased
+/// text scale is already allowed to grow this card (see
+/// [HomeNavigatorMetrics.compactCeiling]'s own doc) — never a fixed height
+/// around text.
+class _AdviceBubble extends StatefulWidget {
   const _AdviceBubble({required this.advice});
 
   final HomeNavigatorAdvice advice;
 
   @override
+  State<_AdviceBubble> createState() => _AdviceBubbleState();
+}
+
+class _AdviceBubbleState extends State<_AdviceBubble> {
+  bool _expanded = false;
+
+  @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
+    final explanationStyle = theme.textTheme.bodySmall?.copyWith(
+      height: 1.25,
+      fontSize: 11,
+      color: scheme.onSurfaceVariant,
+    );
     return Semantics(
       container: true,
       label: 'ひよりからの補足説明',
@@ -382,7 +404,7 @@ class _AdviceBubble extends StatelessWidget {
           border: Border.all(color: scheme.outlineVariant),
         ),
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(10, 4, 10, 4),
+          padding: const EdgeInsets.fromLTRB(10, 3, 10, 3),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
@@ -411,17 +433,58 @@ class _AdviceBubble extends StatelessWidget {
                 ],
               ),
               const SizedBox(height: 1),
-              if (advice.explanation case final explanation?)
-                Text(
-                  explanation,
-                  key: const Key('home-navigator-advice-explanation'),
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    height: 1.25,
-                    fontSize: 11,
-                    color: scheme.onSurfaceVariant,
-                  ),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
+              if (widget.advice.explanation case final explanation?)
+                LayoutBuilder(
+                  builder: (context, constraints) {
+                    // Real overflow check, not a character-count guess: a
+                    // 43-character explanation can fit two lines at 390pt
+                    // and overflow at 360pt, so whether the reveal control
+                    // renders at all is decided against the bubble's own
+                    // measured width, in this build's own text direction
+                    // and ambient text-scale — the same way `didExceedMaxLines`
+                    // already backs this file's other clipping tests.
+                    final overflows =
+                        !_expanded &&
+                        (TextPainter(
+                              text: TextSpan(
+                                text: explanation,
+                                style: explanationStyle,
+                              ),
+                              maxLines: 2,
+                              textDirection: Directionality.of(context),
+                              textScaler: MediaQuery.textScalerOf(context),
+                            )..layout(maxWidth: constraints.maxWidth))
+                            .didExceedMaxLines;
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          explanation,
+                          key: const Key('home-navigator-advice-explanation'),
+                          style: explanationStyle,
+                          maxLines: _expanded ? null : 2,
+                          overflow: _expanded
+                              ? TextOverflow.visible
+                              : TextOverflow.ellipsis,
+                        ),
+                        if (overflows)
+                          InkWell(
+                            key: const Key('home-navigator-advice-expand'),
+                            onTap: () => setState(() => _expanded = true),
+                            child: Text(
+                              '続きを読む',
+                              style: theme.textTheme.labelSmall?.copyWith(
+                                fontWeight: FontWeight.bold,
+                                color: scheme.primary,
+                                fontSize: 10,
+                                height: 1,
+                              ),
+                            ),
+                          ),
+                      ],
+                    );
+                  },
                 ),
             ],
           ),

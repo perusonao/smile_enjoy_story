@@ -152,11 +152,11 @@ Completed（Phase 1B.1 + 1B.2 スコープのみ。HOME Widget・文言表示・
 
 ## commit SHA
 
-（コミット後に追記）
+- Phase 1B.1 + 1B.2 実装（コード＋テスト＋report、単一commit）: `6d514203dbb2cbd2ab775355526d034ec941312f`
 
 ## PR URL
 
-（PR作成後に追記）
+https://github.com/perusonao/smile_enjoy_story/pull/154
 
 ## Merge Readiness
 

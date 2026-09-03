@@ -176,6 +176,92 @@ void main() {
     });
   });
 
+  group('monthGoalText — July (7) through March (15)', () {
+    // SES-FIRST-FUN-YEAR-P0-1 (Issue #125): before this change, every one
+    // of these nine months collapsed onto the same generic fallback line.
+    // This guards that regression directly rather than only asserting each
+    // month's own text.
+    const genericFallback = '今月の経営状況を確認し、翌月への準備をしましょう';
+
+    const expectedByMonth = {
+      7: '夏季賞与の対応を終えたら、待機中の技術者がいれば案件復帰できないか確認しましょう',
+      8: '今月の営業活動の状況と、待機中の技術者がいないか確認しましょう',
+      9: '上半期最終月です。ここまでの資金の増減と案件の稼働状況を振り返りましょう',
+      10: '下半期がスタートしました。案件の稼働状況を確認し、待機中の技術者がいれば案件復帰を検討しましょう',
+      11: '資金の増減を確認し、年度末までの運転資金を意識しましょう',
+      12: '年内最後の月です。ここまでの稼働状況と資金の推移を振り返りましょう',
+      13: '年度末まで残り3か月。案件と待機中の技術者の状況を点検しましょう',
+      14: '待機中の技術者を案件へ戻せる最後の月です。復帰できないか確認しましょう',
+      15: '年度末の月です。今月の締めで一年間の経営結果が確定します',
+    };
+
+    for (final entry in expectedByMonth.entries) {
+      test('month ${entry.key} projects its own month-specific goal', () {
+        final state = PublicDemoState.aprilStart().copyWith(month: entry.key);
+
+        final data = HomeDashboardDisplayData.fromPublicDemoState(state);
+
+        expect(data.monthGoalText, entry.value);
+        expect(
+          data.monthGoalText,
+          isNot(genericFallback),
+          reason:
+              'month ${entry.key} must not fall back to the single '
+              'generic July-March placeholder',
+        );
+      });
+    }
+
+    test('no two months among July-March share the same text', () {
+      final texts = expectedByMonth.values.toSet();
+
+      expect(
+        texts.length,
+        expectedByMonth.length,
+        reason: 'each of the nine months must have distinct guidance',
+      );
+    });
+
+    test(
+      'July-March never point at recruitment media or contract renewal',
+      () {
+        // Issue #125 scope: recruitment media's own UI never reappears
+        // after May and no transition past advanceToJune ever increases
+        // engineerCount, so a July-March hint that names hiring/media
+        // would point at a structurally unreachable path. Likewise there
+        // is no per-month assignment-renewal decision to point at.
+        for (final entry in expectedByMonth.entries) {
+          final state = PublicDemoState.aprilStart().copyWith(
+            month: entry.key,
+          );
+          final text = HomeDashboardDisplayData.fromPublicDemoState(
+            state,
+          ).monthGoalText;
+
+          expect(text, isNot(contains('求人')));
+          expect(text, isNot(contains('採用')));
+          expect(text, isNot(contains('更新')));
+        }
+      },
+    );
+  });
+
+  group('monthGoalText — April-June unaffected by the July-March table', () {
+    test('April, May, June keep their existing pre-P0-1 text', () {
+      const expectedByMonth = {
+        4: '待機中の技術者を営業し、5月の案件参画を決めましょう',
+        5: '応募者を採用し、入社前から6月の案件獲得を目指しましょう',
+        6: '翌月の発注を確認し、7月も稼働できる状態を作りましょう',
+      };
+
+      for (final entry in expectedByMonth.entries) {
+        final state = PublicDemoState.aprilStart().copyWith(month: entry.key);
+        final data = HomeDashboardDisplayData.fromPublicDemoState(state);
+        expect(data.monthGoalText, entry.value);
+      }
+    });
+  });
+
   group('projection does not mutate domain state', () {
     test('building the projection twice from the same state agrees', () {
       final state = PublicDemoState.aprilStart().advanceToMay(

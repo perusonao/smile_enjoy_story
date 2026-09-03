@@ -226,7 +226,7 @@ gameplay テストの内容は変更していない。`static-server.js` の変�
 
 ### commit SHA（Slice B）
 
-（このコミットで記録）
+`6d8deb2`（`feat(ci): make one Pages-base-href Web build reusable by smoke-e2e (SES-CI-SPEED-2 Slice B)`）
 
 ## 変更ファイル（累計, Slice B時点）
 

@@ -22,7 +22,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:smile_enjoy_story/game/persistence/public_demo_save_service.dart';
+import 'package:smile_enjoy_story/game/public_demo/public_demo_aggregate.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_financial_status.dart';
+import 'package:smile_enjoy_story/game/public_demo/public_demo_fiscal_close_id.dart';
+import 'package:smile_enjoy_story/game/public_demo/public_demo_salary.dart';
+import 'package:smile_enjoy_story/game/public_demo/public_demo_salary_offer.dart';
+import 'package:smile_enjoy_story/game/public_demo/public_demo_sales.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_state.dart';
 import 'package:smile_enjoy_story/ui/asset_paths.dart';
 import 'package:smile_enjoy_story/ui/public_demo/public_demo_01_placeholder_screen.dart';
@@ -128,6 +134,135 @@ Future<void> playToPreShortageWindow(WidgetTester tester) async {
   await settle(tester);
 }
 
+/// Injects a pre-built [PublicDemoAggregate] as the "restored save", the
+/// same technique `public_demo_01_single_month_advance_cta_test.dart` and
+/// other existing suites already use to reach a specific state without
+/// re-driving every UI step.
+class _FixedSaveService extends PublicDemoSaveService {
+  _FixedSaveService(this._aggregate);
+  final PublicDemoAggregate _aggregate;
+
+  @override
+  Future<PublicDemoAggregate?> load() async => _aggregate;
+
+  @override
+  Future<void> save(PublicDemoAggregate aggregate) async {}
+
+  @override
+  Future<bool> clear() async => true;
+}
+
+Future<void> pumpDemoWith(
+  WidgetTester tester,
+  PublicDemoAggregate aggregate,
+) async {
+  await tester.pumpWidget(
+    MaterialApp(
+      home: PublicDemo01PlaceholderScreen(
+        saveService: _FixedSaveService(aggregate),
+      ),
+    ),
+  );
+  await tester.pumpAndSettle();
+}
+
+/// Joins [applicantId] as an engineer via the real accept-offer/join chain,
+/// with no further pre-entry steps: a genuinely idle engineer at
+/// [PublicDemoSalesStage.waiting] with no assignment.
+PublicDemoAggregate _acceptOfferOnly(
+  PublicDemoAggregate aggregate,
+  String applicantId,
+) {
+  var next = aggregate.completeInterview(applicantId).aggregate;
+  final applicant = next.workflow.applicants.firstWhere(
+    (a) => a.id == applicantId,
+  );
+  return next.acceptOffer(
+    applicantId: applicantId,
+    offer: PublicDemoSalaryOffer(
+      requestedMonthlySalary: applicant.requestedMonthlySalary,
+      offeredMonthlySalary: applicant.requestedMonthlySalary,
+      acceptanceScore: 100,
+      motivationDelta: 0,
+      trustDelta: 0,
+    ),
+    fiscalCloseId: PublicDemoFiscalCloseId.forMonth(next.state.month),
+  );
+}
+
+/// Walks [applicantId] through the full real pre-entry pipeline to
+/// `juneOrdered` — every stage precondition genuinely satisfied, exactly
+/// the chain `public_demo_aggregate_test.dart`'s own "TEST E: genuine
+/// applicant happy path" and `public_demo_workflow_state_test.dart` use.
+PublicDemoAggregate _orderApplicant(
+  PublicDemoAggregate aggregate,
+  String applicantId,
+) => _acceptOfferOnly(aggregate, applicantId)
+    .beginPreEntrySkillSheet(applicantId)
+    .beginPreEntrySelling(applicantId)
+    .introducePreEntryProject(applicantId)
+    .recordPreEntryPartnerInterviewResult(applicantId)
+    .recordPreEntryClientInterviewResult(applicantId)
+    .recordJuneOrder(applicantId);
+
+/// Reproduces the exact real-command scenario the Codex review on PR #159
+/// (https://github.com/perusonao/smile_enjoy_story/pull/159#discussion_r3924337236)
+/// found: an applicant (`app-01`, 高橋 翔) who wins a June pre-entry order
+/// joins as an engineer at [PublicDemoSalesStage.waiting]
+/// (`withJoinedEngineers`) in the exact same `closeMay` that also adds them
+/// to the assignment roster (`assignOrderedForMay`) — so `stage == waiting`
+/// alone no longer means "not currently on a project" for this engineer.
+///
+/// Both founding engineers are advanced to `selling` (a real, in-progress
+/// stage `PublicDemoCashAdviceSelector` already excludes on its own) so
+/// they never compete with `app-01`/[secondApplicantId] for the one
+/// advice slot — this keeps the fixture a clean, minimal reproduction of
+/// the June-join mismatch alone, not a coincidental ordering effect.
+///
+/// [secondApplicantId], when supplied, joins via [_acceptOfferOnly] (no
+/// further pre-entry steps) — a genuinely idle, un-assigned `waiting`
+/// engineer appended to the roster *after* `app-01`, so the pre-fix
+/// selector (which returns the first `waiting`-stage match in
+/// `workflow.engineers` order) reaches `app-01` before it, letting the
+/// fixture also prove the fallback behaviour Issue #148's fix instructions
+/// require: excluding `app-01` must not just suppress the CTA outright —
+/// it must fall through to this genuinely-eligible engineer.
+///
+/// The `+100000` on April's `monthlyExpenses` is a caller-supplied number
+/// (this parameter is never cross-checked against the real formula — every
+/// existing aggregate-level test fixture picks its own), chosen only so
+/// the real, unmodified `PublicDemoCashForecast` genuinely projects a
+/// shortage a few months out while `financialStatus` is still confirmed
+/// `normal` — asserted explicitly below rather than assumed.
+PublicDemoAggregate _buildJuneJoinMismatchAggregate({
+  String? secondApplicantId,
+}) {
+  var aggregate = PublicDemoAggregate.initial();
+  aggregate = aggregate
+      .startSkillSheetReview('eng-01')
+      .beginSelling('eng-01')
+      .startSkillSheetReview('eng-02')
+      .beginSelling('eng-02');
+  aggregate = aggregate.closeApril(
+    monthlyExpenses: PublicDemoSalary.baselineMonthlyExpenses + 100000,
+  );
+
+  aggregate = _orderApplicant(aggregate, 'app-01');
+  if (secondApplicantId != null) {
+    aggregate = _acceptOfferOnly(aggregate, secondApplicantId);
+  }
+
+  // Matches production's own may() call exactly (public_demo_01_placeholder
+  // _screen.dart): the baseline constant, unadjusted for the newly-joined
+  // hire(s) — closeMay's own join/assignment step runs inside this same
+  // call, so their salary is not yet a settled fact when this number is
+  // computed, exactly like the real screen.
+  return aggregate.closeMay(
+    week: 9,
+    monthlyExpenses: PublicDemoSalary.baselineMonthlyExpenses,
+  );
+}
+
 void main() {
   group('preventive window: financialStatus is still normal', () {
     testWidgets('the Navigator shows the forecasted shortage month, a caution '
@@ -224,6 +359,131 @@ void main() {
         // ...and this feature's own forecast-based message never appears
         // alongside it — no duplicate cash lead.
         expect(find.textContaining('資金がマイナスになる見込みです'), findsNothing);
+      },
+    );
+  });
+
+  group('P2 fix (Codex review on PR #159): an already-assigned engineer is '
+      'never the cash-advice CTA target', () {
+    testWidgets(
+      'the sole "candidate" is an engineer who already joined via a June '
+      'order and is already on the assignment roster: the CTA falls back '
+      'to the safe finance-detail action, never to that engineer',
+      (tester) async {
+        final aggregate = _buildJuneJoinMismatchAggregate();
+
+        // Sanity checks on the fixture itself, independent of the
+        // screen: a genuine preventive-caution window (financialStatus
+        // still normal, the forecast already sees a shortage), and the
+        // one engineer who could satisfy `PublicDemoCashAdviceSelector`'s
+        // own `stage == waiting` check is already on the assignment
+        // roster — the exact mismatch the Codex review describes.
+        expect(
+          aggregate.state.financialStatus,
+          PublicDemoFinancialStatus.normal,
+        );
+        expect(
+          aggregate.workflow.engineers
+              .where((e) => e.stage == PublicDemoSalesStage.waiting)
+              .map((e) => e.id),
+          ['app-01'],
+        );
+        expect(
+          aggregate.workflow.assignedEngineerIds(month: aggregate.state.month),
+          contains('app-01'),
+        );
+
+        await pumpDemoWith(tester, aggregate);
+
+        // A caution advice is genuinely showing (the preventive window
+        // this fixture targets)...
+        expect(find.textContaining('資金がマイナスになる見込みです'), findsOneWidget);
+        // ...but it is never bound to 高橋 翔 (app-01) anywhere inside
+        // the Navigator card — not as the headline, not as a name inside
+        // the advice bubble's own explanation text.
+        final navigator = find.byKey(const Key('home-navigator'));
+        expect(
+          find.descendant(of: navigator, matching: find.textContaining('高橋 翔')),
+          findsNothing,
+        );
+        // No CTA at all is also an acceptable outcome (the doc-mandated
+        // "無効なCTAを表示しない"), but this fixture's forecast has no
+        // other candidate either, so it must be the safe finance-detail
+        // fallback specifically — never a fabricated action bound to the
+        // assigned engineer. Scoped to the Navigator card itself: the
+        // important-tasks section below has its own, unrelated row
+        // titled with the same words.
+        expect(
+          find.descendant(of: navigator, matching: find.text('資金計画を確認する')),
+          findsOneWidget,
+        );
+        expect(
+          find.byKey(const Key('home-recommended-action-headline')),
+          findsNothing,
+        );
+
+        // The CTA is genuinely safe to press — a scroll-jump, not a
+        // command against the already-assigned engineer.
+        await tester.tap(find.byKey(const Key('home-recommended-action-cta')));
+        await tester.pumpAndSettle();
+        expect(tester.takeException(), isNull);
+      },
+    );
+
+    testWidgets(
+      'a second, genuinely idle waiting engineer exists after excluding '
+      'the assigned one: the CTA targets that engineer instead',
+      (tester) async {
+        final aggregate = _buildJuneJoinMismatchAggregate(
+          secondApplicantId: 'app-02',
+        );
+
+        expect(
+          aggregate.state.financialStatus,
+          PublicDemoFinancialStatus.normal,
+        );
+        // Both app-01 (already assigned) and app-02 (genuinely idle) are
+        // `waiting`, in that order — the exact ordering that would let a
+        // naive "first waiting engineer" scan pick the wrong one.
+        expect(
+          aggregate.workflow.engineers
+              .where((e) => e.stage == PublicDemoSalesStage.waiting)
+              .map((e) => e.id),
+          ['app-01', 'app-02'],
+        );
+        final assignedIds = aggregate.workflow.assignedEngineerIds(
+          month: aggregate.state.month,
+        );
+        expect(assignedIds, contains('app-01'));
+        expect(assignedIds, isNot(contains('app-02')));
+
+        await pumpDemoWith(tester, aggregate);
+
+        expect(find.textContaining('資金がマイナスになる見込みです'), findsOneWidget);
+        final navigator = find.byKey(const Key('home-navigator'));
+        // The genuinely eligible engineer is the one actually offered —
+        // named in both the headline and the advice bubble's own
+        // explanation, hence "at least one" rather than exactly one.
+        expect(
+          find.descendant(
+            of: navigator,
+            matching: find.textContaining('田中 美咲'),
+          ),
+          findsWidgets,
+        );
+        // ...and the already-assigned one is never named here instead.
+        expect(
+          find.descendant(of: navigator, matching: find.textContaining('高橋 翔')),
+          findsNothing,
+        );
+        expect(
+          find.byKey(const Key('home-recommended-action-cta')),
+          findsOneWidget,
+        );
+
+        await tester.tap(find.byKey(const Key('home-recommended-action-cta')));
+        await tester.pumpAndSettle();
+        expect(tester.takeException(), isNull);
       },
     );
   });

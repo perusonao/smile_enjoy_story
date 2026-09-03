@@ -350,9 +350,42 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
               '${formatYen(shortageEntry.closingCash)}';
     final message = '${publicDemoMonthLabel(shortageMonth)}に資金がマイナスになる見込みです。';
 
+    // Codex review (PR #159, P2): an applicant who won a pre-entry order
+    // joins as an engineer at [PublicDemoSalesStage.waiting]
+    // (`withJoinedEngineers`) in the very same close that
+    // `assignOrderedForMay` also adds them to the assignment roster — so
+    // `stage == waiting` alone does not mean "not currently on a project".
+    // [PublicDemoCashAdviceSelector.select] only reads `stage`, so passing
+    // it the raw [workflow] could surface an already-assigned engineer as
+    // the advice target: confirming their SkillSheet or starting their
+    // training would either be a silent no-op (the aggregate's own guards
+    // reject re-advancing an assigned engineer) or push them back into the
+    // sales pipeline for a project they are already on.
+    //
+    // [workflow.assignedEngineerIds] is the existing SSOT for "currently on
+    // a project" (already used the same way by this screen's own training
+    // card and P2-fix month-6/Recovery filters — see
+    // `_currentlyAssignedEngineerIds`'s own doc). Excluding those engineers
+    // from the pool the selector sees — rather than discarding whatever
+    // single candidate it happens to return — lets it fall through to the
+    // next genuinely eligible waiting/skillSheet engineer on its own, with
+    // no change to its selection logic or order. If none remain, it
+    // returns `null` exactly as it already does when no candidate exists,
+    // which the existing `candidate == null` branch below already renders
+    // safely (no CTA bound to a fabricated action).
+    final assignedEngineerIds = workflow.assignedEngineerIds(month: s.month);
+    final adviceWorkflow = assignedEngineerIds.isEmpty
+        ? workflow
+        : PublicDemoWorkflowState(
+            applicants: workflow.applicants,
+            engineers: [
+              for (final engineer in workflow.engineers)
+                if (!assignedEngineerIds.contains(engineer.id)) engineer,
+            ],
+          );
     final candidate = PublicDemoCashAdviceSelector.select(
       cashStatus: cashStatus,
-      workflow: workflow,
+      workflow: adviceWorkflow,
       state: s,
     );
     if (candidate == null) {

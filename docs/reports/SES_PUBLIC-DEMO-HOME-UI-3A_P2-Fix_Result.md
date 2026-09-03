@@ -296,8 +296,8 @@ localized diff on top.
 
 ## Commit / push
 
-- Commit SHA: see the accompanying "Final HEAD SHA" reported at the end of
-  this session's summary (this report is committed in the same commit).
+- Commit SHA: `8736fb027f1d9f7fb8c3ec56bc618f847699d15e`
+- Work-before HEAD: `2480dd9673d50ba37d3e238425a66bb730141722`
 - Pushed branch: `claude/issue-147-home-ui-3a`.
 - PR: [#150](https://github.com/perusonao/smile_enjoy_story/pull/150),
   still open against `main`, not merged.

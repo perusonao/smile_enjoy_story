@@ -174,15 +174,21 @@ class PublicDemoSkillSheetDisplayFactory {
             ),
     ];
 
+    // SKILLSHEET-UX-2A P2 fix: only a confirmed language may be shown as
+    // this employee's experience — a `languageSkills` entry can exist purely
+    // to seed/track capability (see
+    // [PublicDemoEngineerRuntime.confirmedLanguages]) without being
+    // confirmed, real, language-specific experience data.
     final experienceComparisons = <PublicDemoSkillSheetExperienceComparison>[
       if (runtime != null)
         for (final skill in runtime.languageSkills.values)
-          PublicDemoSkillSheetExperienceComparison(
-            languageLabel:
-                languageLabels[skill.language] ?? skill.language.name,
-            actualMonths: skill.actualExperienceMonths,
-            displayedMonths: skill.displayedExperienceMonths,
-          ),
+          if (runtime.confirmedLanguages.contains(skill.language))
+            PublicDemoSkillSheetExperienceComparison(
+              languageLabel:
+                  languageLabels[skill.language] ?? skill.language.name,
+              actualMonths: skill.actualExperienceMonths,
+              displayedMonths: skill.displayedExperienceMonths,
+            ),
     ];
 
     final industryChips = <String>[
@@ -199,7 +205,11 @@ class PublicDemoSkillSheetDisplayFactory {
           _abilityLabels[ability] ?? ability.name,
     ];
 
-    final primaryLanguageLabel = runtime == null
+    // Same rule as above: the header/summary chip must not claim a
+    // language identity the runtime hasn't confirmed.
+    final primaryLanguageLabel =
+        (runtime == null ||
+            !runtime.confirmedLanguages.contains(runtime.primaryLanguage))
         ? null
         : (languageLabels[runtime.primaryLanguage] ??
               runtime.primaryLanguage.name);

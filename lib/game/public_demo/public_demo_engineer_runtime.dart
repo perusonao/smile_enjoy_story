@@ -25,6 +25,7 @@ class PublicDemoEngineerRuntime {
     this.abilities = const {},
     this.industryExperience = const {},
     this.careerHistory = const [],
+    this.confirmedLanguages = const {},
   });
 
   final String engineerId;
@@ -36,6 +37,21 @@ class PublicDemoEngineerRuntime {
   final Map<Industry, int> industryExperience;
   final List<CareerHistoryEntry> careerHistory;
 
+  /// Languages whose [languageSkills] entry is genuinely confirmed,
+  /// language-specific experience — safe for the SkillSheet to present as
+  /// this employee's language identity/experience.
+  ///
+  /// SKILLSHEET-UX-2A P2 fix: a language can carry a [LanguageSkill] entry
+  /// purely to seed/track [actualCapability] (the field-sales readiness
+  /// gate and EG-2 growth both key off `languageSkills[primaryLanguage]`)
+  /// without that entry being confirmed here. Public Demo's applicant model
+  /// ([PublicDemoApplicant]) tracks only one aggregate `experienceMonths`
+  /// figure with no per-language breakdown, so an experienced hire's
+  /// capability entry must never be presented as if it were confirmed
+  /// Java (or any other language) experience — defaults to empty (not
+  /// confirmed) so a caller must opt in explicitly.
+  final Set<ProgrammingLanguage> confirmedLanguages;
+
   /// Compatibility score for Public Demo 0.1's existing project evaluation.
   /// It is derived from actual capability, never copied onto an assignment.
   int get actualCapability => languageSkills[primaryLanguage]?.actualSkill ?? 0;
@@ -45,7 +61,24 @@ class PublicDemoEngineerRuntime {
       actualCapability >= fieldSalesCapabilityRequirement;
 
   /// Creates the single runtime representation used after a Public Demo hire
-  /// joins. Experienced applicants retain the pre-JUNIOR-3 values exactly.
+  /// joins. Experienced applicants retain the pre-JUNIOR-3 `actualSkill`
+  /// value exactly.
+  ///
+  /// SKILLSHEET-UX-2A P2 fix (round 2): [PublicDemoApplicant] carries no
+  /// confirmed per-language breakdown — only one aggregate
+  /// `experienceMonths` figure and a free-text `resumeSummary` — so an
+  /// experienced hire's capability is still seeded under
+  /// [ProgrammingLanguage.java] (needed for [actualCapability]/
+  /// [isReadyForFieldSales] and EG-2 growth, which key off
+  /// `languageSkills[primaryLanguage]`), but that entry is deliberately
+  /// NOT added to [confirmedLanguages] and its experience-months fields
+  /// stay `0` rather than [PublicDemoApplicant.experienceMonths]: copying
+  /// the applicant's total IT experience onto Java would fabricate
+  /// language-specific experience for a non-Java hire (e.g. app-02's
+  /// Flutter/JavaScript résumé). The SkillSheet display projection reads
+  /// [confirmedLanguages] and shows an honest "not confirmed" empty state
+  /// instead of this unconfirmed entry — see
+  /// PublicDemoSkillSheetDisplayFactory.create.
   factory PublicDemoEngineerRuntime.fromApplicant(
     PublicDemoApplicant applicant,
   ) {
@@ -93,6 +126,10 @@ class PublicDemoEngineerRuntime {
         turnoverIntent: 50,
       ),
       abilities: isPotentialTemplate ? {EmployeeAbility.fastLearner} : const {},
+      // Genuinely inexperienced (experienceMonths == 0) is authoritative
+      // truth, not a placeholder — unchanged pre-existing behavior, so this
+      // branch keeps presenting it as confirmed.
+      confirmedLanguages: const {ProgrammingLanguage.java},
     );
   }
 
@@ -113,6 +150,7 @@ class PublicDemoEngineerRuntime {
     Set<EmployeeAbility>? abilities,
     Map<Industry, int>? industryExperience,
     List<CareerHistoryEntry>? careerHistory,
+    Set<ProgrammingLanguage>? confirmedLanguages,
   }) => PublicDemoEngineerRuntime(
     engineerId: engineerId,
     primaryLanguage: primaryLanguage ?? this.primaryLanguage,
@@ -122,6 +160,7 @@ class PublicDemoEngineerRuntime {
     abilities: abilities ?? this.abilities,
     industryExperience: industryExperience ?? this.industryExperience,
     careerHistory: careerHistory ?? this.careerHistory,
+    confirmedLanguages: confirmedLanguages ?? this.confirmedLanguages,
   );
 
   Map<String, dynamic> toJson() => {
@@ -137,14 +176,18 @@ class PublicDemoEngineerRuntime {
       (industry, months) => MapEntry(industry.name, months),
     ),
     'careerHistory': careerHistory.map((entry) => entry.toJson()).toList(),
+    'confirmedLanguages': confirmedLanguages
+        .map((language) => language.jsonValue)
+        .toList(),
   };
 
   factory PublicDemoEngineerRuntime.fromJson(Map<String, dynamic> json) {
+    final primaryLanguage = ProgrammingLanguage.fromJson(
+      json['primaryLanguage'] as String,
+    );
     return PublicDemoEngineerRuntime(
       engineerId: json['engineerId'] as String,
-      primaryLanguage: ProgrammingLanguage.fromJson(
-        json['primaryLanguage'] as String,
-      ),
+      primaryLanguage: primaryLanguage,
       languageSkills: (json['languageSkills'] as Map<String, dynamic>).map(
         (language, skill) => MapEntry(
           ProgrammingLanguage.fromJson(language),
@@ -169,6 +212,19 @@ class PublicDemoEngineerRuntime {
                 CareerHistoryEntry.fromJson(entry as Map<String, dynamic>),
           )
           .toList(),
+      // SKILLSHEET-UX-2A P2 fix: absent on any save written before this
+      // field existed. Defaulting to {primaryLanguage} reproduces exactly
+      // what those saves already displayed (this key is new, not a
+      // behavior change for existing saves); [fromApplicant] is the only
+      // place that now deliberately withholds confirmation for a freshly
+      // created, unconfirmed entry.
+      confirmedLanguages:
+          (json['confirmedLanguages'] as List?)
+              ?.map(
+                (language) => ProgrammingLanguage.fromJson(language as String),
+              )
+              .toSet() ??
+          {primaryLanguage},
     );
   }
 }
@@ -205,6 +261,9 @@ const publicDemoInitialEngineerRuntimes = <PublicDemoEngineerRuntime>[
       projectInterviewSkill: 3,
       turnoverIntent: 50,
     ),
+    // These migration defaults are authored ground truth, not derived from
+    // an applicant's aggregate experienceMonths — genuinely confirmed.
+    confirmedLanguages: {ProgrammingLanguage.java},
   ),
   PublicDemoEngineerRuntime(
     engineerId: 'eng-02',
@@ -233,5 +292,6 @@ const publicDemoInitialEngineerRuntimes = <PublicDemoEngineerRuntime>[
       projectInterviewSkill: 3,
       turnoverIntent: 50,
     ),
+    confirmedLanguages: {ProgrammingLanguage.javascript},
   ),
 ];

@@ -292,6 +292,12 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
   /// 参画/待機 claim cannot be made from this layer without either
   /// contradicting the KPI or reconciling three authorities that are
   /// Assignment/Domain's to reconcile.
+  ///
+  /// HOME-COMPACT-1B.4: [employeeCount]/[waitingCount] are the exact same
+  /// figures [_homeDashboardData]'s KPI already reads
+  /// (`state.engineerCount`/`.engineersWaiting`) — passed straight through,
+  /// never recomputed here — so the Office Stage's own aggregate summary
+  /// line cannot disagree with the KPI row above it.
   HomeOfficeStageDisplay get _officeStageDisplay => HomeOfficeStageDisplay(
     members: [
       for (final engineer in workflow.engineers)
@@ -301,6 +307,8 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
           portraitAssetPath: homeOfficeStagePortraitFor(engineer.id),
         ),
     ],
+    employeeCount: s.engineerCount,
+    waitingCount: s.engineersWaiting,
   );
 
   /// Issue #148 Phase 1B.3 — connects the existing confirmed-information
@@ -2600,9 +2608,48 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
           EdgeInsets.symmetric(horizontal: 20, vertical: 14),
         ),
       );
+
+  /// HOME-COMPACT-1B.4 FIX1: whether this is the one state the fix targets
+  /// — an actual, already-realized cash shortage, not the preventive
+  /// caution window ([_cashForecastAdvice] covers that, and is unaffected
+  /// by this flag: it already returns `null` once [PublicDemoState
+  /// .financialStatus] leaves `normal`, i.e. exactly when this is `true`).
+  /// Read straight from the same authoritative field
+  /// [PublicDemoCashShortageCard] itself gates on — never a second,
+  /// independently-derived notion of "shortage".
+  bool get _isActualCashShortage =>
+      s.financialStatus == PublicDemoFinancialStatus.cashShortage;
+
+  /// The Navigator card's advice, compacted for [_isActualCashShortage]
+  /// only. [PublicDemoCashShortageCard] — rendered immediately above the
+  /// Navigator whenever this is true — already states the full reason
+  /// (the same evidence figures, the recovery rule, what stays usable and
+  /// what is restricted); the "ひよりからのアドバイス" bubble's generic
+  /// "確認してから進めましょう" explanation would only restate that a second
+  /// time while costing real height the acceptance criteria need back for
+  /// 社員概要. Every other field (title/headline/message/semantic/CTA/
+  /// secondary — the actual guidance and its dispatch) is passed through
+  /// unchanged; only [HomeNavigatorAdvice.explanation] is dropped, and only
+  /// for this one state.
+  HomeNavigatorAdvice? _compactedForShortage(HomeNavigatorAdvice? advice) {
+    if (!_isActualCashShortage || advice == null) return advice;
+    return HomeNavigatorAdvice(
+      title: advice.title,
+      headline: advice.headline,
+      message: advice.message,
+      semantic: advice.semantic,
+      ctaLabel: advice.ctaLabel,
+      onCtaPressed: advice.onCtaPressed,
+      secondaryLabel: advice.secondaryLabel,
+      onSecondaryPressed: advice.onSecondaryPressed,
+    );
+  }
+
   @override
   Widget build(BuildContext c) {
-    final navigatorAdvice = navigatorAdviceFor(_recommendedActionSlot);
+    final navigatorAdvice = _compactedForShortage(
+      navigatorAdviceFor(_recommendedActionSlot),
+    );
     return Theme(
       data: Theme.of(c).copyWith(
         filledButtonTheme: FilledButtonThemeData(
@@ -2727,12 +2774,25 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
                         // secondary route ("他の行動を確認する") is the same
                         // truthful scroll-jump every other "destination" on
                         // this screen uses — never a second mutation path.
+                        //
+                        // HOME-COMPACT-1B.4 FIX1: the secondary route is
+                        // dropped (`null`) during an actual cash shortage
+                        // only — see `_isActualCashShortage`'s own doc.
+                        // Every other action on this screen (including the
+                        // legacy section it scroll-jumps to) stays reachable
+                        // exactly as before; only this one extra 48pt
+                        // button, whose destination duplicates what
+                        // quick-access/bottom-nav already reach, is not
+                        // re-offered while the height it costs is what the
+                        // acceptance criteria need back for 社員概要.
                         PublicDemoHomeDashboardSection(
                           data: _homeDashboardData,
                           recommendedAction: _recommendedActionSlot,
                           navigatorAdvice: navigatorAdvice,
                           cashAdvice: _cashForecastAdvice,
-                          onShowOtherActions: _scrollToOtherActions,
+                          onShowOtherActions: _isActualCashShortage
+                              ? null
+                              : _scrollToOtherActions,
                         ),
                         // HOME-COMPACT-1B.3: the monthly progression CTA
                         // moves directly under the Navigator card — the
@@ -2744,18 +2804,30 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
                         // create a second CTA. The summary sections below
                         // (社員の様子/重要タスク/クイックアクセス/収支) stay reachable by
                         // scroll, quick access, and the bottom nav exactly
-                        // as before — none of them is in the required
-                        // initial-view list, so moving the CTA above them
-                        // costs nothing on screen. No extra gap is added
-                        // here — PublicDemoHomeDashboardSection already ends
-                        // with its own trailing spacer, and every pixel
-                        // matters for fitting the 360x800 target with no
-                        // scroll.
-                        if (_monthlyPrimaryAction case final monthlyAction?)
+                        // as before.
+                        //
+                        // HOME-COMPACT-1B.4: 社員の様子 (社員概要) joins the
+                        // required initial-view set too — see this class's
+                        // own doc on `_officeStageKey` — which is why the
+                        // small gap below is explicit rather than relying on
+                        // a trailing spacer inside
+                        // PublicDemoHomeDashboardSection: every pixel
+                        // between here and the Office Stage now matters for
+                        // fitting the 360x800 target with no scroll.
+                        if (_monthlyPrimaryAction
+                            case final monthlyAction?) ...[
+                          const SizedBox(height: 2),
                           PublicDemoMonthlyPrimaryCtaSection(
                             action: monthlyAction,
                           ),
-                        const SizedBox(height: 8),
+                        ],
+                        // HOME-COMPACT-1B.4: trimmed from 8 — 社員概要 must
+                        // now also fit inside the unscrolled initial view
+                        // alongside 月/KPI/ひより/月次CTA (see this class's
+                        // own doc on `_officeStageKey`), so every pixel
+                        // between the two cards above it and this one is
+                        // spent deliberately.
+                        const SizedBox(height: 2),
                         // Section 5: employee summary. This office-scene
                         // card is now the ONLY roster-like presentation on
                         // HOME — the former `PublicDemoEmployeeStageSection`

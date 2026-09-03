@@ -205,7 +205,10 @@ void main() {
             '今月の重要タスク',
             'クイックアクセス',
             '今月の支出予定',
-            '今月の主要行動',
+            // HOME-COMPACT-1B.4: the monthly CTA card's former
+            // "今月の主要行動" title is replaced by the compact "月次処理"
+            // eyebrow — see PublicDemoMonthlyPrimaryCtaSection's own doc.
+            '月次処理',
             '給与',
             '固定費',
           ]) {

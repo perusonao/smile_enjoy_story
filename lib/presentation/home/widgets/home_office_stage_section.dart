@@ -30,7 +30,19 @@ class HomeOfficeStageMetrics {
   /// to still clear each portrait + its name pill with margin (see the
   /// per-mode figure-height math in the class doc history), never to the
   /// safety ceiling.
-  static const double compactSceneHeight = 64;
+  // HOME-COMPACT-1B.4: compact shrunk again, from 64, so the whole card can
+  // fit back inside the unscrolled initial view alongside 月/KPI/ひより/月次
+  // CTA — see the acceptance criteria this phase's result report records.
+  // 60 is the floor: a compact portrait (28pt, an image — does not grow
+  // with text scale) plus its name pill needs ~46pt inside the scene's 6pt
+  // figure padding (see `_MemberFigure` and the bottom-left figure Row's
+  // own padding) once the pill's own `textScaler.clamp(maxScaleFactor:
+  // 1.15)` is accounted for — every ambient scale at or above 1.15 clamps
+  // to that same effective 1.15, so this floor already covers every larger
+  // scale too, not only the default. Going lower overflows that Column,
+  // caught by this exact suite (and the runtime HOME navigator viewport
+  // suite, at 1.15x+) when this was tried smaller.
+  static const double compactSceneHeight = 60;
   static const double normalSceneHeight = 70;
 
   /// 360x800 — the smaller of the two required targets.
@@ -58,17 +70,19 @@ class HomeOfficeStageMetrics {
   static const double chromeHeight =
       _cardPaddingTop + _titleRowHeight + _titleGap + _cardPaddingBottom;
 
-  static const double _cardPaddingTop = 6;
-  static const double _cardPaddingBottom = 6;
+  static const double _cardPaddingTop = 3;
+  static const double _cardPaddingBottom = 3;
   static const double _cardPaddingHorizontal = 12;
-  // Kept at the original 20/8 rather than shrunk further: this is a
+  // _titleRowHeight is kept at 20 rather than shrunk further: it is a
   // MINIMUM constraint on the title row (see the widget body below), not a
   // fixed size, so lowering it below the title text's own intrinsic height
   // would not save any real space — it would only make this formula
   // under-count the actual rendered height, which is exactly what broke
   // the layout-safety tests during SES-ISSUE-124's first pass at this.
+  // HOME-COMPACT-1B.4 trims _titleGap (a real gap, not a text-height floor)
+  // from 8 for the same reason it trims the paddings above.
   static const double _titleRowHeight = 20;
-  static const double _titleGap = 8;
+  static const double _titleGap = 2;
 
   /// What the whole card is designed to measure at each target.
   static const double compactComponentHeight =
@@ -208,13 +222,35 @@ class HomeOfficeStageSection extends StatelessWidget {
                         ),
                       ),
                     ),
+                    // HOME-COMPACT-1B.4: the aggregate headcount/waiting
+                    // summary — see [HomeOfficeStageDisplay.hasHeadcountSummary]'s
+                    // own doc for what this is a claim about. Painted as an
+                    // overlay on the scene itself, not a new row below the
+                    // title, so this card's total height is exactly what it
+                    // was before this addition — the layout-safety tests
+                    // pin the card to the same [HomeOfficeStageMetrics]
+                    // budget this phase does not get to spend more of.
+                    if (display.hasHeadcountSummary)
+                      Align(
+                        alignment: Alignment.topRight,
+                        child: Padding(
+                          padding: const EdgeInsets.all(6),
+                          child: _HeadcountSummaryChip(
+                            employeeCount: display.employeeCount!,
+                            waitingCount: display.waitingCount!,
+                            layout: layout,
+                          ),
+                        ),
+                      ),
                     if (visible.isEmpty)
                       const _EmptyOffice()
                     else
                       Align(
                         alignment: Alignment.bottomLeft,
                         child: Padding(
-                          padding: const EdgeInsets.all(8),
+                          // HOME-COMPACT-1B.4: trimmed from 8 alongside
+                          // compactSceneHeight's own shrink — see its doc.
+                          padding: const EdgeInsets.all(6),
                           child: Row(
                             crossAxisAlignment: CrossAxisAlignment.end,
                             mainAxisSize: MainAxisSize.min,
@@ -286,6 +322,47 @@ class _OfficeBackground extends StatelessWidget {
       ),
     );
   }
+}
+
+/// The aggregate "社員N名 ・ 待機N名" pill — see
+/// [HomeOfficeStageDisplay.hasHeadcountSummary]'s doc for its authority and
+/// for why this is deliberately the whole company's totals, never a
+/// per-employee label.
+class _HeadcountSummaryChip extends StatelessWidget {
+  const _HeadcountSummaryChip({
+    required this.employeeCount,
+    required this.waitingCount,
+    required this.layout,
+  });
+
+  final int employeeCount;
+  final int waitingCount;
+  final HomeOfficeStageLayout layout;
+
+  @override
+  Widget build(BuildContext context) => DecoratedBox(
+    decoration: BoxDecoration(
+      color: Colors.black54,
+      borderRadius: BorderRadius.circular(20),
+    ),
+    child: Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      child: Text(
+        '社員$employeeCount名・待機$waitingCount名',
+        key: const Key('home-office-stage-headcount-summary'),
+        style: TextStyle(
+          color: Colors.white,
+          fontSize: layout.nameFontSize,
+          fontWeight: FontWeight.w600,
+        ),
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        textScaler: MediaQuery.textScalerOf(
+          context,
+        ).clamp(maxScaleFactor: 1.15),
+      ),
+    ),
+  );
 }
 
 class _EmptyOffice extends StatelessWidget {

@@ -15,7 +15,13 @@ class MonthHeaderBar extends StatelessWidget implements PreferredSizeWidget {
 
   final HomeDashboardDisplayData? data;
 
-  static const double barHeight = 48;
+  // HOME-COMPACT-1B.4: trimmed from 48 — this bar states a single short
+  // line ("1年目 4月"), and the acceptance criteria for the
+  // 経営ダッシュボード visual target need the room more than this bar's
+  // original vertical padding did. `alignment: Alignment.center` still
+  // centers the label inside whatever height this is, so nothing about the
+  // label itself changed, only how much empty space surrounds it.
+  static const double barHeight = 36;
 
   @override
   Widget build(BuildContext context) {

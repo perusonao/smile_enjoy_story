@@ -225,22 +225,47 @@ void main() {
       assertRosterMatchesAuthority('June');
     });
 
-    testWidgets('the stage states no participation split of its own', (
-      tester,
-    ) async {
-      // The KPI above owns 参画/待機. Three authorities disagree about the
-      // per-employee version of that fact at different points in a month
-      // (notably: in May the finance count already reads 1 while
-      // `workflow.assignments` is still empty until closeMay builds it), so
-      // 2B renders none of them rather than contradicting the row above.
+    testWidgets('the stage states an aggregate headcount summary, never a '
+        'per-employee participation claim', (tester) async {
+      // The KPI above still owns any PER-EMPLOYEE 参画/待機 claim. Three
+      // authorities disagree about the per-employee version of that fact at
+      // different points in a month (notably: in May the finance count
+      // already reads 1 while `workflow.assignments` is still empty until
+      // closeMay builds it), so this section still never renders one — see
+      // HomeOfficeStageDisplay's own "WHY THERE IS NO PER-EMPLOYEE STATUS
+      // HERE" doc.
+      //
+      // HOME-COMPACT-1B.4 adds exactly one different fact instead: the
+      // company-wide totals, read from the exact same single KPI authority
+      // (`PublicDemoState.engineerCount`/`.engineersWaiting`) rather than a
+      // second, independently-derived count — so it can never disagree with
+      // the row above it.
       await pumpDemoAt(tester);
+      final state = currentState(tester);
+
       expect(
         find.descendant(of: stageFinder, matching: find.textContaining('参画')),
         findsNothing,
+        reason: 'still no per-employee 参画 claim',
       );
       expect(
-        find.descendant(of: stageFinder, matching: find.textContaining('待機')),
-        findsNothing,
+        find.descendant(
+          of: stageFinder,
+          matching: find.byKey(
+            const Key('home-office-stage-headcount-summary'),
+          ),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: stageFinder,
+          matching: find.text(
+            '社員${state.engineerCount}名・待機${state.engineersWaiting}名',
+          ),
+        ),
+        findsOneWidget,
+        reason: 'the aggregate summary must equal the KPI\'s own authority',
       );
     });
 

@@ -236,30 +236,101 @@ class PublicDemoFinanceSummarySection extends StatelessWidget {
   );
 }
 
+/// HOME-COMPACT-1B.4: replaces the former `_HomeSectionCard`-based card
+/// (a full "今月の主要行動" title, generous padding, and a plain description
+/// line) with a slim bar sized to sit directly under Hiyori's own card
+/// without pressing the initial view — see the acceptance criteria in the
+/// HOME-COMPACT-1B.4 result report for the measured before/after height.
+///
+/// It still shows exactly the same three facts ([action.description],
+/// [action.label], [action.enabled]) through the same key — nothing about
+/// what this CTA means or does changed, only how much room it spends. The
+/// amber accent (never the blue Hiyori's own CTA uses) and the small "月次
+/// 処理" eyebrow are deliberate: this sits one card below her recommended
+/// action, and the acceptance criteria require a player scanning both not
+/// to mistake this month-end control for her primary next step.
 class PublicDemoMonthlyPrimaryCtaSection extends StatelessWidget {
   const PublicDemoMonthlyPrimaryCtaSection({super.key, required this.action});
 
   final PublicDemoMonthlyPrimaryCtaModel action;
 
+  /// Distinct from [SesTheme.primaryBlue] (Hiyori's own CTA color) on
+  /// purpose — see the class doc.
+  ///
+  /// HOME-COMPACT-1B.4 FIX2 (Codex P2): darkened from `0xFFEF6C00` (Material
+  /// Orange 800), whose ~3.08:1 contrast against the enabled button's
+  /// inherited white foreground fell short of WCAG AA's 4.5:1 for
+  /// normal-size text. This is Material Deep Orange 900 — still squarely
+  /// the same amber/orange family the class doc's "never the blue" contract
+  /// asks for, but at ~5.6:1 with white (see the HOME-COMPACT-1B.4 result
+  /// report's contrast-ratio table for the measured value and the
+  /// alternatives it was checked against). Only this token changed — the
+  /// icon, the "月次処理" label, and the card's own border/background tint
+  /// all read it too, so the whole card's accent stays one consistent color
+  /// rather than the button alone drifting from its own chrome.
+  static const Color _accent = Color(0xFFBF360C);
+
   @override
-  Widget build(BuildContext context) => _HomeSectionCard(
-    title: '今月の主要行動',
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(action.description),
-        const SizedBox(height: 12),
-        SizedBox(
-          width: double.infinity,
-          child: FilledButton(
-            key: const Key('public-demo-monthly-primary-cta'),
-            onPressed: action.enabled ? action.onPressed : null,
-            child: Text(action.label, textAlign: TextAlign.center),
-          ),
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Card(
+      key: const Key('public-demo-monthly-primary-cta-card'),
+      margin: EdgeInsets.zero,
+      color: _accent.withValues(alpha: 0.05),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(color: _accent.withValues(alpha: 0.35)),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(12, 6, 12, 6),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.event_available, size: 14, color: _accent),
+                const SizedBox(width: 5),
+                Text(
+                  '月次処理',
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    fontWeight: FontWeight.bold,
+                    color: _accent,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 3),
+            Text(
+              action.description,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
+            const SizedBox(height: 6),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton(
+                key: const Key('public-demo-monthly-primary-cta'),
+                style: FilledButton.styleFrom(
+                  backgroundColor: _accent,
+                  minimumSize: const Size(0, 44),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 10,
+                  ),
+                ),
+                onPressed: action.enabled ? action.onPressed : null,
+                child: Text(action.label, textAlign: TextAlign.center),
+              ),
+            ),
+          ],
         ),
-      ],
-    ),
-  );
+      ),
+    );
+  }
 }
 
 /// One "支出" (expense) line: a bold label and its bold, negatively-signed
@@ -310,10 +381,7 @@ class _StatusChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Container(
-    padding: EdgeInsets.symmetric(
-      horizontal: 8,
-      vertical: compact ? 1 : 3,
-    ),
+    padding: EdgeInsets.symmetric(horizontal: 8, vertical: compact ? 1 : 3),
     decoration: BoxDecoration(
       color: SesTheme.primaryBlue.withValues(alpha: .12),
       borderRadius: BorderRadius.circular(12),

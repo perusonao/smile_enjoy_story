@@ -10,8 +10,8 @@ Issue #148 Phase 1B.3 で月・KPI・ひよりの主行動・月次CTAは初期�
 
 - **Base SHA**: `eb275aeb0ca6156d29d171b70f33ef19d0740c16` (`origin/main`。作業開始前に
   `git fetch origin` で確認済み。指定 SHA と一致)
-- **Head SHA**: `<FIX2_HEAD_SHA>`（初回実装 `04e9d92` + FIX1 `1390fdc`〜`5abcf5c`
-  + FIX2（Codex P2） `<FIX2_HEAD_SHA>`。下記「FIX1」「FIX2（Codex P2）」節を参照）
+- **Head SHA**: `5df40311206287f8615d3bcaec7fcabcc57d2fbb`（初回実装 `04e9d92` + FIX1 `1390fdc`〜`5abcf5c`
+  + FIX2（Codex P2） `5df40311206287f8615d3bcaec7fcabcc57d2fbb`。下記「FIX1」「FIX2（Codex P2）」節を参照）
 - **Branch**: `claude/home-compact-1b4-visual-polish-qrn9ki`
 - **PR**: https://github.com/perusonao/smile_enjoy_story/pull/160
 
@@ -63,7 +63,7 @@ Recommended Actionダイアログ）はすべて無変更のまま green。
 PR #160 への Codex のP2レビュー2件（レビューコメント
 [#3926499697](https://github.com/perusonao/smile_enjoy_story/pull/160#discussion_r3926499697)、
 [#3926499702](https://github.com/perusonao/smile_enjoy_story/pull/160#discussion_r3926499702)）
-を受け、最小修正した（コミット `<FIX2_HEAD_SHA>`）。
+を受け、最小修正した（コミット `5df40311206287f8615d3bcaec7fcabcc57d2fbb`）。
 
 ### 修正1: `_AdviceBubble` の説明文が2行で見えなくなる問題
 
@@ -167,7 +167,7 @@ Material標準色（Deep Orange 900）であるため。
     (>=4.5:1)'` を追加。
   - 実行結果: 10/10 pass。
 - 回帰確認: `flutter test test/ui/public_demo/ test/presentation/`
-  合計 **433 tests, all pass**（FIX1時点の429件 + FIX2で4件追加、失敗0件）。
+  合計 **433 tests, all pass**（FIX1時点の428件 + FIX2で5件追加、失敗0件）。
 - 6パターン初期表示の再確認:
   `test/ui/public_demo/public_demo_01_issue_124_screen_verification_test.dart`
   7/7 pass（通常360/390、実資金不足360/390を含む、office-stage下端717pt
@@ -285,6 +285,15 @@ caution/shortage の2状態は、既存のwidgetテストが使うのと同一�
 ため）。フォーマット・スキーマは実装のものをそのまま使用しており、
 fabricatedなデータではない。
 
+FIX2（Codex P2）を反映した `flutter build web --release` の再ビルドから、
+全6ファイルを同名で再取得・上書きした。通常状態（4月開始）の2枚では、
+「ひよりからのアドバイス」に「続きを読む」が実際にレンダリングされている
+こと（44文字のSkillSheet説明文が2行で切り詰められ、その下に展開リンクが
+出ていること）、月次CTAが旧`#EF6C00`より明確に暗いオレンジで表示されている
+ことを目視確認できる。caution状態（10月）の2枚では、説明文が2行に収まるため
+「続きを読む」が出ていないことも確認できる（意図どおり、必要な場合のみ
+出現する）。
+
 ## テスト結果
 
 実行環境: Flutter 3.44.8 (stable) をこのセッションに新規インストール（リポジトリの
@@ -293,7 +302,7 @@ CI ワークフロー `.github/workflows/public-demo-validation.yml` が固定�
 
 - `dart format`（変更対象ファイルのみ）: 適用済み
 - `flutter analyze`: No issues found
-- `flutter test test/ui/public_demo/` + `test/presentation/`（合算実行）: **433 tests, all pass**（FIX1時点429件 + FIX2で4件追加。個別実行でも `test/ui/public_demo/public_demo_home_presentation_components_test.dart` 10/10、`test/presentation/home/home_navigator_section_test.dart` 58/58、`test/ui/public_demo/public_demo_01_home_navigator_test.dart` 29/29 をそれぞれ確認済み）
+- `flutter test test/ui/public_demo/` + `test/presentation/`（合算実行）: **433 tests, all pass**（FIX1時点428件 + FIX2で5件追加。個別実行でも `test/ui/public_demo/public_demo_home_presentation_components_test.dart` 10/10、`test/presentation/home/home_navigator_section_test.dart` 58/58、`test/ui/public_demo/public_demo_01_home_navigator_test.dart` 29/29 をそれぞれ確認済み）
 - `flutter test test/game/public_demo/`: 500 tests, all pass（FIX2では未変更、初回実装時と同じ）
 - 既存 SkillSheet flow test (`test/ui/public_demo/public_demo_01_skill_sheet_flow_test.dart`): 2 tests, all pass（開く→戻る→確認→営業開始のフローは無変更）
 - 既存 `public_demo_cash_shortage_card_test.dart` / `public_demo_01_home_cash_forecast_advice_test.dart` / `public_demo_01_bankruptcy_ux_test.dart`: all pass（優先導線・CTA重複防止の既存契約を無変更で確認）
@@ -312,6 +321,16 @@ CI ワークフロー `.github/workflows/public-demo-validation.yml` が固定�
   「5要素すべてがテキスト拡大時も初期表示に収まる」という強い主張までは
   していない（元々の受け入れ条件・既存テスト設計もデフォルトscale 1.0を対象と
   しており、本フェーズもそれを踏襲）。
+- FIX2: 「続きを読む」タップ後の実ブラウザ上での視覚確認は、Chromium
+  スクリーンショットで展開ボタンの出現・非出現（2状態）を確認したのみで、
+  実際にタップしてから展開後の見た目をスクリーンショットで確認するところ
+  までは行っていない。Flutter Web の semantics ツリーが入れ子のテキストを
+  1つのノードへ集約するため、Playwrightの`getByText`系ロケーターで
+  「続きを読む」ノード単体を安定して特定できず、座標クリックも安定した
+  結果を得られなかった。タップ動作そのものは
+  `test/presentation/home/home_navigator_section_test.dart`の新規テストで
+  実際に`tester.tap`し、全文表示・高さ増加を幾何検証済み（このFlutterテストの
+  タップは実ブラウザではなくFlutterのテストハーネス上で行われる）。
 
 ## PR / merge readiness
 
@@ -319,8 +338,8 @@ CI ワークフロー `.github/workflows/public-demo-validation.yml` が固定�
   (`eb275ae`) から分岐し、コミット `04e9d92`（初回実装）→ `288d43a`／`2d68ee4`
   （レポート・スクリーンショット）→ `1390fdc`（FIX1: 実資金不足時の社員概要
   初期可視化）→ `5abcf5c`（FIX1のレポート・スクリーンショット追記）→
-  `<FIX2_HEAD_SHA>`（FIX2: Codex P2レビュー2件の最小修正）をプッシュ済み。
-  最終HEAD: `<FIX2_HEAD_SHA>`。
+  `5df40311206287f8615d3bcaec7fcabcc57d2fbb`（FIX2: Codex P2レビュー2件の最小修正）をプッシュ済み。
+  最終HEAD: `5df40311206287f8615d3bcaec7fcabcc57d2fbb`。
 - PR: https://github.com/perusonao/smile_enjoy_story/pull/160（オープンのまま。
   マージは実施していない）
 - **merge readiness**: 受け入れ条件1〜5すべて、通常・予防的資金注意・実資金不足の

@@ -65,6 +65,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_financial_status.dart';
 import 'package:smile_enjoy_story/ui/public_demo/public_demo_01_placeholder_screen.dart';
 
+import 'public_demo_tab_test_helpers.dart';
+
 Future<void> pumpDemoAt(WidgetTester tester, Size size) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1.0;
@@ -356,7 +358,9 @@ Future<void> _driveToActualCashShortage(WidgetTester tester) async {
     await tester.pumpAndSettle();
   }
 
-  // April: advance Sato to receive the May order.
+  // April: advance Sato to receive the May order. The employee
+  // sales-progression card is on 社員 now (PUBLIC-DEMO-HOME-UI-3B).
+  await switchPublicDemoTab(tester, PublicDemoTab.employees);
   await tapAndSettle('SkillSheet確認');
   await tapAndSettle('営業開始');
   await tapAndSettle('案件紹介');
@@ -366,15 +370,20 @@ Future<void> _driveToActualCashShortage(WidgetTester tester) async {
   await dismiss();
   await tapAndSettle('受注');
   await dismiss();
+  // The month-close CTA is HOME's own monthly primary action.
+  await switchPublicDemoTab(tester, PublicDemoTab.home);
   await tapAndSettle('4月を終了して5月へ');
   await dismiss();
 
   // May: no additional hiring.
   await tapAndSettle('5月を終了して6月へ');
 
-  // June: accept July continuation for Sato (only assignment).
+  // June: accept July continuation for Sato (only assignment) — the
+  // assignment (project continuation) pipeline is on 営業.
+  await switchPublicDemoTab(tester, PublicDemoTab.sales);
   await tapAndSettle('7月分の発注を確認');
   await tapAndSettle('受注する');
+  await switchPublicDemoTab(tester, PublicDemoTab.home);
   await tapAndSettle('6月を終了して7月へ');
 
   // July: choose no bonus.

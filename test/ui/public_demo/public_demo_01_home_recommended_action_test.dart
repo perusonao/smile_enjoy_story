@@ -36,6 +36,8 @@ import 'package:smile_enjoy_story/presentation/home/models/home_recommended_acti
 import 'package:smile_enjoy_story/ui/public_demo/public_demo_01_placeholder_screen.dart';
 import 'package:smile_enjoy_story/ui/public_demo/public_demo_home_dashboard_section.dart';
 
+import 'public_demo_tab_test_helpers.dart';
+
 PublicDemoState currentState(WidgetTester tester) =>
     (tester.state(find.byType(PublicDemo01PlaceholderScreen)) as dynamic).s
         as PublicDemoState;
@@ -146,6 +148,11 @@ Future<void> pumpDemo(WidgetTester tester, {Size? size}) async {
 /// existing Public Demo suites use, reused here so HOME is observed on a
 /// real trajectory rather than a synthesized one.
 Future<void> playApril(WidgetTester tester) async {
+  // The employee sales-progression card is on 社員 now
+  // (PUBLIC-DEMO-HOME-UI-3B); switch back to HOME before returning so
+  // callers can keep reading the Recommended Action slot (a HOME-only
+  // section) without having to know this detail themselves.
+  await switchPublicDemoTab(tester, PublicDemoTab.employees);
   await tapAndSettle(tester, 'SkillSheet確認');
   await tapAndSettle(tester, '営業開始');
   await tapAndSettle(tester, '案件紹介');
@@ -155,6 +162,7 @@ Future<void> playApril(WidgetTester tester) async {
   await dismiss(tester);
   await tapAndSettle(tester, '受注');
   await dismiss(tester);
+  await switchPublicDemoTab(tester, PublicDemoTab.home);
 }
 
 /// Advances to July on the no-hire route, where the applicant pipeline is
@@ -244,8 +252,13 @@ void main() {
       ];
       const taps = ['SkillSheet確認', '営業開始', '案件紹介'];
 
+      // The employee sales-progression card is on 社員 now
+      // (PUBLIC-DEMO-HOME-UI-3B); the Recommended Action slot it feeds is
+      // read back on HOME after each tap.
       for (var i = 0; i < taps.length; i++) {
+        await switchPublicDemoTab(tester, PublicDemoTab.employees);
         await tapAndSettle(tester, taps[i]);
+        await switchPublicDemoTab(tester, PublicDemoTab.home);
         final action = recommended(tester);
         expect(action!.kind, expected[i]);
         expect(
@@ -262,6 +275,8 @@ void main() {
       await pumpDemo(tester);
       final first = currentWorkflow(tester).engineers.first.id;
 
+      // The employee sales-progression card is on 社員 now.
+      await switchPublicDemoTab(tester, PublicDemoTab.employees);
       await tapAndSettle(tester, 'SkillSheet確認');
       await tapAndSettle(tester, '営業開始');
       await tapAndSettle(tester, '案件紹介');
@@ -272,11 +287,13 @@ void main() {
         await dismiss(tester);
       }
       if (actionButton('受注').evaluate().isNotEmpty) {
+        await switchPublicDemoTab(tester, PublicDemoTab.home);
         expect(
           recommended(tester)!.kind,
           HomeRecommendedActionKind.employeeAcceptOrder,
         );
         expect(recommended(tester)!.targetId, first);
+        await switchPublicDemoTab(tester, PublicDemoTab.employees);
         await tapAndSettle(tester, '受注');
         await dismiss(tester);
 
@@ -290,6 +307,7 @@ void main() {
           currentWorkflow(tester).engineers.first.stage,
           PublicDemoSalesStage.ordered,
         );
+        await switchPublicDemoTab(tester, PublicDemoTab.home);
         expect(recommended(tester), isNull);
         expect(slot(tester), isA<HomeRecommendedActionNone>());
         expect(find.text('今月やること'), findsOneWidget);
@@ -329,7 +347,9 @@ void main() {
       for (final e in notReady) {
         expect(recommended(tester)!.targetId, isNot(e.id));
       }
-      // The screen agrees: exactly one SkillSheet確認 button exists.
+      // The screen agrees: exactly one SkillSheet確認 button exists — on
+      // 社員, its own tab now.
+      await switchPublicDemoTab(tester, PublicDemoTab.employees);
       expect(actionButton('SkillSheet確認'), findsOneWidget);
     });
   });
@@ -366,13 +386,18 @@ void main() {
       await dismiss(tester);
       expect(currentState(tester).month, 5);
 
+      // The recruiting/applicant pipeline is on 営業 now
+      // (PUBLIC-DEMO-HOME-UI-3B).
+      await switchPublicDemoTab(tester, PublicDemoTab.sales);
       expect(
         find.byKey(const Key('public-demo-recruitment-media-card')),
         findsOneWidget,
       );
       // May's applicants are all at `applied`, whose 経歴書確認 outranks the
       // supporting P3 media action — so 求人媒体 is *eligible* but not the
-      // top pick. Both facts matter, and both are asserted.
+      // top pick. Both facts matter, and both are asserted. The
+      // Recommended Action slot itself is HOME's own.
+      await switchPublicDemoTab(tester, PublicDemoTab.home);
       expect(
         recommended(tester)!.kind,
         HomeRecommendedActionKind.applicantReviewResume,
@@ -389,7 +414,9 @@ void main() {
       expect(currentState(tester).month, 7);
 
       // The UI exposes neither the card nor the button/sheet title, so the
-      // paid recruitment action is not reachable from July.
+      // paid recruitment action is not reachable from July. Checked on
+      // 営業, the tab that would render it (PUBLIC-DEMO-HOME-UI-3B).
+      await switchPublicDemoTab(tester, PublicDemoTab.sales);
       expect(
         find.byKey(const Key('public-demo-recruitment-media-card')),
         findsNothing,
@@ -412,7 +439,9 @@ void main() {
       expect(actionButton('経歴書確認'), findsNothing);
       expect(actionButton('採用面談'), findsNothing);
 
-      // Settle the bonus so nothing else can outrank the media action.
+      // Settle the bonus so nothing else can outrank the media action. The
+      // summer bonus decision is finance detail — on 会計 now.
+      await switchPublicDemoTab(tester, PublicDemoTab.accounting);
       await tapAndSettle(tester, '夏季賞与を決める');
       final noBonus = find.byKey(const Key('public-demo-summer-bonus-none'));
       expect(tester.widget<FilledButton>(noBonus).onPressed, isNotNull);
@@ -422,6 +451,8 @@ void main() {
       expect(find.text('選択済み：なし'), findsOneWidget);
 
       // Recommended Action remains unchanged: it never suggests recruitment.
+      // The slot itself is HOME's own.
+      await switchPublicDemoTab(tester, PublicDemoTab.home);
       final action = recommended(tester);
       if (action != null) {
         expect(action.kind, isNot(HomeRecommendedActionKind.recruitmentMedia));
@@ -479,7 +510,9 @@ void main() {
       // May's 採用面談 is gated on `salesRemaining > 0` and consumes a slot
       // per applicant. Drain the month's capacity with the legacy buttons,
       // topping up the applicant pool from the (free) recruitment medium
-      // when the pool runs dry.
+      // when the pool runs dry. The recruiting/applicant pipeline is on
+      // 営業 now (PUBLIC-DEMO-HOME-UI-3B).
+      await switchPublicDemoTab(tester, PublicDemoTab.sales);
       var guard = 0;
       while (currentState(tester).salesRemaining > 0 && guard++ < 25) {
         if (actionButton('経歴書確認').evaluate().isNotEmpty) {
@@ -528,7 +561,9 @@ void main() {
         );
       }
       // ...and HOME does not offer it. Whatever it offers instead — if
-      // anything — is enabled. A disabled CTA is never acceptable.
+      // anything — is enabled. A disabled CTA is never acceptable. The
+      // Recommended Action slot itself is HOME's own.
+      await switchPublicDemoTab(tester, PublicDemoTab.home);
       final action = recommended(tester);
       if (action != null) {
         expect(
@@ -559,8 +594,13 @@ void main() {
       }
 
       checkBuild();
+      // The employee sales-progression card is on 社員 now; checkBuild
+      // reads HOME's own Recommended Action slot, so switch back after
+      // each tap.
       for (final tap in ['SkillSheet確認', '営業開始', '案件紹介']) {
+        await switchPublicDemoTab(tester, PublicDemoTab.employees);
         await tapAndSettle(tester, tap);
+        await switchPublicDemoTab(tester, PublicDemoTab.home);
         checkBuild();
       }
       await tapAndSettle(tester, '4月を終了して5月へ');
@@ -582,8 +622,10 @@ void main() {
     testWidgets('tapping the CTA leaves the authoritative state exactly '
         'where tapping the legacy button leaves it', (tester) async {
       // Control run: drive April's first two stages with the legacy
-      // buttons and record the authoritative outcome.
+      // buttons and record the authoritative outcome. The employee
+      // sales-progression card is on 社員 now.
       await pumpDemo(tester);
+      await switchPublicDemoTab(tester, PublicDemoTab.employees);
       await tapAndSettle(tester, 'SkillSheet確認');
       await tapAndSettle(tester, '営業開始');
       final controlState = currentState(tester);
@@ -751,7 +793,10 @@ void main() {
         // Recovering the engineer removes them from the recommended-action
         // slot's own outstanding-work set: the CTA no longer offers the
         // same Recovery step a second time.
-        expect(recommended(tester)?.kind, isNot(HomeRecommendedActionKind.recoveryAssignment));
+        expect(
+          recommended(tester)?.kind,
+          isNot(HomeRecommendedActionKind.recoveryAssignment),
+        );
       },
     );
 
@@ -942,145 +987,132 @@ void main() {
   // tasks section's 営業/採用 rows must never invite the player into a
   // section with nothing eligible left in it.
   // =====================================================================
-  group(
-    '9: important-task rows never invite the player into a dead end',
-    () {
-      test(
-        'homeImportantTaskHasEligibleAction is false for every terminal/'
-        'completed state the design names, regardless of the candidate list',
-        () {
-          // Same three states public_demo_01_home_recommended_action_test's
-          // own group 6 already pins as isCloseBlocked — reused here rather
-          // than re-derived, so this test and that one cannot silently
-          // disagree about which states are terminal/completed.
-          final bankruptcy = PublicDemoState.aprilStart().copyWith(
-            financialStatus: PublicDemoFinancialStatus.bankruptcy,
-          );
-          final marchFailure = PublicDemoState.aprilStart().copyWith(
-            financialStatus: PublicDemoFinancialStatus.marchCashShortageFailure,
-          );
-          final fiscalSuccess = PublicDemoState.aprilStart().copyWith(
-            fiscalYearCompleted: true,
-          );
-          final eligibleCandidate = [
-            HomeRecommendedActionCandidate(
-              action: const HomeRecommendedAction(
-                kind: HomeRecommendedActionKind.employeeAcceptOrder,
-              ),
-              invoke: () {},
+  group('9: important-task rows never invite the player into a dead end', () {
+    test(
+      'homeImportantTaskHasEligibleAction is false for every terminal/'
+      'completed state the design names, regardless of the candidate list',
+      () {
+        // Same three states public_demo_01_home_recommended_action_test's
+        // own group 6 already pins as isCloseBlocked — reused here rather
+        // than re-derived, so this test and that one cannot silently
+        // disagree about which states are terminal/completed.
+        final bankruptcy = PublicDemoState.aprilStart().copyWith(
+          financialStatus: PublicDemoFinancialStatus.bankruptcy,
+        );
+        final marchFailure = PublicDemoState.aprilStart().copyWith(
+          financialStatus: PublicDemoFinancialStatus.marchCashShortageFailure,
+        );
+        final fiscalSuccess = PublicDemoState.aprilStart().copyWith(
+          fiscalYearCompleted: true,
+        );
+        final eligibleCandidate = [
+          HomeRecommendedActionCandidate(
+            action: const HomeRecommendedAction(
+              kind: HomeRecommendedActionKind.employeeAcceptOrder,
             ),
-          ];
-          for (final state in [bankruptcy, marchFailure, fiscalSuccess]) {
-            expect(state.isCloseBlocked, isTrue);
-            expect(
-              homeImportantTaskHasEligibleAction(state, eligibleCandidate, {
-                HomeRecommendedActionKind.employeeAcceptOrder,
-              }),
-              isFalse,
-              reason: '${state.financialStatus}/'
-                  'fiscalYearCompleted=${state.fiscalYearCompleted} must '
-                  'suppress the row even though an eligible candidate '
-                  'exists',
-            );
-          }
-        },
-      );
-
-      test(
-        'homeImportantTaskHasEligibleAction is false once the requested '
-        'category is exhausted — no matching candidate, or none at all',
-        () {
-          final notBlocked = PublicDemoState.aprilStart();
-          expect(notBlocked.isCloseBlocked, isFalse);
-          final unrelatedCandidate = [
-            HomeRecommendedActionCandidate(
-              action: const HomeRecommendedAction(
-                kind: HomeRecommendedActionKind.raiseRequest,
-              ),
-              invoke: () {},
-            ),
-          ];
+            invoke: () {},
+          ),
+        ];
+        for (final state in [bankruptcy, marchFailure, fiscalSuccess]) {
+          expect(state.isCloseBlocked, isTrue);
           expect(
-            homeImportantTaskHasEligibleAction(notBlocked, unrelatedCandidate, {
+            homeImportantTaskHasEligibleAction(state, eligibleCandidate, {
               HomeRecommendedActionKind.employeeAcceptOrder,
             }),
             isFalse,
+            reason:
+                '${state.financialStatus}/'
+                'fiscalYearCompleted=${state.fiscalYearCompleted} must '
+                'suppress the row even though an eligible candidate '
+                'exists',
           );
-          expect(
-            homeImportantTaskHasEligibleAction(
-              notBlocked,
-              const <HomeRecommendedActionCandidate>[],
-              {HomeRecommendedActionKind.employeeAcceptOrder},
-            ),
-            isFalse,
-          );
-        },
-      );
+        }
+      },
+    );
 
-      test(
-        'homeImportantTaskHasEligibleAction is true only once both '
-        'conditions hold: not blocked, and a matching candidate exists',
-        () {
-          final notBlocked = PublicDemoState.aprilStart();
-          final matching = [
-            HomeRecommendedActionCandidate(
-              action: const HomeRecommendedAction(
-                kind: HomeRecommendedActionKind.employeeAcceptOrder,
-              ),
-              invoke: () {},
-            ),
-          ];
-          expect(
-            homeImportantTaskHasEligibleAction(notBlocked, matching, {
-              HomeRecommendedActionKind.employeeAcceptOrder,
-            }),
-            isTrue,
-          );
-        },
+    test('homeImportantTaskHasEligibleAction is false once the requested '
+        'category is exhausted — no matching candidate, or none at all', () {
+      final notBlocked = PublicDemoState.aprilStart();
+      expect(notBlocked.isCloseBlocked, isFalse);
+      final unrelatedCandidate = [
+        HomeRecommendedActionCandidate(
+          action: const HomeRecommendedAction(
+            kind: HomeRecommendedActionKind.raiseRequest,
+          ),
+          invoke: () {},
+        ),
+      ];
+      expect(
+        homeImportantTaskHasEligibleAction(notBlocked, unrelatedCandidate, {
+          HomeRecommendedActionKind.employeeAcceptOrder,
+        }),
+        isFalse,
       );
+      expect(
+        homeImportantTaskHasEligibleAction(
+          notBlocked,
+          const <HomeRecommendedActionCandidate>[],
+          {HomeRecommendedActionKind.employeeAcceptOrder},
+        ),
+        isFalse,
+      );
+    });
 
-      testWidgets(
-        'after bankruptcy, the important-tasks section drops the 営業/採用 '
+    test('homeImportantTaskHasEligibleAction is true only once both '
+        'conditions hold: not blocked, and a matching candidate exists', () {
+      final notBlocked = PublicDemoState.aprilStart();
+      final matching = [
+        HomeRecommendedActionCandidate(
+          action: const HomeRecommendedAction(
+            kind: HomeRecommendedActionKind.employeeAcceptOrder,
+          ),
+          invoke: () {},
+        ),
+      ];
+      expect(
+        homeImportantTaskHasEligibleAction(notBlocked, matching, {
+          HomeRecommendedActionKind.employeeAcceptOrder,
+        }),
+        isTrue,
+      );
+    });
+
+    testWidgets('after bankruptcy, the important-tasks section drops the 営業/採用 '
         'rows instead of offering a CTA into a section with nothing left '
-        'to do',
-        (tester) async {
-          await pumpDemo(tester);
-          await playIntoCashShortage(tester);
-          await tapAndSettle(tester, '11月を終了して翌月へ');
-          await settle(tester);
-          expect(
-            currentState(tester).financialStatus,
-            PublicDemoFinancialStatus.bankruptcy,
-          );
-          expect(currentState(tester).isCloseBlocked, isTrue);
-
-          final tasks = find.byKey(
-            const Key('public-demo-important-tasks'),
-          );
-          await tester.ensureVisible(tasks);
-          await tester.pumpAndSettle();
-          expect(tasks, findsOneWidget);
-
-          // 資金計画 is never gated — viewing the finance summary never
-          // becomes illegal.
-          expect(
-            find.descendant(of: tasks, matching: find.text('資金')),
-            findsOneWidget,
-          );
-          // '営業' is also the bottom nav's own destination label (section
-          // 8) — scoped strictly to the important-tasks section so this
-          // cannot pass by matching that unrelated, always-present label
-          // instead.
-          expect(
-            find.descendant(of: tasks, matching: find.text('営業')),
-            findsNothing,
-          );
-          expect(
-            find.descendant(of: tasks, matching: find.text('採用')),
-            findsNothing,
-          );
-        },
+        'to do', (tester) async {
+      await pumpDemo(tester);
+      await playIntoCashShortage(tester);
+      await tapAndSettle(tester, '11月を終了して翌月へ');
+      await settle(tester);
+      expect(
+        currentState(tester).financialStatus,
+        PublicDemoFinancialStatus.bankruptcy,
       );
-    },
-  );
+      expect(currentState(tester).isCloseBlocked, isTrue);
+
+      final tasks = find.byKey(const Key('public-demo-important-tasks'));
+      await tester.ensureVisible(tasks);
+      await tester.pumpAndSettle();
+      expect(tasks, findsOneWidget);
+
+      // 資金計画 is never gated — viewing the finance summary never
+      // becomes illegal.
+      expect(
+        find.descendant(of: tasks, matching: find.text('資金')),
+        findsOneWidget,
+      );
+      // '営業' is also the bottom nav's own destination label (section
+      // 8) — scoped strictly to the important-tasks section so this
+      // cannot pass by matching that unrelated, always-present label
+      // instead.
+      expect(
+        find.descendant(of: tasks, matching: find.text('営業')),
+        findsNothing,
+      );
+      expect(
+        find.descendant(of: tasks, matching: find.text('採用')),
+        findsNothing,
+      );
+    });
+  });
 }

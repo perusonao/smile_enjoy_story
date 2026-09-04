@@ -4,6 +4,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:smile_enjoy_story/presentation/build_info.dart';
 import 'package:smile_enjoy_story/ui/public_demo/public_demo_01_placeholder_screen.dart';
 
+import '../ui/public_demo/public_demo_tab_test_helpers.dart';
+
 void main() {
   const sha = 'c4beb9e3681ca90e7e0a6481109c71b925dfc72d';
 
@@ -85,6 +87,9 @@ void main() {
       expect(find.text('Deploy: PR #95 · c4beb9e'), findsNothing);
       expect(tester.getSize(find.byType(AppBar)).height, kToolbarHeight);
 
+      // The dev/test menu (and its BuildInfoLabel) is its own メニュー tab now
+      // (PUBLIC-DEMO-HOME-UI-3B), not a scroll-reachable fold on HOME.
+      await switchPublicDemoTab(tester, PublicDemoTab.menu);
       final toggle = find.byKey(const Key('public-demo-dev-menu-toggle'));
       await tester.ensureVisible(toggle);
       await tester.pumpAndSettle();

@@ -33,6 +33,8 @@ import 'package:smile_enjoy_story/game/public_demo/public_demo_state.dart';
 import 'package:smile_enjoy_story/ui/asset_paths.dart';
 import 'package:smile_enjoy_story/ui/public_demo/public_demo_01_placeholder_screen.dart';
 
+import 'public_demo_tab_test_helpers.dart';
+
 PublicDemoState currentState(WidgetTester tester) =>
     (tester.state(find.byType(PublicDemo01PlaceholderScreen)) as dynamic).s
         as PublicDemoState;
@@ -96,6 +98,9 @@ Future<void> pumpDemo(WidgetTester tester) async {
 /// .dart), reused here so this suite drives the exact same, already-pinned
 /// structurally-insolvent trajectory.
 Future<void> playApril(WidgetTester tester) async {
+  // The employee sales-progression card is on 社員 now
+  // (PUBLIC-DEMO-HOME-UI-3B).
+  await switchPublicDemoTab(tester, PublicDemoTab.employees);
   await tapAndSettle(tester, 'SkillSheet確認');
   await tapAndSettle(tester, '営業開始');
   await tapAndSettle(tester, '案件紹介');
@@ -117,6 +122,8 @@ Future<void> playApril(WidgetTester tester) async {
 /// information forecast already sees it coming.
 Future<void> playToPreShortageWindow(WidgetTester tester) async {
   await playApril(tester);
+  // The month-close CTA is HOME's own monthly primary action.
+  await switchPublicDemoTab(tester, PublicDemoTab.home);
   await tapAndSettle(tester, '4月を終了して5月へ');
   await dismiss(tester);
   await tapAndSettle(tester, '5月を終了して6月へ');

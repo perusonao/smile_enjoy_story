@@ -20,6 +20,8 @@ import 'package:smile_enjoy_story/game/public_demo/public_demo_financial_status.
 import 'package:smile_enjoy_story/game/public_demo/public_demo_state.dart';
 import 'package:smile_enjoy_story/ui/public_demo/public_demo_01_placeholder_screen.dart';
 
+import 'public_demo_tab_test_helpers.dart';
+
 // ---------------------------------------------------------------------------
 // Test helpers (same shape as public_demo_01_completion_lock_ui_test.dart)
 // ---------------------------------------------------------------------------
@@ -83,7 +85,9 @@ Future<void> _scrollToTop(WidgetTester tester) async {
 /// Returns after the March close has committed and the tester is
 /// settled on the post-bankruptcy screen.
 Future<void> _driveToNovemberBankruptcy(WidgetTester tester) async {
-  // April: advance Sato to receive the May order.
+  // April: advance Sato to receive the May order. The employee
+  // sales-progression card is on 社員 now (PUBLIC-DEMO-HOME-UI-3B).
+  await switchPublicDemoTab(tester, PublicDemoTab.employees);
   await _tapAndSettle(tester, 'SkillSheet確認');
   await _tapAndSettle(tester, '営業開始');
   await _tapAndSettle(tester, '案件紹介');
@@ -93,15 +97,20 @@ Future<void> _driveToNovemberBankruptcy(WidgetTester tester) async {
   await _dismiss(tester);
   await _tapAndSettle(tester, '受注');
   await _dismiss(tester);
+  // The month-close CTA is HOME's own monthly primary action.
+  await switchPublicDemoTab(tester, PublicDemoTab.home);
   await _tapAndSettle(tester, '4月を終了して5月へ');
   await _dismiss(tester);
 
   // May: no additional hiring.
   await _tapAndSettle(tester, '5月を終了して6月へ');
 
-  // June: accept July continuation for Sato (only assignment).
+  // June: accept July continuation for Sato (only assignment) — the
+  // assignment (project continuation) pipeline is on 営業.
+  await switchPublicDemoTab(tester, PublicDemoTab.sales);
   await _tapAndSettle(tester, '7月分の発注を確認');
   await _tapAndSettle(tester, '受注する');
+  await switchPublicDemoTab(tester, PublicDemoTab.home);
   await _tapAndSettle(tester, '6月を終了して7月へ');
 
   // July: choose no bonus.
@@ -141,7 +150,9 @@ void main() {
         const MaterialApp(home: PublicDemo01PlaceholderScreen()),
       );
 
-      // Drive to just before the November close.
+      // Drive to just before the November close. The employee
+      // sales-progression card is on 社員.
+      await switchPublicDemoTab(tester, PublicDemoTab.employees);
       await _tapAndSettle(tester, 'SkillSheet確認');
       await _tapAndSettle(tester, '営業開始');
       await _tapAndSettle(tester, '案件紹介');
@@ -151,11 +162,14 @@ void main() {
       await _dismiss(tester);
       await _tapAndSettle(tester, '受注');
       await _dismiss(tester);
+      await switchPublicDemoTab(tester, PublicDemoTab.home);
       await _tapAndSettle(tester, '4月を終了して5月へ');
       await _dismiss(tester);
       await _tapAndSettle(tester, '5月を終了して6月へ');
+      await switchPublicDemoTab(tester, PublicDemoTab.sales);
       await _tapAndSettle(tester, '7月分の発注を確認');
       await _tapAndSettle(tester, '受注する');
+      await switchPublicDemoTab(tester, PublicDemoTab.home);
       await _tapAndSettle(tester, '6月を終了して7月へ');
       await _tapAndSettle(tester, '7月を終了して8月へ');
       await tester.tap(find.byKey(const Key('public-demo-summer-bonus-none')));
@@ -245,7 +259,9 @@ void main() {
         const MaterialApp(home: PublicDemo01PlaceholderScreen()),
       );
 
-      // Drive to cashShortage state (after February close → March).
+      // Drive to cashShortage state (after February close → March). The
+      // employee sales-progression card is on 社員.
+      await switchPublicDemoTab(tester, PublicDemoTab.employees);
       await _tapAndSettle(tester, 'SkillSheet確認');
       await _tapAndSettle(tester, '営業開始');
       await _tapAndSettle(tester, '案件紹介');
@@ -255,11 +271,14 @@ void main() {
       await _dismiss(tester);
       await _tapAndSettle(tester, '受注');
       await _dismiss(tester);
+      await switchPublicDemoTab(tester, PublicDemoTab.home);
       await _tapAndSettle(tester, '4月を終了して5月へ');
       await _dismiss(tester);
       await _tapAndSettle(tester, '5月を終了して6月へ');
+      await switchPublicDemoTab(tester, PublicDemoTab.sales);
       await _tapAndSettle(tester, '7月分の発注を確認');
       await _tapAndSettle(tester, '受注する');
+      await switchPublicDemoTab(tester, PublicDemoTab.home);
       await _tapAndSettle(tester, '6月を終了して7月へ');
       await _tapAndSettle(tester, '7月を終了して8月へ');
       await tester.tap(find.byKey(const Key('public-demo-summer-bonus-none')));

@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:smile_enjoy_story/ui/public_demo/public_demo_01_placeholder_screen.dart';
 
+import 'public_demo_tab_test_helpers.dart';
+
 Finder actionButton(String text) => find.ancestor(
   of: find.text(text),
   matching: find.byWidgetPredicate((widget) => widget is ButtonStyleButton),
@@ -81,7 +83,9 @@ void main() {
       const MaterialApp(home: PublicDemo01PlaceholderScreen()),
     );
 
-    // April: Sato wins the May order.
+    // April: Sato wins the May order. The employee sales-progression card
+    // is on 社員 now (PUBLIC-DEMO-HOME-UI-3B).
+    await switchPublicDemoTab(tester, PublicDemoTab.employees);
     await tapAndSettle(tester, 'SkillSheet確認');
     await tapAndSettle(tester, '営業開始');
     await tapAndSettle(tester, '案件紹介');
@@ -96,6 +100,8 @@ void main() {
       '案件を受注しました',
       imageKey: const Key('public-demo-order-decision-image'),
     );
+    // The month-close CTA is HOME's own monthly primary action.
+    await switchPublicDemoTab(tester, PublicDemoTab.home);
     await tapAndSettle(tester, '4月を終了して5月へ');
     expect(find.text('新しい応募が届きました'), findsOneWidget);
     expect(
@@ -107,7 +113,8 @@ void main() {
     expect(find.text('1年目 5月'), findsOneWidget);
 
     // May: Takahashi is hired at the requested salary and wins a June order
-    // before joining.
+    // before joining. The recruiting/applicant pipeline is on 営業 now.
+    await switchPublicDemoTab(tester, PublicDemoTab.sales);
     await tapAndSettle(tester, '経歴書確認');
     await tapAndSettle(tester, '採用面談');
     expect(find.textContaining('評価 74'), findsOneWidget);
@@ -129,6 +136,7 @@ void main() {
       '案件を受注しました',
       imageKey: const Key('public-demo-order-decision-image'),
     );
+    await switchPublicDemoTab(tester, PublicDemoTab.home);
     await tapAndSettle(tester, '5月を終了して6月へ');
     await dismissEvent(
       tester,
@@ -150,36 +158,41 @@ void main() {
       ),
       findsOneWidget,
     );
+    // Employee condition is employee detail — on 社員 now.
+    await switchPublicDemoTab(tester, PublicDemoTab.employees);
     expect(find.text('社員コンディション'), findsOneWidget);
     expect(find.text('モチベーション：高い'), findsOneWidget);
     expect(find.text('会社への信頼：高い'), findsOneWidget);
     expect(find.textContaining('65'), findsNothing);
     expect(find.textContaining('60'), findsNothing);
 
-    // June: accept at least one July continuation.
+    // June: accept at least one July continuation — the assignment
+    // (project continuation) pipeline is on 営業 now.
+    await switchPublicDemoTab(tester, PublicDemoTab.sales);
     await tapAndSettle(tester, '7月分の発注を確認');
     if (find.text('7月分発注あり').evaluate().isNotEmpty) {
       await tapAndSettle(tester, '受注する');
     }
+    await switchPublicDemoTab(tester, PublicDemoTab.home);
     await tapAndSettle(tester, '6月を終了して7月へ');
 
     expect(find.text('1年目 7月'), findsOneWidget);
-    // The new month opens at the dashboard so the completed June growth is
-    // immediately visible; Sato's assigned result includes practical work.
+    // The completed June growth is on 社員; Sato's assigned result
+    // includes practical work.
+    await switchPublicDemoTab(tester, PublicDemoTab.employees);
     expect(find.text('今月の成長'), findsOneWidget);
     expect(find.text('案件参画を通じて成長'), findsWidgets);
     expect(find.text('実務経験 +1か月'), findsWidgets);
-    await tester.scrollUntilVisible(
-      find.text('7月開始結果'),
-      300,
-      scrollable: find.byType(Scrollable).first,
-    );
+    // The July assignment-result narrative is on 営業.
+    await switchPublicDemoTab(tester, PublicDemoTab.sales);
     expect(find.text('7月開始結果'), findsOneWidget);
     // SES-FIRST-FUN-YEAR-UI-PHASE-1: the July recap's own
     // "参画 X名 / 待機 Y名" line was removed as a duplicate of the always-
     // visible compact KPI's 参画 tile, which already carries this exact
     // fact on every build (see the KPI-tile assertion above, and
-    // public_demo_01_placeholder_screen.dart's July-block comment).
+    // public_demo_01_placeholder_screen.dart's July-block comment). The
+    // KPI lives on HOME.
+    await switchPublicDemoTab(tester, PublicDemoTab.home);
     expect(
       find.descendant(
         of: find.byKey(const Key('home-kpi-compact-assigned')),

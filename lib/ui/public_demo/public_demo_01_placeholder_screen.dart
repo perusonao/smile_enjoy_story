@@ -152,17 +152,21 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
   final _scrollController = ScrollController();
   final _monthlyCashFlowKey = GlobalKey();
 
-  /// PUBLIC-DEMO-HOME-UI-3A: Public Demo has exactly one screen and no
-  /// `Navigator.push` anywhere, so every "destination" the approved visual
-  /// target names (quick access, bottom nav, the Navigator card's secondary
-  /// route) is truthfully implemented as an on-page scroll-jump to a
-  /// section that already exists, via [_scrollToSection] below — never a
-  /// fabricated route or a second navigation state. These keys mark exactly
-  /// the sections those scroll-jumps target.
-  final _officeStageKey = GlobalKey();
-  final _financeSummaryKey = GlobalKey();
-  final _legacyActionsKey = GlobalKey();
-  final _devMenuKey = GlobalKey();
+  // PUBLIC-DEMO-HOME-UI-3B: real bottom-navigation tab surfaces. HOME
+  // stopped being the one screen everything lived on — each destination
+  // below now switches which tab body [build] constructs, via
+  // [_switchTab]/[_selectedTabIndex], rather than scroll-jumping to an
+  // anchor inside a single shared ListView (the former PUBLIC-DEMO-HOME-UI-3A
+  // approach, whose rationale is preserved only in git history). Only the
+  // selected tab's widget subtree is ever built, so a tab genuinely does not
+  // "contain" another tab's content — it is simply not constructed, not
+  // merely off-screen.
+  static const int _homeTabIndex = 0;
+  static const int _employeesTabIndex = 1;
+  static const int _salesTabIndex = 2;
+  static const int _accountingTabIndex = 3;
+  static const int _menuTabIndex = 4;
+  int _selectedTabIndex = _homeTabIndex;
 
   /// The single authoritative Public Demo 0.1 root (WORKFLOW-STATE-1AB
   /// FIX3): atomically owns both finance/monthly-close facts ([s]) and
@@ -433,7 +437,7 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
       // A forecasted shortage with no currently valid next action (see
       // PublicDemoCashAdviceSelector's own doc for when this happens) still
       // states the reason; its only safe CTA is the existing finance-detail
-      // scroll-jump, never a fabricated command.
+      // tab switch, never a fabricated command.
       return HomeNavigatorAdvice(
         title: 'ひよりからのご案内',
         message: message,
@@ -442,7 +446,7 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
             : '$evidence。資金計画を確認し、支出や営業状況を見直しましょう。',
         semantic: HomeNavigatorAdviceSemantic.caution,
         ctaLabel: '資金計画を確認する',
-        onCtaPressed: () => _scrollToSection(_financeSummaryKey),
+        onCtaPressed: () => _switchTab(_accountingTabIndex),
       );
     }
 
@@ -522,8 +526,8 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
   /// with no matching eligible action left in it (a terminal/completed
   /// month, or a month where that pipeline is genuinely exhausted). 資金計画
   /// is never gated the same way: viewing the finance summary is not an
-  /// action that becomes illegal, only a scroll to a section that always
-  /// renders (see [_financeSummaryKey]'s own site).
+  /// action that becomes illegal, only a tab switch to a surface that
+  /// always renders (会計).
   List<PublicDemoImportantTaskItem> get _importantTasks {
     final data = _homeDashboardData;
     final candidates = _recommendedActionCandidates;
@@ -557,26 +561,29 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
         fact: '今月の固定費: ${formatYen(_financeSummary.fixedCosts)}',
         category: '資金',
         ctaLabel: '確認する',
-        onPressed: () => _scrollToSection(_financeSummaryKey),
+        onPressed: () => _switchTab(_accountingTabIndex),
       ),
     ];
   }
 
-  /// Section 7 ("クイックアクセス") — four real on-page destinations, each a
-  /// scroll-jump to a section that already exists (see the class doc above
-  /// [_officeStageKey]). No fabricated route.
+  /// Section 7 ("クイックアクセス") — four real destinations. PUBLIC-DEMO-HOME-
+  /// UI-3B: each now switches to the tab that owns the content it names via
+  /// [_switchTab]/[_scrollToOtherActions]/[_openDevMenuSection], instead of
+  /// scroll-jumping to an anchor inside HOME's own list. No fabricated
+  /// route — every destination is one of the five real tab surfaces
+  /// [build] already constructs.
   List<PublicDemoQuickAccessItem> get _quickAccessItems => [
     PublicDemoQuickAccessItem(
       itemKey: const Key('public-demo-quick-access-office'),
       icon: Icons.groups_outlined,
       label: '社員の様子',
-      onPressed: () => _scrollToSection(_officeStageKey),
+      onPressed: () => _switchTab(_employeesTabIndex),
     ),
     PublicDemoQuickAccessItem(
       itemKey: const Key('public-demo-quick-access-finance'),
       icon: Icons.account_balance_wallet_outlined,
       label: '収支・会計',
-      onPressed: () => _scrollToSection(_financeSummaryKey),
+      onPressed: () => _switchTab(_accountingTabIndex),
     ),
     PublicDemoQuickAccessItem(
       itemKey: const Key('public-demo-quick-access-actions'),
@@ -661,31 +668,32 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
     };
   }
 
-  /// Generalized form of the pre-existing `_scrollToLatestCashFlow`: jumps
-  /// to whichever already-on-page section [key] marks. This is the single
-  /// mechanism behind every quick-access item, every bottom-nav
-  /// destination, and the Navigator card's secondary route — see the class
-  /// doc on the `_officeStageKey` field group for why a scroll-jump, not a
-  /// route, is the truthful implementation here.
-  void _scrollToSection(GlobalKey key) {
-    final context = key.currentContext;
-    if (context == null) return;
-    Scrollable.ensureVisible(
-      context,
-      duration: const Duration(milliseconds: 250),
-      curve: Curves.easeOut,
-    );
+  /// PUBLIC-DEMO-HOME-UI-3B: switches which tab body [build] constructs.
+  /// This is the single mechanism behind the bottom-navigation destinations,
+  /// every quick-access item, the Navigator card's secondary route, and the
+  /// 営業/採用/資金計画 important-task rows — none of them scroll an anchor
+  /// inside a shared list any more; each genuinely changes which tab surface
+  /// is current. A no-op when [index] is already selected, so re-tapping the
+  /// current tab never triggers an extra rebuild.
+  void _switchTab(int index) {
+    if (_selectedTabIndex == index) return;
+    setState(() => _selectedTabIndex = index);
   }
 
-  void _scrollToOtherActions() => _scrollToSection(_legacyActionsKey);
+  /// The 営業/採用 important-task rows and the Navigator card's "他の行動を確認す
+  /// る" secondary route all resolve to the same real destination: the 営業
+  /// tab, where the existing sales/project/recruiting pipeline (assignment
+  /// replacement, applicant funnel) now lives. This does not claim every
+  /// individual candidate action physically renders inside that tab (some
+  /// existing-employee sales-progression actions render on 社員 — see
+  /// `docs/reports/SES_PUBLIC-DEMO-HOME-UI-3B_Result.md`'s known gaps) —
+  /// only that this is the truthful single destination for "more actions
+  /// than HOME's summary shows", exactly as the former scroll-jump was.
+  void _scrollToOtherActions() => _switchTab(_salesTabIndex);
 
   void _openDevMenuSection() {
     if (!_isDevMenuExpanded) setState(() => _isDevMenuExpanded = true);
-    // The toggle above only takes effect on the next build, so the section
-    // key isn't mounted yet this frame — scroll to it once it is.
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) _scrollToSection(_devMenuKey);
-    });
+    _switchTab(_menuTabIndex);
   }
 
   void _scrollToTop() {
@@ -699,26 +707,18 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
     );
   }
 
-  /// Bottom nav (section 8) `onDestinationSelected`. There is no second
-  /// screen to switch to, so every index is a real scroll-jump rather than
-  /// a route change — see the class doc above [_officeStageKey]. Tapping
-  /// any destination therefore never changes [_bottomNavIndex]; only ホーム
-  /// (index 0) is ever shown selected, because there genuinely is no other
-  /// "current tab" to track without inventing one. This is stated plainly
-  /// in the result report as a truthful reduction.
+  /// Bottom nav (section 8) `onDestinationSelected`. PUBLIC-DEMO-HOME-UI-3B:
+  /// each index now switches to a real tab surface via [_switchTab] — no
+  /// index scrolls a HOME anchor any more. Re-tapping ホーム while it is
+  /// already the selected tab scrolls that tab back to its top instead
+  /// (the same convenience the old index-0 behavior gave), rather than
+  /// being a no-op.
   void _handleBottomNavSelection(int index) {
-    switch (index) {
-      case 0:
-        _scrollToTop();
-      case 1:
-        _scrollToSection(_officeStageKey);
-      case 2:
-        _scrollToOtherActions();
-      case 3:
-        _scrollToSection(_financeSummaryKey);
-      case 4:
-        _openDevMenuSection();
+    if (index == _homeTabIndex && _selectedTabIndex == _homeTabIndex) {
+      _scrollToTop();
+      return;
     }
+    _switchTab(index);
   }
 
   Future<void> _showNotifications() async {
@@ -1182,6 +1182,10 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
     setState(() {
       _game = PublicDemoAggregate.initial();
       _isRestarting = false;
+      // A fresh playthrough starts back on HOME, whether restart was
+      // triggered from the bankruptcy terminal card (already on HOME) or
+      // from the Menu tab's test-only restart control.
+      _selectedTabIndex = _homeTabIndex;
     });
     _resetMonthScroll();
   }
@@ -1719,17 +1723,28 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
   //    `~/` semantics rather than this row's old `floor()`.
   //
   // What is left here is the post-close detail this phase does not touch.
-  Widget dashboard() => Column(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    children: [
-      if (s.latestMonthlyCashFlow != null) ...[
-        KeyedSubtree(
-          key: _monthlyCashFlowKey,
-          child: PublicDemoMonthlyCashFlowCard(flow: s.latestMonthlyCashFlow!),
-        ),
-        const SizedBox(height: 8),
-      ],
-      if (s.latestGrowthResults.isNotEmpty) ...[
+  /// PUBLIC-DEMO-HOME-UI-3B: the former `dashboard()` split in two along the
+  /// tab boundary — the monthly cash-flow card is finance detail (会計), the
+  /// growth results are per-employee status (社員). Splitting only changed
+  /// which Column a widget renders inside; neither widget's own content,
+  /// key, or authority changed.
+  Widget _monthlyCashFlowSection() => s.latestMonthlyCashFlow == null
+      ? const SizedBox.shrink()
+      : Padding(
+          padding: const EdgeInsets.only(bottom: 8),
+          child: KeyedSubtree(
+            key: _monthlyCashFlowKey,
+            child: PublicDemoMonthlyCashFlowCard(
+              flow: s.latestMonthlyCashFlow!,
+            ),
+          ),
+        );
+
+  Widget _growthResultsSection() {
+    if (s.latestGrowthResults.isEmpty) return const SizedBox.shrink();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
         const Text('今月の成長', style: TextStyle(fontWeight: FontWeight.bold)),
         const SizedBox(height: 4),
         for (final result in s.latestGrowthResults)
@@ -1738,8 +1753,8 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
             result: result,
           ),
       ],
-    ],
-  );
+    );
+  }
 
   String _engineerName(String engineerId) {
     for (final engineer in workflow.engineers) {
@@ -2702,6 +2717,285 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
     );
   }
 
+  /// HOME (index 0) — summary/decision surface only. PUBLIC-DEMO-HOME-UI-3B:
+  /// this used to be the single screen everything lived on; the full
+  /// employee roster/training list and the full finance detail that used to
+  /// render below these sections are gone from here — they are real content
+  /// on the 社員 and 会計 tabs now (see [_buildEmployeesTab] /
+  /// [_buildAccountingTab]), not merely scrolled past. Every widget below
+  /// is unchanged from PUBLIC-DEMO-HOME-UI-3A/HOME-COMPACT-1B — only the
+  /// legacy detail sections that used to follow them in the same ListView
+  /// are gone from this method.
+  Widget _buildHomeTab(BuildContext c, HomeNavigatorAdvice? navigatorAdvice) =>
+      ListView(
+        key: const PageStorageKey('public-demo-home-tab'),
+        controller: _scrollController,
+        padding: const EdgeInsets.all(16),
+        children: [
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // HOME-RUNTIME-2A: the FINANCE-FAILURE-1C shortage
+              // explanation is hoisted above everything else. Its
+              // authority is unchanged and still lives entirely in the
+              // card itself — it renders only when
+              // `state.financialStatus == cashShortage` and never infers
+              // that from the sign of cash.
+              PublicDemoCashShortageCard(
+                state: s,
+                nextClose: _nextCloseForecastEntry,
+              ),
+              // PLAYTEST-BLOCKER-1A: when a terminal financial state is
+              // reached (bankruptcy or March cash-shortage failure),
+              // show a prominent card that communicates the game-over
+              // reason, the final cash, and a safe restart action.
+              if (s.isFinanciallyTerminal) _bankruptcyTerminalCard(),
+              // HOME-RUNTIME-READ-1: the HOME read-only display. It
+              // receives only the projection — no aggregate, no state, no
+              // commands, no callbacks beyond the bound handlers below.
+              //
+              // PUBLIC-DEMO-HOME-UI-3B: its secondary route ("他の行動を確
+              // 認する") now switches to the 営業 tab via
+              // [_scrollToOtherActions] instead of scroll-jumping to a
+              // section further down this same list — never a second
+              // mutation path.
+              PublicDemoHomeDashboardSection(
+                data: _homeDashboardData,
+                recommendedAction: _recommendedActionSlot,
+                navigatorAdvice: navigatorAdvice,
+                cashAdvice: _cashForecastAdvice,
+                onShowOtherActions: _isActualCashShortage
+                    ? null
+                    : _scrollToOtherActions,
+              ),
+              // HOME-COMPACT-1B.3: the monthly progression CTA sits
+              // directly under the Navigator card, visible in the initial
+              // 390px-wide view with no scroll. Bound exactly once on
+              // this screen (see `_monthlyPrimaryAction`'s own site).
+              if (_monthlyPrimaryAction case final monthlyAction?) ...[
+                const SizedBox(height: 2),
+                PublicDemoMonthlyPrimaryCtaSection(action: monthlyAction),
+              ],
+              const SizedBox(height: 2),
+              // Section 5: employee summary/office card only — the full
+              // employee roster/detail lives on the 社員 tab (see
+              // [_buildEmployeesTab]), not here. Quick access / bottom
+              // nav "社員" now switch to that tab instead of scrolling to
+              // this same summary.
+              HomeOfficeStageSection(display: _officeStageDisplay),
+              const SizedBox(height: 8),
+              // Section 6: "今月の重要タスク" — up to three truthful
+              // tasks built only from existing authoritative facts
+              // (see _importantTasks's own doc).
+              PublicDemoImportantTasksSection(items: _importantTasks),
+              const SizedBox(height: 8),
+              // Section 7: クイックアクセス — each item switches to the
+              // real tab that owns the destination it names.
+              PublicDemoQuickAccessSection(items: _quickAccessItems),
+            ],
+          ),
+        ],
+      );
+
+  /// 社員 (index 1) — the full employee roster/detail this Issue moves off
+  /// HOME: identity, current sales-preparation stage, SkillSheet, the
+  /// existing training action, and employee condition. Every card below is
+  /// the exact same widget/method/key PUBLIC-DEMO-HOME-UI-3A rendered in
+  /// the single shared list — only which tab constructs them changed; no
+  /// employee authority or state is duplicated (each renders from exactly
+  /// the same [workflow]/[s] read this screen has always held).
+  Widget _buildEmployeesTab(BuildContext c) => ListView(
+    key: const PageStorageKey('public-demo-employees-tab'),
+    padding: const EdgeInsets.all(16),
+    children: [
+      Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _growthResultsSection(),
+          if (s.month == 4)
+            for (var i = 0; i < workflow.engineers.length; i++) ec(i),
+          if (s.month == 6)
+            for (final a in workflow.applicants.where(
+              (a) => s.joinedApplicantIds.contains(a.id) && a.hasJoined,
+            ))
+              employeeConditionCard(a),
+          if (s.month == 6)
+            for (var i = 0; i < workflow.engineers.length; i++)
+              if (s.joinedApplicantIds.contains(workflow.engineers[i].id) &&
+                  workflow.engineers[i].stage != PublicDemoSalesStage.ordered &&
+                  !workflow.assignments.any(
+                    (assignment) =>
+                        assignment.engineerId == workflow.engineers[i].id,
+                  ))
+                ec(i),
+          // RECOVERY-LOOP-1: from July (7) through February (14) — the
+          // same window `PublicDemoRecoveryEligibility` enforces — every
+          // economically-waiting engineer's card is rendered here,
+          // mirroring month 6's own filter (`!assignedEngineerIds
+          // .contains(...)`) so the existing sales-flow buttons (`ec(i)`'s
+          // own `waiting` → `ordered` branches, plus the Recovery button
+          // once `ordered`) are reachable at all past June.
+          // `showTrainingCard: false` because the `s.month >= 6` block
+          // below already renders every engineer runtime's training card
+          // unconditionally — rendering it a second time here would
+          // duplicate that same card's key.
+          if (s.month >= 7 && s.month <= 14)
+            for (var i = 0; i < workflow.engineers.length; i++)
+              if (!workflow
+                  .assignedEngineerIds(month: s.month)
+                  .contains(workflow.engineers[i].id))
+                ec(i, showTrainingCard: false),
+          if (s.month >= 7)
+            for (final a in workflow.applicants.where(
+              (a) => s.joinedApplicantIds.contains(a.id) && a.hasJoined,
+            ))
+              employeeConditionCard(a),
+          if (s.month >= 6)
+            for (final runtime in s.engineerRuntimes)
+              internalTrainingCard(
+                engineerId: runtime.engineerId,
+                engineerName: _engineerName(runtime.engineerId),
+              ),
+        ],
+      ),
+    ],
+  );
+
+  /// 営業 (index 2) — the existing sales/project/recruiting pipeline: the
+  /// recruitment-media flow and applicant funnel, and the assignment
+  /// (project continuation/replacement) pipeline with its July results
+  /// narrative. Reuses every existing widget/method/key verbatim — no new
+  /// project/sales authority is invented here.
+  Widget _buildSalesTab(BuildContext c) => ListView(
+    key: const PageStorageKey('public-demo-sales-tab'),
+    padding: const EdgeInsets.all(16),
+    children: [
+      Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (s.month == 5) ...[
+            _RecruitmentMediaCard(state: s, onPressed: _openRecruitmentMedia),
+            for (var i = 0; i < workflow.applicants.length; i++) ac(i),
+          ],
+          if (s.month == 6)
+            for (var i = 0; i < workflow.assignments.length; i++)
+              assignmentCard(i),
+          if (s.month == 7) ...[
+            Text('7月開始結果', style: Theme.of(c).textTheme.titleLarge),
+            // SES-FIRST-FUN-YEAR-UI-PHASE-1: the 参画/待機 headcount line
+            // that used to render here is removed — it duplicated the
+            // always-visible compact KPI's 参画/待機 tiles verbatim.
+            for (final a in workflow.assignments)
+              ListTile(
+                title: Text(a.engineerName),
+                subtitle: Text(julyResult(a)),
+              ),
+          ],
+        ],
+      ),
+    ],
+  );
+
+  /// 会計 (index 3) — finance detail this Issue moves off HOME: the latest
+  /// monthly cash-flow card, the payroll/fixed-cost summary, the summer
+  /// bonus decision, and the monthly/fiscal-year-close narrative. No
+  /// finance figure is recomputed here — every value is read from the same
+  /// authoritative [s]/[_financeSummary] this screen has always held.
+  Widget _buildAccountingTab(BuildContext c) => ListView(
+    key: const PageStorageKey('public-demo-accounting-tab'),
+    padding: const EdgeInsets.all(16),
+    children: [
+      Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _monthlyCashFlowSection(),
+          PublicDemoFinanceSummarySection(summary: _financeSummary),
+          const SizedBox(height: 8),
+          if (s.month == 7)
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      '夏季賞与',
+                      style: TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      _summerBonusDecisionRequired
+                          ? '7月終了前に支給内容を選びましょう。'
+                          : '選択済み：${switch (s.summerBonusSelection) {
+                              PublicDemoSummerBonusPlan.none => 'なし',
+                              PublicDemoSummerBonusPlan.half => '0.5か月',
+                              PublicDemoSummerBonusPlan.one => '1か月',
+                            }}',
+                    ),
+                    const SizedBox(height: 8),
+                    FilledButton(
+                      key: const Key('public-demo-summer-bonus-decision'),
+                      onPressed: decideSummerBonus,
+                      child: Text(
+                        _summerBonusDecisionRequired ? '夏季賞与を決める' : '夏季賞与を変更',
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          if (s.month >= 8 && s.month <= 14) ...[
+            Text(
+              '${publicDemoMonthLabel(s.month)}開始結果',
+              style: Theme.of(c).textTheme.titleLarge,
+            ),
+            if (s.month == 8) ...[
+              const Text('7月分の給与を反映しました'),
+              Text(
+                s.summerBonusPaidAmount == 0
+                    ? '夏季賞与 なし'
+                    : '夏季賞与 ¥${s.summerBonusPaidAmount}',
+              ),
+            ],
+          ],
+          if (s.month == 15 && !s.fiscalYearCompleted)
+            Text(
+              '${publicDemoMonthLabel(s.month)}開始結果',
+              style: Theme.of(c).textTheme.titleLarge,
+            ),
+          if (s.fiscalYearCompleted)
+            Card(
+              key: const Key('public-demo-fiscal-year-complete'),
+              child: Padding(
+                padding: const EdgeInsets.all(14),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('第1期終了', style: Theme.of(c).textTheme.titleLarge),
+                    const SizedBox(height: 8),
+                    const Text('1年間の経営が終了しました。'),
+                    const SizedBox(height: 8),
+                    Text('最終現預金 ¥${s.cash}'),
+                  ],
+                ),
+              ),
+            ),
+        ],
+      ),
+    ],
+  );
+
+  /// メニュー (index 4) — secondary/development/test content that does not
+  /// belong on HOME. Reuses [_publicDemoDevMenuSection] verbatim (the same
+  /// collapsed-by-default toggle, test-only restart control, and
+  /// [BuildInfoLabel] PUBLIC-DEMO-HOME-UI-3A already built), only now as
+  /// this tab's own content instead of the bottom of the shared HOME list.
+  Widget _buildMenuTab(BuildContext c) => ListView(
+    key: const PageStorageKey('public-demo-menu-tab'),
+    padding: const EdgeInsets.all(16),
+    children: [_publicDemoDevMenuSection()],
+  );
+
   @override
   Widget build(BuildContext c) {
     final navigatorAdvice = _compactedForShortage(
@@ -2740,37 +3034,42 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
         ),
         bottomNavigationBar: NavigationBar(
           key: const Key('public-demo-bottom-nav'),
-          // Section 8: preserves existing navigation authority — Public
-          // Demo has exactly one screen, so every destination below is a
-          // real scroll-jump (see _handleBottomNavSelection), never a route
-          // change. There is genuinely no second "current tab" to track
-          // without inventing one, so this stays fixed at ホーム (0) rather
-          // than simulating a selection that does not exist — documented as
-          // a truthful reduction in the Issue #147 result report.
-          selectedIndex: 0,
+          // Section 8: PUBLIC-DEMO-HOME-UI-3B — real logical tab surfaces.
+          // [selectedIndex] now tracks [_selectedTabIndex], the same field
+          // [build] reads below to decide which tab body to construct, so
+          // the highlighted destination and the rendered content can never
+          // disagree. Tapping a destination only ever calls [_switchTab]
+          // (via [_handleBottomNavSelection]) — never a gameplay command —
+          // so selecting a tab cannot itself mutate [_game].
+          selectedIndex: _selectedTabIndex,
           onDestinationSelected: _handleBottomNavSelection,
           destinations: const [
             NavigationDestination(
+              key: Key('public-demo-nav-home'),
               icon: Icon(Icons.home_outlined),
               selectedIcon: Icon(Icons.home),
               label: 'ホーム',
             ),
             NavigationDestination(
+              key: Key('public-demo-nav-employees'),
               icon: Icon(Icons.groups_outlined),
               selectedIcon: Icon(Icons.groups),
               label: '社員',
             ),
             NavigationDestination(
+              key: Key('public-demo-nav-sales'),
               icon: Icon(Icons.storefront_outlined),
               selectedIcon: Icon(Icons.storefront),
               label: '営業',
             ),
             NavigationDestination(
+              key: Key('public-demo-nav-accounting'),
               icon: Icon(Icons.account_balance_outlined),
               selectedIcon: Icon(Icons.account_balance),
               label: '会計',
             ),
             NavigationDestination(
+              key: Key('public-demo-nav-menu'),
               icon: Icon(Icons.menu_outlined),
               selectedIcon: Icon(Icons.menu),
               label: 'メニュー',
@@ -2782,365 +3081,19 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
             AbsorbPointer(
               absorbing: _isRestoring || _isRestarting,
               child: SafeArea(
-                child: ListView(
-                  controller: _scrollController,
-                  padding: const EdgeInsets.all(16),
-                  // The monthly cash-flow card (FINANCE-UX-1) made this screen's
-                  // total content large enough to trip a Flutter SliverList layout
-                  // quirk in this SDK: past a certain child height, ListView's
-                  // sliver-based children stop being mounted at all beyond that
-                  // point (not just scrolled off-screen — genuinely absent from the
-                  // widget tree), independent of cacheExtent (confirmed up to
-                  // 20000px, no effect). Wrapping everything in one Column keeps
-                  // this a ListView (existing tests still find/scroll it by type)
-                  // but gives the sliver exactly one child to lay out, which
-                  // Flutter always builds in full regardless of height.
-                  children: [
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        // HOME-RUNTIME-2A: the FINANCE-FAILURE-1C shortage
-                        // explanation is hoisted above everything else. Its
-                        // authority is unchanged and still lives entirely in the
-                        // card itself — it renders only when
-                        // `state.financialStatus == cashShortage` and never infers
-                        // that from the sign of cash. This screen decides where the
-                        // card goes, not whether it applies, which is why
-                        // `financialStatus` is still not projected into HOME.
-                        PublicDemoCashShortageCard(
-                          state: s,
-                          nextClose: _nextCloseForecastEntry,
-                        ),
-                        // PLAYTEST-BLOCKER-1A: when a terminal financial state is
-                        // reached (bankruptcy or March cash-shortage failure),
-                        // show a prominent card that communicates the game-over
-                        // reason, the final cash, and a safe restart action.
-                        // This card is the player's primary signal that the
-                        // playthrough has ended — without it the only cue was a
-                        // month-close button that silently became a no-op.
-                        if (s.isFinanciallyTerminal) _bankruptcyTerminalCard(),
-                        // HOME-RUNTIME-READ-1: the new HOME read-only display,
-                        // added alongside (never in place of) the existing Public
-                        // Demo UI below. It receives only the projection — no
-                        // aggregate, no state, no commands, no callbacks.
-                        //
-                        // HOME-RUNTIME-2A: its MonthHeaderBar is now the only month
-                        // display on the screen — the `N月` headline that used to
-                        // restate it here is deleted.
-                        // Sections 1-4 (header band/KPI grid/Navigator card):
-                        // the header band and KPI grid are composed inside
-                        // this section (MonthHeaderBar + KpiSection.compact);
-                        // the Navigator card is HomeNavigatorSection. Its
-                        // secondary route ("他の行動を確認する") is the same
-                        // truthful scroll-jump every other "destination" on
-                        // this screen uses — never a second mutation path.
-                        //
-                        // HOME-COMPACT-1B.4 FIX1: the secondary route is
-                        // dropped (`null`) during an actual cash shortage
-                        // only — see `_isActualCashShortage`'s own doc.
-                        // Every other action on this screen (including the
-                        // legacy section it scroll-jumps to) stays reachable
-                        // exactly as before; only this one extra 48pt
-                        // button, whose destination duplicates what
-                        // quick-access/bottom-nav already reach, is not
-                        // re-offered while the height it costs is what the
-                        // acceptance criteria need back for 社員概要.
-                        PublicDemoHomeDashboardSection(
-                          data: _homeDashboardData,
-                          recommendedAction: _recommendedActionSlot,
-                          navigatorAdvice: navigatorAdvice,
-                          cashAdvice: _cashForecastAdvice,
-                          onShowOtherActions: _isActualCashShortage
-                              ? null
-                              : _scrollToOtherActions,
-                        ),
-                        // HOME-COMPACT-1B.3: the monthly progression CTA
-                        // moves directly under the Navigator card — the
-                        // acceptance requirement is that it is visible in
-                        // the initial 390px-wide view with no scroll, next
-                        // to 月/KPI/ひより. It is bound exactly once on this
-                        // screen (see `_monthlyPrimaryAction`'s own site);
-                        // moving where that one binding renders does not
-                        // create a second CTA. The summary sections below
-                        // (社員の様子/重要タスク/クイックアクセス/収支) stay reachable by
-                        // scroll, quick access, and the bottom nav exactly
-                        // as before.
-                        //
-                        // HOME-COMPACT-1B.4: 社員の様子 (社員概要) joins the
-                        // required initial-view set too — see this class's
-                        // own doc on `_officeStageKey` — which is why the
-                        // small gap below is explicit rather than relying on
-                        // a trailing spacer inside
-                        // PublicDemoHomeDashboardSection: every pixel
-                        // between here and the Office Stage now matters for
-                        // fitting the 360x800 target with no scroll.
-                        if (_monthlyPrimaryAction
-                            case final monthlyAction?) ...[
-                          const SizedBox(height: 2),
-                          PublicDemoMonthlyPrimaryCtaSection(
-                            action: monthlyAction,
-                          ),
-                        ],
-                        // HOME-COMPACT-1B.4: trimmed from 8 — 社員概要 must
-                        // now also fit inside the unscrolled initial view
-                        // alongside 月/KPI/ひより/月次CTA (see this class's
-                        // own doc on `_officeStageKey`), so every pixel
-                        // between the two cards above it and this one is
-                        // spent deliberately.
-                        const SizedBox(height: 2),
-                        // Section 5: employee summary. This office-scene
-                        // card is now the ONLY roster-like presentation on
-                        // HOME — the former `PublicDemoEmployeeStageSection`
-                        // duplicate list is deleted (Issue #147 requires
-                        // employee information not be repeated across
-                        // adjacent HOME sections). Wrapped so quick access /
-                        // bottom nav / "社員" can scroll-jump to it.
-                        KeyedSubtree(
-                          key: _officeStageKey,
-                          child: HomeOfficeStageSection(
-                            display: _officeStageDisplay,
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        // Section 6: "今月の重要タスク" — up to three truthful
-                        // tasks built only from existing authoritative facts
-                        // (see _importantTasks's own doc).
-                        PublicDemoImportantTasksSection(items: _importantTasks),
-                        const SizedBox(height: 8),
-                        // Section 7: クイックアクセス — real on-page
-                        // scroll-jumps only, no dead buttons.
-                        PublicDemoQuickAccessSection(items: _quickAccessItems),
-                        const SizedBox(height: 8),
-                        // Supplementary finance detail, kept from the prior
-                        // structure and wrapped so it is reachable from
-                        // quick access / bottom nav even in April, before
-                        // the first monthly close (unlike
-                        // `_monthlyCashFlowKey`'s card, this always renders
-                        // — see the field's own doc).
-                        KeyedSubtree(
-                          key: _financeSummaryKey,
-                          child: PublicDemoFinanceSummarySection(
-                            summary: _financeSummary,
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        // The real, interactive per-person gameplay action
-                        // surface (SkillSheet review, selling, interviews,
-                        // orders, recovery, ...) — unchanged content, only
-                        // repositioned after the new required top-of-screen
-                        // sections, and wrapped as the "案件・営業"/other-
-                        // actions scroll-jump target every quick-access,
-                        // bottom-nav, and Navigator-secondary-route
-                        // affordance on this screen points to.
-                        KeyedSubtree(
-                          key: _legacyActionsKey,
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              dashboard(),
-                              if (s.month == 4) ...[
-                                for (
-                                  var i = 0;
-                                  i < workflow.engineers.length;
-                                  i++
-                                )
-                                  ec(i),
-                              ],
-                              if (s.month == 5) ...[
-                                _RecruitmentMediaCard(
-                                  state: s,
-                                  onPressed: _openRecruitmentMedia,
-                                ),
-                                for (
-                                  var i = 0;
-                                  i < workflow.applicants.length;
-                                  i++
-                                )
-                                  ac(i),
-                              ],
-                              if (s.month == 6)
-                                for (final a in workflow.applicants.where(
-                                  (a) =>
-                                      s.joinedApplicantIds.contains(a.id) &&
-                                      a.hasJoined,
-                                ))
-                                  employeeConditionCard(a),
-                              if (s.month == 6) ...[
-                                for (
-                                  var i = 0;
-                                  i < workflow.engineers.length;
-                                  i++
-                                )
-                                  if (s.joinedApplicantIds.contains(
-                                        workflow.engineers[i].id,
-                                      ) &&
-                                      workflow.engineers[i].stage !=
-                                          PublicDemoSalesStage.ordered &&
-                                      !workflow.assignments.any(
-                                        (assignment) =>
-                                            assignment.engineerId ==
-                                            workflow.engineers[i].id,
-                                      ))
-                                    ec(i),
-                                for (
-                                  var i = 0;
-                                  i < workflow.assignments.length;
-                                  i++
-                                )
-                                  assignmentCard(i),
-                              ],
-                              // RECOVERY-LOOP-1: from July (7) through February
-                              // (14) — the same window
-                              // `PublicDemoRecoveryEligibility` enforces — every
-                              // economically-waiting engineer's card is rendered
-                              // here, mirroring month 6's own filter
-                              // (`!assignedEngineerIds.contains(...)`) so the
-                              // existing sales-flow buttons (`ec(i)`'s own
-                              // `waiting` → `ordered` branches, plus the new
-                              // Recovery button once `ordered`) are reachable at
-                              // all past June — no month past June otherwise
-                              // renders an engineer card for anyone still
-                              // waiting. `showTrainingCard: false` because the
-                              // `s.month >= 6` block below already renders every
-                              // engineer runtime's training card unconditionally
-                              // — rendering it a second time here would duplicate
-                              // that same card's key.
-                              if (s.month >= 7 && s.month <= 14)
-                                for (
-                                  var i = 0;
-                                  i < workflow.engineers.length;
-                                  i++
-                                )
-                                  if (!workflow
-                                      .assignedEngineerIds(month: s.month)
-                                      .contains(workflow.engineers[i].id))
-                                    ec(i, showTrainingCard: false),
-                              if (s.month == 7) ...[
-                                Text(
-                                  '7月開始結果',
-                                  style: Theme.of(c).textTheme.titleLarge,
-                                ),
-                                // SES-FIRST-FUN-YEAR-UI-PHASE-1: the 参画/待機
-                                // headcount line that used to render here is
-                                // removed — it duplicated the always-visible
-                                // compact KPI's 参画/待機 tiles verbatim.
-                                for (final a in workflow.assignments)
-                                  ListTile(
-                                    title: Text(a.engineerName),
-                                    subtitle: Text(julyResult(a)),
-                                  ),
-                                Card(
-                                  child: Padding(
-                                    padding: const EdgeInsets.all(12),
-                                    child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        const Text(
-                                          '夏季賞与',
-                                          style: TextStyle(
-                                            fontWeight: FontWeight.bold,
-                                          ),
-                                        ),
-                                        const SizedBox(height: 4),
-                                        Text(
-                                          _summerBonusDecisionRequired
-                                              ? '7月終了前に支給内容を選びましょう。'
-                                              : '選択済み：${switch (s.summerBonusSelection) {
-                                                  PublicDemoSummerBonusPlan.none => 'なし',
-                                                  PublicDemoSummerBonusPlan.half => '0.5か月',
-                                                  PublicDemoSummerBonusPlan.one => '1か月',
-                                                }}',
-                                        ),
-                                        const SizedBox(height: 8),
-                                        FilledButton(
-                                          key: const Key(
-                                            'public-demo-summer-bonus-decision',
-                                          ),
-                                          onPressed: decideSummerBonus,
-                                          child: Text(
-                                            _summerBonusDecisionRequired
-                                                ? '夏季賞与を決める'
-                                                : '夏季賞与を変更',
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ),
-                              ],
-                              if (s.month >= 8 && s.month <= 14) ...[
-                                Text(
-                                  '${publicDemoMonthLabel(s.month)}開始結果',
-                                  style: Theme.of(c).textTheme.titleLarge,
-                                ),
-                                if (s.month == 8) ...[
-                                  const Text('7月分の給与を反映しました'),
-                                  Text(
-                                    s.summerBonusPaidAmount == 0
-                                        ? '夏季賞与 なし'
-                                        : '夏季賞与 ¥${s.summerBonusPaidAmount}',
-                                  ),
-                                ],
-                              ],
-                              if (s.month == 15 && !s.fiscalYearCompleted) ...[
-                                Text(
-                                  '${publicDemoMonthLabel(s.month)}開始結果',
-                                  style: Theme.of(c).textTheme.titleLarge,
-                                ),
-                              ],
-                              if (s.fiscalYearCompleted) ...[
-                                Card(
-                                  key: const Key(
-                                    'public-demo-fiscal-year-complete',
-                                  ),
-                                  child: Padding(
-                                    padding: const EdgeInsets.all(14),
-                                    child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        Text(
-                                          '第1期終了',
-                                          style: Theme.of(
-                                            c,
-                                          ).textTheme.titleLarge,
-                                        ),
-                                        const SizedBox(height: 8),
-                                        const Text('1年間の経営が終了しました。'),
-                                        const SizedBox(height: 8),
-                                        Text('最終現預金 ¥${s.cash}'),
-                                      ],
-                                    ),
-                                  ),
-                                ),
-                              ],
-                              if (s.month >= 7)
-                                for (final a in workflow.applicants.where(
-                                  (a) =>
-                                      s.joinedApplicantIds.contains(a.id) &&
-                                      a.hasJoined,
-                                ))
-                                  employeeConditionCard(a),
-                              if (s.month >= 6)
-                                for (final runtime in s.engineerRuntimes)
-                                  internalTrainingCard(
-                                    engineerId: runtime.engineerId,
-                                    engineerName: _engineerName(
-                                      runtime.engineerId,
-                                    ),
-                                  ),
-                            ],
-                          ),
-                        ),
-                        KeyedSubtree(
-                          key: _devMenuKey,
-                          child: _publicDemoDevMenuSection(),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
+                // PUBLIC-DEMO-HOME-UI-3B: only the selected tab's widget
+                // subtree is ever constructed — a tab that is not selected
+                // is not merely painted-over or excluded from hit-testing,
+                // it is simply not built. This is what makes "HOME no
+                // longer contains the full employee detail/training list"
+                // (etc.) a structural fact rather than a visual one.
+                child: switch (_selectedTabIndex) {
+                  _employeesTabIndex => _buildEmployeesTab(c),
+                  _salesTabIndex => _buildSalesTab(c),
+                  _accountingTabIndex => _buildAccountingTab(c),
+                  _menuTabIndex => _buildMenuTab(c),
+                  _ => _buildHomeTab(c, navigatorAdvice),
+                },
               ),
             ),
             if (_isRestoring)

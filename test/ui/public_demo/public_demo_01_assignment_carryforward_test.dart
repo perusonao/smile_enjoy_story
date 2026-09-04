@@ -5,6 +5,8 @@ import 'package:smile_enjoy_story/game/public_demo/public_demo_growth_engine.dar
 import 'package:smile_enjoy_story/game/public_demo/public_demo_state.dart';
 import 'package:smile_enjoy_story/ui/public_demo/public_demo_01_placeholder_screen.dart';
 
+import 'public_demo_tab_test_helpers.dart';
+
 // 12MONTH-3-FIX1 P1-1: Public Demo 0.1's formally-adopted design decision is
 // that an engineer whose assignment is accepted for July continues on the
 // same assignment, with no further monthly renewal decision — see
@@ -86,6 +88,8 @@ void main() {
       );
 
       // April: Sato wins the May order (deterministic interview scores).
+      // The employee sales-progression card is on 社員 now.
+      await switchPublicDemoTab(tester, PublicDemoTab.employees);
       await tapAndSettle(tester, 'SkillSheet確認');
       await tapAndSettle(tester, '営業開始');
       await tapAndSettle(tester, '案件紹介');
@@ -95,6 +99,8 @@ void main() {
       await dismiss(tester);
       await tapAndSettle(tester, '受注');
       await dismiss(tester);
+      // The month-close CTA is HOME's own monthly primary action.
+      await switchPublicDemoTab(tester, PublicDemoTab.home);
       await tapAndSettle(tester, '4月を終了して5月へ');
       await dismiss(tester);
 
@@ -102,10 +108,13 @@ void main() {
       await tapAndSettle(tester, '5月を終了して6月へ');
 
       // June: explicitly accept July's continuation — the one real decision
-      // this contract is built on.
+      // this contract is built on. The assignment (project continuation)
+      // pipeline is on 営業.
+      await switchPublicDemoTab(tester, PublicDemoTab.sales);
       await tapAndSettle(tester, '7月分の発注を確認');
       expect(find.text('7月分発注あり'), findsOneWidget);
       await tapAndSettle(tester, '受注する');
+      await switchPublicDemoTab(tester, PublicDemoTab.home);
       await tapAndSettle(tester, '6月を終了して7月へ');
 
       // A. July: the assignment is established, and Revenue/Growth already

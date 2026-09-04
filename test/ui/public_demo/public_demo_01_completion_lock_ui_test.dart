@@ -4,6 +4,8 @@ import 'package:smile_enjoy_story/game/public_demo/public_demo_financial_status.
 import 'package:smile_enjoy_story/game/public_demo/public_demo_state.dart';
 import 'package:smile_enjoy_story/ui/public_demo/public_demo_01_placeholder_screen.dart';
 
+import 'public_demo_tab_test_helpers.dart';
+
 // POST-12MONTH-1 / FINANCE-FAILURE-1A+1B: once a terminal state is reached
 // (fiscal year completed, or — B'.1 — BANKRUPTCY), Public Demo 0.1 is a
 // read-only terminal state. This walks the same real-widget April onward
@@ -88,6 +90,8 @@ void main() {
     // April: Sato wins the May order (same deterministic path as the
     // carryforward test), leaving Suzuki (eng-02) waiting the whole year
     // so its internal-training card stays reachable in every later month.
+    // The employee sales-progression card is on 社員 now.
+    await switchPublicDemoTab(tester, PublicDemoTab.employees);
     await tapAndSettle(tester, 'SkillSheet確認');
     await tapAndSettle(tester, '営業開始');
     await tapAndSettle(tester, '案件紹介');
@@ -97,21 +101,27 @@ void main() {
     await dismiss(tester);
     await tapAndSettle(tester, '受注');
     await dismiss(tester);
+    // The month-close CTA is HOME's own monthly primary action.
+    await switchPublicDemoTab(tester, PublicDemoTab.home);
     await tapAndSettle(tester, '4月を終了して5月へ');
     await dismiss(tester);
 
     // May: no further hiring.
     await tapAndSettle(tester, '5月を終了して6月へ');
 
-    // June: accept July's continuation for Sato.
+    // June: accept July's continuation for Sato — the assignment (project
+    // continuation) pipeline is on 営業.
+    await switchPublicDemoTab(tester, PublicDemoTab.sales);
     await tapAndSettle(tester, '7月分の発注を確認');
     await tapAndSettle(tester, '受注する');
+    await switchPublicDemoTab(tester, PublicDemoTab.home);
     await tapAndSettle(tester, '6月を終了して7月へ');
 
     // F (pre-completion sanity): Suzuki's training card and CTA are
     // present before the fiscal year ends — this is the same CTA E will
     // later check is gone, confirming the guard is what hides it, not
-    // some unrelated rendering gap.
+    // some unrelated rendering gap. Training is employee detail, on 社員.
+    await switchPublicDemoTab(tester, PublicDemoTab.employees);
     await scrollToEnd(tester);
     expect(
       find.byKey(const Key('public-demo-internal-training-eng-02')),
@@ -123,7 +133,8 @@ void main() {
     );
 
     // Close July (default "no bonus"), then every ordinary month through
-    // March.
+    // March. The month-close CTA is HOME's own monthly primary action.
+    await switchPublicDemoTab(tester, PublicDemoTab.home);
     await tapAndSettle(tester, '7月を終了して8月へ');
     await tester.tap(find.byKey(const Key('public-demo-summer-bonus-none')));
     await tester.pumpAndSettle();
@@ -155,10 +166,11 @@ void main() {
     final cashBeforeAnyPostTerminalTap = state.cash;
     final trainingSelectionsBefore = state.trainingSelections;
 
-    await scrollToEnd(tester);
-
     // E: the mutation CTA (internal training) is gone — hidden, not just
     // disabled — while the card itself (read-only: name, cost) remains.
+    // Training is employee detail, on 社員.
+    await switchPublicDemoTab(tester, PublicDemoTab.employees);
+    await scrollToEnd(tester);
     expect(
       find.byKey(const Key('public-demo-internal-training-eng-02')),
       findsOneWidget,
@@ -169,11 +181,13 @@ void main() {
       findsNothing,
       reason: 'the mutation CTA must be hidden once bankrupt',
     );
-
-    // F: read-only navigation still works — cash and employee names
-    // remain visible, and the page still scrolls.
-    expect(find.textContaining('現預金'), findsWidgets);
+    // Employee names remain visible on 社員's own read-only cards.
     expect(find.text('佐藤 健'), findsWidgets);
+
+    // F: read-only navigation still works — cash remains visible on HOME's
+    // own bankruptcy terminal card, and the page still scrolls.
+    await switchPublicDemoTab(tester, PublicDemoTab.home);
+    expect(find.textContaining('現預金'), findsWidgets);
 
     // PLAYTEST-BLOCKER-1A: the bankruptcy terminal card is shown so
     // the player understands the game ended due to bankruptcy, not

@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:smile_enjoy_story/ui/public_demo/public_demo_01_placeholder_screen.dart';
 
+import 'public_demo_tab_test_helpers.dart';
+
 Future<void> tapAndSettle(WidgetTester tester, String text) async {
   final finder = find.text(text);
   await tester.scrollUntilVisible(
@@ -53,13 +55,16 @@ void main() {
     await tester.tap(find.widgetWithText(FilledButton, '確認'));
     await tester.pumpAndSettle();
     expect(find.text('1年目 5月'), findsOneWidget);
-    // The completed April growth is visible without another modal. Both
+    // The completed April growth is visible without another modal — on 社員
+    // now (PUBLIC-DEMO-HOME-UI-3B moved growth results off HOME). Both
     // engineers waited, so no practical experience is claimed.
+    await switchPublicDemoTab(tester, PublicDemoTab.employees);
     expect(find.text('今月の成長'), findsOneWidget);
     expect(find.text('待機中の自己学習'), findsNWidgets(2));
     expect(find.textContaining('実務経験'), findsNothing);
 
     // May: advance without hiring. This is a valid failure/recovery route.
+    await switchPublicDemoTab(tester, PublicDemoTab.home);
     await tapAndSettle(tester, '5月を終了して6月へ');
     expect(find.text('1年目 6月'), findsOneWidget);
     expect(find.textContaining('翌月の発注を確認'), findsOneWidget);
@@ -68,14 +73,6 @@ void main() {
     // June: no assignments is valid; advance into July waiting state.
     await tapAndSettle(tester, '6月を終了して7月へ');
     expect(find.text('1年目 7月'), findsOneWidget);
-    // Recruitment media is intentionally unavailable in July because this
-    // month has no applicant-processing pipeline. Keep asserting the exact
-    // July assignment/waiting contract after scrolling to it.
-    expect(
-      find.byKey(const Key('public-demo-recruitment-media-card')),
-      findsNothing,
-    );
-    expect(find.text('求人媒体を選ぶ'), findsNothing);
     // SES-FIRST-FUN-YEAR-UI-PHASE-1: the July recap's own
     // "参画 X名 / 待機 Y名" line was removed as a duplicate of the always-
     // visible compact KPI's 参画/待機 tiles, which already carry this exact
@@ -96,16 +93,26 @@ void main() {
       ),
       findsOneWidget,
     );
-    await tester.scrollUntilVisible(
-      find.text('7月開始結果'),
-      300,
-      scrollable: find.byType(Scrollable).first,
+
+    // Recruitment media is intentionally unavailable in July because this
+    // month has no applicant-processing pipeline. PUBLIC-DEMO-HOME-UI-3B
+    // moved this pipeline to 営業, and the assignment-result narrative with
+    // it — checked there so the absence assertion still means something.
+    await switchPublicDemoTab(tester, PublicDemoTab.sales);
+    expect(
+      find.byKey(const Key('public-demo-recruitment-media-card')),
+      findsNothing,
     );
+    expect(find.text('求人媒体を選ぶ'), findsNothing);
     expect(find.text('7月開始結果'), findsOneWidget);
+    // 夏季賞与 is finance detail — moved to 会計.
+    await switchPublicDemoTab(tester, PublicDemoTab.accounting);
     expect(find.text('夏季賞与'), findsOneWidget);
 
     // The default domain plan is none, but July still explicitly asks the
-    // player to confirm that decision before it can be settled.
+    // player to confirm that decision before it can be settled. The
+    // month-close CTA is HOME's own monthly primary action.
+    await switchPublicDemoTab(tester, PublicDemoTab.home);
     await tapAndSettle(tester, '7月を終了して8月へ');
     expect(
       find.byKey(const Key('public-demo-summer-bonus-none')),
@@ -122,6 +129,8 @@ void main() {
     await tapAndSettle(tester, '4月を終了して5月へ');
     await tester.tap(find.widgetWithText(FilledButton, '確認'));
     await tester.pumpAndSettle();
+    // The recruiting/applicant pipeline is on 営業 (PUBLIC-DEMO-HOME-UI-3B).
+    await switchPublicDemoTab(tester, PublicDemoTab.sales);
 
     final recruitmentMediaButton = find.byKey(
       const Key('public-demo-open-recruitment-media'),

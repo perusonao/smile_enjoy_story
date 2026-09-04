@@ -7,6 +7,8 @@ import 'package:smile_enjoy_story/game/public_demo/public_demo_state.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_workflow_state.dart';
 import 'package:smile_enjoy_story/ui/public_demo/public_demo_01_placeholder_screen.dart';
 
+import 'public_demo_tab_test_helpers.dart';
+
 PublicDemoState currentState(WidgetTester tester) =>
     (tester.state(find.byType(PublicDemo01PlaceholderScreen)) as dynamic).s
         as PublicDemoState;
@@ -75,6 +77,10 @@ void main() {
       const MaterialApp(home: PublicDemo01PlaceholderScreen()),
     );
     await tester.pumpAndSettle();
+    // PUBLIC-DEMO-HOME-UI-3B: the founding-engineer sales card (and its
+    // field-sales lock banner) is employee detail now reachable from 社員,
+    // not HOME.
+    await switchPublicDemoTab(tester, PublicDemoTab.employees);
 
     final stateBefore = currentState(tester);
     final workflowBefore = currentWorkflow(tester);
@@ -202,6 +208,8 @@ void main() {
       reason: 'selecting training charges its ¥30,000 cost immediately',
     );
 
+    // The month-close CTA is HOME's own monthly primary action.
+    await switchPublicDemoTab(tester, PublicDemoTab.home);
     await tapAndSettle(tester, '4月を終了して5月へ');
     await dismissDialog(tester, '確認');
     expect(find.text('1年目 5月'), findsOneWidget);
@@ -218,26 +226,32 @@ void main() {
       lessThan(PublicDemoEngineerRuntime.fieldSalesCapabilityRequirement),
       reason: 'one month of training cannot reach the field-sales threshold',
     );
-    // May renders no founding-engineer sales card at all.
+    // May renders no founding-engineer sales card at all — checked on 社員,
+    // the tab that would render it.
+    await switchPublicDemoTab(tester, PublicDemoTab.employees);
     expect(actionButton('SkillSheet確認'), findsNothing);
 
+    await switchPublicDemoTab(tester, PublicDemoTab.home);
     await tapAndSettle(tester, '5月を終了して6月へ');
     expect(find.text('1年目 6月'), findsOneWidget);
     // June's founding-engineer sales card is scoped to newly joined
     // applicants (joinedApplicantIds), which excludes Suzuki by design —
     // she gets no SkillSheet action here either, only the standalone
     // training card the month>=6 loop renders for every runtime.
+    await switchPublicDemoTab(tester, PublicDemoTab.employees);
     expect(actionButton('SkillSheet確認'), findsNothing);
     expect(
       find.byKey(const Key('public-demo-internal-training-eng-02')),
       findsOneWidget,
     );
 
+    await switchPublicDemoTab(tester, PublicDemoTab.home);
     await tapAndSettle(tester, '6月を終了して7月へ');
     expect(find.text('1年目 7月'), findsOneWidget);
     // Month 7 onward never renders a founding-engineer sales card again —
     // the corrected banner's "まだ営業を始められません。" is still true here,
     // and no button anywhere on screen contradicts it.
+    await switchPublicDemoTab(tester, PublicDemoTab.employees);
     expect(actionButton('SkillSheet確認'), findsNothing);
     expect(tester.takeException(), isNull);
   });

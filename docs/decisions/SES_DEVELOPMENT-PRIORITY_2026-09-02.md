@@ -180,6 +180,11 @@ Result Reportは履歴・証拠であり、この文書の代わりにはしな�
 
 ### 2026-09-04
 
+- First Fun Year P0「資金不足の表示が誤って回復を示唆する」を解消。既存の
+  `PublicDemoCashForecast`の次回決算見込みを読み取り専用で用い、マイナスの
+  ときは回復を示唆せず、次回決算後も資金不足であることと根拠数値を表示する。
+  詳細: `docs/reports/SES_FIRST-FUN-YEAR_P0_Cash-Shortage-Truth_Result.md`。
+
 - Fast CIをFlutter検証・Replay unit・Chromium smokeの並列必須ゲートへ再編。検証範囲を縮めず、Node lockfileキャッシュ優先で通常PRからデプロイまでの待機を短縮。
 
 ### 2026-09-02

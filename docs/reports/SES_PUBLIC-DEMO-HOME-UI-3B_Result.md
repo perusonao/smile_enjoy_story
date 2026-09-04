@@ -272,5 +272,12 @@ overflow at either target width.
 - Known gaps are cosmetic/deep-link-precision only (§6), not acceptance-
   criteria violations; none block merge.
 
-Branch/commit/PR details are appended after push — see the PR description
-for the final commit SHA and PR number.
+## 11. Branch / commit / PR
+
+- Branch: `claude/public-demo-home-ui-3b-3aj3ur`
+- Commit: `87be6d7169ecef4fe53384e45db35c89088429eb`
+- PR: [#172](https://github.com/perusonao/smile_enjoy_story/pull/172)
+
+Per this task's explicit instruction, Issues #147 and #171 are **not**
+auto-closed — production-deploy Screen Verification is left to the
+repository owner.

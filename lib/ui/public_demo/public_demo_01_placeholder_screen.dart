@@ -244,6 +244,25 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
   /// see [_game].
   PublicDemoWorkflowState get workflow => _game.workflow;
 
+  /// FIRST-FUN-YEAR P0 (cash-shortage truth): the next monthly close's
+  /// forecast entry — [PublicDemoCashForecast.forecast]'s own first
+  /// projected month, read-only. This is the single fact
+  /// [PublicDemoCashShortageCard] and the "資金不足を確認" dialog
+  /// ([_showCashShortageExplanation]) both read to state whether the next
+  /// close actually recovers; neither recomputes a forecast of its own, so
+  /// the two surfaces can never disagree.
+  ///
+  /// `null` only when [s.isCloseBlocked] — there genuinely is no further
+  /// close ahead (fiscal year completed, or an already-terminal financial
+  /// status); [PublicDemoFinancialStatus.cashShortage] itself is never
+  /// close-blocked, so this is always non-null while the shortage card and
+  /// dialog can actually render.
+  PublicDemoCashForecastMonth? get _nextCloseForecastEntry =>
+      PublicDemoCashForecast.forecast(
+        state: s,
+        workflow: workflow,
+      ).months.firstOrNull;
+
   /// HOME-RUNTIME-READ-1: the read-only HOME dashboard projection, derived
   /// on demand from the authoritative aggregate this widget owns ([_game],
   /// via its finance-side view [s]).
@@ -874,16 +893,27 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
 
   /// PLAYTEST-BLOCKER-1A: shows a compact dialog that always produces
   /// perceptible feedback regardless of scroll position. The player sees
-  /// the current cash, the shortage amount, the pending AR, and a plain
-  /// explanation of what the next monthly close decides and what to review.
+  /// the current cash, the shortage amount, the pending AR, the next
+  /// close's forecasted cash, and a plain explanation of what the next
+  /// monthly close decides and what to review.
   ///
   /// This replaces the former inert scroll-to-zero behaviour that appeared
   /// completely inert when the player was already at the top of the screen.
   /// No finance authority moves into this path — it reads [s] read-only and
   /// shows the same values already on the shortage card.
+  ///
+  /// FIRST-FUN-YEAR P0 (cash-shortage truth): the recovery/continues-in-
+  /// shortage wording is now [PublicDemoCashShortageOutlook
+  /// .fromForecastEntry] applied to the exact same [_nextCloseForecastEntry]
+  /// the shortage card reads — never a separate "0円以上になれば回復します"
+  /// claim computed from [s.pendingRevenue] alone. The card and this dialog
+  /// therefore always state the identical number and conclusion.
   Future<void> _showCashShortageExplanation() async {
     if (!mounted) return;
     final deficit = s.cash < 0 ? -s.cash : 0;
+    final outlook = PublicDemoCashShortageOutlook.fromForecastEntry(
+      _nextCloseForecastEntry,
+    );
     await showDialog<void>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -903,11 +933,24 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
               _dialogRow('現在の現預金', formatYen(s.cash)),
               _dialogRow('不足額', formatYen(deficit)),
               _dialogRow('次回入金予定（売掛金）', formatYen(s.pendingRevenue)),
-              const SizedBox(height: 12),
-              const Text(
-                '次回の月次決算で現預金が0円以上になれば回復します。'
-                'このまま赤字が続くと倒産となります。',
+              _dialogRow(
+                '次回決算後見込み',
+                outlook.projectedClosingCash == null
+                    ? '算出不可'
+                    : formatYen(outlook.projectedClosingCash!),
               ),
+              const SizedBox(height: 12),
+              Text(
+                outlook.headline,
+                style: TextStyle(
+                  fontWeight: FontWeight.w600,
+                  color: outlook.willRecover ? null : Colors.red.shade700,
+                ),
+              ),
+              if (outlook.expectedLine != null) ...[
+                const SizedBox(height: 4),
+                Text(outlook.expectedLine!),
+              ],
               const SizedBox(height: 8),
               Text(
                 '営業・案件参画を強化して翌月の収益を増やしましょう。',
@@ -2750,7 +2793,10 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
                         // that from the sign of cash. This screen decides where the
                         // card goes, not whether it applies, which is why
                         // `financialStatus` is still not projected into HOME.
-                        PublicDemoCashShortageCard(state: s),
+                        PublicDemoCashShortageCard(
+                          state: s,
+                          nextClose: _nextCloseForecastEntry,
+                        ),
                         // PLAYTEST-BLOCKER-1A: when a terminal financial state is
                         // reached (bankruptcy or March cash-shortage failure),
                         // show a prominent card that communicates the game-over

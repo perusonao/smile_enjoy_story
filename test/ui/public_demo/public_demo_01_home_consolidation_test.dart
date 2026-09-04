@@ -929,7 +929,10 @@ void main() {
       await tester.pumpWidget(
         MaterialApp(
           home: Scaffold(
-            body: PublicDemoCashShortageCard(state: negativeButNormal),
+            body: PublicDemoCashShortageCard(
+              state: negativeButNormal,
+              nextClose: null,
+            ),
           ),
         ),
       );

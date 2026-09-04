@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../game/public_demo/public_demo_cash_forecast.dart';
 import '../../game/public_demo/public_demo_financial_status.dart';
 import '../../game/public_demo/public_demo_state.dart';
 import '../theme.dart';
@@ -19,9 +20,25 @@ import '../theme.dart';
 /// the existing suites already pin. Nothing about *when* this card renders,
 /// or what it says, changed — only how much room it spends saying it.
 class PublicDemoCashShortageCard extends StatelessWidget {
-  const PublicDemoCashShortageCard({super.key, required this.state});
+  const PublicDemoCashShortageCard({
+    super.key,
+    required this.state,
+    required this.nextClose,
+  });
 
   final PublicDemoState state;
+
+  /// The next monthly close's forecast entry — [PublicDemoCashForecast
+  /// .forecast]'s own first projected month, read-only. This card never
+  /// recomputes that projection itself; see
+  /// [PublicDemoCashShortageOutlook.fromForecastEntry] for how it turns
+  /// this single confirmed-information fact into the truthful headline
+  /// below. `null` only when the caller could not produce a forecast entry
+  /// (should not happen while [state.financialStatus] is
+  /// [PublicDemoFinancialStatus.cashShortage], since that status is never
+  /// close-blocked — see [PublicDemoCashShortageOutlook]'s own doc for the
+  /// safe fallback this still renders).
+  final PublicDemoCashForecastMonth? nextClose;
 
   @override
   Widget build(BuildContext context) {
@@ -30,6 +47,7 @@ class PublicDemoCashShortageCard extends StatelessWidget {
     }
 
     final deficit = state.cash < 0 ? -state.cash : 0;
+    final outlook = PublicDemoCashShortageOutlook.fromForecastEntry(nextClose);
     final theme = Theme.of(context);
 
     return Card(
@@ -73,17 +91,47 @@ class PublicDemoCashShortageCard extends StatelessWidget {
                 Expanded(
                   child: _Tile('次回入金予定（売掛金）', formatYen(state.pendingRevenue)),
                 ),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: _Tile(
+                    '次回決算後見込み',
+                    outlook.projectedClosingCash == null
+                        ? '算出不可'
+                        : formatYen(outlook.projectedClosingCash!),
+                  ),
+                ),
               ],
             ),
             const SizedBox(height: 3),
-            Text(
-              '次回の月次決算で現預金が0円以上になれば回復します。'
-              '赤字のままの場合は倒産となります。'
-              '営業・案件参画・既存社員の活動は継続できます。'
-              '新規採用、給与債務を伴う内定、社内研修、有償賞与などの追加支出は制限されます。',
-              style: theme.textTheme.bodySmall?.copyWith(
-                fontSize: 11,
-                height: 1.2,
+            // HOME-COMPACT-1B.4 FIX1's height budget stays binding: the
+            // headline/evidence-line/continuation prose is one continuously
+            // wrapping paragraph (a single RichText), not three stacked
+            // Text widgets, so an added evidence line never forces a whole
+            // extra widget-block worth of vertical space on top of its own
+            // wrapped line(s) — exactly the same packing the pre-existing
+            // single-Text paragraph this replaces already relied on.
+            RichText(
+              text: TextSpan(
+                style: theme.textTheme.bodySmall?.copyWith(
+                  fontSize: 11,
+                  height: 1.2,
+                ),
+                children: [
+                  TextSpan(
+                    text: outlook.headline,
+                    style: TextStyle(
+                      fontWeight: FontWeight.w600,
+                      color: outlook.willRecover ? null : Colors.red.shade700,
+                    ),
+                  ),
+                  if (outlook.expectedLine != null)
+                    TextSpan(text: outlook.expectedLine),
+                  const TextSpan(
+                    text:
+                        '営業・案件参画・既存社員の活動は継続できます。'
+                        '新規採用、給与債務を伴う内定、社内研修、有償賞与などの追加支出は制限されます。',
+                  ),
+                ],
               ),
             ),
           ],
@@ -91,6 +139,82 @@ class PublicDemoCashShortageCard extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Shared, forecast-based outlook text for the resolved next monthly
+/// close, built once from [PublicDemoCashForecast.forecast]'s own first
+/// projected month and consumed identically by both
+/// [PublicDemoCashShortageCard] and the HOME "資金不足を確認" dialog
+/// (`PublicDemo01PlaceholderScreen._showCashShortageExplanation`) — so the
+/// two surfaces can never disagree about whether the next close recovers.
+///
+/// This never recomputes a forecast or a shortage/safety threshold of its
+/// own: [willRecover] is read directly off
+/// [PublicDemoCashForecastMonth.isNegative]/`closingCash`, the exact same
+/// fact the real monthly close will use to decide
+/// [PublicDemoFinancialStatus.afterClose]. It only ever states what that
+/// one confirmed projection already implies — never "回復します" (or any
+/// other recovery-implying phrase) while the projected closing cash is
+/// still negative.
+class PublicDemoCashShortageOutlook {
+  const PublicDemoCashShortageOutlook._({
+    required this.projectedClosingCash,
+    required this.willRecover,
+    required this.headline,
+    this.expectedLine,
+  });
+
+  factory PublicDemoCashShortageOutlook.fromForecastEntry(
+    PublicDemoCashForecastMonth? nextClose,
+  ) {
+    if (nextClose == null) {
+      // No forecast entry to read (should not happen while the caller is
+      // in an actual, non-close-blocked shortage — see [nextClose]'s own
+      // doc on the card). Never guesses a number or implies recovery.
+      return const PublicDemoCashShortageOutlook._(
+        projectedClosingCash: null,
+        willRecover: false,
+        headline: '次回決算後の見込みを算出できません。営業・案件参画の状況を確認してください。',
+      );
+    }
+    if (!nextClose.isNegative) {
+      return PublicDemoCashShortageOutlook._(
+        projectedClosingCash: nextClose.closingCash,
+        willRecover: true,
+        headline:
+            '次回の月次決算で現預金が${formatYen(nextClose.closingCash)}となり、'
+            '資金不足から回復する見込みです。',
+      );
+    }
+    final expectedCosts = nextClose.monthlyExpenses + nextClose.bonusPaid;
+    return PublicDemoCashShortageOutlook._(
+      projectedClosingCash: nextClose.closingCash,
+      willRecover: false,
+      headline: '次回決算後も資金不足の見込みです。赤字のままの場合は倒産となります。',
+      expectedLine:
+          '入金予定 ${formatYen(nextClose.cashReceived)} に対し、'
+          '見込み費用 ${formatYen(expectedCosts)}。',
+    );
+  }
+
+  /// [PublicDemoCashForecastMonth.closingCash] verbatim, or `null` when
+  /// [fromForecastEntry] received no forecast entry.
+  final int? projectedClosingCash;
+
+  /// True only when [projectedClosingCash] is non-negative — never implied
+  /// by anything else (a present [PublicDemoState.pendingRevenue] alone
+  /// never sets this true; see the class doc).
+  final bool willRecover;
+
+  /// The one required-fact sentence: either the exact shortage-continues
+  /// wording the P0 spec requires, or a truthful recovery statement — never
+  /// both, never neither.
+  final String headline;
+
+  /// Present only when [willRecover] is false: the same short "入金予定 /
+  /// 見込み費用" comparison the P0 spec asks for, read verbatim from
+  /// [nextClose]'s own fields.
+  final String? expectedLine;
 }
 
 /// One evidence figure: its label above its bold value, both single-line —

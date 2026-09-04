@@ -100,7 +100,8 @@ class HomeDashboardDisplayData {
     this.waitingEmployeeCount = 0,
     this.salesRemaining = 0,
     this.monthGoalText = '',
-  });
+    int? totalEmployeeCount,
+  }) : totalEmployeeCount = totalEmployeeCount ?? employeeCount;
 
   /// Fiscal year number. Public Demo 0.1 models exactly one fiscal year
   /// (internal months 4-15: April through the following March) and has no
@@ -172,6 +173,26 @@ class HomeDashboardDisplayData {
   /// on it.
   final String monthGoalText;
 
+  /// The company's actual total headcount — [PublicDemoState.engineerCount]
+  /// **plus** [PublicDemoState.adminCount] (the one 総務/general-affairs
+  /// employee every Public Demo save starts with; see
+  /// `HomeNavigatorIdentity`'s own doc for the same fact stated from the
+  /// navigator-character side).
+  ///
+  /// Issue #122: [employeeCount] is deliberately left as engineer-only
+  /// above — it already has its own tested meaning and existing callers
+  /// (the "技術者数" tile) that this fix must not disturb. Any UI that
+  /// labels a figure "社員" (employees, i.e. the whole company), rather
+  /// than "技術者" (engineers specifically), must read this field instead,
+  /// so an engineer-only count is never shown as if it were the total
+  /// headcount.
+  ///
+  /// Defaults to [employeeCount] when not supplied, so every hand-built
+  /// fixture that predates this field (in particular
+  /// `home_dashboard_data_wiring_test.dart`'s `_dataWithCash`) keeps
+  /// compiling and asserting exactly what it asserted before.
+  final int totalEmployeeCount;
+
   /// Builds the display projection from the current authoritative Public
   /// Demo finance state. Pure and read-only: [state] is only ever read,
   /// never mutated or copied-with.
@@ -189,6 +210,7 @@ class HomeDashboardDisplayData {
       waitingEmployeeCount: state.engineersWaiting,
       salesRemaining: state.salesRemaining,
       monthGoalText: _monthGoalTextFor(state.month),
+      totalEmployeeCount: state.engineerCount + state.adminCount,
     );
   }
 
@@ -204,7 +226,8 @@ class HomeDashboardDisplayData {
       other.assignedEmployeeCount == assignedEmployeeCount &&
       other.waitingEmployeeCount == waitingEmployeeCount &&
       other.salesRemaining == salesRemaining &&
-      other.monthGoalText == monthGoalText;
+      other.monthGoalText == monthGoalText &&
+      other.totalEmployeeCount == totalEmployeeCount;
 
   @override
   int get hashCode => Object.hash(
@@ -218,5 +241,6 @@ class HomeDashboardDisplayData {
     waitingEmployeeCount,
     salesRemaining,
     monthGoalText,
+    totalEmployeeCount,
   );
 }

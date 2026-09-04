@@ -147,6 +147,71 @@ void main() {
     });
   });
 
+  // Issue #122: HOME's "社員" (total employees) figure must equal the
+  // company's real headcount, not `PublicDemoState.engineerCount` alone —
+  // that field never includes `adminCount`, the one 総務/general-affairs
+  // employee every Public Demo save starts with (`aprilStart().adminCount`
+  // == 1). This regression pins the two scenarios Issue #122 names
+  // directly: engineers-only, and engineers plus a general-affairs
+  // employee.
+  group('totalEmployeeCount projection (Issue #122)', () {
+    test('engineers only: totalEmployeeCount equals engineerCount', () {
+      final state = PublicDemoState.aprilStart().copyWith(
+        engineerCount: 2,
+        adminCount: 0,
+      );
+
+      final data = HomeDashboardDisplayData.fromPublicDemoState(state);
+
+      expect(data.totalEmployeeCount, 2);
+      expect(
+        data.totalEmployeeCount,
+        data.employeeCount,
+        reason:
+            'with no general-affairs staff, the total is the engineer '
+            'count alone',
+      );
+    });
+
+    test(
+      'engineers + general-affairs staff: totalEmployeeCount includes both',
+      () {
+        // The real Public Demo starting state: 2 engineers + 1 総務 admin.
+        final state = PublicDemoState.aprilStart();
+        expect(state.engineerCount, 2);
+        expect(state.adminCount, 1);
+
+        final data = HomeDashboardDisplayData.fromPublicDemoState(state);
+
+        expect(
+          data.totalEmployeeCount,
+          3,
+          reason:
+              'HOME must count the general-affairs employee too, not '
+              'just engineers',
+        );
+        expect(
+          data.totalEmployeeCount,
+          isNot(data.employeeCount),
+          reason:
+              'employeeCount (engineer-only) must not be reused as the '
+              'total headcount',
+        );
+      },
+    );
+
+    test('totalEmployeeCount tracks a larger engineer + admin roster', () {
+      final state = PublicDemoState.aprilStart().copyWith(
+        engineerCount: 5,
+        adminCount: 2,
+      );
+
+      final data = HomeDashboardDisplayData.fromPublicDemoState(state);
+
+      expect(data.totalEmployeeCount, 7);
+    });
+  });
+
   group('assignedEmployeeCount projection', () {
     test('assignedEmployeeCount excludes waiting employees', () {
       final state = PublicDemoState.aprilStart().copyWith(

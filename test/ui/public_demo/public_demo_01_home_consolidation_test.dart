@@ -401,10 +401,21 @@ void main() {
       expect(home.salesRemaining, 4);
       expect(kpiTileValue('sales-remaining', '4回'), findsOneWidget);
 
-      // 10. 社員 — the finance-side headcount, not applicants.
+      // 10. 社員 — Issue #122: the whole company's headcount (engineers +
+      // the one 総務/general-affairs employee), not engineerCount alone and
+      // not applicants. `employeeCount` itself stays engineer-only — it
+      // already backs other things — but the KPI tile labeled 社員 must
+      // read `totalEmployeeCount`.
       expect(home.employeeCount, state.engineerCount);
       expect(home.employeeCount, 2);
-      expect(kpiTileValue('employees', '2名'), findsOneWidget);
+      expect(home.totalEmployeeCount, state.engineerCount + state.adminCount);
+      expect(home.totalEmployeeCount, 3);
+      expect(kpiTileValue('employees', '3名'), findsOneWidget);
+      expect(
+        kpiTileValue('employees', '2名'),
+        findsNothing,
+        reason: 'Issue #122: the engineer-only count must never be labeled 社員',
+      );
 
       // 11. 参画 — engineersAssigned, never the waiting or total headcount.
       expect(home.assignedEmployeeCount, state.engineersAssigned);

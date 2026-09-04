@@ -37,14 +37,20 @@ import '../../../ui/asset_paths.dart';
 // the KPI row to answer either question. [employeeCount] and [waitingCount]
 // below are the answer, and they do not reopen the question above: both are
 // read from the exact same single authority the KPI's 社員/待機 tiles
-// already use (`PublicDemoState.engineerCount` /
-// `.engineersWaiting`), passed down verbatim by the owning screen — never a
-// second count derived here, and never a per-employee "this one is
+// already use (`HomeDashboardDisplayData.totalEmployeeCount` /
+// `.waitingEmployeeCount`), passed down verbatim by the owning screen —
+// never a second count derived here, and never a per-employee "this one is
 // waiting" label, which is the actual claim the note above explains this
 // section cannot safely make. Optional and defaulted to `null` precisely so
 // every existing construction site that has no aggregate to pass (in
 // particular every widget-level test built directly from a member list)
 // keeps rendering exactly as before this addition.
+//
+// Issue #122: [employeeCount] is the whole company's headcount — engineers
+// plus the one 総務/general-affairs employee every Public Demo save starts
+// with (`PublicDemoState.adminCount`) — not engineers alone. It is labeled
+// 社員 on screen, so it must equal the total the KPI's own 社員 tile shows,
+// never the engineer-only count that tile's separate 技術者数 label owns.
 
 /// One employee as the Office Stage draws them (HOME-RUNTIME-2B) — a face
 /// and a name, and deliberately nothing else (see the note above).

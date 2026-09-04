@@ -154,7 +154,11 @@ List<List<_KpiTileData>> _compactRowsFor(HomeDashboardDisplayData data) => [
     _KpiTileData(
       icon: Icons.groups_outlined,
       label: '社員',
-      value: '${data.employeeCount}名',
+      // Issue #122: this tile is labeled 社員 (the whole company), so it
+      // must read totalEmployeeCount (engineers + the 総務/general-affairs
+      // employee), never employeeCount alone — that field is engineer-only
+      // and already backs the separate "技術者数" tile above.
+      value: '${data.totalEmployeeCount}名',
       tileKey: const Key('home-kpi-compact-employees'),
     ),
     _KpiTileData(

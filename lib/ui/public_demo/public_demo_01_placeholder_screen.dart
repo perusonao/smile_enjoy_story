@@ -314,9 +314,18 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
   ///
   /// HOME-COMPACT-1B.4: [employeeCount]/[waitingCount] are the exact same
   /// figures [_homeDashboardData]'s KPI already reads
-  /// (`state.engineerCount`/`.engineersWaiting`) — passed straight through,
-  /// never recomputed here — so the Office Stage's own aggregate summary
-  /// line cannot disagree with the KPI row above it.
+  /// (`.totalEmployeeCount`/`.waitingEmployeeCount`) — passed straight
+  /// through, never recomputed here — so the Office Stage's own aggregate
+  /// summary line cannot disagree with the KPI row above it.
+  ///
+  /// Issue #122: [employeeCount] reads [HomeDashboardDisplayData
+  /// .totalEmployeeCount] (engineers + the one 総務/general-affairs
+  /// employee), not `state.engineerCount` alone — this chip is labeled 社員
+  /// (the whole company), the same label the KPI's totalEmployeeCount tile
+  /// uses, so it must state the same real total rather than an
+  /// engineer-only count under that label. [waitingCount] is unaffected:
+  /// the 総務 employee is not part of the assigned/waiting engineer
+  /// concept, so `engineersWaiting` still names exactly who it always did.
   HomeOfficeStageDisplay get _officeStageDisplay => HomeOfficeStageDisplay(
     members: [
       for (final engineer in workflow.engineers)
@@ -326,7 +335,7 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
           portraitAssetPath: homeOfficeStagePortraitFor(engineer.id),
         ),
     ],
-    employeeCount: s.engineerCount,
+    employeeCount: _homeDashboardData.totalEmployeeCount,
     waitingCount: s.engineersWaiting,
   );
 

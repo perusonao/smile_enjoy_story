@@ -237,9 +237,15 @@ void main() {
       //
       // HOME-COMPACT-1B.4 adds exactly one different fact instead: the
       // company-wide totals, read from the exact same single KPI authority
-      // (`PublicDemoState.engineerCount`/`.engineersWaiting`) rather than a
-      // second, independently-derived count — so it can never disagree with
-      // the row above it.
+      // (`HomeDashboardDisplayData.totalEmployeeCount`/
+      // `.waitingEmployeeCount`) rather than a second, independently-derived
+      // count — so it can never disagree with the row above it.
+      //
+      // Issue #122: the "社員" (employees) figure in that pill is the whole
+      // company's headcount, i.e. `engineerCount + adminCount` — Public
+      // Demo's founding team is two engineers plus one 総務/general-affairs
+      // employee, and this chip must not silently omit the latter under a
+      // label that says "employees", not "engineers".
       await pumpDemoAt(tester);
       final state = currentState(tester);
 
@@ -261,11 +267,23 @@ void main() {
         find.descendant(
           of: stageFinder,
           matching: find.text(
-            '社員${state.engineerCount}名・待機${state.engineersWaiting}名',
+            '社員${state.engineerCount + state.adminCount}名・待機${state.engineersWaiting}名',
           ),
         ),
         findsOneWidget,
         reason: 'the aggregate summary must equal the KPI\'s own authority',
+      );
+      expect(
+        find.descendant(
+          of: stageFinder,
+          matching: find.text(
+            '社員${state.engineerCount}名・待機${state.engineersWaiting}名',
+          ),
+        ),
+        findsNothing,
+        reason:
+            'Issue #122: the engineer-only count must never be labeled 社員 '
+            '(total employees) — it silently omits the 総務 employee',
       );
     });
 

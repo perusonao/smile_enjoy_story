@@ -260,9 +260,8 @@ PASSだったため）。
 
 ### Commit SHA
 
-- コード変更（本レポートの1つ前のコミット）: このメッセージ作成時点で
-  未コミットの変更として存在。コミット時のSHAは、この直後のコミットで
-  確定する（`git log` 参照）。
+- コード変更 + focused tests + 本レポート: `523cd5c1ae2a615bb24298a9474fe83511d3d2c2`
+  （branch `claude/first-fun-year-audit-x92por`）。
 
 ## 次の改善候補（最大5件・優先順位付き）
 

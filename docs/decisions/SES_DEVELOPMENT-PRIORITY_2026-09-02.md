@@ -178,6 +178,13 @@ Result Reportは履歴・証拠であり、この文書の代わりにはしな�
 
 ## Update history
 
+### 2026-09-04（Issue #122）
+
+- Issue #122 / PR #165: HOMEの総社員数が技術者数だけを表示していた問題を修正し、総務社員を含む合計人数へ統一。PR #165はmerge SHA `114147db1ebc4e8268f27311b37258a99fabcc7a` でmainへ統合され、Fast CI / Pages deploy成功を確認済み。
+- デプロイ済みHOMEの実画面証拠では「社員 3名」と「社員3名・待機2名」が一貫して表示され、総務社員が総数から欠落していた元の不具合は解消を確認。添付された実画面範囲では明らかな横overflowなし。
+- **Screen Verification Gateは一部未完了**: 添付画像だけではCSS viewportが360px/390pxの両方だったことを証明できないため、両viewportの可読性・overflow確認が残る。Issue #122はこの確認完了までOPENを維持する。
+- 実装結果: `docs/reports/SES_ISSUE-122_Employee-Count_Result.md`。
+
 ### 2026-09-04（続報）
 
 - Issue #163: 最新main（SHA `39d6f40e0d43561766f5cbf2c33a26ccbf9fd6f1`）を

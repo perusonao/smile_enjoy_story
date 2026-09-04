@@ -8,6 +8,7 @@ import 'app/app_experience.dart';
 import 'app/game_controller.dart';
 import 'app/game_scope.dart';
 import 'app/nav_scope.dart';
+import 'app/public_demo_session_marker.dart';
 import 'game/game.dart';
 import 'game/persistence/public_demo_save_service.dart';
 import 'game/persistence/save_service.dart';
@@ -122,6 +123,15 @@ class _GameRootState extends State<_GameRoot> {
   @override
   void initState() {
     super.initState();
+    // PR #164 review (merge blocker, P1): mark this tab as "showing Public
+    // Demo" the moment an explicit `#/public-demo-01` URL lands here, not
+    // only when the save-based fallback below picks Public Demo. Without
+    // this, a first-ever explicit Public Demo visit would leave no marker
+    // for its own later same-tab reload to find — see
+    // [resolveAppExperienceWithSaveFallback]'s doc in app_entry.dart.
+    if (widget.experience == AppExperience.publicDemo01) {
+      writePublicDemoSessionMarker();
+    }
     if (_checkingPublicDemoFallback) {
       unawaited(_resolvePublicDemoFallback());
     }
@@ -131,11 +141,18 @@ class _GameRootState extends State<_GameRoot> {
     final hasPublicDemoSave =
         await const PublicDemoSaveService().load() != null;
     if (!mounted) return;
+    final resolved = resolveAppExperienceWithSaveFallback(
+      fromUrl: widget.experience,
+      hasPublicDemoSave: hasPublicDemoSave,
+      wasPublicDemoThisSession: readPublicDemoSessionMarker(),
+    );
+    if (resolved == AppExperience.publicDemo01) {
+      // Keep the marker fresh so a *later* reload of this same tab still
+      // resolves correctly, exactly like the initState write above.
+      writePublicDemoSessionMarker();
+    }
     setState(() {
-      _resolvedExperience = resolveAppExperienceWithSaveFallback(
-        fromUrl: widget.experience,
-        hasPublicDemoSave: hasPublicDemoSave,
-      );
+      _resolvedExperience = resolved;
       _checkingPublicDemoFallback = false;
     });
   }

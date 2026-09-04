@@ -141,6 +141,17 @@ E2E完全Greenを、すべてのゲーム開発を開始する条件にはしな
 
 ---
 
+
+### Routine delivery gate
+
+通常のPRからPagesデプロイまでを待たせないため、Fast CIは次の独立した必須ゲートを並列実行する。
+
+- `flutter-validate`: `flutter analyze`、全Flutter test、Pagesと同一条件のWeb build
+- `replay-unit`: lockfileを使うReplay ViewerのNode unit test
+- `smoke-e2e`: 上記2ゲート後のChromium主要導線確認
+
+Node依存はlockfileを維持したままnpmキャッシュ優先で取得する。失敗をskip/retry/timeout延長で隠さず、各ゲートは引き続きPages deployを止める。WebKit・年間通し・Recovery・多viewportはHeavy E2Eに分離する。
+
 ## Plan maintenance rule
 
 この文書は会話時点のメモではなく、継続更新する正本である。
@@ -166,6 +177,10 @@ Result Reportは履歴・証拠であり、この文書の代わりにはしな�
 - `docs/reports/` — 実施結果と証拠。計画変更が必要なら結果報告だけで終わらせず、この文書も更新する。
 
 ## Update history
+
+### 2026-09-04
+
+- Fast CIをFlutter検証・Replay unit・Chromium smokeの並列必須ゲートへ再編。検証範囲を縮めず、Node lockfileキャッシュ優先で通常PRからデプロイまでの待機を短縮。
 
 ### 2026-09-02
 

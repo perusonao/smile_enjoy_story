@@ -17,17 +17,16 @@ name: Fast CI (S.E.S.)
 # file's own header for what it covers.
 #
 # jobs:
-#   validate   — pull_request / push / workflow_dispatch. Flutter
-#                analyze/test/build (SES-CI-SPEED-2: built with the same
+#   flutter-validate — pull_request / push / workflow_dispatch. Flutter
+#                analyze/test/build (SES-CI-SPEED-3: built with the same
 #                `--base-href` GitHub Pages deploys, so this one build is
-#                reused by both `smoke-e2e` and `build` below — see that
-#                step's own comment) + Replay Viewer unit tests. The one
-#                shared gate `smoke-e2e` waits on, so it doesn't pay for a
-#                second Flutter build.
-#   smoke-e2e  — needs: validate. Playwright's mobile-chromium project only,
+#                reused by both `smoke-e2e` and `build` below).
+#   replay-unit — the locked Replay Viewer unit-test gate. It runs in
+#                parallel with `flutter-validate`; both must pass.
+#   smoke-e2e  — needs: flutter-validate + replay-unit. Playwright's mobile-chromium project only,
 #                restricted to the curated smoke spec list above (see the
 #                `Run Playwright E2E (smoke, mobile-chromium)` step below for
-#                the exact file list), against `validate`'s own build/web
+#                the exact file list), against `flutter-validate`'s own build/web
 #                artifact served through a base-href-aware local static
 #                server (`e2e/scripts/static-server.js`). This is the "毎回
 #                必要な高速CI" half of SES-CI-SPEED-1; it is a blocking gate
@@ -43,8 +42,8 @@ name: Fast CI (S.E.S.)
 #   build      — SES-CI-SPEED-2: no Flutter build here at all anymore (no
 #                analyze/test — SES-TEST-STRATEGY-1 — and, as of this
 #                change, no second `flutter build web` either): downloads
-#                `validate`'s own `build-web` artifact (same commit,
-#                already verified by `validate`/`smoke-e2e`, already
+#                `flutter-validate`'s own `build-web` artifact (same commit,
+#                already verified by `flutter-validate`/`smoke-e2e`, already
 #                confirmed by `check-latest` to still be main's tip, and
 #                already built with the exact `--base-href` Pages needs) and
 #                uses it as-is for the Pages payload, plus best-effort
@@ -55,14 +54,14 @@ name: Fast CI (S.E.S.)
 #   deploy     — re-verify the stale guard immediately before
 #                actions/deploy-pages, then deploy.
 #
-# What blocks build/deploy: `validate` or `smoke-e2e` failing (a clear
-# core-flow failure), or the stale-SHA guard failing. What does NOT block
+# What blocks build/deploy: `flutter-validate`, `replay-unit`, or `smoke-e2e`
+# failing, or the stale-SHA guard failing. What does NOT block
 # build/deploy: replay-package failing/timing out/not finishing in time
 # (QA/dev tooling only), and — because it no longer runs in this workflow at
 # all — anything in e2e-heavy.yml (WebKit, annual route, Recovery, multi-
 # viewport).
 #
-# PRs only ever run validate/smoke-e2e (see each downstream job's `if:`) —
+# PRs only ever run flutter-validate/replay-unit/smoke-e2e (see each downstream job's `if:`) —
 # no Pages deploy happens for pull_request events.
 
 on:
@@ -81,11 +80,17 @@ permissions:
   contents: read
 
 jobs:
-  validate:
+  # Independent Flutter gate: it produces the only web artifact used by smoke and Pages.
+  # Keeping it separate from Node work prevents a transient npm stall from consuming
+  # the Flutter test/build budget.
+  flutter-validate:
+    # Preserve the existing branch-protection check context while the job ID
+    # remains descriptive for dependencies and artifact documentation.
+    name: validate
     runs-on: ubuntu-latest
     timeout-minutes: 15
     concurrency:
-      group: e2e-validate-${{ github.ref }}
+      group: e2e-flutter-validate-${{ github.ref }}
       cancel-in-progress: true
     defaults:
       run:
@@ -147,24 +152,34 @@ jobs:
           path: build/web/**
           retention-days: 1
 
+
+  # This stays a required PR/deploy gate. It runs in parallel with Flutter
+  # validation and must pass before smoke-e2e can start, preserving replay coverage.
+  replay-unit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    concurrency:
+      group: e2e-replay-unit-${{ github.ref }}
+      cancel-in-progress: true
+    defaults:
+      run:
+        working-directory: e2e
+    steps:
+      - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
-
-      - name: Install E2E dependencies
-        run: npm ci
-
-      # Pure Node unit tests for the Replay Viewer's own build tooling
-      # (manifest builder, latest-main deploy guard, viewer escaping/
-      # filtering logic) — no browser needed, so this runs before the
-      # (much slower) Playwright browser install/run below and fails fast.
-      # No continue-on-error: a failure here must fail this job exactly
-      # like any other step.
+          cache: npm
+          cache-dependency-path: e2e/package-lock.json
+      - name: Install E2E dependencies (locked, cache-first)
+        run: npm ci --prefer-offline --no-audit --fund=false
+      # Pure Node unit tests for Replay tooling. A failure remains blocking;
+      # this job only separates unrelated work so it can fail quickly.
       - name: Replay unit tests
         run: npm run test:replay-unit
 
   smoke-e2e:
-    needs: validate
+    needs: [flutter-validate, replay-unit]
     runs-on: ubuntu-latest
     timeout-minutes: 15
     concurrency:
@@ -179,9 +194,11 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
+          cache: npm
+          cache-dependency-path: e2e/package-lock.json
 
-      - name: Install E2E dependencies
-        run: npm ci
+      - name: Install E2E dependencies (locked, cache-first)
+        run: npm ci --prefer-offline --no-audit --fund=false
 
       - name: Download build/web
         uses: actions/download-artifact@v4
@@ -200,7 +217,7 @@ jobs:
       # the heavy workflow so a harness regression is caught on every PR).
       # Every other spec (WebKit, annual route, Recovery, multi-viewport,
       # the other gameplay-flow specs) runs in e2e-heavy.yml instead.
-      # SES-CI-SPEED-2: validate's artifact was built with
+      # SES-CI-SPEED-2: flutter-validate's artifact was built with
       # --base-href "/<repo>/" (matching the Pages deploy) — tell the local
       # static server to also serve it under that prefix (see
       # e2e/scripts/static-server.js's header) so the browser's own
@@ -263,9 +280,11 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
+          cache: npm
+          cache-dependency-path: e2e/package-lock.json
 
-      - name: Install E2E dependencies
-        run: npm ci
+      - name: Install E2E dependencies (locked, cache-first)
+        run: npm ci --prefer-offline --no-audit --fund=false
 
       - name: Download smoke-e2e's raw results
         uses: actions/download-artifact@v4
@@ -380,11 +399,11 @@ jobs:
       # `flutter build web` either — this job only runs after
       # `check-latest` confirms `needs.check-latest.outputs.target_sha`
       # (this checkout's ref) is still origin/main's current tip, i.e. the
-      # exact same commit `validate` already built+verified earlier in this
-      # same run. `validate` now builds with the identical `--base-href`
-      # this deploy needs (see validate's own build step), so its
+      # exact same commit `flutter-validate` already built+verified earlier in this
+      # same run. `flutter-validate` now builds with the identical `--base-href`
+      # this deploy needs (see flutter-validate's own build step), so its
       # `build-web` artifact is reused here as-is instead of rebuilding.
-      - name: Download build/web (validate's build, same --base-href as this deploy)
+      - name: Download build/web (flutter-validate's build, same --base-href as this deploy)
         uses: actions/download-artifact@v4
         with:
           name: build-web

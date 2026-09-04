@@ -17,14 +17,13 @@ name: Fast CI (S.E.S.)
 # file's own header for what it covers.
 #
 # jobs:
-#   validate   — pull_request / push / workflow_dispatch. Flutter
-#                analyze/test/build (SES-CI-SPEED-2: built with the same
+#   flutter-validate — pull_request / push / workflow_dispatch. Flutter
+#                analyze/test/build (SES-CI-SPEED-3: built with the same
 #                `--base-href` GitHub Pages deploys, so this one build is
-#                reused by both `smoke-e2e` and `build` below — see that
-#                step's own comment) + Replay Viewer unit tests. The one
-#                shared gate `smoke-e2e` waits on, so it doesn't pay for a
-#                second Flutter build.
-#   smoke-e2e  — needs: validate. Playwright's mobile-chromium project only,
+#                reused by both `smoke-e2e` and `build` below).
+#   replay-unit — the locked Replay Viewer unit-test gate. It runs in
+#                parallel with `flutter-validate`; both must pass.
+#   smoke-e2e  — needs: flutter-validate + replay-unit. Playwright's mobile-chromium project only,
 #                restricted to the curated smoke spec list above (see the
 #                `Run Playwright E2E (smoke, mobile-chromium)` step below for
 #                the exact file list), against `flutter-validate`'s own build/web
@@ -215,7 +214,7 @@ jobs:
       # the heavy workflow so a harness regression is caught on every PR).
       # Every other spec (WebKit, annual route, Recovery, multi-viewport,
       # the other gameplay-flow specs) runs in e2e-heavy.yml instead.
-      # SES-CI-SPEED-2: validate's artifact was built with
+      # SES-CI-SPEED-2: flutter-validate's artifact was built with
       # --base-href "/<repo>/" (matching the Pages deploy) — tell the local
       # static server to also serve it under that prefix (see
       # e2e/scripts/static-server.js's header) so the browser's own

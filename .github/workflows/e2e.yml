@@ -54,8 +54,8 @@ name: Fast CI (S.E.S.)
 #   deploy     — re-verify the stale guard immediately before
 #                actions/deploy-pages, then deploy.
 #
-# What blocks build/deploy: `flutter-validate` or `smoke-e2e` failing (a clear
-# core-flow failure), or the stale-SHA guard failing. What does NOT block
+# What blocks build/deploy: `flutter-validate`, `replay-unit`, or `smoke-e2e`
+# failing, or the stale-SHA guard failing. What does NOT block
 # build/deploy: replay-package failing/timing out/not finishing in time
 # (QA/dev tooling only), and — because it no longer runs in this workflow at
 # all — anything in e2e-heavy.yml (WebKit, annual route, Recovery, multi-

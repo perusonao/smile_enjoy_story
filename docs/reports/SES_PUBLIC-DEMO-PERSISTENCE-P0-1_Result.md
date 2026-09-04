@@ -277,9 +277,9 @@ for the first time (cases C and E above):**
 
 ## Commit SHA / pushed branch / PR URL
 
-See the end of this session's chat response for the exact commit SHA, the
-pushed branch (`claude/public-demo-persistence-p0-1-oz1ipm`), and the PR
-URL.
+- Commit SHA: `62325aa13c792aba87208d277acfc82c68e683b8`
+- Pushed branch: `claude/public-demo-persistence-p0-1-oz1ipm`
+- PR: https://github.com/perusonao/smile_enjoy_story/pull/169 (closes #166)
 
 ## Merge readiness
 

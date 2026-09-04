@@ -199,8 +199,13 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
       // immediately in the supported runtime. Treat an unavailable bridge as
       // the same safe fallback as an I/O failure rather than leaving the
       // Public Demo permanently non-interactive.
+      // SES-FIRST-FUN-YEAR-RELOAD-1 (P0): kept in step with
+      // PublicDemoSaveService.load()'s own now-1000ms boot-time budget —
+      // this outer wrapper must not be tighter than the inner one it wraps,
+      // or it truncates the same call before it can finish. See that
+      // method's doc for why the tighter 100ms budget was unsafe.
       restored = await widget.saveService.load().timeout(
-        const Duration(milliseconds: 100),
+        const Duration(milliseconds: 1200),
         onTimeout: () => null,
       );
     } catch (_) {

@@ -20,7 +20,7 @@ every existing use.
   (branch was stale/pre-dated main at session start — recreated from
   `origin/main` before any work; no PR existed for it yet, so no history was
   lost)
-- Final commit SHA: recorded after commit/push below
+- Final commit SHA: `11fa781e59f61a1c8587ab64c06345e552cfb87f`
 
 ## Issue #122 reproduction on current main
 
@@ -193,13 +193,19 @@ outside Issue #122's scope and was not introduced or worsened by this change.
 
 ## PR
 
-- Number/URL: filled in after `create_pull_request` below.
+- Number: #165
+- URL: https://github.com/perusonao/smile_enjoy_story/pull/165
 
 ## CI start status
 
-- Filled in after PR creation — confirmed CI workflows triggered on the PR,
-  not awaited to completion (per task instructions: do not spend the session
-  waiting on CI).
+Confirmed started on the PR head commit (`11fa781e...`), not awaited to
+completion (per task instructions):
+
+- `Fast CI (S.E.S.)` (`.github/workflows/e2e.yml`) — in progress
+- `Public Demo Preview` (`.github/workflows/public-demo-preview.yml`) — in
+  progress
+- `Public Demo Validation` (`.github/workflows/public-demo-validation.yml`)
+  — in progress
 
 ## Remaining issues
 

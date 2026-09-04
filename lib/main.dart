@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart';
 
@@ -7,6 +9,7 @@ import 'app/game_controller.dart';
 import 'app/game_scope.dart';
 import 'app/nav_scope.dart';
 import 'game/game.dart';
+import 'game/persistence/public_demo_save_service.dart';
 import 'game/persistence/save_service.dart';
 import 'ui/main_shell.dart';
 import 'ui/public_demo/public_demo_01_placeholder_screen.dart';
@@ -42,17 +45,23 @@ void main() {
   final seedParam = launchParams['seed'];
   final debugSeed = seedParam != null ? int.tryParse(seedParam) : null;
 
-  runApp(SesApp(
-    experience: experience,
-    controller: GameController(
-      debugSeed: debugSeed,
-      saveService: SaveService.forExperience(experience),
+  runApp(
+    SesApp(
+      experience: experience,
+      controller: GameController(
+        debugSeed: debugSeed,
+        saveService: SaveService.forExperience(experience),
+      ),
     ),
-  ));
+  );
 }
 
 class SesApp extends StatelessWidget {
-  SesApp({super.key, required this.controller, this.experience = AppExperience.development});
+  SesApp({
+    super.key,
+    required this.controller,
+    this.experience = AppExperience.development,
+  });
 
   final GameController controller;
   final AppExperience experience;
@@ -77,10 +86,59 @@ class SesApp extends StatelessWidget {
 
 /// Swaps between the loading state, the main game shell, and the
 /// end-of-game screens based on [GameController.state.status].
-class _GameRoot extends StatelessWidget {
+///
+/// SES-FIRST-FUN-YEAR-RELOAD-1 (P0 PLAYTHROUGH BLOCKER — 復帰不能): also
+/// resolves the [AppExperience.development] → [AppExperience.publicDemo01]
+/// save-based fallback (see [resolveAppExperienceWithSaveFallback]'s own
+/// doc in app_entry.dart for the full root-cause) from *inside* this
+/// widget's [State.initState], not from `main()` before [runApp]. A save
+/// check that early was tried first and reproducibly returned "no save"
+/// even for a save that was genuinely present in `localStorage` moments
+/// earlier — `SharedPreferences`'s Flutter-Web plugin registration is not
+/// guaranteed complete that early in the engine boot sequence. Running the
+/// exact same check from a mounted widget's `initState` instead matches
+/// the one already-proven-reliable place this codebase does this kind of
+/// check (`PublicDemo01PlaceholderScreen._restoreAggregate`, exercised by
+/// every real playthrough this session ran).
+class _GameRoot extends StatefulWidget {
   const _GameRoot({required this.experience});
 
   final AppExperience experience;
+
+  @override
+  State<_GameRoot> createState() => _GameRootState();
+}
+
+class _GameRootState extends State<_GameRoot> {
+  late AppExperience _resolvedExperience = widget.experience;
+
+  /// True only while the one-time save-based fallback check (below) is
+  /// still in flight — never true at all when the URL already resolved to
+  /// something other than [AppExperience.development], so a normal
+  /// Public-Demo or Development launch never waits on this.
+  late bool _checkingPublicDemoFallback =
+      widget.experience == AppExperience.development;
+
+  @override
+  void initState() {
+    super.initState();
+    if (_checkingPublicDemoFallback) {
+      unawaited(_resolvePublicDemoFallback());
+    }
+  }
+
+  Future<void> _resolvePublicDemoFallback() async {
+    final hasPublicDemoSave =
+        await const PublicDemoSaveService().load() != null;
+    if (!mounted) return;
+    setState(() {
+      _resolvedExperience = resolveAppExperienceWithSaveFallback(
+        fromUrl: widget.experience,
+        hasPublicDemoSave: hasPublicDemoSave,
+      );
+      _checkingPublicDemoFallback = false;
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -88,12 +146,12 @@ class _GameRoot extends StatelessWidget {
       animation: context.game,
       builder: (context, _) {
         final controller = context.game;
-        if (controller.isLoading) {
+        if (controller.isLoading || _checkingPublicDemoFallback) {
           return const PhoneFrame(
             child: Scaffold(body: Center(child: CircularProgressIndicator())),
           );
         }
-        if (experience == AppExperience.publicDemo01) {
+        if (_resolvedExperience == AppExperience.publicDemo01) {
           return const PhoneFrame(child: PublicDemo01PlaceholderScreen());
         }
         if (controller.showStartChoice) {

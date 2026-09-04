@@ -30,8 +30,19 @@ class PublicDemoSaveService {
 
   Future<PublicDemoAggregate?> load() async {
     try {
+      // SES-FIRST-FUN-YEAR-RELOAD-1 (P0): this call runs once at app boot,
+      // competing with the Flutter Web engine/CanvasKit/WASM startup for the
+      // event loop — a real existing save can take longer than a
+      // conservative 100ms to become available in that window (confirmed:
+      // a real browser reload with a genuine, valid save in localStorage
+      // reproducibly timed out here and silently fell back to a brand-new
+      // game, discarding the player's actual progress on their very next
+      // save). This is a one-time boot-time read, not a per-frame budget,
+      // so a more generous timeout costs nothing perceptible while removing
+      // that real data-loss window. See
+      // docs/reports/SES_FIRST-FUN-YEAR_Full-Year_Playtest_Audit.md.
       final preferences = await SharedPreferences.getInstance().timeout(
-        const Duration(milliseconds: 100),
+        const Duration(milliseconds: 1000),
       );
       final raw = preferences.getString(key);
       return raw == null ? null : codec.decode(raw);

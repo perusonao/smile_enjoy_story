@@ -554,7 +554,7 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
         ),
       PublicDemoImportantTaskItem(
         title: '資金計画を確認する',
-        fact: '固定費: ${formatYen(_financeSummary.fixedCosts)}',
+        fact: '今月の固定費: ${formatYen(_financeSummary.fixedCosts)}',
         category: '資金',
         ctaLabel: '確認する',
         onPressed: () => _scrollToSection(_financeSummaryKey),

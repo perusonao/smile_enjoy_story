@@ -373,3 +373,77 @@ touched; PR #174's HOME/tabs behavior preserved (disjoint edit locations
 in the one shared file, confirmed against the pre-implementation audit).
 Finding B is a known, explicitly-recorded open design question, not a
 blocker for this task's own scope.
+
+---
+
+## 13. Addendum — rebase onto main after PR #175 merged (2026-09-05)
+
+PR #175 ("QA-MICRO-FIX: show BuildInfoLabel always-visibly atop メニュー")
+merged into `main` after this PR was opened, both touching
+`lib/ui/public_demo/public_demo_01_placeholder_screen.dart`. Task: bring
+PR #176 up to date with `main` while preserving both PRs' changes, no new
+scope.
+
+### What was done
+
+- Fetched `origin/main` (tip `6d16fc6b981b3e059b4baae5f667c5b25c1fba0f`,
+  the PR #175 merge commit).
+- Merged `origin/main` into `claude/issue-168-onboarding-clarity-1a`
+  (merge, not rebase — the branch was already pushed/reviewable as PR
+  #176; a merge avoids rewriting published history).
+
+### Conflict and resolution
+
+Git's `ort` merge strategy resolved
+`lib/ui/public_demo/public_demo_01_placeholder_screen.dart`
+**automatically, with no conflict markers** — PR #175's edit (the
+`_buildMenuTab()` method, moving `BuildInfoLabel` to always render at the
+top of the メニュー tab) and PR #176's edits (`april()`/`may()`/`june()`
+Month Guard wiring, the April event-dialog copy, and
+`internalTrainingCard()`'s explanatory line) sit in disjoint regions of
+the file, so no manual resolution was required. `test/presentation/
+build_info_test.dart` (PR #175's own test file, untouched by PR #176)
+merged cleanly for the same reason.
+
+Verified post-merge, not just trusted:
+- `grep` confirms `BuildInfoLabel` renders unconditionally inside
+  `_buildMenuTab()` (PR #175's always-visible placement, doc-commented
+  "QA-MICRO-FIX (post-#173/#174)") — untouched by the merge.
+- `grep` confirms `_confirmMonthCloseIfRecommendedOutstanding()` is still
+  called from `april()`/`may()`/`june()` (PR #176's Finding A) — untouched
+  by the merge.
+- `git diff --stat origin/main...HEAD` shows only PR #176's original 29
+  files (plus this report) changed relative to the new `main` — no
+  `lib/game/**`, `lib/domain/**`, save/schema, finance, or
+  `.github/workflows/**` file touched by the rebase itself.
+
+No manual edits were needed beyond the merge commit itself. No new
+feature, rule, or spec change was introduced by this addendum.
+
+### Verification after the merge
+
+- `flutter analyze` (whole project): **No issues found.**
+- Focused #168 tests —
+  `test/ui/public_demo/public_demo_01_month_guard_april_may_june_test.dart`
+  + `test/ui/public_demo/public_demo_01_internal_training_explanation_test.dart`:
+  **8/8 passed.**
+- `test/presentation/build_info_test.dart` (PR #175's own suite, run to
+  confirm its behavior survived the merge): **7/7 passed.**
+- Full `flutter test` (whole project): **1,538/1,538 passed**, 0
+  failures, exit code 0.
+
+### SHAs
+
+- `origin/main` tip at merge time:
+  `6d16fc6b981b3e059b4baae5f667c5b25c1fba0f`
+- New PR #176 head after merge:
+  `51f28e8e8257ca7748da72ec9cebcfe2f77a836d` (merge commit; this report's
+  own follow-up commit lands after it)
+
+### Merge readiness (updated)
+
+**READY**, unchanged from §12 — the merge brought PR #176 current with
+`main` (including PR #175) with zero manual conflict resolution, zero
+scope change, and full green regression (`flutter analyze` clean;
+1,538/1,538 tests). Not merged, per this task's instruction — pushed to
+`claude/issue-168-onboarding-clarity-1a` for review.

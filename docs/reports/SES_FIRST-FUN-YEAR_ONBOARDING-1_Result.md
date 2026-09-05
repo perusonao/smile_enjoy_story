@@ -447,3 +447,174 @@ feature, rule, or spec change was introduced by this addendum.
 scope change, and full green regression (`flutter analyze` clean;
 1,538/1,538 tests). Not merged, per this task's instruction — pushed to
 `claude/issue-168-onboarding-clarity-1a` for review.
+
+---
+
+## 14. Addendum — Codex P2 review fix: April Month Guard vs. Playwright E2E (2026-09-05)
+
+### Finding (Codex P2)
+
+Issue #168's own Month Guard wiring (§2, Finding A) made April's close
+show `PublicDemoMonthGuardWarningDialog` *before* April's own new-applicant
+event dialog, whenever a recommended-level action is genuinely outstanding
+— which a fresh playthrough's untouched 佐藤 健 SkillSheet確認 always is.
+Three Playwright E2E specs, written before Issue #168 existed, still
+assumed April's close opens the applicant event dialog directly and read
+its `alertdialog` content immediately:
+
+- `e2e/tests/public-demo-july-restart.spec.ts`
+- `e2e/tests/public-demo-single-month-cta.spec.ts`
+- `e2e/tests/public-demo-month-guard.spec.ts`
+
+Reproduced against the current PR #176 head before this fix (mobile-chromium,
+local Chromium 140/revision 1194 pinned via `SES_E2E_CHROMIUM_PATH`, since
+this sandbox's cached Playwright browser revision (1194) trails the
+`@playwright/test` version `e2e/package.json` resolves to (1.62.1, wants
+1234) — a sandbox/tooling mismatch, not a repository issue): each of the
+three failed with the guard's own dialog content instead of the applicant
+dialog's, e.g.
+
+```
+Expected substring: "採用候補者の情報を確認できます"
+Received string:    "- alertdialog:
+  - text: 未対応のタスクがあります
+  - group: 月末処理を進める前に、次の行動が残っています。 ・ 佐藤 健のSkillSheetを確認 が未対応です。
+  - button "このまま月末処理を進める"
+  - button "タスクを確認""
+```
+
+confirming the finding exactly.
+
+### Fix
+
+`e2e/helpers/public-demo-player.ts`: extracted the guard-proceed logic
+`closeMonthlyPrimaryCta` already carried (Issue #119, August-March) into a
+new, standalone, exported helper:
+
+```ts
+export async function dismissMonthGuardIfPresent(page: Page): Promise<boolean>
+```
+
+Proceeds through `PublicDemoMonthGuardWarningDialog` exactly as a player
+choosing "このまま月末処理を進める" would — never "タスクを確認", which would
+cancel the close instead. No-op (`false`) when no guard dialog is open.
+`closeMonthlyPrimaryCta` itself now calls this helper in the same place it
+always ran this logic — a pure extraction, verified line-for-line
+equivalent to its prior inline `if` block, so every one of its existing
+callers (`public-demo-annual-route.spec.ts`,
+`public-demo-month-guard-recommended.spec.ts`,
+`public-demo-recovery.spec.ts`) keeps its exact prior behavior.
+
+Each of the three named specs now calls `dismissMonthGuardIfPresent(page)`
+right after every April/May/June canonical-CTA click, before reading
+whatever dialog (if any) that month's own close opens next — following the
+real player flow the guard now imposes, not just at April (where the
+Codex finding was reported) but also at May and June, since Issue #168
+wired the same guard into all three months and a full playthrough that
+never performs the recommended actions keeps finding new outstanding items
+each month. No production file changed; no assertion was weakened —
+every pre-existing assertion in all three files (dialog content, month
+numbers, button counts, no-legacy-label checks, no-overflow checks) is
+unchanged and still runs, now reached via the guard instead of blocked by
+it.
+
+### Verification
+
+- `npx tsc --noEmit` (`e2e/`): clean.
+- `flutter analyze` (whole project, production code untouched by this fix):
+  **No issues found.**
+- Focused #168 Flutter tests — `public_demo_01_month_guard_april_may_june_test.dart`
+  + `public_demo_01_internal_training_explanation_test.dart` +
+  `test/presentation/build_info_test.dart` (PR #175's own suite): **14/14
+  passed** (re-run after this fix; production code unchanged so this
+  reconfirms, not regresses).
+- The three named E2E specs (`--project=mobile-chromium`, pinned local
+  Chromium per above): **7/7 passed** —
+  `public-demo-month-guard.spec.ts` (2/2, 360×800/390×844),
+  `public-demo-single-month-cta.spec.ts` (4/4, 360×800/390×844),
+  and `public-demo-july-restart.spec.ts`'s own April→May Month Guard/
+  applicant-dialog assertion (the Codex-flagged one) now passes. The
+  Codex P2 finding is resolved.
+
+### A separate, pre-existing, out-of-scope failure found while verifying `public-demo-july-restart.spec.ts`
+
+Running the *rest* of `public-demo-july-restart.spec.ts` past the fixed
+April/May/June points surfaced one more failure, unrelated to Month Guard:
+its July step still calls a standalone `夏季賞与を決める` button on HOME,
+but that control was relocated to the 会計 (Accounting) tab by commit
+`87be6d71` ("feat(public-demo): add summer bonus decision ui") — already
+on `main` **before** PR #176's own base commit (`cc79aaf`), confirmed via
+`git merge-base --is-ancestor 87be6d71 cc79aaf`. This is a stale-test/
+production mismatch that predates Issue #168 and this fix entirely; it is
+**not** part of the Codex P2 finding this task addresses (which was
+specifically about Month Guard dialog ordering), so — per this task's
+explicit scope (fix only the named Month Guard finding, no other spec
+changes, no production changes) — **it was left unfixed** rather than
+silently expanded into. `public-demo-july-restart.spec.ts` as a whole
+still fails at this later, pre-existing point; its own April/May/June
+Month Guard handling (the actual subject of this fix) is confirmed correct
+up to and including the July CTA being reached in-month. Recorded here as
+a known gap for a separate follow-up (repoint the test at the 会計 tab, or
+restore a HOME-level shortcut — a product decision, not this task's call).
+
+### Related Public Demo E2E run ("可能な範囲で")
+
+Also ran the remaining Public Demo E2E specs for broader confidence
+(`public-demo-annual-route.spec.ts`, `public-demo-close-reopen-persistence.spec.ts`,
+`public-demo-fresh-start.spec.ts`, `public-demo-month-guard-recommended.spec.ts`,
+`public-demo-recovery.spec.ts`, `public-demo-skillsheet-phase-a.spec.ts` — 21
+tests total): **3 passed, 18 failed**
+(`public-demo-fresh-start.spec.ts` 1/1 and `public-demo-skillsheet-phase-a.spec.ts`
+2/2 passed in full). All 18 failures were root-caused and are **pre-existing,
+unrelated to this fix and to Issue #168**, not newly introduced:
+
+- `public-demo-close-reopen-persistence.spec.ts` (4 failed) never calls
+  `closeMonthlyPrimaryCta`/`dismissMonthGuardIfPresent` at all — it fails
+  immediately on `openPublicDemo` + its own `commitSkillSheetReview`
+  looking for an exact `SkillSheet確認` button on HOME, which HOME does
+  not expose under that exact label (HOME's own Recommended Action card
+  uses `SkillSheetを確認`/`$nameのSkillSheetを確認`; the bare `SkillSheet確認`
+  label belongs to the 社員 tab's per-engineer card) — a wording drift
+  unrelated to Month Guard.
+- `public-demo-annual-route.spec.ts` (7 failed), `public-demo-month-guard-recommended.spec.ts`
+  (2 failed), and `public-demo-recovery.spec.ts` (4 failed) all fail inside
+  the same shared helper, `sellFoundingEngineerInApril`
+  (`e2e/helpers/public-demo-player.ts`), at its `案件紹介` click step — never
+  inside `closeMonthlyPrimaryCta`/`dismissMonthGuardIfPresent`. Since
+  `closeMonthlyPrimaryCta`'s guard-handling was a verified pure extraction
+  (§ above) with identical behavior before and after this fix, this failure
+  cannot be caused by this session's change.
+
+These 18 failures are out of this task's explicit scope (only the named
+Month Guard finding, no other spec/production changes) and were left
+unfixed; they are recorded here so the repository owner has full visibility
+rather than an inflated "all E2E green" claim. A separate follow-up should
+audit the full Public Demo E2E suite against current production UI copy
+and flow independent of Issue #168/PR #176.
+
+### Changed files (this addendum)
+
+- `e2e/helpers/public-demo-player.ts` — new `dismissMonthGuardIfPresent`
+  export; `closeMonthlyPrimaryCta` refactored to call it (pure extraction,
+  no behavior change).
+- `e2e/tests/public-demo-july-restart.spec.ts`,
+  `e2e/tests/public-demo-single-month-cta.spec.ts`,
+  `e2e/tests/public-demo-month-guard.spec.ts` — call
+  `dismissMonthGuardIfPresent(page)` after each April/May/June canonical-CTA
+  click, before reading whatever dialog that month's close opens next.
+- This report.
+
+No `lib/**` file changed. No balance/domain/save/schema/finance file
+touched. No CI/workflow file touched. Finding B (§5) unchanged/untouched.
+
+### Merge readiness (updated again)
+
+**READY** for this fix's own scope: the Codex P2 Month Guard-ordering
+finding in the three named E2E specs is resolved and verified
+(`flutter analyze` clean, 14/14 focused Flutter tests, 7/7 targeted E2E
+assertions). `public-demo-july-restart.spec.ts` as a whole is **not**
+fully green (one pre-existing, out-of-scope failure past the fixed point,
+§ above), and the broader Public Demo E2E suite carries 18 further
+pre-existing, out-of-scope failures unrelated to this change — neither
+blocks this task's own deliverable, both are recorded for a separate
+follow-up.

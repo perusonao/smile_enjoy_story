@@ -13,6 +13,7 @@
 // unscrolled snapshot.
 import { test, expect } from '@playwright/test';
 import { watchForErrors } from '../helpers/artifacts';
+import { dismissMonthGuardIfPresent } from '../helpers/public-demo-player';
 
 const viewports = [
   { label: '360px', width: 360, height: 800 },
@@ -102,6 +103,14 @@ for (const viewport of viewports) {
       await expect(aprilCta).toBeVisible({ timeout: 15_000 });
       await aprilCta.click();
 
+      // Issue #168 (FIRST-FUN-YEAR-ONBOARDING-1): April's close now runs
+      // the Month Guard before its own new-applicant event dialog — a
+      // fresh playthrough's untouched 佐藤 健 SkillSheet確認 is a genuinely
+      // outstanding recommended-level action, so the guard's warning shows
+      // first. Proceed through it exactly as a player choosing "このまま
+      // 月末処理を進める" would; this test itself only cares about the May
+      // CTA that follows, not either dialog's own content.
+      await dismissMonthGuardIfPresent(page);
       const applicationDialog = page.getByRole('alertdialog');
       await expect(applicationDialog).toBeVisible();
       await applicationDialog.getByRole('button', { name: '確認', exact: true }).click();

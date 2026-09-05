@@ -291,6 +291,35 @@ export async function findMonthlyPrimaryCta(page: Page): Promise<Locator> {
   return cta!;
 }
 
+/** Proceeds through `PublicDemoMonthGuardWarningDialog` if it is currently
+ * open, exactly as a player choosing "このまま月末処理を進める" would — never
+ * "タスクを確認" (which would cancel the close, not proceed past it).
+ * Single-shot, non-polling — call it right after a click that might open the
+ * guard (this dialog is already showing by the time `showDialog`'s awaited
+ * future has anything to click). Returns whether the guard was actually
+ * open and proceeded through; a no-op (returns `false`) both when no
+ * `alertdialog` is open at all and when the one that is open isn't this
+ * dialog (no exact "このまま月末処理を進める" button) — e.g. a plain `確認`
+ * result dialog, which callers handle via `waitAndDismissDialog` instead.
+ *
+ * Issue #119 (PUBLIC-DEMO-MONTH-GUARD-1A) first wired this guard into
+ * August-March close; Issue #168 (FIRST-FUN-YEAR-ONBOARDING-1) extended it
+ * to April/May/June, ahead of April's own new-applicant event dialog — so a
+ * caller asserting that event dialog's own content now needs to proceed
+ * through the guard first if it's showing. */
+export async function dismissMonthGuardIfPresent(page: Page): Promise<boolean> {
+  const monthGuardDialog = page.getByRole('alertdialog');
+  if ((await monthGuardDialog.count()) === 0) return false;
+  const proceed = monthGuardDialog.getByRole('button', {
+    name: 'このまま月末処理を進める',
+    exact: true,
+  });
+  if ((await proceed.count()) === 0) return false;
+  await proceed.click();
+  await waitForStableFrame(page);
+  return true;
+}
+
 /** Clicks the canonical monthly-close CTA and absorbs whichever dialog (if
  * any) that specific month's close opens — April's new-applicant event
  * dialog, July's summer-bonus flow being a prerequisite rather than a
@@ -302,12 +331,13 @@ export async function findMonthlyPrimaryCta(page: Page): Promise<Locator> {
  * action is genuinely outstanding (e.g. an economically-waiting engineer's
  * own Recovery step). Its two buttons ("タスクを確認" / "このまま月末処理を
  * 進める") are neither one an exact `確認` match, so `waitAndDismissDialog`
- * above never touches it — this proceeds through it exactly as a player
- * choosing "このまま月末処理を進める" would, so every existing caller of this
- * helper keeps closing the month in one call regardless of whether that
- * warning happens to be showing. A caller that specifically wants to
- * exercise the warning itself (reviewing it, or choosing to cancel) should
- * drive the CTA and the dialog directly instead of using this helper. */
+ * above never touches it — `dismissMonthGuardIfPresent` proceeds through it
+ * exactly as a player choosing "このまま月末処理を進める" would, so every
+ * existing caller of this helper keeps closing the month in one call
+ * regardless of whether that warning happens to be showing. A caller that
+ * specifically wants to exercise the warning itself (reviewing it, or
+ * choosing to cancel) should drive the CTA and the dialog directly instead
+ * of using this helper. */
 export async function closeMonthlyPrimaryCta(page: Page): Promise<void> {
   const cta = await findMonthlyPrimaryCta(page);
   await expect(cta, 'canonical monthly-close CTA must be reachable').toBeVisible({
@@ -320,17 +350,7 @@ export async function closeMonthlyPrimaryCta(page: Page): Promise<void> {
   // image precache (`april()`), and this is called at most once per month
   // (12 times for a full year), so the worst case here is cheap.
   await waitAndDismissDialog(page, '確認', 4_000);
-  const monthGuardDialog = page.getByRole('alertdialog');
-  if ((await monthGuardDialog.count()) > 0) {
-    const proceed = monthGuardDialog.getByRole('button', {
-      name: 'このまま月末処理を進める',
-      exact: true,
-    });
-    if ((await proceed.count()) > 0) {
-      await proceed.click();
-      await waitForStableFrame(page);
-    }
-  }
+  await dismissMonthGuardIfPresent(page);
 }
 
 /** Restarts a Public Demo playthrough from whatever month it currently sits

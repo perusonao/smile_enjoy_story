@@ -38,9 +38,15 @@ Finder actionButton(String text) => find.ancestor(
 /// The CTA button belonging to a specific "今月の重要タスク" row, found by
 /// that row's own title text rather than by its (shared, ambiguous)
 /// "対応する" label — 営業 and 採用 can both render that same label at once.
+///
+/// SES HOME Final Density: this CTA is icon-only now (an `IconButton`, not
+/// a `TextButton` printing "対応する"/"確認する") — its real label reaches
+/// assistive technology via `Semantics.label` instead. See
+/// `public_demo_01_home_final_density_test.dart` for the dedicated
+/// Semantics coverage.
 Finder importantTaskCta(String title) => find.descendant(
   of: find.ancestor(of: find.text(title), matching: find.byType(Row)).first,
-  matching: find.byType(TextButton),
+  matching: find.byType(IconButton),
 );
 
 /// Advances one month via the real monthly-close CTA and its confirmation
@@ -212,116 +218,105 @@ void main() {
     );
   });
 
-  group(
-    'PR #172 Codex review fix: shared cross-cutting CTAs route to the tab '
-    'that actually owns the eligible action, not blindly to 営業',
-    () {
-      // Fresh April: the starting engineer (佐藤 健) is `waiting`, which is
-      // only ever offered as an action on 社員 (`_employeeTabSalesActionKinds`
-      // → `ec(i)`/SkillSheet確認). 営業 renders no card of its own this
-      // early — no assignment or applicant has reached a sellable stage yet.
-      // Before the fix, every one of these three shared entry points sent
-      // the player to that blank 営業 tab anyway; each of the following
-      // proves the destination is now 社員, where SkillSheet確認 actually is.
-      testWidgets(
-        'important-task 営業 row: fresh April sends the player to 社員, not '
-        'blank 営業',
-        (tester) async {
-          await pumpDemo(tester);
-          final engineer = currentWorkflow(tester).engineers.first;
-          expect(engineer.name, '佐藤 健');
+  group('PR #172 Codex review fix: shared cross-cutting CTAs route to the tab '
+      'that actually owns the eligible action, not blindly to 営業', () {
+    // Fresh April: the starting engineer (佐藤 健) is `waiting`, which is
+    // only ever offered as an action on 社員 (`_employeeTabSalesActionKinds`
+    // → `ec(i)`/SkillSheet確認). 営業 renders no card of its own this
+    // early — no assignment or applicant has reached a sellable stage yet.
+    // Before the fix, every one of these three shared entry points sent
+    // the player to that blank 営業 tab anyway; each of the following
+    // proves the destination is now 社員, where SkillSheet確認 actually is.
+    testWidgets(
+      'important-task 営業 row: fresh April sends the player to 社員, not '
+      'blank 営業',
+      (tester) async {
+        await pumpDemo(tester);
+        final engineer = currentWorkflow(tester).engineers.first;
+        expect(engineer.name, '佐藤 健');
 
-          final cta = importantTaskCta('営業活動を進める');
-          await tester.ensureVisible(cta);
-          await tester.pumpAndSettle();
-          await tester.tap(cta);
-          await tester.pumpAndSettle();
+        final cta = importantTaskCta('営業活動を進める');
+        await tester.ensureVisible(cta);
+        await tester.pumpAndSettle();
+        await tester.tap(cta);
+        await tester.pumpAndSettle();
 
-          final navBar = tester.widget<NavigationBar>(
-            find.byKey(const Key('public-demo-bottom-nav')),
-          );
-          expect(
-            navBar.selectedIndex,
-            1,
-            reason: '社員 is index 1 — see PublicDemoTab.employees.navKey',
-          );
-          expect(actionButton('SkillSheet確認'), findsOneWidget);
-          expect(find.byType(PublicDemoHomeDashboardSection), findsNothing);
-        },
+        final navBar = tester.widget<NavigationBar>(
+          find.byKey(const Key('public-demo-bottom-nav')),
+        );
+        expect(
+          navBar.selectedIndex,
+          1,
+          reason: '社員 is index 1 — see PublicDemoTab.employees.navKey',
+        );
+        expect(actionButton('SkillSheet確認'), findsOneWidget);
+        expect(find.byType(PublicDemoHomeDashboardSection), findsNothing);
+      },
+    );
+
+    testWidgets('quick-access 案件・営業: fresh April sends the player to 社員, not '
+        'blank 営業', (tester) async {
+      await pumpDemo(tester);
+
+      final icon = find.byKey(const Key('public-demo-quick-access-actions'));
+      await tester.ensureVisible(icon);
+      await tester.pumpAndSettle();
+      await tester.tap(icon);
+      await tester.pumpAndSettle();
+
+      final navBar = tester.widget<NavigationBar>(
+        find.byKey(const Key('public-demo-bottom-nav')),
       );
+      expect(navBar.selectedIndex, 1);
+      expect(actionButton('SkillSheet確認'), findsOneWidget);
+    });
 
-      testWidgets(
-        'quick-access 案件・営業: fresh April sends the player to 社員, not '
-        'blank 営業',
-        (tester) async {
-          await pumpDemo(tester);
+    testWidgets('Navigator\'s 「他の行動を確認する」 secondary CTA: fresh April sends the '
+        'player to 社員, not blank 営業', (tester) async {
+      await pumpDemo(tester);
 
-          final icon = find.byKey(
-            const Key('public-demo-quick-access-actions'),
-          );
-          await tester.ensureVisible(icon);
-          await tester.pumpAndSettle();
-          await tester.tap(icon);
-          await tester.pumpAndSettle();
-
-          final navBar = tester.widget<NavigationBar>(
-            find.byKey(const Key('public-demo-bottom-nav')),
-          );
-          expect(navBar.selectedIndex, 1);
-          expect(actionButton('SkillSheet確認'), findsOneWidget);
-        },
+      final secondaryCta = find.byKey(
+        const Key('home-navigator-secondary-cta'),
       );
+      expect(secondaryCta, findsOneWidget);
+      await tester.tap(secondaryCta);
+      await tester.pumpAndSettle();
 
-      testWidgets(
-        'Navigator\'s 「他の行動を確認する」 secondary CTA: fresh April sends the '
-        'player to 社員, not blank 営業',
-        (tester) async {
-          await pumpDemo(tester);
-
-          final secondaryCta = find.byKey(
-            const Key('home-navigator-secondary-cta'),
-          );
-          expect(secondaryCta, findsOneWidget);
-          await tester.tap(secondaryCta);
-          await tester.pumpAndSettle();
-
-          final navBar = tester.widget<NavigationBar>(
-            find.byKey(const Key('public-demo-bottom-nav')),
-          );
-          expect(navBar.selectedIndex, 1);
-          expect(actionButton('SkillSheet確認'), findsOneWidget);
-        },
+      final navBar = tester.widget<NavigationBar>(
+        find.byKey(const Key('public-demo-bottom-nav')),
       );
+      expect(navBar.selectedIndex, 1);
+      expect(actionButton('SkillSheet確認'), findsOneWidget);
+    });
 
-      testWidgets(
-        'important-task 採用 row is unaffected by the fix: it still always '
-        'routes to 営業, its own unambiguous home',
-        (tester) async {
-          await pumpDemo(tester);
-          // Advance to May: fresh April has no 採用 row at all
-          // (recruitment media only unlocks from month 5), and May is where
-          // that row becomes eligible while 営業's own row is not — an
-          // unambiguous scenario for proving 採用 keeps its own destination.
-          await tapAndDismissMonthEnd(tester);
-          expect(currentState(tester).month, 5);
-          expect(find.text('営業活動を進める'), findsNothing);
+    testWidgets(
+      'important-task 採用 row is unaffected by the fix: it still always '
+      'routes to 営業, its own unambiguous home',
+      (tester) async {
+        await pumpDemo(tester);
+        // Advance to May: fresh April has no 採用 row at all
+        // (recruitment media only unlocks from month 5), and May is where
+        // that row becomes eligible while 営業's own row is not — an
+        // unambiguous scenario for proving 採用 keeps its own destination.
+        await tapAndDismissMonthEnd(tester);
+        expect(currentState(tester).month, 5);
+        expect(find.text('営業活動を進める'), findsNothing);
 
-          final cta = importantTaskCta('採用・面談に対応する');
-          await tester.ensureVisible(cta);
-          await tester.pumpAndSettle();
-          await tester.tap(cta);
-          await tester.pumpAndSettle();
+        final cta = importantTaskCta('採用・面談に対応する');
+        await tester.ensureVisible(cta);
+        await tester.pumpAndSettle();
+        await tester.tap(cta);
+        await tester.pumpAndSettle();
 
-          final navBar = tester.widget<NavigationBar>(
-            find.byKey(const Key('public-demo-bottom-nav')),
-          );
-          expect(
-            navBar.selectedIndex,
-            2,
-            reason: '営業 is index 2 — see PublicDemoTab.sales.navKey',
-          );
-        },
-      );
-    },
-  );
+        final navBar = tester.widget<NavigationBar>(
+          find.byKey(const Key('public-demo-bottom-nav')),
+        );
+        expect(
+          navBar.selectedIndex,
+          2,
+          reason: '営業 is index 2 — see PublicDemoTab.sales.navKey',
+        );
+      },
+    );
+  });
 }

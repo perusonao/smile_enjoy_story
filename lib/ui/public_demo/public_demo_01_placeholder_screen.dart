@@ -2867,7 +2867,11 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
       ListView(
         key: const PageStorageKey('public-demo-home-tab'),
         controller: _scrollController,
-        padding: const EdgeInsets.all(16),
+        // SES HOME Final Density: top padding trimmed from 16 to 8 — real
+        // slack under the AppBar, not text/touch-target room. Left/right/
+        // bottom stay 16 so every card keeps its existing horizontal
+        // margin and the list keeps its original bottom scroll inset.
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
         children: [
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -2924,12 +2928,14 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
               // PUBLIC-DEMO-HOME-UI-3C: trimmed from 8 — real slack between
               // sections, not text/touch-target room — as part of bringing
               // 今月の重要タスク into the unscrolled 360x800 initial view.
-              const SizedBox(height: 6),
+              // SES HOME Final Density: trimmed again, from 6, as part of
+              // bringing クイックアクセス into the unscrolled initial view.
+              const SizedBox(height: 3),
               // Section 6: "今月の重要タスク" — up to three truthful
               // tasks built only from existing authoritative facts
               // (see _importantTasks's own doc).
               PublicDemoImportantTasksSection(items: _importantTasks),
-              const SizedBox(height: 6),
+              const SizedBox(height: 3),
               // Section 7: クイックアクセス — each item switches to the
               // real tab that owns the destination it names.
               PublicDemoQuickAccessSection(items: _quickAccessItems),

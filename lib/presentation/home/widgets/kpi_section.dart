@@ -271,12 +271,16 @@ class _CompactKpi extends StatelessWidget {
       key: const Key('home-kpi-compact'),
       margin: EdgeInsets.zero,
       child: Padding(
-        padding: const EdgeInsets.all(6),
+        // SES HOME Final Density: trimmed from 6 to 2 — real card padding,
+        // not a text-height floor.
+        padding: const EdgeInsets.all(2),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             for (var i = 0; i < rows.length; i++) ...[
-              if (i > 0) const SizedBox(height: 4),
+              // SES HOME Final Density: trimmed from 4 to 2 — real gap
+              // between the two KPI rows.
+              if (i > 0) const SizedBox(height: 2),
               _CompactKpiRow(
                 tiles: rows[i],
                 columnsPerRow: columnsPerRow ?? rows[i].length,
@@ -382,7 +386,9 @@ class _CompactKpiTile extends StatelessWidget {
     final accent = _kpiAccentColor(data.emphasis, colorScheme);
     return Container(
       key: data.tileKey,
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+      // SES HOME Final Density: vertical padding trimmed from 5 to 2 — real
+      // tile padding, not a text-height floor.
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
       decoration: BoxDecoration(
         color: isEmphasized
             ? accent.withValues(alpha: 0.09)
@@ -421,7 +427,7 @@ class _CompactKpiTile extends StatelessWidget {
               ),
             ],
           ),
-          const SizedBox(height: 2),
+          const SizedBox(height: 1),
           Builder(
             builder: (context) {
               final valueText = Text(

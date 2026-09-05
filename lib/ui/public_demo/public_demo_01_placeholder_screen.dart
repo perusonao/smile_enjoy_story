@@ -60,9 +60,11 @@ typedef _AddCandidate =
 
 // ---------------------------------------------------------------------------
 // PUBLIC-DEMO-HOME-UI-3A P2 fix (PR #150 review): "今月の重要タスク"'s 営業/採用
-// rows used to be unconditional — always rendered, always pointing at
-// `_scrollToOtherActions`, regardless of whether anything reachable there
-// was actually still legal. In a terminal/completed month (`isCloseBlocked`
+// rows used to be unconditional — always rendered, always pointing at the
+// same scroll-jump (now `_switchToEligibleSalesDestination`/`_switchTab`;
+// see PR #172's own fix for why the 営業 row's destination itself later
+// became kind-aware), regardless of whether anything reachable there was
+// actually still legal. In a terminal/completed month (`isCloseBlocked`
 // — bankruptcy, March cash-shortage failure, or fiscal-year completion) or a
 // month where every sales/recruitment step for that category has already
 // been taken, that CTA looked pressable but led to a section with no
@@ -78,11 +80,14 @@ typedef _AddCandidate =
 // about. No kind is added to or removed from `_recommendedActionCandidates`
 // itself, and no new game rule decides who is eligible for what.
 
-/// The sales-pipeline (existing-employee/assignment) [HomeRecommendedActionKind]s
-/// — every kind [_S._recommendedActionCandidates] emits from an engineer or
-/// assignment card. Used only to decide whether the "営業活動を進める" task has
-/// anywhere left to send the player; see the section doc above.
-const Set<HomeRecommendedActionKind> _salesTaskActionKinds = {
+/// The 社員-tab subset of the sales-pipeline kinds below — every kind
+/// [_S._addEngineerStageCandidate] emits, which mirrors `ec(i)` branch for
+/// branch (including the `案件へ復帰` Recovery button). PUBLIC-DEMO-HOME-UI-3B
+/// moved that whole card to 社員, so this is also the exact set
+/// [_S._switchToEligibleSalesDestination] checks first — see its own doc
+/// (PR #172 Codex review) for why a kind-aware destination replaced the
+/// former unconditional "always 営業" routing.
+const Set<HomeRecommendedActionKind> _employeeTabSalesActionKinds = {
   HomeRecommendedActionKind.recoveryAssignment,
   HomeRecommendedActionKind.employeeAcceptOrder,
   HomeRecommendedActionKind.employeeClientInterview,
@@ -91,6 +96,12 @@ const Set<HomeRecommendedActionKind> _salesTaskActionKinds = {
   HomeRecommendedActionKind.employeeResumeSelling,
   HomeRecommendedActionKind.employeeBeginSelling,
   HomeRecommendedActionKind.employeeSkillSheetReview,
+};
+
+/// The 営業-tab subset of the sales-pipeline kinds below — every kind
+/// [_S._addAssignmentCandidate] emits, which mirrors `assignmentCard(i)`
+/// branch for branch. That card is entirely on 営業.
+const Set<HomeRecommendedActionKind> _projectTabSalesActionKinds = {
   HomeRecommendedActionKind.assignmentAcceptNextOrder,
   HomeRecommendedActionKind.assignmentAcceptReplacementOrder,
   HomeRecommendedActionKind.assignmentReplacementClientInterview,
@@ -99,6 +110,19 @@ const Set<HomeRecommendedActionKind> _salesTaskActionKinds = {
   HomeRecommendedActionKind.assignmentResumeReplacementSelling,
   HomeRecommendedActionKind.assignmentBeginReplacementSelling,
   HomeRecommendedActionKind.assignmentConfirmNextOrder,
+};
+
+/// The sales-pipeline (existing-employee/assignment) [HomeRecommendedActionKind]s
+/// — every kind [_S._recommendedActionCandidates] emits from an engineer or
+/// assignment card ([_employeeTabSalesActionKinds] ∪
+/// [_projectTabSalesActionKinds]). Used only to decide whether the "営業活動を
+/// 進める" task has anywhere left to send the player; see the section doc
+/// above. Kept as one union so this eligibility gate is unaffected by which
+/// tab a given kind's card actually renders on — only the CTA's own
+/// destination ([_S._switchToEligibleSalesDestination]) needs that split.
+const Set<HomeRecommendedActionKind> _salesTaskActionKinds = {
+  ..._employeeTabSalesActionKinds,
+  ..._projectTabSalesActionKinds,
 };
 
 /// The recruitment/pre-entry-pipeline [HomeRecommendedActionKind]s — every
@@ -542,7 +566,10 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
           fact: '営業残: ${data.salesRemaining}回',
           category: '営業',
           ctaLabel: '対応する',
-          onPressed: _scrollToOtherActions,
+          // PR #172 Codex review: this row's own eligible kind can be an
+          // existing employee's own card (社員) or an assignment's (営業) —
+          // see [_switchToEligibleSalesDestination]'s own doc.
+          onPressed: _switchToEligibleSalesDestination,
         ),
       if (homeImportantTaskHasEligibleAction(
         s,
@@ -554,7 +581,11 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
           fact: '待機: ${data.waitingEmployeeCount}名',
           category: '採用',
           ctaLabel: '対応する',
-          onPressed: _scrollToOtherActions,
+          // _recruitmentTaskActionKinds is entirely the applicant funnel
+          // (`ac(i)`) plus the recruitment-media button — both always on
+          // 営業 — so this destination is never ambiguous, unlike the 営業
+          // row above.
+          onPressed: () => _switchTab(_salesTabIndex),
         ),
       PublicDemoImportantTaskItem(
         title: '資金計画を確認する',
@@ -568,10 +599,10 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
 
   /// Section 7 ("クイックアクセス") — four real destinations. PUBLIC-DEMO-HOME-
   /// UI-3B: each now switches to the tab that owns the content it names via
-  /// [_switchTab]/[_scrollToOtherActions]/[_openDevMenuSection], instead of
-  /// scroll-jumping to an anchor inside HOME's own list. No fabricated
-  /// route — every destination is one of the five real tab surfaces
-  /// [build] already constructs.
+  /// [_switchTab]/[_switchToEligibleSalesDestination]/[_openDevMenuSection],
+  /// instead of scroll-jumping to an anchor inside HOME's own list. No
+  /// fabricated route — every destination is one of the five real tab
+  /// surfaces [build] already constructs.
   List<PublicDemoQuickAccessItem> get _quickAccessItems => [
     PublicDemoQuickAccessItem(
       itemKey: const Key('public-demo-quick-access-office'),
@@ -589,7 +620,7 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
       itemKey: const Key('public-demo-quick-access-actions'),
       icon: Icons.storefront_outlined,
       label: '案件・営業',
-      onPressed: _scrollToOtherActions,
+      onPressed: _switchToEligibleSalesDestination,
     ),
     PublicDemoQuickAccessItem(
       itemKey: const Key('public-demo-quick-access-dev'),
@@ -680,16 +711,33 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
     setState(() => _selectedTabIndex = index);
   }
 
-  /// The 営業/採用 important-task rows and the Navigator card's "他の行動を確認す
-  /// る" secondary route all resolve to the same real destination: the 営業
-  /// tab, where the existing sales/project/recruiting pipeline (assignment
-  /// replacement, applicant funnel) now lives. This does not claim every
-  /// individual candidate action physically renders inside that tab (some
-  /// existing-employee sales-progression actions render on 社員 — see
-  /// `docs/reports/SES_PUBLIC-DEMO-HOME-UI-3B_Result.md`'s known gaps) —
-  /// only that this is the truthful single destination for "more actions
-  /// than HOME's summary shows", exactly as the former scroll-jump was.
-  void _scrollToOtherActions() => _switchTab(_salesTabIndex);
+  /// PUBLIC-DEMO-HOME-UI-3B FIX (PR #172 Codex review): the 営業 important-
+  /// task row, quick access's 案件・営業 icon, and the Navigator card's
+  /// secondary "他の行動を確認する" route used to switch to 営業
+  /// unconditionally. That is wrong whenever the only eligible
+  /// sales-pipeline candidate is an existing employee's own card — e.g. a
+  /// fresh April game, where Sato's SkillSheet確認 is the sole eligible
+  /// action and lives on 社員 (`ec(i)`, see [_employeeTabSalesActionKinds]'s
+  /// own doc) — because 営業 renders no card at all until May/June, so the
+  /// player lands on a blank tab despite an action being genuinely
+  /// available.
+  ///
+  /// This reads the same real, already-legal candidates
+  /// [_recommendedActionCandidates] already computes (never a new
+  /// eligibility rule) and switches to 社員 whenever any of them is an
+  /// employee-pipeline action, falling back to 営業 otherwise (assignment/
+  /// project continuation, the applicant funnel, recruitment media).
+  /// Preferring 社員 when both a 社員-side and a 営業-side action are
+  /// simultaneously eligible is a deliberate, simple tie-break — it matches
+  /// the review's own suggested fix ("route employee-pipeline actions to
+  /// 社員") and never sends the player to an empty tab in either case.
+  void _switchToEligibleSalesDestination() {
+    final hasEmployeeTabAction = _recommendedActionCandidates.any(
+      (candidate) =>
+          _employeeTabSalesActionKinds.contains(candidate.action.kind),
+    );
+    _switchTab(hasEmployeeTabAction ? _employeesTabIndex : _salesTabIndex);
+  }
 
   void _openDevMenuSection() {
     if (!_isDevMenuExpanded) setState(() => _isDevMenuExpanded = true);
@@ -2755,10 +2803,11 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
               // commands, no callbacks beyond the bound handlers below.
               //
               // PUBLIC-DEMO-HOME-UI-3B: its secondary route ("他の行動を確
-              // 認する") now switches to the 営業 tab via
-              // [_scrollToOtherActions] instead of scroll-jumping to a
-              // section further down this same list — never a second
-              // mutation path.
+              // 認する") now switches to the tab that actually has the
+              // eligible action via [_switchToEligibleSalesDestination]
+              // (社員 or 営業 — see that method's own doc, PR #172 Codex
+              // review) instead of scroll-jumping to a section further
+              // down this same list — never a second mutation path.
               PublicDemoHomeDashboardSection(
                 data: _homeDashboardData,
                 recommendedAction: _recommendedActionSlot,
@@ -2766,7 +2815,7 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
                 cashAdvice: _cashForecastAdvice,
                 onShowOtherActions: _isActualCashShortage
                     ? null
-                    : _scrollToOtherActions,
+                    : _switchToEligibleSalesDestination,
               ),
               // HOME-COMPACT-1B.3: the monthly progression CTA sits
               // directly under the Navigator card, visible in the initial

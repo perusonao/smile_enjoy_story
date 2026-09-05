@@ -281,3 +281,128 @@ overflow at either target width.
 Per this task's explicit instruction, Issues #147 and #171 are **not**
 auto-closed — production-deploy Screen Verification is left to the
 repository owner.
+
+## 12. Follow-up: Codex review merge-blocker fix (post-PR)
+
+### Root cause
+
+§6's "Deep-link precision for cross-cutting CTAs" known gap turned out to be
+a real merge blocker, not merely cosmetic. `_scrollToOtherActions` (the
+shared handler behind the important-tasks' 営業 row, the Navigator card's
+secondary "他の行動を確認する" route, and quick-access's 案件・営業 icon) always
+called `_switchTab(_salesTabIndex)` — unconditionally 営業 — regardless of
+which tab actually owned the eligible action. Since PUBLIC-DEMO-HOME-UI-3B
+moved every engineer's own sales-progression card (`ec(i)`, incl.
+SkillSheet確認) onto 社員 while recruiting (`ac(i)`) and assignment
+(`assignmentCard(i)`) cards stayed on 営業, a fresh-April game — where the
+only eligible action is an engineer's own SkillSheet確認 — sent the player
+through all three shared entry points to 営業, which renders no card at all
+that early. Not a dead crash, but a dead-end tab: the one action the game
+was recommending was not reachable from where the UI pointed.
+
+### Fix
+
+`lib/ui/public_demo/public_demo_01_placeholder_screen.dart`:
+
+- Split the old single `_salesTaskActionKinds` constant into three: the new
+  `_employeeTabSalesActionKinds` (the 8 kinds `ec(i)` renders — engineer
+  identity/SkillSheet/sales-progression, all on 社員) and
+  `_projectTabSalesActionKinds` (the 8 kinds `assignmentCard(i)` renders —
+  the assignment/replacement pipeline, all on 営業), with
+  `_salesTaskActionKinds` now `{...employee, ...project}` — unchanged for
+  every existing caller that only needs "is there any 営業-pipeline action
+  left at all" (the 営業 row's own eligibility gate).
+- Renamed `_scrollToOtherActions` to `_switchToEligibleSalesDestination`: it
+  now checks whether any currently-eligible `_recommendedActionCandidates`
+  entry is one of `_employeeTabSalesActionKinds` and, if so, switches to 社員
+  instead of 営業; otherwise (only 営業-side/project actions eligible, or
+  none) it switches to 営業 as before. The destination is read from the same
+  `_recommendedActionCandidates` authority the Recommended Action slot
+  itself uses — never a second, independently-maintained routing table — so
+  it stays correct as new action kinds are added to either tab.
+- The important-tasks' 採用 row, which was also wired to the old shared
+  `_scrollToOtherActions`, now calls `_switchTab(_salesTabIndex)` directly
+  instead — `_recruitmentTaskActionKinds` is entirely the applicant funnel
+  and recruitment-media button, both always on 営業, so this destination was
+  never ambiguous and does not need the new tie-break logic. This also
+  guards against over-correcting: a generically "smart" router reused here
+  could wrongly send a 採用-row tap to 社員 if some unrelated employee-side
+  action happened to be eligible at the same time.
+
+No file under `lib/game/**` changed; no domain, balance, save-schema, finance,
+or CI/workflow change. The only production file touched is the one above.
+
+### Exact navigation behavior — before / after
+
+| Entry point | Before (blocker) | After (fix) |
+|---|---|---|
+| 今月の重要タスク → 営業 row ("対応する") | Always 営業 | 社員 if an `_employeeTabSalesActionKinds` action is eligible (e.g. fresh-April SkillSheet確認); otherwise 営業 |
+| 今月の重要タスク → 採用 row ("対応する") | Always 営業 | Always 営業 (unchanged — always correct, never ambiguous) |
+| クイックアクセス → 案件・営業 | Always 営業 | Same rule as the 営業 row above |
+| Navigator card → 「他の行動を確認する」 | Always 営業 | Same rule as the 営業 row above |
+
+Fresh April concretely: all three top-row entry points now land on 社員,
+where SkillSheet確認 is the visible, tappable action — no more dead-end
+blank 営業 tab as the very first thing a new player's "show me something
+else to do" tap can reach.
+
+### New regression coverage
+
+`test/ui/public_demo/public_demo_01_bottom_nav_tabs_test.dart` — added a new
+group, `PR #172 Codex review fix: shared cross-cutting CTAs route to the tab
+that actually owns the eligible action, not blindly to 営業`, with 4 new
+`testWidgets`:
+
+1. Important-task 営業 row, fresh April → lands on 社員 (`selectedIndex == 1`),
+   SkillSheet確認 is visible there, and HOME's own subtree is gone.
+2. Quick-access 案件・営業, fresh April → same assertion.
+3. Navigator's 「他の行動を確認する」 secondary CTA, fresh April → same assertion.
+4. Important-task 採用 row, advanced to May (the first month it is itself
+   eligible, and specifically a month where 営業's own row is *not*
+   eligible, so the case is unambiguous) → still lands on 営業
+   (`selectedIndex == 2`), proving the fix did not over-correct recruiting's
+   routing.
+
+### Tests executed and results
+
+1. `flutter test test/ui/public_demo/public_demo_01_bottom_nav_tabs_test.dart`
+   (narrowest — the file with the new regression coverage) → **8/8 passed**
+   (4 pre-existing + 4 new).
+2. `flutter analyze` (whole project) → **No issues found.**
+3. Relevant Public Demo widget tests — `public_demo_01_skill_sheet_flow_test.dart`,
+   `public_demo_01_home_recommended_action_test.dart`,
+   `public_demo_01_home_consolidation_test.dart`,
+   `public_demo_01_home3_integration_test.dart`,
+   `public_demo_01_home_navigator_test.dart`,
+   `public_demo_01_home_runtime_read_test.dart`,
+   `public_demo_home_presentation_components_test.dart`, plus the dedicated
+   bottom-nav file above → **131/131 passed**, 0 failures.
+4. `flutter test test/ui/public_demo/` (full directory, 22 files) →
+   **239/239 passed**, 0 failures.
+
+### Codex blocker status
+
+**Resolved.** The three shared entry points (今月の重要タスク 営業 row,
+クイックアクセス 案件・営業, Navigator's 他の行動を確認する) now choose their
+destination from the actual eligible `HomeRecommendedActionKind`, and no
+longer route a fresh-April player into a blank 営業 tab.
+
+### Remaining known gaps
+
+- The real-architecture five-tab split, the §6 known gaps from the original
+  PR (营业 renders no card before May/June — now a correctly-reached, if
+  still visually empty, state in that case; tab scroll-offset not preserved
+  across switches; deployed Screen Verification left to the repository
+  owner) are unchanged by this follow-up.
+- No coverage was added for a scenario where only `_projectTabSalesActionKinds`
+  (assignment/replacement) actions are eligible while no
+  `_employeeTabSalesActionKinds` action is — that path was already the
+  pre-existing (and still correct) 営業-routing behavior, and constructing it
+  requires driving a full staffing→completion→replacement playthrough. The
+  fix's logic handles it (only 社員 is preferred when a 社員-side action is
+  actually eligible; otherwise the destination is unchanged from before this
+  fix), but it is not pinned by a dedicated regression test in this pass.
+
+### Final commit SHA
+
+`COMMIT_SHA_PLACEHOLDER`

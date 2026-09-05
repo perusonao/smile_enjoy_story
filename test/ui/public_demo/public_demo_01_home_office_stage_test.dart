@@ -25,7 +25,6 @@ import 'package:smile_enjoy_story/presentation/home/models/home_office_stage_dis
 import 'package:smile_enjoy_story/presentation/home/widgets/home_office_stage_section.dart';
 import 'package:smile_enjoy_story/ui/public_demo/public_demo_01_placeholder_screen.dart';
 import 'package:smile_enjoy_story/ui/public_demo/public_demo_home_dashboard_section.dart';
-import 'package:smile_enjoy_story/ui/public_demo/public_demo_home_presentation_components.dart';
 
 import 'public_demo_tab_test_helpers.dart';
 
@@ -138,8 +137,8 @@ void main() {
         find.byKey(const Key('home-recommended-action-cta')),
       );
       final stage = tester.getRect(stageFinder);
-      final quickAccess = tester.getRect(
-        find.byType(PublicDemoQuickAccessSection),
+      final importantTasks = tester.getRect(
+        find.byKey(const Key('public-demo-important-tasks')),
       );
 
       // The primary interaction stays above the visual layer. This is the
@@ -152,10 +151,10 @@ void main() {
             'the Office Stage must never rise above the Recommended '
             'Action: $stage vs $recommended',
       );
-      // HOME's own remaining summary sections (今月の重要タスク/クイックアク
-      // セス) still follow it — checked against クイックアクセス, the last
-      // of them.
-      expect(stage.bottom, lessThanOrEqualTo(quickAccess.top));
+      // HOME's own remaining summary section (今月の重要タスク — SES HOME
+      // Final Polish removed クイックアクセス, so this is now the last of
+      // them) still follows it.
+      expect(stage.bottom, lessThanOrEqualTo(importantTasks.top));
 
       // The employee sales-progression card ("SkillSheet確認" etc.) that
       // used to render below the Office Stage on this same screen is
@@ -355,7 +354,7 @@ void main() {
       expect(
         find.descendant(
           of: find.byKey(const Key('home-recommended-action-cta')),
-          matching: find.text('SkillSheetを確認'),
+          matching: find.text('スキルシートを確認'),
         ),
         findsOneWidget,
       );
@@ -436,27 +435,31 @@ void main() {
       }
     });
 
-    testWidgets('M: Employee Status adds no mutation path — HOME has the '
-        'resolved CTA plus Hiyori\'s local detail control', (tester) async {
-      await pumpDemoAt(tester);
+    testWidgets(
+      'M: Employee Status adds no mutation path — HOME has exactly the '
+      'resolved CTA (SES HOME Final Polish removed the Navigator\'s '
+      'secondary route)',
+      (tester) async {
+        await pumpDemoAt(tester);
 
-      final home = find.byType(PublicDemoHomeDashboardSection);
-      expect(
-        find.descendant(
-          of: home,
-          matching: find.byWidgetPredicate((w) => w is ButtonStyleButton),
-        ),
-        findsNWidgets(2),
-      );
-      // And the visual layer contributes none of its own.
-      expect(
-        find.descendant(
-          of: stageFinder,
-          matching: find.byWidgetPredicate((w) => w is ButtonStyleButton),
-        ),
-        findsNothing,
-      );
-    });
+        final home = find.byType(PublicDemoHomeDashboardSection);
+        expect(
+          find.descendant(
+            of: home,
+            matching: find.byWidgetPredicate((w) => w is ButtonStyleButton),
+          ),
+          findsOneWidget,
+        );
+        // And the visual layer contributes none of its own.
+        expect(
+          find.descendant(
+            of: stageFinder,
+            matching: find.byWidgetPredicate((w) => w is ButtonStyleButton),
+          ),
+          findsNothing,
+        );
+      },
+    );
 
     testWidgets('M: the stage state is untouched by rebuilds it does not '
         'cause', (tester) async {

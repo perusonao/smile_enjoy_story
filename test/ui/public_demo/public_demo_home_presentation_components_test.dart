@@ -70,41 +70,6 @@ List<PublicDemoImportantTaskItem> _tasks({
 ];
 
 void main() {
-  testWidgets('quick access renders all items and calls each callback once, '
-      'with a 48x48 tap target', (tester) async {
-    var officeCalls = 0, financeCalls = 0;
-    await tester.pumpWidget(
-      host(
-        PublicDemoQuickAccessSection(
-          items: [
-            PublicDemoQuickAccessItem(
-              itemKey: const Key('qa-office'),
-              icon: Icons.groups_outlined,
-              label: '社員の様子',
-              onPressed: () => officeCalls++,
-            ),
-            PublicDemoQuickAccessItem(
-              itemKey: const Key('qa-finance'),
-              icon: Icons.account_balance_wallet_outlined,
-              label: '収支・会計',
-              onPressed: () => financeCalls++,
-            ),
-          ],
-        ),
-      ),
-    );
-    expect(find.text('クイックアクセス'), findsOneWidget);
-    expect(find.text('社員の様子'), findsOneWidget);
-    expect(find.text('収支・会計'), findsOneWidget);
-    await tester.tap(find.byKey(const Key('qa-office')));
-    expect(officeCalls, 1);
-    await tester.tap(find.byKey(const Key('qa-finance')));
-    expect(financeCalls, 1);
-    final officeRect = tester.getSize(find.byKey(const Key('qa-office')));
-    expect(officeRect.height, greaterThanOrEqualTo(48));
-    expect(tester.takeException(), isNull);
-  });
-
   testWidgets(
     // PUBLIC-DEMO-HOME-UI-3A: replaces the former "重要イベント" section
     // (an invisible empty-state marker, or at most one month-close event)
@@ -331,22 +296,6 @@ void main() {
               children: [
                 PublicDemoImportantTasksSection(
                   items: _tasks(onSalesPressed: _noOp, onFinancePressed: _noOp),
-                ),
-                PublicDemoQuickAccessSection(
-                  items: [
-                    PublicDemoQuickAccessItem(
-                      itemKey: const Key('qa-scale-office'),
-                      icon: Icons.groups_outlined,
-                      label: '社員の様子',
-                      onPressed: _noOp,
-                    ),
-                    PublicDemoQuickAccessItem(
-                      itemKey: const Key('qa-scale-finance'),
-                      icon: Icons.account_balance_wallet_outlined,
-                      label: '収支・会計',
-                      onPressed: _noOp,
-                    ),
-                  ],
                 ),
                 const PublicDemoFinanceSummarySection(
                   summary: PublicDemoFinanceSummaryModel(

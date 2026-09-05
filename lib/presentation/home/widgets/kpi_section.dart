@@ -271,16 +271,19 @@ class _CompactKpi extends StatelessWidget {
       key: const Key('home-kpi-compact'),
       margin: EdgeInsets.zero,
       child: Padding(
-        // SES HOME Final Density: trimmed from 6 to 1 — real card padding,
-        // not a text-height floor.
-        padding: const EdgeInsets.all(1),
+        // SES HOME Final Polish: restored from Final Density's 1 — Quick
+        // Access and the Navigator's secondary CTA freed up real height, and
+        // this card's own breathing room is where readability (§I of the
+        // Final Polish brief) buys back the most for the least extra height.
+        padding: const EdgeInsets.all(8),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             for (var i = 0; i < rows.length; i++) ...[
-              // SES HOME Final Density: trimmed from 4 to 1 — real gap
-              // between the two KPI rows.
-              if (i > 0) const SizedBox(height: 1),
+              // SES HOME Final Polish: restored from Final Density's 1 —
+              // real gap between the two KPI rows (現金/参画/待機/営業残 vs
+              // 社員/売上/入金予定).
+              if (i > 0) const SizedBox(height: 6),
               _CompactKpiRow(
                 tiles: rows[i],
                 columnsPerRow: columnsPerRow ?? rows[i].length,
@@ -386,9 +389,10 @@ class _CompactKpiTile extends StatelessWidget {
     final accent = _kpiAccentColor(data.emphasis, colorScheme);
     return Container(
       key: data.tileKey,
-      // SES HOME Final Density: vertical padding trimmed from 5 to 1 — real
-      // tile padding, not a text-height floor.
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 1),
+      // SES HOME Final Polish: restored from Final Density's 1 — real tile
+      // padding, so each KPI's icon/label/value reads as one clear tile
+      // rather than cramped text.
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
       decoration: BoxDecoration(
         color: isEmphasized
             ? accent.withValues(alpha: 0.09)
@@ -410,11 +414,11 @@ class _CompactKpiTile extends StatelessWidget {
                   shape: BoxShape.circle,
                 ),
                 child: Padding(
-                  padding: const EdgeInsets.all(2.5),
-                  child: Icon(data.icon, size: 10, color: accent),
+                  padding: const EdgeInsets.all(3),
+                  child: Icon(data.icon, size: 11, color: accent),
                 ),
               ),
-              const SizedBox(width: 4),
+              const SizedBox(width: 5),
               Flexible(
                 child: Text(
                   data.label,
@@ -427,7 +431,7 @@ class _CompactKpiTile extends StatelessWidget {
               ),
             ],
           ),
-          const SizedBox(height: 1),
+          const SizedBox(height: 3),
           Builder(
             builder: (context) {
               final valueText = Text(

@@ -128,7 +128,7 @@ class HomeNavigatorAdvice {
   final String title;
 
   /// Who/what the CTA below is about — the resolved action's own
-  /// `headline` (e.g. `佐藤 健のSkillSheetを確認`), verbatim. `null` for the
+  /// `headline` (e.g. `佐藤 健のスキルシートを確認`), verbatim. `null` for the
   /// month-goal fallback and the suppressed/neutral cases, none of which
   /// name a subject.
   final String? headline;
@@ -220,8 +220,8 @@ _guidanceCopyFor(HomeRecommendedActionKind kind) => switch (kind) {
   ),
   HomeRecommendedActionKind.employeeSkillSheetReview ||
   HomeRecommendedActionKind.applicantBeginPreEntrySkillSheet => (
-    message: 'SkillSheetの内容を確認しましょう。',
-    explanation: 'SkillSheetは、経験やスキルを案件へ伝えるための資料です。内容を確認して次の手続きに備えます。',
+    message: 'スキルシートの内容を確認しましょう。',
+    explanation: 'スキルシートは、経験やスキルを案件へ伝えるための資料です。内容を確認して次の手続きに備えます。',
     semantic: HomeNavigatorAdviceSemantic.neutral,
   ),
   HomeRecommendedActionKind.applicantSalaryOffer => (

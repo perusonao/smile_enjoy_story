@@ -145,7 +145,7 @@ void main() {
         expect(
           find.descendant(
             of: dialog,
-            matching: find.textContaining('佐藤 健のSkillSheetを確認'),
+            matching: find.textContaining('佐藤 健のスキルシートを確認'),
           ),
           findsOneWidget,
         );
@@ -177,27 +177,26 @@ void main() {
       },
     );
 
-    testWidgets(
-      '"このまま月末処理を進める" proceeds and closes April anyway',
-      (tester) async {
-        await _pump(tester, PublicDemoAggregate.initial());
-        await switchPublicDemoTab(tester, PublicDemoTab.home);
-        await _tapKeyAndSettle(tester, _closeCtaKey);
-        await _tapKeyAndSettle(tester, _proceedKey);
-        await _settleAfterPossiblePrecache(tester);
+    testWidgets('"このまま月末処理を進める" proceeds and closes April anyway', (
+      tester,
+    ) async {
+      await _pump(tester, PublicDemoAggregate.initial());
+      await switchPublicDemoTab(tester, PublicDemoTab.home);
+      await _tapKeyAndSettle(tester, _closeCtaKey);
+      await _tapKeyAndSettle(tester, _proceedKey);
+      await _settleAfterPossiblePrecache(tester);
 
-        expect(find.byKey(_dialogKey), findsNothing);
-        // april() continues past the guard into its own event dialog
-        // (unaffected by this Issue) before the month actually advances;
-        // dismiss it the same way every other April-closing test does.
-        final confirm = find.widgetWithText(FilledButton, '確認');
-        if (confirm.evaluate().isNotEmpty) {
-          await tester.tap(confirm);
-          await tester.pumpAndSettle();
-        }
-        expect(_currentState(tester).month, 5);
-      },
-    );
+      expect(find.byKey(_dialogKey), findsNothing);
+      // april() continues past the guard into its own event dialog
+      // (unaffected by this Issue) before the month actually advances;
+      // dismiss it the same way every other April-closing test does.
+      final confirm = find.widgetWithText(FilledButton, '確認');
+      if (confirm.evaluate().isNotEmpty) {
+        await tester.tap(confirm);
+        await tester.pumpAndSettle();
+      }
+      expect(_currentState(tester).month, 5);
+    });
 
     testWidgets(
       'Suzuki alone outstanding (below the field-sales threshold) produces '
@@ -239,10 +238,7 @@ void main() {
         final dialog = find.byKey(_dialogKey);
         expect(dialog, findsOneWidget);
         expect(
-          find.descendant(
-            of: dialog,
-            matching: find.textContaining('が未対応です'),
-          ),
+          find.descendant(of: dialog, matching: find.textContaining('が未対応です')),
           findsWidgets,
         );
         expect(_currentState(tester).month, 5);

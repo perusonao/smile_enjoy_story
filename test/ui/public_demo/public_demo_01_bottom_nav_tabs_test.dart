@@ -254,41 +254,6 @@ void main() {
       },
     );
 
-    testWidgets('quick-access 案件・営業: fresh April sends the player to 社員, not '
-        'blank 営業', (tester) async {
-      await pumpDemo(tester);
-
-      final icon = find.byKey(const Key('public-demo-quick-access-actions'));
-      await tester.ensureVisible(icon);
-      await tester.pumpAndSettle();
-      await tester.tap(icon);
-      await tester.pumpAndSettle();
-
-      final navBar = tester.widget<NavigationBar>(
-        find.byKey(const Key('public-demo-bottom-nav')),
-      );
-      expect(navBar.selectedIndex, 1);
-      expect(actionButton('SkillSheet確認'), findsOneWidget);
-    });
-
-    testWidgets('Navigator\'s 「他の行動を確認する」 secondary CTA: fresh April sends the '
-        'player to 社員, not blank 営業', (tester) async {
-      await pumpDemo(tester);
-
-      final secondaryCta = find.byKey(
-        const Key('home-navigator-secondary-cta'),
-      );
-      expect(secondaryCta, findsOneWidget);
-      await tester.tap(secondaryCta);
-      await tester.pumpAndSettle();
-
-      final navBar = tester.widget<NavigationBar>(
-        find.byKey(const Key('public-demo-bottom-nav')),
-      );
-      expect(navBar.selectedIndex, 1);
-      expect(actionButton('SkillSheet確認'), findsOneWidget);
-    });
-
     testWidgets(
       'important-task 採用 row is unaffected by the fix: it still always '
       'routes to 営業, its own unambiguous home',

@@ -365,7 +365,7 @@ void main() {
       expect(_screenState(tester).toJson(), canonical.state.toJson());
       expect(_screenWorkflow(tester).toJson(), canonical.workflow.toJson());
       expect(find.text('1年目 4月'), findsOneWidget);
-      expect(find.text('SkillSheetを確認'), findsWidgets);
+      expect(find.text('スキルシートを確認'), findsWidgets);
     }
     expect(service.clearCalls, 2);
   });

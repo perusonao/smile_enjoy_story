@@ -91,8 +91,7 @@ void main() {
       // duplicate full-size roster) is deleted — HomeOfficeStageSection is
       // now the only employee-roster presentation on HOME.
       // PublicDemoImportantEventsSection is replaced by
-      // PublicDemoImportantTasksSection ("今月の重要タスク"), and
-      // PublicDemoQuickAccessSection (section 7) is new.
+      // PublicDemoImportantTasksSection ("今月の重要タスク").
       //
       // HOME-COMPACT-1B.3: PublicDemoMonthlyPrimaryCtaSection moves directly
       // under HomeNavigatorSection so it is visible in the initial no-scroll
@@ -103,12 +102,16 @@ void main() {
       // that acceptance criterion ("HOME no longer contains full accounting
       // detail") is checked below, on 会計, rather than as a tail entry
       // here.
+      //
+      // SES HOME Final Polish: PublicDemoQuickAccessSection (section 7) is
+      // deleted outright — Bottom Navigation and 今月の重要タスク are now the
+      // only entry points to the other tabs (see §D of the Final Polish
+      // brief), so 今月の重要タスク is the last section in this reading order.
       final order = [
         find.byType(HomeNavigatorSection),
         find.byType(PublicDemoMonthlyPrimaryCtaSection),
         find.byType(HomeOfficeStageSection),
         find.byType(PublicDemoImportantTasksSection),
-        find.byType(PublicDemoQuickAccessSection),
       ];
       for (final section in order) {
         expect(section, findsOneWidget);
@@ -176,28 +179,6 @@ void main() {
     );
 
     testWidgets(
-      'a quick-access item scroll-jumps to its section and preserves state',
-      (tester) async {
-        await pumpDemo(tester, size: const Size(390, 844));
-        await tapAndDismissMonthEnd(tester);
-        final before = currentState(tester).toJson();
-
-        final quickAccessFinance = find.byKey(
-          const Key('public-demo-quick-access-finance'),
-        );
-        await scrollToVisible(tester, quickAccessFinance);
-        await tester.tap(quickAccessFinance);
-        await tester.pumpAndSettle();
-
-        expect(currentState(tester).toJson(), before);
-        expect(
-          find.byKey(const Key('public-demo-finance-summary')),
-          findsOneWidget,
-        );
-      },
-    );
-
-    testWidgets(
       'an important-task CTA scroll-jumps to the legacy action surface and '
       'preserves state',
       (tester) async {
@@ -231,7 +212,6 @@ void main() {
           // tab, checked separately below.
           for (final text in [
             '今月の重要タスク',
-            'クイックアクセス',
             // HOME-COMPACT-1B.4: the monthly CTA card's former
             // "今月の主要行動" title is replaced by the compact "月次処理"
             // eyebrow — see PublicDemoMonthlyPrimaryCtaSection's own doc.

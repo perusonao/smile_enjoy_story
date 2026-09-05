@@ -1,30 +1,26 @@
-// SES HOME Final Density: finishes HOME's one-screen density beyond what
-// PUBLIC-DEMO-HOME-UI-3C (Issue #173) reached.
+// SES HOME Final Density / Final Polish: HOME's one-screen readability.
 //
 // PUBLIC-DEMO-HOME-UI-3C's own suite
 // (public_demo_01_home_ui_3c_density_test.dart) already pins 今月の重要
-// タスク starting inside the unscrolled 360x800 viewport. This phase's own
-// acceptance criteria go one section further — クイックアクセス — and add
-// the 390x844 target this repo's HOME work has always ultimately been
-// judged against:
+// タスク starting inside the unscrolled 360x800 viewport.
+//
+// SES HOME Final Polish removed クイックアクセス outright (Bottom Navigation
+// and 今月の重要タスク are now the only entry points to the other tabs) and
+// removed the Navigator's secondary "他の行動を確認する" route, giving the
+// height they used to spend back to real card padding/spacing. This suite's
+// acceptance criteria now are:
 //
 //  * At 390x844 (the primary target device, unscrolled, default text
 //    scale): every one of KPI / ひより (Navigator) / 月次処理 (the monthly
-//    primary CTA) / 社員概要 (Office Stage) / 今月の重要タスク / クイック
-//    アクセス starts inside the raw ListView viewport — "原則把握可能" in
-//    the SES HOME Final Density brief. Bottom Nav is a persistent
+//    primary CTA) / 社員概要 (Office Stage) / 今月の重要タスク starts inside
+//    the raw ListView viewport. Bottom Nav is a persistent
 //    `Scaffold.bottomNavigationBar`, not part of the scrollable body, so it
 //    is trivially always visible and is not asserted on here.
-//  * At 360x800, the same information hierarchy holds (every section
-//    through 今月の重要タスク still starts inside the viewport, unchanged
-//    from PUBLIC-DEMO-HOME-UI-3C's own guarantee) and クイックアクセス's own
-//    entry point sits close enough below the fold that a small scroll
-//    reaches it — the weaker, explicitly-downgraded 360x800 bar the brief
-//    states as "最低でもQuick Accessの存在/入口が認識可能".
+//  * At 360x800, the same information hierarchy holds — every section
+//    through 今月の重要タスク still starts inside the viewport.
 //  * No horizontal overflow and no touch target under 48px at either
-//    target width under an enlarged TextScaler (1.3, 2.0) — the brief's
-//    "横スクロール禁止" / "touch target >=48px" / TextScaler requirements.
-//  * The important-task CTA, now icon-only (a legitimate density lever the
+//    target width under an enlarged TextScaler (1.3, 2.0).
+//  * The important-task CTA, icon-only (a legitimate density lever the
 //    brief itself calls out, "Important Task CTAをicon化する場合は
 //    Semantics(label: item.ctaLabel)必須"), still carries its real
 //    ctaLabel to an assistive-technology user via an explicit
@@ -66,8 +62,6 @@ const _sectionKeys = <String>[
   'public-demo-important-tasks',
 ];
 
-const _quickAccessKey = Key('public-demo-quick-access');
-
 Future<void> _pump(
   WidgetTester tester, {
   Size size = const Size(390, 844),
@@ -93,10 +87,10 @@ Future<void> _pump(
 }
 
 void main() {
-  group('SES HOME Final Density: 390x844 — every section through '
-      'クイックアクセス is graspable in the unscrolled initial view', () {
-    testWidgets('KPI / ひより / 月次処理 / 社員概要 / 今月の重要タスク / クイックアクセス '
-        'each start inside the raw ListView viewport', (tester) async {
+  group('SES HOME Final Polish: 390x844 — every section through 今月の '
+      '重要タスク is graspable in the unscrolled initial view', () {
+    testWidgets('KPI / ひより / 月次処理 / 社員概要 / 今月の重要タスク each start inside '
+        'the raw ListView viewport', (tester) async {
       await _pump(tester, size: const Size(390, 844));
 
       expect(
@@ -118,28 +112,32 @@ void main() {
         );
       }
 
-      // PR #179 Codex review (P2): a bare `card.top < viewport.bottom`
-      // check on クイックアクセス passes even when only a few pixels of the
-      // card's own border are inside the fold and its actual content —
-      // starting with this "クイックアクセス" title — is entirely below
-      // it, which is not what "原則把握可能" means. The title text itself,
-      // not just the card's edge, must be fully inside the viewport.
-      final title = tester.getRect(find.text('クイックアクセス'));
+      // 今月の重要タスク's own title, not merely the top edge of its card,
+      // must be fully inside the viewport (PR #179 Codex review, P2 —
+      // still true after Final Polish freed up the height it once cost).
+      final title = tester.getRect(find.text('今月の重要タスク'));
       expect(
         title.bottom,
         lessThanOrEqualTo(viewport.bottom),
         reason:
-            'the クイックアクセス title itself — not merely the top edge '
+            'the 今月の重要タスク title itself — not merely the top edge '
             'of its card — must be fully visible in the unscrolled '
             '390x844 initial view',
       );
     });
+
+    testWidgets('Quick Access no longer exists on HOME', (tester) async {
+      await _pump(tester, size: const Size(390, 844));
+      expect(find.text('クイックアクセス'), findsNothing);
+      expect(find.byKey(const Key('public-demo-quick-access')), findsNothing);
+    });
   });
 
-  group('SES HOME Final Density: 360x800 — same information hierarchy, '
-      'クイックアクセス at minimum recognizable near the fold', () {
-    testWidgets('KPI through 今月の重要タスク still start inside the viewport, and '
-        'クイックアクセス starts within a short scroll of it', (tester) async {
+  group('SES HOME Final Polish: 360x800 — same information hierarchy is '
+      'kept, 今月の重要タスク recognizable', () {
+    testWidgets('KPI through 今月の重要タスク still start inside the viewport', (
+      tester,
+    ) async {
       await _pump(tester, size: const Size(360, 800));
 
       final viewport = tester.getRect(_homeViewport);
@@ -151,41 +149,25 @@ void main() {
           reason:
               '$key must start inside the initial 360x800 viewport — '
               'PUBLIC-DEMO-HOME-UI-3C already guarantees this for 今月の '
-              '重要タスク; this phase must not regress it',
+              '重要タスク; Final Polish must not regress it',
         );
       }
 
-      // クイックアクセス itself is the one section the brief explicitly
-      // downgrades at 360x800 ("最低でもQuick Accessの存在/入口が認識可能"
-      // rather than full "原則把握可能"): its own top may sit just past
-      // the fold, but not buried behind an unrelated amount of extra
-      // scrolling — a small, deliberate scroll reaches its entry point.
-      final quickAccess = tester.getRect(find.byKey(_quickAccessKey));
-      expect(
-        quickAccess.top - viewport.bottom,
-        lessThan(30),
-        reason:
-            'クイックアクセス must sit close enough below the fold at '
-            '360x800 that its entry point reads as reachable, not buried',
-      );
-
-      // PR #179 Codex review (P2): the card's own edge being close to the
-      // fold is not the same claim as its title being close — check the
-      // title too, still within a short scroll (never this width's full
-      // 390x844 "fully visible" bar, which 360x800 explicitly does not
-      // require).
-      final title = tester.getRect(find.text('クイックアクセス'));
+      // The 今月の重要タスク title itself must be reachable within a short
+      // scroll of the fold at 360x800 — never buried behind an unrelated
+      // amount of extra scrolling.
+      final title = tester.getRect(find.text('今月の重要タスク'));
       expect(
         title.top - viewport.bottom,
-        lessThan(50),
+        lessThan(80),
         reason:
-            'the クイックアクセス title itself must also stay within a '
-            'short scroll of the fold at 360x800',
+            'the 今月の重要タスク title itself must stay within a short '
+            'scroll of the fold at 360x800',
       );
     });
   });
 
-  group('SES HOME Final Density: no horizontal overflow / real touch '
+  group('SES HOME Final Polish: no horizontal overflow / real touch '
       'targets at an enlarged TextScaler', () {
     for (final size in [Size(360, 800), Size(390, 844)]) {
       for (final textScale in [1.3, 2.0]) {
@@ -208,7 +190,6 @@ void main() {
             find.byKey(const Key('public-demo-monthly-primary-cta-card')),
             find.byKey(const Key('home-office-stage')),
             find.byKey(const Key('public-demo-important-tasks')),
-            find.byKey(_quickAccessKey),
           ]) {
             final rect = tester.getRect(finder);
             expect(rect.left, greaterThanOrEqualTo(0.0));

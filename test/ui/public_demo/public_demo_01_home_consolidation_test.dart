@@ -520,20 +520,20 @@ void main() {
       final cta = find.byKey(const Key('home-recommended-action-cta'));
       expect(inHome(cta), findsOneWidget);
       // PUBLIC-DEMO-HOME-UI-3A: the "詳しく見る" local advice-detail toggle
-      // is gone — the advice explanation is always visible now. What HOME
-      // gained instead is the mockup's "他の行動を確認する" secondary route,
-      // wired by the owning screen to the same truthful scroll-jump every
-      // other on-page destination uses — still no new gameplay entry point.
+      // is gone — the advice explanation is always visible now. HOME-UI-3B
+      // then added a "他の行動を確認する" secondary route beside it; SES HOME
+      // Final Polish removes that secondary route outright (§B of the Final
+      // Polish brief) — every other action is reachable from "今月の重要
+      // タスク" or Bottom Navigation only, so the Navigator card states
+      // exactly one CTA now.
       final secondaryCta = find.byKey(
         const Key('home-navigator-secondary-cta'),
       );
-      expect(inHome(secondaryCta), findsOneWidget);
+      expect(inHome(secondaryCta), findsNothing);
       expect(
         inHome(find.byWidgetPredicate((w) => w is ButtonStyleButton)),
-        findsNWidgets(2),
-        reason:
-            'HOME has one primary action CTA and one secondary '
-            'scroll-jump control',
+        findsOneWidget,
+        reason: 'HOME has exactly one primary action CTA now',
       );
 
       // The non-CTA parts of HOME remain completely inert.

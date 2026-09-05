@@ -70,14 +70,14 @@ test.describe('Public Demo fresh start', () => {
       expect(raw, 'Public Demo identity').toContain('S.E.S. Public Demo 0.1');
       expect(raw, 'fresh-start month').toContain('4月');
       expect(raw, 'initial employee').toContain('佐藤 健');
-      expect(raw, 'initial real action').toContain('SkillSheetを確認');
+      expect(raw, 'initial real action').toContain('スキルシートを確認');
       expect(raw, 'fresh start must not already be terminal').not.toContain('このプレイスルーは終了しました。');
       expect(raw, 'fresh start must not already be bankrupt').not.toContain('倒産');
     }).toPass({ timeout: 15_000 });
 
     // The production HOME action now opens inspectable SkillSheet content
     // first. Merely opening it must not silently advance the sales stage.
-    await page.getByRole('button', { name: 'SkillSheetを確認', exact: true }).click();
+    await page.getByRole('button', { name: 'スキルシートを確認', exact: true }).click();
     await expect(page.getByText('営業用SkillSheet', { exact: false })).toBeVisible({ timeout: 15_000 });
     await expect(page.getByText('Java / SQL・開発経験3年', { exact: true })).toBeVisible();
 
@@ -93,11 +93,11 @@ test.describe('Public Demo fresh start', () => {
     // Back/cancel is a no-op. The same SkillSheet action remains available
     // and sales start is still unavailable.
     await page.getByRole('button', { name: '戻る', exact: true }).click();
-    await expect(page.getByRole('button', { name: 'SkillSheetを確認', exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'スキルシートを確認', exact: true })).toBeVisible();
     await expect(page.getByRole('button', { name: '営業を開始', exact: true })).toHaveCount(0);
 
     // Only explicit confirmation advances to the existing sales-start step.
-    await page.getByRole('button', { name: 'SkillSheetを確認', exact: true }).click();
+    await page.getByRole('button', { name: 'スキルシートを確認', exact: true }).click();
     await expect(page.getByText('営業用SkillSheet', { exact: false })).toBeVisible();
     await page.getByRole('button', { name: '内容を確認', exact: true }).click();
     await expect(page.getByRole('button', { name: '営業を開始', exact: true })).toBeVisible({ timeout: 15_000 });

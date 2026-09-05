@@ -71,7 +71,7 @@ class PublicDemoMonthGuardCandidate {
   final String id;
 
   /// The truthful, specific action name to name in the warning (e.g.
-  /// `佐藤 健のSkillSheetを確認`) — the caller's own headline text, verbatim.
+  /// `佐藤 健のスキルシートを確認`) — the caller's own headline text, verbatim.
   final String actionName;
 }
 
@@ -88,7 +88,8 @@ abstract final class PublicDemoMonthGuard {
     required int month,
     required bool monthCloseApplicable,
     required bool summerBonusDecisionConfirmed,
-    List<PublicDemoMonthGuardCandidate> outstandingRecommendedActions = const [],
+    List<PublicDemoMonthGuardCandidate> outstandingRecommendedActions =
+        const [],
   }) {
     if (!monthCloseApplicable) return const [];
     final items = <PublicDemoMonthGuardItem>[];

@@ -404,12 +404,13 @@ void main() {
 
   group('HOME-COMPACT-1B.4 FIX2 (Codex P2): 続きを読む reveals a truncated '
       'explanation in full', () {
-    // April's own real SkillSheet explanation — the exact 44-character
-    // string the P2 review's screenshot showed ending in "次の…". Reused
-    // verbatim (not a synthetic long string) so this pins the actual
-    // regression, not merely a hypothetical one.
+    // April's own real スキルシート explanation — the exact string the P2
+    // review's screenshot showed ending in "次の…" (SES HOME Final Polish
+    // renamed the player-facing "SkillSheet" copy to "スキルシート"; this
+    // fixture is kept in sync so it still pins the actual production
+    // string, not merely a hypothetical one).
     const skillSheetExplanation =
-        'SkillSheetは、経験やスキルを案件へ伝えるための資料です。内容を確認して次の手続きに備えます。';
+        'スキルシートは、経験やスキルを案件へ伝えるための資料です。内容を確認して次の手続きに備えます。';
 
     testWidgets('a short explanation that already fits two lines gets no 続きを読む '
         'control', (tester) async {
@@ -439,7 +440,7 @@ void main() {
             size: size,
             advice: const HomeNavigatorAdvice(
               title: 'ひよりからのご案内',
-              message: '佐藤 健のSkillSheetを確認',
+              message: '佐藤 健のスキルシートを確認',
               explanation: skillSheetExplanation,
             ),
           );
@@ -492,7 +493,7 @@ void main() {
         size: const Size(360, 800),
         advice: const HomeNavigatorAdvice(
           title: 'ひよりからのご案内',
-          message: '佐藤 健のSkillSheetを確認',
+          message: '佐藤 健のスキルシートを確認',
           explanation: skillSheetExplanation,
         ),
       );

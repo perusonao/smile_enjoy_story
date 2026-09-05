@@ -233,11 +233,8 @@ Issue #168 Finding B)
 
 - Branch: `claude/issue-168-finding-b-6rvhvy` (reset onto `origin/main`
   63d79bec203acdd46d01405454faa17a4e3b30bd before this work)
-- Commit SHA: see `git log claude/issue-168-finding-b-6rvhvy -1` on the
-  pushed branch (this report's own content is part of that commit, so its
-  final SHA cannot be self-referenced without one more amend)
-- PR: opened against `main` from this branch; see the repository's PR list
-  for perusonao/smile_enjoy_story branch `claude/issue-168-finding-b-6rvhvy`
+- Commit SHA: `1c5391f` (branch `claude/issue-168-finding-b-6rvhvy`, pushed)
+- PR: https://github.com/perusonao/smile_enjoy_story/pull/177
 
 ## MERGE READINESS
 

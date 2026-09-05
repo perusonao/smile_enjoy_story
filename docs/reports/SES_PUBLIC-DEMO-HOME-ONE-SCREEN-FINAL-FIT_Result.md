@@ -8,6 +8,7 @@ Public Demo HOME の初期4月画面を、360×800 / 390×844 の両方で「縦
 
 - **BASE SHA**: `e0172ee7bf0e39cfa9d297c1f56452ca4b18cbee`（`origin/main`、"Merge pull request #180 from perusonao/claude/ses-home-final-polish-3odl0v"）
 - 作業ブランチ: `claude/ses-home-one-screen-fit-9w0app`（origin/main から作り直し。既存ブランチには未マージの独自コミットがなかったため `git checkout -B` でリセットして開始）
+- **PR番号**: [#181](https://github.com/perusonao/smile_enjoy_story/pull/181)
 
 ## Phase 1: READ-ONLY 実測（修正前 / Before）
 

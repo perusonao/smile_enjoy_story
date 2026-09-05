@@ -222,8 +222,8 @@ $ flutter test
 
 ## Commit / PR
 
-- commit: `<pushしてから記録>`
-- PR: `<作成後に記録>`
+- commit: `a9de1ac7b4229587e2b0b323722c7024461a5bb1`
+- PR: https://github.com/perusonao/smile_enjoy_story/pull/179
 - Merge Readiness: 未マージ（指示通り）。CIは`flutter-validate`
   （`flutter analyze`＋全Flutter test＋Web build）を含むFast CIゲートに
   依存。

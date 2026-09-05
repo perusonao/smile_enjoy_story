@@ -378,3 +378,38 @@ Codexレビュー（PR #180, P2）指摘: `docs/decisions/SES_DEVELOPMENT-PRIORI
 テスト: docs-onlyの変更のため `flutter analyze` / `flutter test` は実行不要
 （productionコード・テストコードとも無変更）。commit前に `git diff --stat`で
 変更ファイルが上記1件のみであることを確認済み。
+
+## Fast CI #472 修正（追記）
+
+Fast CI（`smoke-e2e`）#472 が `e2e/tests/public-demo-fresh-start.spec.ts` で
+失敗。原因: 同spec がHOMEの推奨行動CTAの旧表示「SkillSheetを確認」を期待して
+いたが、HOME Final Polish（§C）で実際の表示は「スキルシートを確認」へ変更
+済みだったため、実UIと期待値が食い違っていた。
+
+対応内容（productionコード無変更、同一PR #180・同一branchへpush）:
+
+- `e2e/tests/public-demo-fresh-start.spec.ts` 内、HOMEの推奨行動CTAに対応する
+  4箇所のみを `'SkillSheetを確認'` → `'スキルシートを確認'` へ更新（初期
+  aria snapshotのtoContain 1箇所、`getByRole('button', {name: ...})` 3箇所）。
+- 同ファイル内の他の「SkillSheet」表記（SkillSheetシート自身のヘッダー文言
+  `'営業用SkillSheet'` 2箇所、コメント/変数名/describe文言）はHOME側の
+  表示変更と無関係のため**意図的に無変更**（Employee/Salesタブ等、今回の
+  HOME表示変更に対応しない箇所を一括置換しない）。
+- 他のE2E spec（`public-demo-july-restart.spec.ts`,
+  `public-demo-skillsheet-phase-a.spec.ts`, ヘルパー
+  `public-demo-player.ts`）にも同じ旧文言が残っているが、いずれもFast CI
+  （`smoke-e2e`、`.github/workflows/e2e.yml`固定の9ファイル）には含まれて
+  いない（Heavy E2E側）ため、今回のスコープ外として変更していない。
+
+### Focused E2E結果
+
+- ローカルでFast CI（`.github/workflows/e2e.yml`）と同一のFlutter
+  `3.44.9`（CIのpin値）で`flutter build web --release`を実行し、
+  `npx playwright test --project=mobile-chromium
+  tests/public-demo-fresh-start.spec.ts` を実行。
+- **結果: 1 passed**（修正前のFlutter 3.35.5ローカルビルドでは別の既存
+  scroll系アサーションが環境固有の理由で不安定だったため、CI実際のpin値
+  3.44.9で再ビルドして確認した）。
+
+変更ファイル: `e2e/tests/public-demo-fresh-start.spec.ts` のみ
+（1 file changed, 4 insertions, 4 deletions）。production changes: **NONE**。

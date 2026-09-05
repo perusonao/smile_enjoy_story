@@ -1,9 +1,36 @@
 # SES Public Demo HOME「Final Polish」— Result
 
-STATUS: **Done — implemented, focused-tested, targeted `flutter test` green, not merged**
+STATUS: **Done — implemented, focused-tested, full `flutter test` green (except 2 pre-existing unrelated failures), not merged**
 
 BASE: `origin/main` @ `321641da7710b960a7873b154579d776cd2ab3c3` (PR #179, SES HOME Final Density, merged)
-HEAD: see commit below (this branch, `claude/ses-home-final-polish-3odl0v`)
+HEAD: `09602d8` (branch `claude/ses-home-final-polish-3odl0v`)
+
+## Changed files
+
+```
+docs/reports/SES_PUBLIC-DEMO-HOME-FINAL-POLISH_Result.md          | new
+lib/game/public_demo/public_demo_month_guard.dart                 | doc comment only
+lib/presentation/home/models/home_navigator_display.dart          | SkillSheet→スキルシート (C)
+lib/presentation/home/models/home_recommended_action.dart         | SkillSheet→スキルシート (C)
+lib/presentation/home/widgets/kpi_section.dart                    | KPI padding/gap (A)
+lib/ui/public_demo/public_demo_01_placeholder_screen.dart          | 他の行動を確認する削除(B), Quick Access削除(D), SkillSheet→スキルシート(C), gap復元(I)
+lib/ui/public_demo/public_demo_home_dashboard_section.dart         | 他の行動を確認する削除 (B)
+lib/ui/public_demo/public_demo_home_presentation_components.dart   | Quick Access削除(D), 重要タスク/月次処理padding復元(E,G,I)
+test/presentation/home/home_navigator_advice_adapter_test.dart     | スキルシート表記更新
+test/presentation/home/home_navigator_section_test.dart            | スキルシート表記更新(fixture)
+test/presentation/home/home_recommended_action_test.dart           | スキルシート表記更新
+test/ui/public_demo/public_demo_01_bottom_nav_tabs_test.dart        | Quick Access/secondary CTAテスト削除
+test/ui/public_demo/public_demo_01_home3_integration_test.dart      | Quick Access関連削除
+test/ui/public_demo/public_demo_01_home_consolidation_test.dart     | secondary CTA削除に伴うボタン数更新
+test/ui/public_demo/public_demo_01_home_final_density_test.dart     | Final Polish受入基準へ全面更新
+test/ui/public_demo/public_demo_01_home_navigator_test.dart         | スキルシート表記更新
+test/ui/public_demo/public_demo_01_home_office_stage_test.dart      | Quick Access参照差替、ボタン数/表記更新
+test/ui/public_demo/public_demo_01_home_recommended_action_test.dart| スキルシート表記更新
+test/ui/public_demo/public_demo_01_home_runtime_read_test.dart      | secondary CTA削除に伴うボタン数更新
+test/ui/public_demo/public_demo_01_month_guard_april_may_june_test.dart | スキルシート表記更新
+test/ui/public_demo/public_demo_01_persistence_test.dart            | スキルシート表記更新
+test/ui/public_demo/public_demo_home_presentation_components_test.dart | Quick Accessテスト削除
+```
 
 ## 目的
 
@@ -290,9 +317,20 @@ HOME関連 focused widget tests（15ファイル、個別実行、全て green�
 
 既存HOME regression suite（上記15ファイル）も同一実行に含まれている。
 
-全`flutter test`（PR前に1回）: 実行結果は次のセクションを参照。
+全`flutter test`（PR前に1回）:
 
-<!-- FULL_TEST_RESULT_PLACEHOLDER -->
+```
+1542 tests: 1540 passed, 2 failed
+```
+
+失敗した2件は、いずれも本ブランチの変更と**無関係**（詳細は「残課題」節）:
+
+- `test/presentation/home/home_shell_page_test.dart`: `Month-end CTA is disabled`
+- `test/presentation/home/home_dashboard_data_wiring_test.dart`: `HomeShellPage the month-end CTA stays disabled even with real dashboard data`
+
+`origin/main`（`321641d`）で`git stash`して同じ2件が既に失敗することを確認済み
+（`HomeShellPage`はアプリの実際のナビゲーション経路から到達不能な孤立コードで、
+Public Demoの一部ではない）。
 
 ## PR
 

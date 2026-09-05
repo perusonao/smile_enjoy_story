@@ -120,7 +120,7 @@ TextScaler 1.0。
 - HOME focused widget tests: 新規 `test/ui/public_demo/public_demo_01_home_one_screen_final_fit_test.dart`（9 tests, 全PASS）で「スクロール不要」を数値検証（`ScrollableState.position.maxScrollExtent == 0` を360×800/390×844それぞれでassert）。
 - 既存HOME関連スイート（regressionチェック）: `test/presentation/home/`、`public_demo_01_home_consolidation_test.dart`、`public_demo_01_home_final_density_test.dart`、`public_demo_01_home_ui_3c_density_test.dart`、`public_demo_01_home_office_stage_test.dart`、`public_demo_01_home_navigator_test.dart`、`public_demo_01_home_recommended_action_test.dart`、`public_demo_01_issue_124_screen_verification_test.dart`、`public_demo_home_presentation_components_test.dart`、`public_demo_01_home3_integration_test.dart` — **全333 tests PASS**（既存の情報階層・機能・文言のassertionに影響なし）。
 - E2E: 本フェーズはFlutterレイアウト（padding/gap）のみの変更で、DOM構造・遷移・状態管理には触れていないため、widget testでの数値検証（上記）で十分と判断し、フルE2E（Flutter web build + Playwright）は実行していない。
-- PR前の `flutter test` フル実行: 実行済み（結果は本レポート末尾/PRに記載）。
+- PR前の `flutter test` フル実行: **実行済み・全PASS**。プロジェクト全体で **1553 tests, All tests passed!**（exit code 0）。既存の全ドメイン/セーブ/収支/月次処理/週次進行等のテストを含め、失敗0件。
 
 ## 変更ファイル（changed files）
 

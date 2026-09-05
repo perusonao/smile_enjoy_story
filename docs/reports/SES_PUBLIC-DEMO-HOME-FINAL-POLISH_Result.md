@@ -261,11 +261,42 @@ Final Densityフェーズが圧縮していたpadding/gapのうち、Quick Acces
 
 ### 実行結果
 
-<!-- FILL: full result table once the final targeted run completes -->
+`flutter analyze --no-fatal-infos` → **No issues found!**
+
+HOME関連 focused widget tests（15ファイル、個別実行、全て green）:
+
+| ファイル | 結果 |
+|---|---|
+| `public_demo_01_bottom_nav_tabs_test.dart` | All tests passed! (+6) |
+| `public_demo_01_home3_integration_test.dart` | All tests passed! (+10) |
+| `public_demo_01_home_cash_forecast_advice_test.dart` | All tests passed! (+5) |
+| `public_demo_01_home_consolidation_test.dart` | All tests passed! (+32) |
+| `public_demo_01_home_final_density_test.dart` | All tests passed! (+8) |
+| `public_demo_01_home_navigator_test.dart` | All tests passed! (+29) |
+| `public_demo_01_home_office_stage_test.dart` | All tests passed! (+16) |
+| `public_demo_01_home_recommended_action_test.dart` | All tests passed! (+27) |
+| `public_demo_01_home_runtime_read_test.dart` | All tests passed! (+12) |
+| `public_demo_01_home_ui_3c_density_test.dart` | All tests passed! (+8) |
+| `public_demo_01_issue_124_screen_verification_test.dart` | All tests passed! (+7) |
+| `public_demo_01_month_guard_april_may_june_test.dart` | All tests passed! (+6) |
+| `public_demo_01_month_guard_recommended_test.dart` | All tests passed! (+4) |
+| `public_demo_01_persistence_test.dart` | All tests passed! (+13) |
+| `public_demo_home_presentation_components_test.dart` | All tests passed! (+9) |
+| **合計** | **192 passed, 0 failed** |
+
+`test/presentation/home/` 一式（`home_navigator_advice_adapter_test.dart`,
+`home_navigator_section_test.dart`, `home_recommended_action_test.dart` 含む）
+も実行し、SkillSheet表記更新箇所を含めてgreen。
+
+既存HOME regression suite（上記15ファイル）も同一実行に含まれている。
+
+全`flutter test`（PR前に1回）: 実行結果は次のセクションを参照。
+
+<!-- FULL_TEST_RESULT_PLACEHOLDER -->
 
 ## PR
 
-<!-- FILL: PR URL after creation -->
+<!-- PR_URL_PLACEHOLDER -->
 
 ## 残課題
 

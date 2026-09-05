@@ -103,7 +103,11 @@ void main() {
     // The month-close CTA is HOME's own monthly primary action.
     await switchPublicDemoTab(tester, PublicDemoTab.home);
     await tapAndSettle(tester, '4月を終了して5月へ');
-    expect(find.text('新しい応募が届きました'), findsOneWidget);
+    // Issue #168: Sato was fully sold this month, so this is a no-op here
+    // (Suzuki is genuinely below the field-sales threshold and never
+    // produces a candidate) — kept for robustness against fixture changes.
+    await dismissMonthGuardIfPresent(tester);
+    expect(find.text('採用候補者の情報を確認できます'), findsOneWidget);
     expect(
       find.byKey(const Key('public-demo-recruitment-application-image')),
       findsOneWidget,
@@ -138,6 +142,11 @@ void main() {
     );
     await switchPublicDemoTab(tester, PublicDemoTab.home);
     await tapAndSettle(tester, '5月を終了して6月へ');
+    // Issue #168: 田中美咲 (app-02)'s résumé is never reviewed in this
+    // fixture — a genuine outstanding candidate. Proceeding here does not
+    // change Takahashi's already-real success; it only bypasses a
+    // dismissible recommended-level warning.
+    await dismissMonthGuardIfPresent(tester);
     await dismissEvent(
       tester,
       '入社・初参画！',
@@ -175,6 +184,7 @@ void main() {
     }
     await switchPublicDemoTab(tester, PublicDemoTab.home);
     await tapAndSettle(tester, '6月を終了して7月へ');
+    await dismissMonthGuardIfPresent(tester);
 
     expect(find.text('1年目 7月'), findsOneWidget);
     // The completed June growth is on 社員; Sato's assigned result

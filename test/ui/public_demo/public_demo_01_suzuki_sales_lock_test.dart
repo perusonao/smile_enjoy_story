@@ -211,6 +211,10 @@ void main() {
     // The month-close CTA is HOME's own monthly primary action.
     await switchPublicDemoTab(tester, PublicDemoTab.home);
     await tapAndSettle(tester, '4月を終了して5月へ');
+    // Issue #168: Sato is genuinely outstanding here (skillSheet stage,
+    // ready, 営業開始 never tapped) — a real Month Guard warning, dismissed
+    // by proceeding; it does not change anything this test asserts below.
+    await dismissMonthGuardIfPresent(tester);
     await dismissDialog(tester, '確認');
     expect(find.text('1年目 5月'), findsOneWidget);
     final capabilityAfterApril = currentState(
@@ -233,6 +237,10 @@ void main() {
 
     await switchPublicDemoTab(tester, PublicDemoTab.home);
     await tapAndSettle(tester, '5月を終了して6月へ');
+    // Issue #168: neither pre-seeded applicant's résumé was reviewed and
+    // recruitment media was never used this month — genuine outstanding
+    // candidates, dismissed the same way.
+    await dismissMonthGuardIfPresent(tester);
     expect(find.text('1年目 6月'), findsOneWidget);
     // June's founding-engineer sales card is scoped to newly joined
     // applicants (joinedApplicantIds), which excludes Suzuki by design —

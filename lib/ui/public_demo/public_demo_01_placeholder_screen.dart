@@ -1140,11 +1140,12 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
   /// confirmation is intentionally separate from [_restartGame], which also
   /// serves the already-terminal recovery card.
   ///
-  /// PUBLIC-DEMO-HOME-UI-3A: also the new home for [BuildInfoLabel], moved
-  /// out of the AppBar title. This card is exactly the "compact
-  /// developer/test surface" the issue asks the deploy/build identity be
-  /// kept available in without visually dominating the gameplay header —
-  /// it is already collapsed behind "開発・テストメニュー" by default.
+  /// PUBLIC-DEMO-HOME-UI-3A moved [BuildInfoLabel] here, out of the AppBar
+  /// title. QA-MICRO-FIX (post-#173/#174) moved it again, out of this
+  /// collapsed card and up to [_buildMenuTab]'s always-visible header —
+  /// deployed Screen Verification needs the deploy SHA without expanding
+  /// "開発・テストメニュー" first — so only the destructive restart/test
+  /// controls remain collapsed here.
   Widget _publicDemoTestControlsCard() => Card(
     key: const Key('public-demo-test-controls'),
     color: Colors.amber.shade50,
@@ -1168,10 +1169,6 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
             onPressed: _isRestarting ? null : _confirmRestartFromApril,
             icon: const Icon(Icons.restart_alt),
             label: Text(_isRestarting ? '再開準備中…' : '4月からやり直す'),
-          ),
-          const SizedBox(height: 8),
-          BuildInfoLabel(
-            buildInfo: widget.buildInfo ?? BuildInfo.fromEnvironment(),
           ),
         ],
       ),
@@ -3127,13 +3124,24 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
 
   /// メニュー (index 4) — secondary/development/test content that does not
   /// belong on HOME. Reuses [_publicDemoDevMenuSection] verbatim (the same
-  /// collapsed-by-default toggle, test-only restart control, and
-  /// [BuildInfoLabel] PUBLIC-DEMO-HOME-UI-3A already built), only now as
-  /// this tab's own content instead of the bottom of the shared HOME list.
+  /// collapsed-by-default toggle and test-only restart control
+  /// PUBLIC-DEMO-HOME-UI-3A/3B already built).
+  ///
+  /// QA-MICRO-FIX (post-#173/#174): [BuildInfoLabel] itself now sits here,
+  /// always visible near the top of this tab, above the collapsed
+  /// "開発・テストメニュー" section — so deployed Screen Verification can read
+  /// the running deploy SHA/PR without expanding anything destructive. This
+  /// is the label's only mount point; it is not duplicated inside the
+  /// collapsed card.
   Widget _buildMenuTab(BuildContext c) => ListView(
     key: const PageStorageKey('public-demo-menu-tab'),
     padding: const EdgeInsets.all(16),
-    children: [_publicDemoDevMenuSection()],
+    children: [
+      BuildInfoLabel(
+        buildInfo: widget.buildInfo ?? BuildInfo.fromEnvironment(),
+      ),
+      _publicDemoDevMenuSection(),
+    ],
   );
 
   @override

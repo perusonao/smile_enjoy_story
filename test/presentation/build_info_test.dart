@@ -79,25 +79,34 @@ void main() {
 
       expect(find.text('S.E.S. Public Demo 0.1'), findsOneWidget);
       // PUBLIC-DEMO-HOME-UI-3A: BuildInfoLabel is relocated out of the
-      // AppBar title (which used to carry a two-line Column) into the
-      // collapsed "開発・テストメニュー" card — the compact developer/test
-      // surface the issue asks the deploy identity be kept available in
-      // without visually dominating the gameplay header. It is therefore
-      // absent until that section is expanded.
+      // AppBar title (which used to carry a two-line Column), so it never
+      // visually competes with the compact gameplay header.
       expect(find.text('Deploy: PR #95 · c4beb9e'), findsNothing);
       expect(tester.getSize(find.byType(AppBar)).height, kToolbarHeight);
 
-      // The dev/test menu (and its BuildInfoLabel) is its own メニュー tab now
-      // (PUBLIC-DEMO-HOME-UI-3B), not a scroll-reachable fold on HOME.
+      // QA-MICRO-FIX (post-#173/#174): BuildInfoLabel lives in the メニュー
+      // tab (PUBLIC-DEMO-HOME-UI-3B), always visible near the top — no
+      // toggle needed — while the destructive restart/test controls stay
+      // collapsed behind "開発・テストメニュー".
       await switchPublicDemoTab(tester, PublicDemoTab.menu);
+      final buildInfoLabel = find.text('Deploy: PR #95 · c4beb9e');
+      await tester.ensureVisible(buildInfoLabel);
+      await tester.pumpAndSettle();
+      expect(buildInfoLabel, findsOneWidget);
+
       final toggle = find.byKey(const Key('public-demo-dev-menu-toggle'));
+      expect(toggle, findsOneWidget);
+      expect(find.byKey(const Key('public-demo-test-controls')), findsNothing);
       await tester.ensureVisible(toggle);
       await tester.pumpAndSettle();
       await tester.tap(toggle);
       await tester.pumpAndSettle();
-      final buildInfoLabel = find.text('Deploy: PR #95 · c4beb9e');
-      await tester.ensureVisible(buildInfoLabel);
-      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const Key('public-demo-test-controls')),
+        findsOneWidget,
+      );
+      // Still exactly one BuildInfoLabel after expanding — it is not
+      // duplicated inside the collapsed card.
       expect(buildInfoLabel, findsOneWidget);
       expect(tester.takeException(), isNull);
     });

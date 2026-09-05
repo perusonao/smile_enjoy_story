@@ -348,3 +348,33 @@ https://github.com/perusonao/smile_enjoy_story/pull/180
   営業進捗ステッパーの表記統一は、今回のHOME限定スコープの都合上、
   意図的に見送った（PRをHOME Final Polishのみに限定するため）。将来
   「社員/営業タブのスキルシート表記統一」として別issueで対応可能。
+
+## PR #180 Codex P2 対応（追記）
+
+Codexレビュー（PR #180, P2）指摘: `docs/decisions/SES_DEVELOPMENT-PRIORITY_2026-09-02.md`
+（governing plan）が SES HOME Final Density を現在のproduction priorityとして
+残したままで、既に本PRで削除したQuick Access残差（360x800でfold内表示に
+至っていない件）への対応を次タスクとして指示していた。
+
+対応内容（docs-onlyの追加コミット、同一PR #180・同一branchへpush）:
+
+- governing planへ新しいUpdate historyエントリ（2026-09-05、HOME Final Polish
+  完了）を追加し、直前の「Final Densityを現在のproduction最優先とする」という
+  記載を**明示的にsupersede**（既存エントリ自体は削除・書き換えせず履歴として
+  保持）。
+- P0「進行中HOME UI改修を完成」を**完了扱い**に更新（Prioritized backlog table
+  も同時に更新）。
+- 直前エントリが指示していたQuick Access残差への次タスクは、Quick Access
+  セクション自体を本PRで削除したため**解消・対応不要（moot）**であることを
+  明記。
+- 次のproduction priorityを **1. Employee UI Phase A / 2. Active Project
+  Visibility** の順に更新（Prioritized backlog tableへ新規P0行として追加）。
+- 「Primary Goal — First Fun Year」節（First Fun Year最優先方針）は無変更。
+- production/test/workflowコードは本対応で**一切変更していない**（docs-only）。
+
+変更ファイル: `docs/decisions/SES_DEVELOPMENT-PRIORITY_2026-09-02.md` のみ
+（1 file changed, 41 insertions, 1 deletion）。
+
+テスト: docs-onlyの変更のため `flutter analyze` / `flutter test` は実行不要
+（productionコード・テストコードとも無変更）。commit前に `git diff --stat`で
+変更ファイルが上記1件のみであることを確認済み。

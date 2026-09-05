@@ -47,7 +47,9 @@ Issue番号順に機械的に実装しない。実プレイ結果を根拠に、
 
 | Priority | Task | Claude Code / Codex目安 | Outcome |
 |---|---|---:|---|
-| P0 | 進行中HOME UI改修を完成 | 残り1〜3h | HOMEで会社状況・推奨行動・KPI・次の行動を理解できる |
+| P0 | ~~進行中HOME UI改修を完成~~ — **完了**（HOME Final Density + Final Polish, PR #180。詳細はUpdate history） | 実績: 完了 | HOMEで会社状況・推奨行動・KPI・次の行動を理解できる — 達成済み |
+| P0 | Employee UI Phase A | 目安未確定 / 分割検討 | 社員個々の状態・スキル・経歴を安全に閲覧できるUIを整える（HOMEへの先取りは禁止、実装場所は社員タブ側） |
+| P0 | Active Project Visibility | 目安未確定 / 分割検討 | 参画中案件の状態を社員/営業視点で可視化する（HOMEへの先取りは禁止） |
 | P0 | 4月→翌3月 First Fun Year通しプレイ | 1〜2h | 年間完走可否、退屈な期間、重大問題を実プレイで特定 |
 | P0 | 年間進行Blocker修正 | 1件0.5〜3h | 月送り不能、二重処理、セーブ破壊等を除去 |
 | P1 | 9月〜2月コンテンツ強化 | 4〜8h / 分割必須 | 年度後半にも判断・イベント・変化が発生 |
@@ -177,6 +179,44 @@ Result Reportは履歴・証拠であり、この文書の代わりにはしな�
 - `docs/reports/` — 実施結果と証拠。計画変更が必要なら結果報告だけで終わらせず、この文書も更新する。
 
 ## Update history
+
+### 2026-09-05（HOME Final Polish 完了 / governing plan sync — PR #180 Codex P2対応）
+
+- **HOME Final Polish が完了し、PR #180としてレビュー中。** 直下の
+  「2026-09-05（Issue #168 完了 / HOME Final Density）」エントリが
+  「SES HOME Final Densityを現在のproduction最優先とする」と記載していたのは
+  この完了より前の状態であり、本エントリで**明示的にsupersede**する
+  （そのエントリ自体は履歴として残し、書き換えない）。
+- P0「進行中HOME UI改修を完成」は、HOME Final Density（PR #179）に続き
+  HOME Final Polish（PR #180）が完了したことで**完全に完了**した。KPI/ひより
+  カード/月次処理/今月の重要タスクの視認性を仕上げ、ひよりカードの
+  「他の行動を確認する」二次CTAとQuick Accessセクションを削除、Bottom
+  Navigationと「今月の重要タスク」を他タブへの唯一の入口へ一本化した。
+  プレイヤー向け「SkillSheet」表記もHOME側の実文言に限り「スキルシート」へ
+  統一。Domain/Save/Balance/Finance/Month transition/Recovery/Sales/
+  Employee/SkillSheet domain logic/Active Project Visibility/Employee UI
+  Phase A/Issue #167（Late Game）/Year-End仕様/workflowは無変更。詳細:
+  `docs/reports/SES_PUBLIC-DEMO-HOME-FINAL-POLISH_Result.md`。
+- **直前エントリが次タスクとして指示していた「360x800でクイックアクセスが
+  完全なfold内表示に至っていない」残差は、Quick Accessセクション自体を
+  HOME Final Polishで削除したため解消（対応不要・moot）**。Quick Access
+  が担っていた遷移先（社員の様子/収支・会計/案件・営業/開発・テスト）は
+  Bottom Navigationと「今月の重要タスク」、および既存のAppBarメニューから
+  引き続き到達可能であることを確認済み（詳細は上記Result report）。
+- **次のproduction priorityを以下の順に更新する**（Prioritized backlog
+  table も同時に更新済み）:
+  1. **Employee UI Phase A** — 社員個々の状態・スキル・経歴を安全に閲覧できる
+     UIを整える。
+  2. **Active Project Visibility** — 参画中案件の状態を社員/営業視点で可視化
+     する。
+  いずれもHOMEへの先取りは禁止（HOME Final Polishでも明示的に先取りしていない
+  ことを確認済み）。First Fun Yearを最優先目標とする方針（本文書冒頭「Primary
+  Goal — First Fun Year」節）自体は変更しない — 上記は同方針の下での
+  実行順・backlogの更新であり、目標そのものの変更ではない。
+- 本エントリはCodex（PR #180レビュー, P2）が指摘した「governing planが
+  Final Densityを現在のpriorityとして残し、既に削除済みのQuick Access残差を
+  次タスクとして指示している」という不整合の是正が目的。production/test/
+  workflowコードは本対応で一切変更していない（docs-onlyの追加変更）。
 
 ### 2026-09-05（Issue #168 完了 / HOME Final Density）
 

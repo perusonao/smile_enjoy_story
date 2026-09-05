@@ -178,6 +178,28 @@ Result Reportは履歴・証拠であり、この文書の代わりにはしな�
 
 ## Update history
 
+### 2026-09-05（Issue #168 完了 / HOME Final Density）
+
+- **Issue #168は完了済み。** mainはPR #177まで統合済み（`a80d6e473e344655f120cac597ff104444b48e51`）。
+- HOME UI改修の残作業として、**SES HOME Final Density（HOMEをスマホ1画面で
+  理解できる密度に仕上げる）を現在のproduction最優先とする**。P0「進行中
+  HOME UI改修を完成」の直接の継続であり、新しい優先項目ではない。
+- 実施内容: KPI / ひより(Navigator) / 月次処理 / 今月の重要タスク各カード
+  のpadding/gapを詰め、今月の重要タスクのCTAをicon化（`Semantics(label:
+  item.ctaLabel)`で実ラベルを保持）。クイックアクセスの`top`位置を
+  390x844/360x800共通で109px前進させ、390x844では全6セクション
+  （KPI/ひより/月次処理/社員概要/重要タスク/クイックアクセス）が
+  unscrolled初期viewport内で開始するようになった。社員概要はこれ以上
+  圧縮していない（既存の安全マージンテストに基づくfloor）。Domain/Save/
+  Balance/Finance/Issue #167は無変更。詳細:
+  `docs/reports/SES_PUBLIC-DEMO-HOME-UI_FINAL-DENSITY_PreImplementation_Audit.md`
+  （このタスクが参照した監査文書がリポジトリ内に存在しなかったため、実測
+  ベースで新規作成）と
+  `docs/reports/SES_PUBLIC-DEMO-HOME-UI_FINAL-DENSITY_Result.md`。
+- **360x800でクイックアクセスは完全なfold内表示に至っていない**（fold手前
+  +46px、開始前の+155pxから短縮）。次にHOME密度へ戻る場合はこの残差から
+  着手する。
+
 ### 2026-09-04（Issue #122）
 
 - Issue #122 / PR #165: HOMEの総社員数が技術者数だけを表示していた問題を修正し、総務社員を含む合計人数へ統一。PR #165はmerge SHA `114147db1ebc4e8268f27311b37258a99fabcc7a` でmainへ統合され、Fast CI / Pages deploy成功を確認済み。

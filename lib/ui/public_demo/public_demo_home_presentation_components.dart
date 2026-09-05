@@ -90,10 +90,11 @@ class PublicDemoImportantTasksSection extends StatelessWidget {
     child: Column(
       children: [
         for (var i = 0; i < items.length; i++) ...[
-          // PUBLIC-DEMO-HOME-UI-3C: trimmed from 16 — real space between
-          // rows, not a text-height floor — as part of bringing this
-          // section closer to the unscrolled initial view (Issue #173).
-          if (i > 0) const Divider(height: 10),
+          // SES HOME Final Density: trimmed from 10 to 1 (itself trimmed
+          // from 16 by PUBLIC-DEMO-HOME-UI-3C) — still real space between
+          // rows, not a text-height floor, as part of bringing クイック
+          // アクセス closer to the unscrolled initial view.
+          if (i > 0) const Divider(height: 1),
           _ImportantTaskRow(item: items[i]),
         ],
       ],
@@ -126,7 +127,7 @@ class _ImportantTaskRow extends StatelessWidget {
                   _StatusChip(label: item.category, compact: true),
                 ],
               ),
-              const SizedBox(height: 3),
+              const SizedBox(height: 1),
               Text(
                 item.fact,
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
@@ -136,8 +137,31 @@ class _ImportantTaskRow extends StatelessWidget {
             ],
           ),
         ),
-        const SizedBox(width: 4),
-        TextButton(onPressed: item.onPressed, child: Text(item.ctaLabel)),
+        const SizedBox(width: 2),
+        // SES HOME Final Density: the CTA used to be a `TextButton` printing
+        // [item.ctaLabel] ("対応する"/"確認する") in full. Every one of the
+        // (at most three) rows here says the exact same thing — "go to
+        // where this fact lives and act on it" — so the label's width was
+        // pure repeated chrome, not information: shrinking it to a single
+        // "proceed" icon gives the title/fact column real width back
+        // (which is what keeps `title` + its category chip on one Wrap run
+        // more often, at every text scale) without ever removing the CTA's
+        // real meaning. [item.ctaLabel] itself is never dropped — it still
+        // reaches an assistive-technology user verbatim via this explicit
+        // [Semantics.label], never merely inferred from a generic icon.
+        Semantics(
+          button: true,
+          label: item.ctaLabel,
+          child: IconButton(
+            key: ValueKey('important-task-cta-${item.title}'),
+            // A literal minimum, not the platform default: this keeps the
+            // >=48px touch-target requirement true regardless of the
+            // ambient IconButton theme.
+            constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
+            onPressed: item.onPressed,
+            icon: const Icon(Icons.arrow_forward_ios_rounded, size: 16),
+          ),
+        ),
       ],
     );
   }
@@ -288,7 +312,9 @@ class PublicDemoMonthlyPrimaryCtaSection extends StatelessWidget {
         // PUBLIC-DEMO-HOME-UI-3C: trimmed vertical padding from 6 as part of
         // compressing this month-close card's own footprint (Issue #173) —
         // no text or the button's own 44pt minimum height changed.
-        padding: const EdgeInsets.fromLTRB(12, 4, 12, 4),
+        // SES HOME Final Density: trimmed again, from 4 to 0, same
+        // reasoning.
+        padding: const EdgeInsets.fromLTRB(12, 0, 12, 0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
@@ -306,7 +332,6 @@ class PublicDemoMonthlyPrimaryCtaSection extends StatelessWidget {
                 ),
               ],
             ),
-            const SizedBox(height: 2),
             Text(
               action.description,
               style: theme.textTheme.bodySmall?.copyWith(
@@ -315,7 +340,7 @@ class PublicDemoMonthlyPrimaryCtaSection extends StatelessWidget {
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
             ),
-            const SizedBox(height: 4),
+            const SizedBox(height: 2),
             SizedBox(
               width: double.infinity,
               child: FilledButton(
@@ -418,11 +443,14 @@ class _HomeSectionCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Card(
     key: cardKey,
+    margin: EdgeInsets.zero,
     child: Padding(
-      // PUBLIC-DEMO-HOME-UI-3C: trimmed from 14/10 — shared by 今月の重要
-      // タスク/クイックアクセス/今月の支出予定, all real card padding rather
-      // than text/touch-target room — as part of the Issue #173 density pass.
-      padding: const EdgeInsets.all(12),
+      // SES HOME Final Density: padding trimmed from 12 to 3 (itself
+      // trimmed from 14/10 by PUBLIC-DEMO-HOME-UI-3C) and the
+      // title-to-content gap trimmed from 8 to 2 — shared by 今月の重要
+      // タスク/クイックアクセス/今月の支出予定, all real card padding/gap
+      // rather than text/touch-target room.
+      padding: const EdgeInsets.all(3),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -433,7 +461,7 @@ class _HomeSectionCard extends StatelessWidget {
               color: accent ? SesTheme.primaryBlue : null,
             ),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 2),
           child,
         ],
       ),

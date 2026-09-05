@@ -204,7 +204,14 @@ void main() {
         await pumpDemo(tester, size: const Size(390, 844));
         final before = currentState(tester).toJson();
 
-        final taskCta = find.widgetWithText(TextButton, '対応する').first;
+        // SES HOME Final Density: the important-task CTA is icon-only now
+        // (its real label reaches assistive technology via
+        // `Semantics.label` instead — see
+        // `public_demo_01_home_final_density_test.dart`), so this can no
+        // longer find it by its former visible "対応する" text.
+        final taskCta = find
+            .byKey(const Key('important-task-cta-営業活動を進める'))
+            .first;
         await scrollToVisible(tester, taskCta);
         await tester.tap(taskCta);
         await tester.pumpAndSettle();

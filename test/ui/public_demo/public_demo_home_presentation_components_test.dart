@@ -141,9 +141,35 @@ void main() {
       expect(find.text('資金'), findsOneWidget);
       expect(find.text('High Priority'), findsNothing);
       expect(find.text('重要'), findsNothing);
-      await tester.tap(find.text('対応する').first);
+      // SES HOME Final Density: the CTA is icon-only now — its label never
+      // renders as visible text (that would defeat the density win), but it
+      // must still reach an assistive-technology user verbatim via
+      // Semantics, and it must still be a real, tappable >=48px target.
+      expect(find.text('対応する'), findsNothing);
+      expect(find.text('確認する'), findsNothing);
+      final salesCtaKey = const Key('important-task-cta-営業活動を進める');
+      final recruitingCtaKey = const Key('important-task-cta-採用・面談に対応する');
+      final financeCtaKey = const Key('important-task-cta-資金計画を確認する');
+      for (final key in [salesCtaKey, recruitingCtaKey, financeCtaKey]) {
+        expect(find.byKey(key), findsOneWidget, reason: '$key');
+        expect(
+          tester.getSize(find.byKey(key)).height,
+          greaterThanOrEqualTo(48),
+          reason: '$key',
+        );
+      }
+      expect(
+        find.bySemanticsLabel('対応する'),
+        findsNWidgets(2),
+        reason: '営業/採用 CTAs share the same label text',
+      );
+      expect(find.bySemanticsLabel('確認する'), findsOneWidget);
+
+      await tester.tap(find.byKey(salesCtaKey));
       expect(salesCalls, 1);
-      await tester.tap(find.text('確認する'));
+      await tester.tap(find.byKey(recruitingCtaKey));
+      expect(salesCalls, 2);
+      await tester.tap(find.byKey(financeCtaKey));
       expect(financeCalls, 1);
       expect(tester.takeException(), isNull);
     },

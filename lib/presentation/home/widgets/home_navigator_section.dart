@@ -59,7 +59,12 @@ class HomeNavigatorMetrics {
   // PUBLIC-DEMO-HOME-UI-3C: trimmed again, from 6, as part of bringing
   // 今月の重要タスク into the unscrolled 360x800 initial view — see the
   // Issue #173 result report for the measured before/after top position.
-  static const double cardPaddingVertical = 4;
+  //
+  // SES HOME Final Density: trimmed again, from 4 to 0 — this card is this
+  // phase's single biggest lever for closing the remaining gap to
+  // クイックアクセス/Bottom Nav in the unscrolled view. Real card padding,
+  // not text height.
+  static const double cardPaddingVertical = 0;
   static const double cardPaddingHorizontal = 10;
 
   /// Gap between the name/role line and the greeting below it.
@@ -67,7 +72,10 @@ class HomeNavigatorMetrics {
   /// HOME-COMPACT-1B.4: trimmed from 3 — this constant is reused at every
   /// internal seam in the card's text column, so shaving one point here
   /// gives back real room across all of them at once.
-  static const double textGap = 2;
+  ///
+  /// SES HOME Final Density: trimmed again, from 2 to 1, for the same
+  /// reason.
+  static const double textGap = 1;
 
   /// The height at which the navigator would be costing the first view more
   /// than a compact identity plus its advice is worth at the default text
@@ -217,31 +225,46 @@ class HomeNavigatorSection extends StatelessWidget {
                   ),
                   const SizedBox(height: HomeNavigatorMetrics.textGap),
                   if (advice case final advice?) ...[
-                    // The eyebrow names which of the two roles this line
-                    // plays: a concrete next step (a CTA follows) or the
-                    // month's general goal (nothing is eligible right now).
-                    // Never both, and never a third card restating either.
-                    Text(
-                      advice.ctaLabel != null ? '次にやること' : '今月やること',
-                      key: const Key('home-navigator-message-label'),
-                      style: theme.textTheme.labelSmall?.copyWith(
-                        fontWeight: FontWeight.bold,
-                        color: theme.colorScheme.primary,
-                      ),
+                    // SES HOME Final Density: the eyebrow and the headline
+                    // used to be two separately-stacked `Text` lines, each
+                    // with its own gap. They are two distinct facts (which
+                    // of the two roles this line plays vs. the concrete
+                    // headline itself — never both, and never a third card
+                    // restating either), but they do not need a whole line
+                    // each: at 360-390pt the short eyebrow ("次にやること"/
+                    // "今月やること") and the headline routinely fit on one
+                    // visual row together, exactly the same `Wrap` idiom
+                    // the name/role row above already uses. Neither text is
+                    // shortened or clipped by this — a headline too long to
+                    // share the row simply starts its own line below the
+                    // eyebrow, still wrapping to up to 2 lines itself, the
+                    // same as before this change.
+                    Wrap(
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      spacing: 6,
+                      runSpacing: HomeNavigatorMetrics.textGap,
+                      children: [
+                        Text(
+                          advice.ctaLabel != null ? '次にやること' : '今月やること',
+                          key: const Key('home-navigator-message-label'),
+                          style: theme.textTheme.labelSmall?.copyWith(
+                            fontWeight: FontWeight.bold,
+                            color: theme.colorScheme.primary,
+                          ),
+                        ),
+                        if (advice.headline case final headline?)
+                          Text(
+                            headline,
+                            key: const Key('home-recommended-action-headline'),
+                            style: theme.textTheme.titleSmall?.copyWith(
+                              fontWeight: FontWeight.bold,
+                            ),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                      ],
                     ),
                     const SizedBox(height: HomeNavigatorMetrics.textGap),
-                    if (advice.headline case final headline?) ...[
-                      Text(
-                        headline,
-                        key: const Key('home-recommended-action-headline'),
-                        style: theme.textTheme.titleSmall?.copyWith(
-                          fontWeight: FontWeight.bold,
-                        ),
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      const SizedBox(height: HomeNavigatorMetrics.textGap),
-                    ],
                     // No maxLines and no ellipsis, deliberately: the whole
                     // point of the merge is that this line is never
                     // truncated behind a "詳しく見る" tap the way the old
@@ -264,7 +287,8 @@ class HomeNavigatorSection extends StatelessWidget {
                       // CTA itself is unchanged (its height comes from
                       // `minimumSize`, not this gap), so this only removes
                       // slack between it and the message above.
-                      const SizedBox(height: 4),
+                      // SES HOME Final Density: trimmed again, from 4, then 2.
+                      const SizedBox(height: 1),
                       SizedBox(
                         width: double.infinity,
                         child: FilledButton.icon(
@@ -295,7 +319,8 @@ class HomeNavigatorSection extends StatelessWidget {
                       // PUBLIC-DEMO-HOME-UI-3C: trimmed from 6, same
                       // reasoning as the primary CTA's own gap above — the
                       // 48pt minimum height is untouched.
-                      const SizedBox(height: 4),
+                      // SES HOME Final Density: trimmed again, from 4, then 2.
+                      const SizedBox(height: 1),
                       SizedBox(
                         width: double.infinity,
                         child: OutlinedButton(
@@ -418,7 +443,8 @@ class _AdviceBubbleState extends State<_AdviceBubble> {
           // PUBLIC-DEMO-HOME-UI-3C: trimmed vertical padding from 3 — the
           // bubble is the last thing inside a card whose height is already
           // budgeted, and this is real slack, not a text-height floor.
-          padding: const EdgeInsets.fromLTRB(10, 2, 10, 2),
+          // SES HOME Final Density: trimmed again, from 2, then 1.
+          padding: const EdgeInsets.fromLTRB(8, 0, 8, 0),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,

@@ -360,10 +360,144 @@ existing `ses171-tab-screenshot.mjs`):
 - `docs/reports/screenshots/ses-173-{home,sales-empty}-{360x800,390x844}.png`
 - `docs/reports/screenshots/before/ses-173-{home,sales-empty}-{360x800,390x844}.png`
 
-## 12. Final commit SHA / PR
+## 12. Follow-up: Codex P2 review fixes (post-PR)
+
+PR #174's Codex review raised two P2 findings against
+`_salesTabEmptyState()` (§4). Both are fixed on the same branch/PR; no new
+branch or PR was created.
+
+### 12.1 Finding 1 — April copy must reflect actual workflow state
+
+**Root cause.** `beforeFunnelOpens` was `s.month < 5` — copy keyed on the
+*month* alone. A player who completes `SkillSheet確認` for every engineer
+while still in April (the real, already-existing `営業開始` action then
+sits on 社員) kept seeing "activity starts after SkillSheet確認が完了して
+から" — a claim that had already become false, even though nothing else
+about the tab's emptiness changed.
+
+**Fix.** `lib/ui/public_demo/public_demo_01_placeholder_screen.dart`,
+`_salesTabEmptyState()`: replaced the month-based `beforeFunnelOpens` with
+`anyEngineerAwaitingSkillSheet`, read from the same authoritative
+`workflow.engineers[i].stage` this screen already reads everywhere else
+(`ec(i)`, `engineerStatus`, the Recovery/Cash-advice selectors):
+
+```dart
+final anyEngineerAwaitingSkillSheet = workflow.engineers.any(
+  (engineer) => engineer.stage == PublicDemoSalesStage.waiting,
+);
+```
+
+`PublicDemoSalesStage.waiting` is precisely the one stage
+`startSkillSheetReview` (the SkillSheet確認 action itself) clears — so the
+"starts after SkillSheet確認" copy now shows exactly while that is still
+true for at least one engineer, and switches to the neutral "no current
+action; see 社員" copy the instant it stops being true, independent of
+which month it happens to be. No new field, no new domain read, no
+workflow/aggregate change — only which of the two already-existing strings
+this card selects.
+
+### 12.2 Finding 2 — empty-state heading overflow at scale
+
+**Root cause.** The heading `Text` sat directly in a `Row` next to the
+icon with no flex — at 360px width and TextScaler 1.3/2.0 its own
+intrinsic one-line width exceeded the card, producing a
+`RenderFlex overflowed by N pixels` error (reproduced directly: reverting
+the fix and re-running the new test below throws
+`A RenderFlex overflowed by 281 pixels on the right` at scale 1.3).
+
+**Fix.** Same method: wrapped the heading in `Expanded` (and gave the
+`Row` `crossAxisAlignment: CrossAxisAlignment.start` so the icon stays
+top-aligned once the heading wraps to two lines) —
+
+```dart
+Row(
+  crossAxisAlignment: CrossAxisAlignment.start,
+  children: [
+    Icon(Icons.storefront_outlined, ...),
+    const SizedBox(width: 8),
+    const Expanded(
+      child: Text(
+        '営業・採用のアクションは現在ありません',
+        style: TextStyle(fontWeight: FontWeight.bold),
+      ),
+    ),
+  ],
+),
+```
+
+No font size changed; the heading now wraps to a second line at 360px
+under 1.3×/2.0× instead of overflowing, exactly as `Text`'s default
+`softWrap` already does once it is given a bounded width.
+
+### 12.3 New regression coverage
+
+`test/ui/public_demo/public_demo_01_home_ui_3c_density_test.dart` — three
+new `testWidgets` (5 → 8 total in the file), all built on the existing
+"drive `PublicDemoAggregate` through the real commands, inject via a fixed
+`PublicDemoSaveService`" technique already used in this file, extended with
+a `textScale` parameter on the shared `_pump` helper:
+
+1. **April, after SkillSheet確認 for every engineer** — calls
+   `startSkillSheetReview` on both founding engineers without closing
+   April (`_currentState(tester).month` stays `4`), then asserts the
+   before-funnel string (`'SkillSheet確認が完了してから'`) is **absent** and
+   the neutral 社員-pointing copy is present. A `isFalse` sanity check on
+   `workflow.engineers.any(stage == waiting)` guards against the test
+   itself becoming a false negative if the domain command's own semantics
+   ever changed.
+2. **Fresh April at 360×800, TextScaler 1.3** and **2.0** (parameterized,
+   2 tests): asserts `tester.takeException()` is `null` (no
+   `RenderFlex` overflow), both the card and its CTA stay within
+   `[0, 360]` horizontally, the heading's exact text still renders (the
+   wrap must not truncate or replace the copy), the CTA is still
+   `>= 48` logical px tall, and tapping it still switches
+   `NavigationBar.selectedIndex` to 社員 (index 1) — the fix does not
+   trade away the fresh-April routing fix from PR #172.
+
+**Verified these tests actually catch the two original bugs**, not just
+pass by construction: reverted the `Expanded` fix locally, re-ran the two
+scaled tests → both failed with the exact reported defect
+(`A RenderFlex overflowed by 281 pixels on the right` at scale 1.3, and
+again at 2.0), then restored the fix and re-ran → both green. The copy
+test was written against the observed defect the same way (it fails
+without the `anyEngineerAwaitingSkillSheet` fix, since the stale string is
+always present when keyed on month alone).
+
+### 12.4 Tests run for this follow-up
+
+1. `flutter analyze` (touched files) → **No issues found.**
+2. `flutter test test/ui/public_demo/public_demo_01_home_ui_3c_density_test.dart`
+   → **8/8 passed** (5 pre-existing + 3 new).
+3. `flutter analyze` (whole project) → **No issues found.**
+4. `flutter test test/ui/public_demo/` (full directory) → **244/244
+   passed**, 0 failures.
+
+### 12.5 Codex P2 status
+
+**Both resolved.**
+
+1. The April empty-state copy is now derived from
+   `PublicDemoSalesStage.waiting` on the authoritative `workflow`, not the
+   month — it stops claiming SkillSheet確認 is outstanding the moment it
+   genuinely is not, for any month.
+2. The heading is wrapped in `Expanded`, verified overflow-free at 360px
+   under both TextScaler 1.3 and 2.0, with no font-size reduction and no
+   loss of the ≥48pt CTA or its fresh-April 社員 routing.
+
+No domain, save, balance, finance, Month Guard, Recommended Action, or CI
+file changed in this follow-up — the only production file touched is
+`lib/ui/public_demo/public_demo_01_placeholder_screen.dart` (the same one
+method, `_salesTabEmptyState()`, both findings live in).
+
+### Final commit SHA (this follow-up)
+
+Recorded after push — see §13 below.
+
+## 13. Final commit SHA / PR
 
 - Branch: `claude/public-demo-home-ui-3c-q7gnb4`
-- Final commit SHA: `3dc826aa045ac2aa7a634b8c7498c29716ea8666`
+- Final commit SHA: `3dc826aa045ac2aa7a634b8c7498c29716ea8666` (original
+  phase) / see §12 for the Codex-fix follow-up commit on the same branch.
 - PR: [#174](https://github.com/perusonao/smile_enjoy_story/pull/174)
 
 Per this task's instruction, the PR is **not** merged by this session —

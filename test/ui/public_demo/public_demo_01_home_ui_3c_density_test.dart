@@ -13,6 +13,17 @@
 //    the Issue names explicitly) and again from August on, once the
 //    funnel/assignment cards this tab owns have nothing left to show. May,
 //    June, and July (which always have a real card) must never show it.
+//
+// PR #174 Codex review (P2 x2) adds two more pins:
+//
+//  * The April empty-state copy is derived from the same authoritative
+//    workflow stage `ec(i)` already reads
+//    ([PublicDemoSalesStage.waiting]), never from the month alone — once
+//    every engineer has cleared SkillSheet確認, the card must stop
+//    claiming that confirmation is the still-outstanding blocker, even
+//    while still in April.
+//  * The card's heading wraps instead of overflowing horizontally at
+//    360px width under TextScaler 1.3/2.0.
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -21,6 +32,7 @@ import 'package:smile_enjoy_story/game/public_demo/public_demo_aggregate.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_assignment.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_interview.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_salary.dart';
+import 'package:smile_enjoy_story/game/public_demo/public_demo_sales.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_state.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_summer_bonus_plan.dart';
 import 'package:smile_enjoy_story/ui/public_demo/public_demo_01_placeholder_screen.dart';
@@ -84,14 +96,21 @@ Future<void> _pump(
   WidgetTester tester,
   PublicDemoAggregate aggregate, {
   Size size = const Size(390, 844),
+  double textScale = 1.0,
 }) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1.0;
   addTearDown(tester.view.reset);
   await tester.pumpWidget(
     MaterialApp(
-      home: PublicDemo01PlaceholderScreen(
-        saveService: _FixedSaveService(aggregate),
+      home: MediaQuery(
+        data: MediaQueryData(
+          size: size,
+          textScaler: TextScaler.linear(textScale),
+        ),
+        child: PublicDemo01PlaceholderScreen(
+          saveService: _FixedSaveService(aggregate),
+        ),
       ),
     ),
   );
@@ -182,6 +201,45 @@ void main() {
     );
 
     testWidgets(
+      'April, after SkillSheet確認 is complete for every engineer: the '
+      'neutral "no current action" copy renders — the stale "starts after '
+      'SkillSheet確認" claim must not, even though the month is still 4',
+      (tester) async {
+        var game = PublicDemoAggregate.initial();
+        for (final engineer in game.workflow.engineers) {
+          game = game.startSkillSheetReview(engineer.id);
+        }
+        await _pump(tester, game);
+        expect(_currentState(tester).month, 4);
+        expect(
+          game.workflow.engineers.any(
+            (e) => e.stage == PublicDemoSalesStage.waiting,
+          ),
+          isFalse,
+          reason: 'sanity: every engineer must have genuinely cleared '
+              'SkillSheet確認 before this assertion means anything',
+        );
+
+        await switchPublicDemoTab(tester, PublicDemoTab.sales);
+
+        expect(find.byKey(_emptyStateKey), findsOneWidget);
+        expect(
+          find.textContaining('SkillSheet確認が完了してから'),
+          findsNothing,
+          reason: 'SkillSheet確認 is already done for every engineer — the '
+              'card must not keep claiming it is the outstanding blocker',
+        );
+        expect(
+          find.textContaining('社員'),
+          findsWidgets,
+          reason: 'the neutral copy must still point at where real '
+              'per-employee status actually lives',
+        );
+        expect(find.byKey(_emptyStateCtaKey), findsOneWidget);
+      },
+    );
+
+    testWidgets(
       'August, with nothing outstanding: the after-funnel empty state '
       'renders (a genuinely different, still-truthful message) and its CTA '
       'switches to 社員',
@@ -249,6 +307,62 @@ void main() {
         expect(find.byKey(_emptyStateKey), findsNothing);
       },
     );
+  });
+
+  group('Issue #173 / PR #174 Codex review (P2): the empty-state heading is '
+      'overflow-safe at 360px under an increased text scale', () {
+    for (final textScale in [1.3, 2.0]) {
+      testWidgets(
+        'fresh April at 360x800 / textScale $textScale: no horizontal '
+        'overflow, and the CTA stays a real >=48pt target routing to 社員',
+        (tester) async {
+          await _pump(
+            tester,
+            PublicDemoAggregate.initial(),
+            size: const Size(360, 800),
+            textScale: textScale,
+          );
+          await switchPublicDemoTab(tester, PublicDemoTab.sales);
+
+          expect(find.byKey(_emptyStateKey), findsOneWidget);
+          expect(
+            tester.takeException(),
+            isNull,
+            reason:
+                'a RenderFlex overflow (the exact Codex P2 finding — a '
+                'non-flexible heading Text alongside the icon in a Row) '
+                'surfaces as a FlutterError here',
+          );
+
+          for (final key in [
+            'public-demo-sales-empty-state',
+            'public-demo-sales-empty-state-cta',
+          ]) {
+            final rect = tester.getRect(find.byKey(Key(key)));
+            expect(rect.left, greaterThanOrEqualTo(0.0), reason: key);
+            expect(rect.right, lessThanOrEqualTo(360.0), reason: key);
+          }
+
+          expect(
+            find.text('営業・採用のアクションは現在ありません'),
+            findsOneWidget,
+            reason: 'the heading text itself is still the same copy — '
+                'wrapping must not truncate or replace it',
+          );
+
+          final ctaRect = tester.getRect(find.byKey(_emptyStateCtaKey));
+          expect(ctaRect.height, greaterThanOrEqualTo(48));
+
+          await tester.tap(find.byKey(_emptyStateCtaKey));
+          await tester.pumpAndSettle();
+          final nav = tester.widget<NavigationBar>(
+            find.byKey(const Key('public-demo-bottom-nav')),
+          );
+          expect(nav.selectedIndex, 1, reason: '社員 is tab index 1');
+          expect(tester.takeException(), isNull);
+        },
+      );
+    }
   });
 }
 

@@ -2966,8 +2966,21 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
   /// employee-facing action, when one exists, is on 社員) and offers a
   /// real navigation shortcut to that tab — never a new sales/recruiting
   /// action, deadline, or count.
+  ///
+  /// PR #174 Codex review (P2): the "starts after SkillSheet確認" copy used
+  /// to key off `s.month < 5` alone, so it kept claiming SkillSheet確認 was
+  /// the still-outstanding blocker even after the player had already
+  /// completed it for every engineer (April, but the real next step —
+  /// 営業開始 — is already sitting on 社員). This now reads the same
+  /// authoritative [workflow] stage `ec(i)`/[engineerStatus] already read
+  /// elsewhere on this screen: [PublicDemoSalesStage.waiting] is the one
+  /// stage SkillSheet確認 has not yet cleared, so only *that* fact decides
+  /// which copy renders — never the month alone, and never a new gameplay
+  /// signal invented for this card.
   Widget _salesTabEmptyState() {
-    final beforeFunnelOpens = s.month < 5;
+    final anyEngineerAwaitingSkillSheet = workflow.engineers.any(
+      (engineer) => engineer.stage == PublicDemoSalesStage.waiting,
+    );
     return Card(
       key: const Key('public-demo-sales-empty-state'),
       child: Padding(
@@ -2976,21 +2989,32 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Icon(
                   Icons.storefront_outlined,
                   color: Theme.of(context).colorScheme.onSurfaceVariant,
                 ),
                 const SizedBox(width: 8),
-                const Text(
-                  '営業・採用のアクションは現在ありません',
-                  style: TextStyle(fontWeight: FontWeight.bold),
+                // PR #174 Codex review (P2): a non-flexible Text here
+                // overflowed horizontally at 360px width once TextScaler
+                // 1.3/2.0 grew this heading past one line's intrinsic
+                // width. Expanded gives it the Row's remaining width to
+                // wrap into instead — no font-size reduction, and the
+                // heading still reads as one bold line at the default
+                // scale (see the new regression test's own scaled-size
+                // coverage).
+                const Expanded(
+                  child: Text(
+                    '営業・採用のアクションは現在ありません',
+                    style: TextStyle(fontWeight: FontWeight.bold),
+                  ),
                 ),
               ],
             ),
             const SizedBox(height: 8),
             Text(
-              beforeFunnelOpens
+              anyEngineerAwaitingSkillSheet
                   ? '案件情報の収集や採用の募集は、社員のSkillSheet確認が完了してから始まります。'
                   : '案件の募集・採用の対応は現在ありません。社員ごとの営業状況は「社員」タブで確認できます。',
               style: Theme.of(context).textTheme.bodySmall?.copyWith(

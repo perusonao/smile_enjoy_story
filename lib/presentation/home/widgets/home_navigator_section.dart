@@ -55,7 +55,11 @@ class HomeNavigatorMetrics {
   // HOME-COMPACT-1B.4: trimmed from 8 to help fit 社員概要 back into the
   // unscrolled initial view — see [compactCeiling]'s own doc for why the
   // bigger portrait this phase also adds costs nothing on top of this.
-  static const double cardPaddingVertical = 6;
+  //
+  // PUBLIC-DEMO-HOME-UI-3C: trimmed again, from 6, as part of bringing
+  // 今月の重要タスク into the unscrolled 360x800 initial view — see the
+  // Issue #173 result report for the measured before/after top position.
+  static const double cardPaddingVertical = 4;
   static const double cardPaddingHorizontal = 10;
 
   /// Gap between the name/role line and the greeting below it.
@@ -256,7 +260,11 @@ class HomeNavigatorSection extends StatelessWidget {
                       ),
                     ),
                     if (advice.ctaLabel case final ctaLabel?) ...[
-                      const SizedBox(height: 6),
+                      // PUBLIC-DEMO-HOME-UI-3C: trimmed from 6 — the 48pt
+                      // CTA itself is unchanged (its height comes from
+                      // `minimumSize`, not this gap), so this only removes
+                      // slack between it and the message above.
+                      const SizedBox(height: 4),
                       SizedBox(
                         width: double.infinity,
                         child: FilledButton.icon(
@@ -284,7 +292,10 @@ class HomeNavigatorSection extends StatelessWidget {
                       ),
                     ],
                     if (advice.secondaryLabel case final secondaryLabel?) ...[
-                      const SizedBox(height: 6),
+                      // PUBLIC-DEMO-HOME-UI-3C: trimmed from 6, same
+                      // reasoning as the primary CTA's own gap above — the
+                      // 48pt minimum height is untouched.
+                      const SizedBox(height: 4),
                       SizedBox(
                         width: double.infinity,
                         child: OutlinedButton(
@@ -404,7 +415,10 @@ class _AdviceBubbleState extends State<_AdviceBubble> {
           border: Border.all(color: scheme.outlineVariant),
         ),
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(10, 3, 10, 3),
+          // PUBLIC-DEMO-HOME-UI-3C: trimmed vertical padding from 3 — the
+          // bubble is the last thing inside a card whose height is already
+          // budgeted, and this is real slack, not a text-height floor.
+          padding: const EdgeInsets.fromLTRB(10, 2, 10, 2),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,

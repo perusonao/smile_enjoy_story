@@ -2832,12 +2832,15 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
               // nav "社員" now switch to that tab instead of scrolling to
               // this same summary.
               HomeOfficeStageSection(display: _officeStageDisplay),
-              const SizedBox(height: 8),
+              // PUBLIC-DEMO-HOME-UI-3C: trimmed from 8 — real slack between
+              // sections, not text/touch-target room — as part of bringing
+              // 今月の重要タスク into the unscrolled 360x800 initial view.
+              const SizedBox(height: 6),
               // Section 6: "今月の重要タスク" — up to three truthful
               // tasks built only from existing authoritative facts
               // (see _importantTasks's own doc).
               PublicDemoImportantTasksSection(items: _importantTasks),
-              const SizedBox(height: 8),
+              const SizedBox(height: 6),
               // Section 7: クイックアクセス — each item switches to the
               // real tab that owns the destination it names.
               PublicDemoQuickAccessSection(items: _quickAccessItems),
@@ -2915,35 +2918,99 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
   /// (project continuation/replacement) pipeline with its July results
   /// narrative. Reuses every existing widget/method/key verbatim — no new
   /// project/sales authority is invented here.
-  Widget _buildSalesTab(BuildContext c) => ListView(
-    key: const PageStorageKey('public-demo-sales-tab'),
-    padding: const EdgeInsets.all(16),
-    children: [
-      Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          if (s.month == 5) ...[
-            _RecruitmentMediaCard(state: s, onPressed: _openRecruitmentMedia),
-            for (var i = 0; i < workflow.applicants.length; i++) ac(i),
-          ],
-          if (s.month == 6)
-            for (var i = 0; i < workflow.assignments.length; i++)
-              assignmentCard(i),
-          if (s.month == 7) ...[
-            Text('7月開始結果', style: Theme.of(c).textTheme.titleLarge),
-            // SES-FIRST-FUN-YEAR-UI-PHASE-1: the 参画/待機 headcount line
-            // that used to render here is removed — it duplicated the
-            // always-visible compact KPI's 参画/待機 tiles verbatim.
-            for (final a in workflow.assignments)
-              ListTile(
-                title: Text(a.engineerName),
-                subtitle: Text(julyResult(a)),
-              ),
-          ],
-        ],
-      ),
+  ///
+  /// PUBLIC-DEMO-HOME-UI-3C: before May's recruitment media exists, and from
+  /// August on (once the funnel/assignment cards above have nothing left to
+  /// show — any further per-employee sales progress renders on 社員, not
+  /// here), this tab used to render a fully blank body with no explanation.
+  /// [_salesTabEmptyState] replaces that with a truthful, non-interactive
+  /// (beyond real navigation) empty state built only when [_salesTabItems]
+  /// is genuinely empty — never a fabricated sales/recruiting action.
+  Widget _buildSalesTab(BuildContext c) {
+    final items = _salesTabItems(c);
+    return ListView(
+      key: const PageStorageKey('public-demo-sales-tab'),
+      padding: const EdgeInsets.all(16),
+      children: [
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: items.isEmpty ? [_salesTabEmptyState()] : items,
+        ),
+      ],
+    );
+  }
+
+  List<Widget> _salesTabItems(BuildContext c) => [
+    if (s.month == 5) ...[
+      _RecruitmentMediaCard(state: s, onPressed: _openRecruitmentMedia),
+      for (var i = 0; i < workflow.applicants.length; i++) ac(i),
     ],
-  );
+    if (s.month == 6)
+      for (var i = 0; i < workflow.assignments.length; i++) assignmentCard(i),
+    if (s.month == 7) ...[
+      Text('7月開始結果', style: Theme.of(c).textTheme.titleLarge),
+      // SES-FIRST-FUN-YEAR-UI-PHASE-1: the 参画/待機 headcount line
+      // that used to render here is removed — it duplicated the
+      // always-visible compact KPI's 参画/待機 tiles verbatim.
+      for (final a in workflow.assignments)
+        ListTile(title: Text(a.engineerName), subtitle: Text(julyResult(a))),
+    ],
+  ];
+
+  /// PUBLIC-DEMO-HOME-UI-3C: the truthful non-action empty state for 営業
+  /// when [_salesTabItems] built nothing — structurally correct (there is
+  /// genuinely no recruiting/assignment card to show yet, or any longer),
+  /// but previously a large unexplained blank body, most visibly on a
+  /// fresh April playthrough (Issue #173). States only two already-true
+  /// facts (no eligible request card exists yet/any more here; a real
+  /// employee-facing action, when one exists, is on 社員) and offers a
+  /// real navigation shortcut to that tab — never a new sales/recruiting
+  /// action, deadline, or count.
+  Widget _salesTabEmptyState() {
+    final beforeFunnelOpens = s.month < 5;
+    return Card(
+      key: const Key('public-demo-sales-empty-state'),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  Icons.storefront_outlined,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+                const SizedBox(width: 8),
+                const Text(
+                  '営業・採用のアクションは現在ありません',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(
+              beforeFunnelOpens
+                  ? '案件情報の収集や採用の募集は、社員のSkillSheet確認が完了してから始まります。'
+                  : '案件の募集・採用の対応は現在ありません。社員ごとの営業状況は「社員」タブで確認できます。',
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+            ),
+            const SizedBox(height: 12),
+            SizedBox(
+              height: 48,
+              child: OutlinedButton(
+                key: const Key('public-demo-sales-empty-state-cta'),
+                onPressed: () => _switchTab(_employeesTabIndex),
+                child: const Text('社員の状況を見る'),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 
   /// 会計 (index 3) — finance detail this Issue moves off HOME: the latest
   /// monthly cash-flow card, the payroll/fixed-cost summary, the summer

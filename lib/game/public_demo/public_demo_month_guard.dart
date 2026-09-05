@@ -88,7 +88,8 @@ abstract final class PublicDemoMonthGuard {
     required int month,
     required bool monthCloseApplicable,
     required bool summerBonusDecisionConfirmed,
-    List<PublicDemoMonthGuardCandidate> outstandingRecommendedActions = const [],
+    List<PublicDemoMonthGuardCandidate> outstandingRecommendedActions =
+        const [],
   }) {
     if (!monthCloseApplicable) return const [];
     final items = <PublicDemoMonthGuardItem>[];

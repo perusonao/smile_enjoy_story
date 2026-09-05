@@ -188,7 +188,8 @@ void main() {
         expect(
           kind.isInformational,
           kind == HomeRecommendedActionKind.cashShortageResponse,
-          reason: '${kind.name}.isInformational must be '
+          reason:
+              '${kind.name}.isInformational must be '
               '${kind == HomeRecommendedActionKind.cashShortageResponse}',
         );
       }
@@ -199,14 +200,18 @@ void main() {
       () {
         expect(
           HomeRecommendedActionKind.recoveryAssignment.presentationPriority,
-          lessThan(HomeRecommendedActionKind.cashShortageResponse.presentationPriority),
+          lessThan(
+            HomeRecommendedActionKind.cashShortageResponse.presentationPriority,
+          ),
         );
         for (final kind in HomeRecommendedActionKind.values) {
           if (kind == HomeRecommendedActionKind.recoveryAssignment) continue;
           expect(
             kind.presentationPriority,
             greaterThanOrEqualTo(
-              HomeRecommendedActionKind.cashShortageResponse.presentationPriority,
+              HomeRecommendedActionKind
+                  .cashShortageResponse
+                  .presentationPriority,
             ),
             reason:
                 '${kind.name} must not also outrank cashShortageResponse — '
@@ -216,23 +221,22 @@ void main() {
       },
     );
 
-    test(
-      'selection: a genuine Recovery candidate wins over the informational '
-      'shortage card even though it is P0 by design',
-      () {
-        final shortage = candidate(HomeRecommendedActionKind.cashShortageResponse);
-        final recovery = candidate(
-          HomeRecommendedActionKind.recoveryAssignment,
-          subjectName: '佐藤 健',
-        );
-        for (final order in [
-          [shortage, recovery],
-          [recovery, shortage],
-        ]) {
-          expect(selectHomeRecommendedAction(order), same(recovery));
-        }
-      },
-    );
+    test('selection: a genuine Recovery candidate wins over the informational '
+        'shortage card even though it is P0 by design', () {
+      final shortage = candidate(
+        HomeRecommendedActionKind.cashShortageResponse,
+      );
+      final recovery = candidate(
+        HomeRecommendedActionKind.recoveryAssignment,
+        subjectName: '佐藤 健',
+      );
+      for (final order in [
+        [shortage, recovery],
+        [recovery, shortage],
+      ]) {
+        expect(selectHomeRecommendedAction(order), same(recovery));
+      }
+    });
   });
 
   group('selection', () {

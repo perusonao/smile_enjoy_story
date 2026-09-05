@@ -28,23 +28,29 @@ void main() {
       );
     });
 
-    test('Available translates the resolved sales-start path deterministically', () {
-      final slot = HomeRecommendedActionAvailable(
-        _candidate(
-          HomeRecommendedActionKind.employeeSkillSheetReview,
-          subjectName: '佐藤 健',
-        ),
-      );
-      final first = navigatorAdviceFor(slot);
-      final second = navigatorAdviceFor(slot);
-      expect(first!.headline, '佐藤 健のスキルシートを確認');
-      expect(first.message, 'スキルシートの内容を確認しましょう。');
-      expect(first.explanation, 'スキルシートは、経験やスキルを案件へ伝えるための資料です。内容を確認して次の手続きに備えます。');
-      expect(first.semantic, HomeNavigatorAdviceSemantic.neutral);
-      expect(second!.headline, first.headline);
-      expect(second.message, first.message);
-      expect(second.explanation, first.explanation);
-    });
+    test(
+      'Available translates the resolved sales-start path deterministically',
+      () {
+        final slot = HomeRecommendedActionAvailable(
+          _candidate(
+            HomeRecommendedActionKind.employeeSkillSheetReview,
+            subjectName: '佐藤 健',
+          ),
+        );
+        final first = navigatorAdviceFor(slot);
+        final second = navigatorAdviceFor(slot);
+        expect(first!.headline, '佐藤 健のスキルシートを確認');
+        expect(first.message, 'スキルシートの内容を確認しましょう。');
+        expect(
+          first.explanation,
+          'スキルシートは、経験やスキルを案件へ伝えるための資料です。内容を確認して次の手続きに備えます。',
+        );
+        expect(first.semantic, HomeNavigatorAdviceSemantic.neutral);
+        expect(second!.headline, first.headline);
+        expect(second.message, first.message);
+        expect(second.explanation, first.explanation);
+      },
+    );
 
     test('cash-shortage candidate maps to caution', () {
       final advice = navigatorAdviceFor(

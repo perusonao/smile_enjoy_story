@@ -129,10 +129,7 @@ void main() {
     testWidgets('Quick Access no longer exists on HOME', (tester) async {
       await _pump(tester, size: const Size(390, 844));
       expect(find.text('クイックアクセス'), findsNothing);
-      expect(
-        find.byKey(const Key('public-demo-quick-access')),
-        findsNothing,
-      );
+      expect(find.byKey(const Key('public-demo-quick-access')), findsNothing);
     });
   });
 

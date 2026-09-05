@@ -114,60 +114,60 @@ class _ImportantTaskRow extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 6),
       child: Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Wrap(
-                crossAxisAlignment: WrapCrossAlignment.center,
-                spacing: 6,
-                runSpacing: 2,
-                children: [
-                  Text(
-                    item.title,
-                    style: const TextStyle(fontWeight: FontWeight.bold),
-                  ),
-                  _StatusChip(label: item.category, compact: true),
-                ],
-              ),
-              const SizedBox(height: 3),
-              Text(
-                item.fact,
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Wrap(
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  spacing: 6,
+                  runSpacing: 2,
+                  children: [
+                    Text(
+                      item.title,
+                      style: const TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                    _StatusChip(label: item.category, compact: true),
+                  ],
                 ),
-              ),
-            ],
+                const SizedBox(height: 3),
+                Text(
+                  item.fact,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ],
+            ),
           ),
-        ),
-        const SizedBox(width: 2),
-        // SES HOME Final Density: the CTA used to be a `TextButton` printing
-        // [item.ctaLabel] ("対応する"/"確認する") in full. Every one of the
-        // (at most three) rows here says the exact same thing — "go to
-        // where this fact lives and act on it" — so the label's width was
-        // pure repeated chrome, not information: shrinking it to a single
-        // "proceed" icon gives the title/fact column real width back
-        // (which is what keeps `title` + its category chip on one Wrap run
-        // more often, at every text scale) without ever removing the CTA's
-        // real meaning. [item.ctaLabel] itself is never dropped — it still
-        // reaches an assistive-technology user verbatim via this explicit
-        // [Semantics.label], never merely inferred from a generic icon.
-        Semantics(
-          button: true,
-          label: item.ctaLabel,
-          child: IconButton(
-            key: ValueKey('important-task-cta-${item.title}'),
-            // A literal minimum, not the platform default: this keeps the
-            // >=48px touch-target requirement true regardless of the
-            // ambient IconButton theme.
-            constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
-            onPressed: item.onPressed,
-            icon: const Icon(Icons.arrow_forward_ios_rounded, size: 16),
+          const SizedBox(width: 2),
+          // SES HOME Final Density: the CTA used to be a `TextButton` printing
+          // [item.ctaLabel] ("対応する"/"確認する") in full. Every one of the
+          // (at most three) rows here says the exact same thing — "go to
+          // where this fact lives and act on it" — so the label's width was
+          // pure repeated chrome, not information: shrinking it to a single
+          // "proceed" icon gives the title/fact column real width back
+          // (which is what keeps `title` + its category chip on one Wrap run
+          // more often, at every text scale) without ever removing the CTA's
+          // real meaning. [item.ctaLabel] itself is never dropped — it still
+          // reaches an assistive-technology user verbatim via this explicit
+          // [Semantics.label], never merely inferred from a generic icon.
+          Semantics(
+            button: true,
+            label: item.ctaLabel,
+            child: IconButton(
+              key: ValueKey('important-task-cta-${item.title}'),
+              // A literal minimum, not the platform default: this keeps the
+              // >=48px touch-target requirement true regardless of the
+              // ambient IconButton theme.
+              constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
+              onPressed: item.onPressed,
+              icon: const Icon(Icons.arrow_forward_ios_rounded, size: 16),
+            ),
           ),
-        ),
-      ],
+        ],
       ),
     );
   }

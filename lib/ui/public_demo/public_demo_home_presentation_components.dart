@@ -90,11 +90,11 @@ class PublicDemoImportantTasksSection extends StatelessWidget {
     child: Column(
       children: [
         for (var i = 0; i < items.length; i++) ...[
-          // SES HOME Final Density: trimmed from 10 to 2 (itself trimmed
+          // SES HOME Final Density: trimmed from 10 to 1 (itself trimmed
           // from 16 by PUBLIC-DEMO-HOME-UI-3C) — still real space between
           // rows, not a text-height floor, as part of bringing クイック
           // アクセス closer to the unscrolled initial view.
-          if (i > 0) const Divider(height: 2),
+          if (i > 0) const Divider(height: 1),
           _ImportantTaskRow(item: items[i]),
         ],
       ],
@@ -312,9 +312,9 @@ class PublicDemoMonthlyPrimaryCtaSection extends StatelessWidget {
         // PUBLIC-DEMO-HOME-UI-3C: trimmed vertical padding from 6 as part of
         // compressing this month-close card's own footprint (Issue #173) —
         // no text or the button's own 44pt minimum height changed.
-        // SES HOME Final Density: trimmed again, from 4 to 1, same
+        // SES HOME Final Density: trimmed again, from 4 to 0, same
         // reasoning.
-        padding: const EdgeInsets.fromLTRB(12, 1, 12, 1),
+        padding: const EdgeInsets.fromLTRB(12, 0, 12, 0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
@@ -332,7 +332,6 @@ class PublicDemoMonthlyPrimaryCtaSection extends StatelessWidget {
                 ),
               ],
             ),
-            const SizedBox(height: 1),
             Text(
               action.description,
               style: theme.textTheme.bodySmall?.copyWith(
@@ -341,7 +340,7 @@ class PublicDemoMonthlyPrimaryCtaSection extends StatelessWidget {
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
             ),
-            const SizedBox(height: 3),
+            const SizedBox(height: 2),
             SizedBox(
               width: double.infinity,
               child: FilledButton(
@@ -446,12 +445,12 @@ class _HomeSectionCard extends StatelessWidget {
     key: cardKey,
     margin: EdgeInsets.zero,
     child: Padding(
-      // SES HOME Final Density: padding trimmed from 12 to 4 (itself
+      // SES HOME Final Density: padding trimmed from 12 to 3 (itself
       // trimmed from 14/10 by PUBLIC-DEMO-HOME-UI-3C) and the
-      // title-to-content gap trimmed from 8 to 3 — shared by 今月の重要
+      // title-to-content gap trimmed from 8 to 2 — shared by 今月の重要
       // タスク/クイックアクセス/今月の支出予定, all real card padding/gap
       // rather than text/touch-target room.
-      padding: const EdgeInsets.all(4),
+      padding: const EdgeInsets.all(3),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -462,7 +461,7 @@ class _HomeSectionCard extends StatelessWidget {
               color: accent ? SesTheme.primaryBlue : null,
             ),
           ),
-          const SizedBox(height: 3),
+          const SizedBox(height: 2),
           child,
         ],
       ),

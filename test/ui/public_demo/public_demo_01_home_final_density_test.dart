@@ -109,7 +109,7 @@ void main() {
       );
 
       final viewport = tester.getRect(_homeViewport);
-      for (final key in [..._sectionKeys, 'public-demo-quick-access']) {
+      for (final key in _sectionKeys) {
         final rect = tester.getRect(find.byKey(Key(key)));
         expect(
           rect.top,
@@ -117,6 +117,22 @@ void main() {
           reason: '$key must start inside the initial 390x844 viewport',
         );
       }
+
+      // PR #179 Codex review (P2): a bare `card.top < viewport.bottom`
+      // check on クイックアクセス passes even when only a few pixels of the
+      // card's own border are inside the fold and its actual content —
+      // starting with this "クイックアクセス" title — is entirely below
+      // it, which is not what "原則把握可能" means. The title text itself,
+      // not just the card's edge, must be fully inside the viewport.
+      final title = tester.getRect(find.text('クイックアクセス'));
+      expect(
+        title.bottom,
+        lessThanOrEqualTo(viewport.bottom),
+        reason:
+            'the クイックアクセス title itself — not merely the top edge '
+            'of its card — must be fully visible in the unscrolled '
+            '390x844 initial view',
+      );
     });
   });
 
@@ -147,10 +163,24 @@ void main() {
       final quickAccess = tester.getRect(find.byKey(_quickAccessKey));
       expect(
         quickAccess.top - viewport.bottom,
-        lessThan(60),
+        lessThan(30),
         reason:
             'クイックアクセス must sit close enough below the fold at '
             '360x800 that its entry point reads as reachable, not buried',
+      );
+
+      // PR #179 Codex review (P2): the card's own edge being close to the
+      // fold is not the same claim as its title being close — check the
+      // title too, still within a short scroll (never this width's full
+      // 390x844 "fully visible" bar, which 360x800 explicitly does not
+      // require).
+      final title = tester.getRect(find.text('クイックアクセス'));
+      expect(
+        title.top - viewport.bottom,
+        lessThan(50),
+        reason:
+            'the クイックアクセス title itself must also stay within a '
+            'short scroll of the fold at 360x800',
       );
     });
   });

@@ -60,11 +60,11 @@ class HomeNavigatorMetrics {
   // 今月の重要タスク into the unscrolled 360x800 initial view — see the
   // Issue #173 result report for the measured before/after top position.
   //
-  // SES HOME Final Density: trimmed again, from 4 to 1 — this card is this
+  // SES HOME Final Density: trimmed again, from 4 to 0 — this card is this
   // phase's single biggest lever for closing the remaining gap to
   // クイックアクセス/Bottom Nav in the unscrolled view. Real card padding,
   // not text height.
-  static const double cardPaddingVertical = 1;
+  static const double cardPaddingVertical = 0;
   static const double cardPaddingHorizontal = 10;
 
   /// Gap between the name/role line and the greeting below it.
@@ -73,7 +73,8 @@ class HomeNavigatorMetrics {
   /// internal seam in the card's text column, so shaving one point here
   /// gives back real room across all of them at once.
   ///
-  /// SES HOME Final Density: trimmed again, from 2, for the same reason.
+  /// SES HOME Final Density: trimmed again, from 2 to 1, for the same
+  /// reason.
   static const double textGap = 1;
 
   /// The height at which the navigator would be costing the first view more

@@ -24,12 +24,20 @@ HOMEをスマホ1画面で理解できる密度へ仕上げる（SES HOME Final 
 
 | 要件 | 結果 |
 |---|---|
-| 390x844: KPI/ひより/月次処理/社員概要/重要タスク/Quick Access/Bottom Nav を初期viewportで原則把握可能 | **達成** — 全6セクションの`top`がunscrolled `ListView`のviewport内（focused testで固定） |
-| 360x800: 同じ情報階層を維持、最低でもQuick Accessの存在/入口が認識可能 | **達成** — KPI〜重要タスクは引き続きviewport内。Quick Accessの`top`はfoldから46px先（fold直下、スクロール量小） |
+| 390x844: KPI/ひより/月次処理/社員概要/重要タスク/Quick Access/Bottom Nav を初期viewportで原則把握可能 | **達成** — 全6セクションの`top`がunscrolled `ListView`のviewport内。さらにPR #179レビューで指摘の通り、クイックアクセスは**タイトル文字列自体**が完全にviewport内（`title.bottom <= viewport.bottom`）まで強化・検証済み |
+| 360x800: 同じ情報階層を維持、最低でもQuick Accessの存在/入口が認識可能 | **達成** — KPI〜重要タスクは引き続きviewport内。Quick Accessのカード`top`はfoldから19px先、タイトルは22px先（いずれもfold直下、スクロール量小） |
 | 横スクロール禁止 | 達成 — 360/390 双方、textScale 1.0/1.3/2.0で`rect.left>=0` / `rect.right<=width`を確認 |
 | 重要copy/CTAのclip禁止 | 達成 — テキストは一切truncateせず、削減はpadding/gapのみ。重要タスクCTAはicon化したが`Semantics(label: item.ctaLabel)`で実ラベルを保持 |
 | touch target >=48px | 達成 — 新規iconCTAは明示的に`BoxConstraints(minWidth:48,minHeight:48)`。既存の48pt CTA群は無変更 |
 | TextScaler要件維持 | 達成 — 1.3/2.0で新規回帰テストがoverflow無しを確認 |
+
+**PR #179 Codex review (P2) 対応**: 初版の390x844テストは「カードの`top`が
+viewport内」のみを検証しており、実際にはクイックアクセスの見出し文字列
+自体は完全にfold外という指摘（`card.top=760`に対し`title.bottom=784`、
+viewport bottomは`764`）を受けた。これは正しい指摘であり、無視・
+言い訳せず追加のpadding/gap削減を実施し、テストも「タイトル文字列が
+完全にviewport内」という、より正直で意味のある基準に強化した。詳細は
+下記「PR #179 Codex review 対応」節を参照。
 
 ## 実施内容
 
@@ -94,33 +102,62 @@ padding(vertical) `4`→`1`、ラベル-説明間gap 2→1、説明-ボタン間
 top paddingを16→8（左右/下は16のまま — 各カードの水平マージンと最終scroll
 insetを変更しない）。
 
-## 計測結果（before / after、`PublicDemoAggregate.initial()`＝4月、textScale 1.0）
+## 計測結果（最終、`PublicDemoAggregate.initial()`＝4月、textScale 1.0）
 
-| セクション | 390×844 top (before→after) | 360×800 top (before→after) |
+| セクション | 390×844 top (元→中間→最終) | 360×800 top (元→中間→最終) |
 |---|---:|---:|
 | viewport bottom | 764 | 720 |
-| KPI | 114 → 103 | 112 → 103 |
-| ひより | 234 → 196 | 234 → 196 |
-| 月次処理 | 500 → 442 | 516 → 458 |
-| 社員概要 | 596 → 530（無変更） | 612 → 546（無変更） |
-| 今月の重要タスク | 697 → 628 | 703 → 634 |
-| **クイックアクセス** | **869 → 760** | **875 → 766** |
+| KPI | 114 → 103 → 98 | 112 → 103 → 98 |
+| ひより | 234 → 196 → 183 | 234 → 196 → 183 |
+| 月次処理 | 500 → 442 → 426 | 516 → 458 → 442 |
+| 社員概要 | 596 → 530 → 509（無変更） | 612 → 546 → 525（無変更） |
+| 今月の重要タスク | 697 → 628 → 606 | 703 → 634 → 612 |
+| **クイックアクセス（カード）** | **869 → 760 → 733** | **875 → 766 → 739** |
+| クイックアクセス（タイトル文字列） | 計測なし → 764〜784 → **736〜756** | 計測なし → 770〜790 → 742〜762 |
 
-クイックアクセスの`top`位置は両viewport共通で**109px**削減。
+「中間」列は最初のPR作成時点、「最終」列はPR #179 Codex reviewを受けた
+追加削減後。クイックアクセスの**カード**`top`位置は最終的に両viewport共通で
+**133〜136px**削減（元869/875 → 最終733/739）。
 
-- **390×844**: `top=760` < viewport bottom `764` → 6セクション全てが
-  unscrolled viewport内で開始（新規focused testで固定）。
-- **360×800**: `top=766`、viewport bottom `720`から+46px（beforeの+155pxから
-  大幅短縮）。フル可視ではないが、直前の「今月の重要タスク」が`628`〜`763`と
-  fold手前から始まっており、要件の弱い基準（"最低でもQuick Accessの存在/
-  入口が認識可能"）を満たす近さまで縮めた。
+- **390×844**: タイトル文字列`title.bottom=756` <= viewport bottom `764`
+  （margin 8px）→ カード端だけでなく見出し文字列自体が完全にviewport内。
+  6セクション全てがunscrolled viewport内で開始し、クイックアクセスは
+  「カードの端が入っている」ではなく「見出しが読める」状態を実測で確認
+  （focused testで固定）。
+- **360×800**: カード`top=739`（fold`720`から+19px）、タイトル`top=742`
+  （+22px）。フル可視ではないが、要件の弱い基準（"最低でもQuick Accessの
+  存在/入口が認識可能"）を満たすのに十分近い（元は+155px）。
 
-`docs/reports/SES_PUBLIC-DEMO-HOME-UI_FINAL-DENSITY_PreImplementation_Audit.md`
-が事前に述べた通り、社員概要を追加圧縮せず、ひよりの必須copy（advice
-message / explanation）をclipしない制約のもとでは、360×800での完全な
-fold内表示は達成できない。109pxの削減は、この制約下で安全に実施できた
-padding/gap起因の削減をほぼ使い切った結果であり、恣意的に止めたものでは
-ない。
+## PR #179 Codex review 対応（P2: Quick Accessの可視性判定が甘い）
+
+初版のfocused test（`public_demo_01_home_final_density_test.dart`）は
+クイックアクセスを含む全セクションについて「カードの`top` <
+viewport.bottom」のみを検証していた。Codexのレビューは、390x844の実測値
+（カード`top=760`、viewport bottom`764`）に対し、`_HomeSectionCard`の
+padding（当時4px）を考慮すると見出し文字列「クイックアクセス」自体は
+`title.bottom=784`と完全にfold外であり、「カード端が数px入っているだけ」
+でテストが通ってしまう ＝ HOME密度目標を実質的に達成していない、と正しく
+指摘した。
+
+対応:
+
+1. **さらなる実削減**（padding/gapのみ、テキストのclipなし）:
+   - `ListView`のtop padding: 8 → 4
+   - KPIカードpadding: 2 → 1、行間: 2 → 1、タイルpadding(vertical): 2 → 1
+   - 月次処理カードpadding: `(12,1,12,1)` → `(12,0,12,0)`、内部gapも詰め
+   - 今月の重要タスク: カードpadding 4→3、タイトルgap 3→2、Divider 2→1
+   - 共有`_HomeSectionCard`: padding 4→3、タイトルgap 3→2
+   - ひより: `cardPaddingVertical` 1→0
+   - セクション間`SizedBox`gapを全体的にもう一段階詰めた（3→2、2→1等）
+2. **テスト自体を強化**: 390x844では「クイックアクセスのカード`top`」では
+   なく「`find.text('クイックアクセス')`の`rect.bottom` <=
+   viewport.bottom」を検証するよう変更 — Codexが指摘した「カード端だけ
+   入っている」を実際に検出できる基準にした。360x800側もカード`top`に加え
+   タイトル`top`の近さを別途検証するようにした。
+
+この結果、390x844では見出し文字列自体がmargin 8pxを持って完全に
+viewport内に収まることを実測・テスト両方で確認した。社員概要
+（`HomeOfficeStageSection`）は今回の追加削減でも引き続き無変更。
 
 ## 変更ファイル
 
@@ -206,14 +243,43 @@ $ flutter test
 `importantTaskCta`ヘルパーが旧`TextButton`を探していたことによるもので、
 `IconButton`を探すよう修正した（本ファイルの「変更ファイル」に追記済み）。
 
+**PR #179 Codex review対応後の再検証**（上記「PR #179 Codex review 対応」
+節の追加削減・テスト強化後。Tier1方針により、この局所修正ではfull
+`flutter test`を再実行せず、影響範囲のfocused test + 既存HOME回帰suite
+一式で確認した）:
+
+```
+$ flutter analyze
+No issues found!
+
+$ flutter test test/ui/public_demo/public_demo_01_home_final_density_test.dart
+00:02 +7: All tests passed!
+
+$ flutter test test/presentation/home/
+00:09 +187: All tests passed!
+
+$ flutter test test/ui/public_demo/public_demo_01_home_ui_3c_density_test.dart \
+    test/ui/public_demo/public_demo_01_home_consolidation_test.dart \
+    test/ui/public_demo/public_demo_01_home_office_stage_test.dart \
+    test/ui/public_demo/public_demo_01_home_navigator_test.dart \
+    test/ui/public_demo/public_demo_01_home_recommended_action_test.dart \
+    test/ui/public_demo/public_demo_01_home_runtime_read_test.dart \
+    test/ui/public_demo/public_demo_01_home_cash_forecast_advice_test.dart \
+    test/ui/public_demo/public_demo_01_issue_124_screen_verification_test.dart \
+    test/ui/public_demo/public_demo_01_home3_integration_test.dart \
+    test/ui/public_demo/public_demo_01_bottom_nav_tabs_test.dart \
+    test/ui/public_demo/public_demo_home_presentation_components_test.dart
+06:25 +165: All tests passed!
+```
+
 ## Known Issues / 未解決事項
 
-1. **360×800でクイックアクセスは依然fold外**（top=766, fold=720, +46px）。
-   要件はこの解像度でQuick Accessを「entry point recognizable」レベルで
-   許容しているが、完全な視認性ではない。さらに縮めるには、社員概要の
-   追加圧縮（要件で禁止）か、ひよりのadvice message/explanationの表示方法
-   自体の変更（必須copyのclip回避の観点でリスクが高いと判断し見送った）が
-   必要。
+1. **360×800でクイックアクセスは依然fold外**（カード`top=739`, fold=720,
+   +19px。タイトル`top=742`, +22px）。要件はこの解像度でQuick Accessを
+   「entry point recognizable」レベルで許容しているが、完全な視認性では
+   ない。さらに縮めるには、社員概要の追加圧縮（要件で禁止）か、ひよりの
+   advice message/explanationの表示方法自体の変更（必須copyのclip回避の
+   観点でリスクが高いと判断し見送った）が必要。
 2. **Pre-Implementation Auditはこの実装内で新規作成した。** 元々参照された
    文書がPR #177までのどの時点にも存在しないため、実測ベースで代替した。
    もし別セッション/別ツールで作成済みの監査が別途存在し、後でこの

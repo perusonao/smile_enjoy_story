@@ -73,8 +73,12 @@ class HomeOfficeStageMetrics {
   // PUBLIC-DEMO-HOME-UI-3C: trimmed from 3/3/2 as part of "slightly compact
   // employee summary" (Issue #173) — the same real-slack-not-text-floor
   // reasoning HOME-COMPACT-1B.4 already used for this padding/gap pair.
-  static const double _cardPaddingTop = 2;
-  static const double _cardPaddingBottom = 2;
+  //
+  // SES HOME One-Screen Final Fit: trimmed once more, from 2 — the initial
+  // 360x800/390x844 April view must fit with no scroll at all, and this is
+  // real card padding, never text/touch-target room.
+  static const double _cardPaddingTop = 1;
+  static const double _cardPaddingBottom = 1;
   static const double _cardPaddingHorizontal = 12;
   // _titleRowHeight is kept at 20 rather than shrunk further: it is a
   // MINIMUM constraint on the title row (see the widget body below), not a
@@ -84,8 +88,11 @@ class HomeOfficeStageMetrics {
   // the layout-safety tests during SES-ISSUE-124's first pass at this.
   // HOME-COMPACT-1B.4 trims _titleGap (a real gap, not a text-height floor)
   // from 8 for the same reason it trims the paddings above.
+  //
+  // SES HOME One-Screen Final Fit: trimmed once more, from 1 to 0, same
+  // reasoning as the padding above.
   static const double _titleRowHeight = 20;
-  static const double _titleGap = 1;
+  static const double _titleGap = 0;
 
   /// What the whole card is designed to measure at each target.
   static const double compactComponentHeight =

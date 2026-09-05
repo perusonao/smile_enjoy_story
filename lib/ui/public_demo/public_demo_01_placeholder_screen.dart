@@ -2834,11 +2834,13 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
       ListView(
         key: const PageStorageKey('public-demo-home-tab'),
         controller: _scrollController,
-        // SES HOME Final Density: top padding trimmed from 16 to 4 — real
-        // slack under the AppBar, not text/touch-target room. Left/right/
-        // bottom stay 16 so every card keeps its existing horizontal
-        // margin and the list keeps its original bottom scroll inset.
-        padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
+        // SES HOME One-Screen Final Fit: top/bottom trimmed again, from
+        // 4/16 — the initial 360x800/390x844 April view must fit with no
+        // scroll at all (see the result report's before/after overflow
+        // measurement), and this outer padding is real slack, never text
+        // or touch-target room. Left/right stay 16 so every card keeps its
+        // existing horizontal margin.
+        padding: const EdgeInsets.fromLTRB(16, 2, 16, 0),
         children: [
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -2877,23 +2879,24 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
               // 390px-wide view with no scroll. Bound exactly once on
               // this screen (see `_monthlyPrimaryAction`'s own site).
               if (_monthlyPrimaryAction case final monthlyAction?) ...[
-                const SizedBox(height: 6),
+                // SES HOME One-Screen Final Fit: trimmed from 6 — this and
+                // the two gaps below are real inter-section slack, not
+                // text/touch-target room, and are the phase's primary
+                // lever for closing the remaining 360x800 overflow (see
+                // the result report's before/after gap measurements).
+                const SizedBox(height: 3),
                 PublicDemoMonthlyPrimaryCtaSection(action: monthlyAction),
               ],
-              const SizedBox(height: 6),
+              const SizedBox(height: 3),
               // Section 5: employee summary/office card only — the full
               // employee roster/detail lives on the 社員 tab (see
               // [_buildEmployeesTab]), not here. Bottom nav "社員" now
               // switches to that tab instead of scrolling to this same
               // summary.
               HomeOfficeStageSection(display: _officeStageDisplay),
-              // SES HOME Final Polish: with クイックアクセス removed (§D) and
-              // "他の行動を確認する" gone from the Navigator card (§B), the
-              // height they used to spend goes back into real spacing
-              // between the remaining sections instead of staying
-              // compressed — see the result report's before/after gap
-              // measurements.
-              const SizedBox(height: 6),
+              // SES HOME One-Screen Final Fit: trimmed again, from 6 — see
+              // the gap above this block for why.
+              const SizedBox(height: 3),
               // Section 6: "今月の重要タスク" — up to three truthful
               // tasks built only from existing authoritative facts
               // (see _importantTasks's own doc). This is now the sole

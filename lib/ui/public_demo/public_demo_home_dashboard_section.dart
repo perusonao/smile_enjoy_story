@@ -148,11 +148,13 @@ class PublicDemoHomeDashboardSection extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         MonthHeaderBar(data: data),
-        // SES HOME Final Density: both gaps trimmed from 6, then 3 — real
-        // space between cards, not text/touch-target room.
-        const SizedBox(height: 2),
+        // SES HOME One-Screen Final Fit: both gaps trimmed again, from
+        // 2 — real space between cards, not text/touch-target room, and
+        // part of closing the 360x800 unscrolled-viewport overflow (see
+        // the result report).
+        const SizedBox(height: 1),
         KpiSection.compact(data: data),
-        const SizedBox(height: 2),
+        const SizedBox(height: 1),
         HomeNavigatorSection(
           expression: navigatorExpressionFor(effectiveAdvice?.semantic),
           advice: effectiveAdvice,

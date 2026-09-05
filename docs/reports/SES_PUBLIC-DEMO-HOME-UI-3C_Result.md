@@ -504,3 +504,117 @@ method, `_salesTabEmptyState()`, both findings live in).
 Per this task's instruction, the PR is **not** merged by this session —
 Deployed Screen Verification and the merge decision are left to the
 repository owner.
+
+## 14. Follow-up: BuildInfo QA micro-fix (post-#174 merge)
+
+PR #174 merged as `cc79aaf2247483341a71f1c2cc9929b69759a391`; post-merge
+deployment/CI succeeded. Before Deployed Screen Verification could proceed,
+the [second post-merge #173 comment](https://github.com/perusonao/smile_enjoy_story/issues/173#issuecomment-5548975820)
+identified a QA usability gap: `BuildInfoLabel` (the existing, unchanged
+`BUILD_COMMIT_SHA`/`BUILD_PR_NUMBER` authority from PUBLIC-DEMO-HOME-UI-3A)
+was only reachable by expanding the collapsed "開発・テストメニュー" section
+inside メニュー, which is inconvenient for repeated deployed-screen checks.
+This section is a presentation-only micro-fix on a **new branch/PR**, not a
+continuation of PR #174 (already merged).
+
+### 14.1 Scope
+
+Per the comment, strictly:
+- Keep HOME unchanged.
+- Keep the existing `BuildInfo`/`BuildInfoLabel` authority (no new fields,
+  no new env vars, no CI change).
+- Show `BuildInfoLabel` compactly and always visibly near the top of the
+  メニュー tab.
+- Keep the destructive restart/test controls inside the collapsed
+  "開発・テストメニュー".
+- Do not duplicate `BuildInfoLabel`.
+- No domain/save/balance/finance/Month Guard/Recommended Action/CI changes.
+
+### 14.2 Change
+
+`lib/ui/public_demo/public_demo_01_placeholder_screen.dart`:
+
+- `_buildMenuTab`: now mounts `BuildInfoLabel(buildInfo: widget.buildInfo ??
+  BuildInfo.fromEnvironment())` as the first child of the tab's `ListView`,
+  above `_publicDemoDevMenuSection()` — always rendered when the tab is
+  open, no toggle required.
+- `_publicDemoTestControlsCard()` (the card behind the
+  "開発・テストメニュー" toggle): the `BuildInfoLabel` call that
+  PUBLIC-DEMO-HOME-UI-3A had placed here was removed — its only mount point
+  is now `_buildMenuTab`'s header, so the label is never duplicated. The
+  card itself, its toggle, and the destructive `4月からやり直す`
+  restart/test control are otherwise byte-for-byte unchanged and stay
+  collapsed by default.
+
+`BuildInfo`/`BuildInfoLabel` themselves
+(`lib/presentation/build_info.dart`) are untouched — same class, same
+parsing, same `Key('build-info-label')`, same fail-safe `SizedBox.shrink()`
+when no valid SHA is present. HOME (`_buildHomeTab` and everything it
+renders) is untouched.
+
+### 14.3 Focused tests updated
+
+`test/presentation/build_info_test.dart` (`Public Demo header stays compact
+at ${width}px`, ×360/390px): updated for the new location —
+- `BuildInfoLabel` is asserted **visible immediately** after switching to
+  メニュー, with no toggle interaction needed.
+- The dev-menu toggle is asserted present and the collapsed
+  `public-demo-test-controls` card is asserted **absent** before expansion.
+- After tapping the toggle, `public-demo-test-controls` is asserted
+  present, and `BuildInfoLabel`'s text is asserted to still resolve to
+  exactly one widget — the no-duplication requirement, pinned directly.
+
+No other test file needed a change: the pre-existing
+`public-demo-dev-menu-toggle` assertions in
+`public_demo_01_bottom_nav_tabs_test.dart` and
+`public_demo_01_persistence_test.dart` only check the toggle key itself,
+unaffected by where `BuildInfoLabel` is mounted.
+
+### 14.4 Tests / results
+
+Flutter 3.44.9 (stable), matching CI (`.github/workflows/*.yml`), installed
+locally for this follow-up (`flutter pub get` beforehand).
+
+1. `dart format` on both changed files → reformatted, then verified clean.
+2. `flutter test test/presentation/build_info_test.dart` → **7/7 passed.**
+3. `flutter test test/presentation/build_info_test.dart
+   test/ui/public_demo/public_demo_01_bottom_nav_tabs_test.dart
+   test/ui/public_demo/public_demo_01_persistence_test.dart` → **27/27
+   passed.**
+4. `flutter analyze` (whole project) → **No issues found.**
+
+### 14.5 Preserved authority
+
+- HOME (`_buildHomeTab`) unchanged — no file under
+  `lib/presentation/home/**` touched.
+- `BuildInfo`/`BuildInfoLabel` authority unchanged — same class, same
+  `Key('build-info-label')`, same environment-sourced values; only its
+  mount point moved.
+- Restart/test controls remain inside the collapsed
+  "開発・テストメニュー" toggle, default-collapsed, key and confirmation
+  dialog unchanged.
+- `BuildInfoLabel` has exactly one mount point (`_buildMenuTab`'s header);
+  not duplicated inside the collapsed card — asserted directly by the
+  updated test (§14.3).
+- No domain/save/balance/finance/Month Guard/Recommended Action/CI file
+  touched — only `lib/ui/public_demo/public_demo_01_placeholder_screen.dart`
+  (production) and `test/presentation/build_info_test.dart` (test) changed.
+
+### 14.6 Changed files
+
+- `lib/ui/public_demo/public_demo_01_placeholder_screen.dart`
+- `test/presentation/build_info_test.dart`
+- `docs/reports/SES_PUBLIC-DEMO-HOME-UI-3C_Result.md` (this section)
+
+### 14.7 Deployed Screen Verification status
+
+Unchanged by this micro-fix: still pending, per #173's own remaining gate.
+This change exists specifically to make that verification's deploy-SHA
+check convenient once the new PR is merged and deployed; it does not itself
+satisfy the gate. Do not close #173 until deployed HOME/営業 Screen
+Verification is genuinely completed on the new deploy.
+
+### Final commit SHA / PR (this follow-up)
+
+Recorded after commit and PR creation — see the PR description and this
+report's git history for the exact SHA and PR number.

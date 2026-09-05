@@ -229,6 +229,102 @@ Issue #168 Finding B)
   unmodified growth rate, left untouched per the task's explicit
   prohibition on changing it.
 
+## FOLLOW-UP: Codex P2 review (PR #177) — year-end boundary fix
+
+**Finding** (https://github.com/perusonao/smile_enjoy_story/pull/177#discussion_r3940160557,
+reviewed commit `1c5391f`): the lock banner's forward-looking line —
+「実力が基準に達すれば、その月以降に営業を再開できます。」— is false when shown
+in February. `_buildEmployeesTab`'s waiting/skillSheet sales-flow card
+(`ec(...)`, RECOVERY-LOOP-1) only ever renders through internal month 14
+(February); training selected in February applies its growth at
+month-end, entering March (15), which no later `ec(...)` render ever
+covers. An engineer at capability 59 who trains in February reaches 60,
+but has no month left in which this build ever offers `SkillSheet確認`
+again. Valid — confirmed against the same authoritative code, not just
+taken on faith.
+
+**Fix scope, per the follow-up instructions:** presentation-only, no sales
+window extension into March, no balance/domain/save change, no widened
+Finding B scope.
+
+**Change** (`lib/ui/public_demo/public_demo_01_placeholder_screen.dart`,
+`ec(i)`):
+
+- Added `isLastEligibleMonth = s.month >= PublicDemoRecoveryEligibility
+  .lastEligibleMonth` — reuses the existing, already-authoritative
+  RECOVERY-LOOP-1 constant (`14`, February) instead of inventing a new
+  domain fact or magic number.
+- The lock banner's third line now branches on it:
+  - `s.month < 14` (unchanged): 「実力が基準に達すれば、その月以降に営業を再開でき
+    ます。」— the original Finding B copy, still truthful for every month
+    that has a later `ec(...)` render ahead of it.
+  - `s.month >= 14` (new): 「実力が基準に達しても、今年度中の営業再開はもう見込め
+    ません。」— truthful for the one month (February) where reaching the
+    threshold cannot reopen the route before the fiscal year ends,
+    regardless of what the player does this month.
+- Corrected the adjacent engineering comments (both on the branch itself
+  and on `internalTrainingCard`'s own doc, which referenced the banner)
+  to state this boundary instead of the flat month-agnostic claim.
+
+**Tests:**
+
+- **New** `test/ui/public_demo/public_demo_01_suzuki_sales_yearend_boundary_test.dart`
+  — the item-3 regression this follow-up asked for: drives Suzuki to
+  exactly 59 by October (7 trainings), leaves her untrained through
+  November-January so she is still 59 entering February, then asserts (a)
+  the lock banner shows the new "last chance" line and not the
+  forward-looking one, (b) training in February still charges its cost
+  and is not blocked (`isFinanciallyRestricted` is false — see the
+  solvency note below), (c) the close into March still raises her to
+  exactly 60, and (d) March renders neither the lock banner nor
+  `SkillSheet確認` at all — proving the fix corrected the copy's honesty
+  without silently extending the sales window.
+  - **Solvency note:** a single-founding-engineer playthrough
+    (`public_demo_01_assignment_carryforward_test.dart`'s own contract)
+    has essentially zero cash margin entering February — an empirical
+    probe against this exact scenario (Sato assigned from May, no extra
+    spending) found cash exactly ¥0 entering February, with
+    `cashShortage` first triggered by closing February. The 7 extra
+    ¥30,000 training charges this test needs before February (¥210,000)
+    would otherwise trip that guard one close early and block the very
+    February training this test exists to prove is not blocked. This test
+    therefore also hires and sells Takahashi (app-01) in May, mirroring
+    `public_demo_01_success_playthrough_test.dart`'s own May block
+    verbatim, purely as Revenue to stay solvent — this is playthrough
+    setup, not Finding B or Codex-fix behavior, and touches no
+    balance/domain constant.
+- **Updated** `public_demo_01_suzuki_sales_lock_test.dart` and
+  `public_demo_01_suzuki_sales_reentry_test.dart` needed no changes —
+  both already stay below month 14 with the unqualified promise still
+  true, so the branch's `else` path is exactly their pre-existing
+  assertion. Re-ran both to confirm (see TESTS RUN below); no diff to
+  either file for this follow-up.
+
+**Tests run for this follow-up** (focused, per instructions — the PR's
+full `flutter test` already ran once for the base Finding B change; CI on
+this push covers the full suite for this follow-up):
+
+```
+flutter analyze lib/ui/public_demo/public_demo_01_placeholder_screen.dart \
+  test/ui/public_demo/public_demo_01_suzuki_sales_yearend_boundary_test.dart
+-> No issues found!
+
+flutter test \
+  test/ui/public_demo/public_demo_01_suzuki_sales_lock_test.dart \
+  test/ui/public_demo/public_demo_01_suzuki_sales_reentry_test.dart \
+  test/ui/public_demo/public_demo_01_suzuki_sales_yearend_boundary_test.dart \
+  test/ui/public_demo/public_demo_01_recovery_ui_test.dart \
+  test/ui/public_demo/public_demo_01_internal_training_explanation_test.dart \
+  test/ui/public_demo/public_demo_01_completion_lock_ui_test.dart \
+  test/ui/public_demo/public_demo_01_assignment_carryforward_test.dart \
+  test/ui/public_demo/public_demo_01_success_playthrough_test.dart
+-> All tests passed! (10/10)
+```
+
+**Not merged** — pushed to the same PR #177 branch
+(`claude/issue-168-finding-b-6rvhvy`) per instructions; merge decision
+left to review.
+
 ## COMMIT / BRANCH / PR
 
 - Branch: `claude/issue-168-finding-b-6rvhvy` (reset onto `origin/main`

@@ -2526,6 +2526,21 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
     final capability = capabilityFor(e.id);
     final fieldSalesRequirement =
         PublicDemoEngineerRuntime.fieldSalesCapabilityRequirement;
+    // Issue #168 Finding B (Codex P2, PR #177): the lock banner's
+    // month-agnostic "reaching the threshold reopens sales from around
+    // that point on" line is only truthful while a later month can still
+    // render this same waiting/skillSheet card at all.
+    // `PublicDemoRecoveryEligibility.lastEligibleMonth` (February, 14) is
+    // the existing, authoritative last month `_buildEmployeesTab`'s
+    // `s.month >= 7 && s.month <= 14` loop ever renders it — training
+    // selected in February applies its growth at month-end, entering
+    // March (15), which that loop never covers and this fix does not
+    // extend into. From February on, the forward-looking line would
+    // promise a route this build cannot actually offer, so it is replaced
+    // with the truthful, equally month-agnostic fact instead: this is the
+    // fiscal year's last chance.
+    final isLastEligibleMonth =
+        s.month >= PublicDemoRecoveryEligibility.lastEligibleMonth;
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(12),
@@ -2589,10 +2604,23 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
                     // that causal fact without naming a specific month, which
                     // this build cannot promise (it depends on how many
                     // months of training the player chooses to buy).
-                    const Text(
-                      '実力が基準に達すれば、その月以降に営業を再開できます。',
-                      style: TextStyle(fontSize: 12),
-                    ),
+                    //
+                    // Codex P2 (PR #177): that promise stops being true at
+                    // [isLastEligibleMonth] — training selected there only
+                    // takes effect entering March, which no later `ec(...)`
+                    // render ever covers — so this branches to a second,
+                    // equally month-agnostic truthful line instead of
+                    // dangling a route this build cannot offer.
+                    if (isLastEligibleMonth)
+                      const Text(
+                        '実力が基準に達しても、今年度中の営業再開はもう見込めません。',
+                        style: TextStyle(fontSize: 12),
+                      )
+                    else
+                      const Text(
+                        '実力が基準に達すれば、その月以降に営業を再開できます。',
+                        style: TextStyle(fontSize: 12),
+                      ),
                   ],
                 ),
               ),

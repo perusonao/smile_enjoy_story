@@ -291,30 +291,41 @@ export async function findMonthlyPrimaryCta(page: Page): Promise<Locator> {
   return cta!;
 }
 
-/** Proceeds through `PublicDemoMonthGuardWarningDialog` if it is currently
- * open, exactly as a player choosing "このまま月末処理を進める" would — never
- * "タスクを確認" (which would cancel the close, not proceed past it).
- * Single-shot, non-polling — call it right after a click that might open the
- * guard (this dialog is already showing by the time `showDialog`'s awaited
- * future has anything to click). Returns whether the guard was actually
- * open and proceeded through; a no-op (returns `false`) both when no
- * `alertdialog` is open at all and when the one that is open isn't this
- * dialog (no exact "このまま月末処理を進める" button) — e.g. a plain `確認`
- * result dialog, which callers handle via `waitAndDismissDialog` instead.
+/** Proceeds through `PublicDemoMonthGuardWarningDialog` if it opens, exactly
+ * as a player choosing "このまま月末処理を進める" would — never "タスクを確認"
+ * (which would cancel the close, not proceed past it). Call it right after a
+ * click that might open the guard. Returns whether the guard was actually
+ * open and proceeded through; a no-op (returns `false`) once [timeoutMs]
+ * elapses with no such dialog — e.g. no recommended-level action outstanding
+ * this month, or the one `alertdialog` that is open is a plain `確認` result
+ * dialog instead, which callers handle via `waitAndDismissDialog`.
+ *
+ * Bounded, event-driven wait (`Locator.waitFor`, not a fixed sleep) rather
+ * than a single presence check: `PublicDemoMonthGuard.evaluate` and its
+ * `showDialog` run after the triggering click's own frame, so a caller right
+ * after the click can otherwise race the dialog's first paint and wrongly
+ * conclude it never opened. [timeoutMs] only costs real time on the common
+ * no-guard path (most month closes); once the dialog is open this returns as
+ * soon as it can click it.
  *
  * Issue #119 (PUBLIC-DEMO-MONTH-GUARD-1A) first wired this guard into
  * August-March close; Issue #168 (FIRST-FUN-YEAR-ONBOARDING-1) extended it
  * to April/May/June, ahead of April's own new-applicant event dialog — so a
  * caller asserting that event dialog's own content now needs to proceed
  * through the guard first if it's showing. */
-export async function dismissMonthGuardIfPresent(page: Page): Promise<boolean> {
-  const monthGuardDialog = page.getByRole('alertdialog');
-  if ((await monthGuardDialog.count()) === 0) return false;
-  const proceed = monthGuardDialog.getByRole('button', {
+export async function dismissMonthGuardIfPresent(
+  page: Page,
+  timeoutMs = 4_000,
+): Promise<boolean> {
+  const proceed = page.getByRole('alertdialog').getByRole('button', {
     name: 'このまま月末処理を進める',
     exact: true,
   });
-  if ((await proceed.count()) === 0) return false;
+  try {
+    await proceed.waitFor({ state: 'visible', timeout: timeoutMs });
+  } catch {
+    return false;
+  }
   await proceed.click();
   await waitForStableFrame(page);
   return true;

@@ -70,8 +70,11 @@ class HomeOfficeStageMetrics {
   static const double chromeHeight =
       _cardPaddingTop + _titleRowHeight + _titleGap + _cardPaddingBottom;
 
-  static const double _cardPaddingTop = 3;
-  static const double _cardPaddingBottom = 3;
+  // PUBLIC-DEMO-HOME-UI-3C: trimmed from 3/3/2 as part of "slightly compact
+  // employee summary" (Issue #173) — the same real-slack-not-text-floor
+  // reasoning HOME-COMPACT-1B.4 already used for this padding/gap pair.
+  static const double _cardPaddingTop = 2;
+  static const double _cardPaddingBottom = 2;
   static const double _cardPaddingHorizontal = 12;
   // _titleRowHeight is kept at 20 rather than shrunk further: it is a
   // MINIMUM constraint on the title row (see the widget body below), not a
@@ -82,7 +85,7 @@ class HomeOfficeStageMetrics {
   // HOME-COMPACT-1B.4 trims _titleGap (a real gap, not a text-height floor)
   // from 8 for the same reason it trims the paddings above.
   static const double _titleRowHeight = 20;
-  static const double _titleGap = 2;
+  static const double _titleGap = 1;
 
   /// What the whole card is designed to measure at each target.
   static const double compactComponentHeight =

@@ -90,7 +90,10 @@ class PublicDemoImportantTasksSection extends StatelessWidget {
     child: Column(
       children: [
         for (var i = 0; i < items.length; i++) ...[
-          if (i > 0) const Divider(height: 16),
+          // PUBLIC-DEMO-HOME-UI-3C: trimmed from 16 — real space between
+          // rows, not a text-height floor — as part of bringing this
+          // section closer to the unscrolled initial view (Issue #173).
+          if (i > 0) const Divider(height: 10),
           _ImportantTaskRow(item: items[i]),
         ],
       ],
@@ -282,7 +285,10 @@ class PublicDemoMonthlyPrimaryCtaSection extends StatelessWidget {
         side: BorderSide(color: _accent.withValues(alpha: 0.35)),
       ),
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(12, 6, 12, 6),
+        // PUBLIC-DEMO-HOME-UI-3C: trimmed vertical padding from 6 as part of
+        // compressing this month-close card's own footprint (Issue #173) —
+        // no text or the button's own 44pt minimum height changed.
+        padding: const EdgeInsets.fromLTRB(12, 4, 12, 4),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
@@ -300,7 +306,7 @@ class PublicDemoMonthlyPrimaryCtaSection extends StatelessWidget {
                 ),
               ],
             ),
-            const SizedBox(height: 3),
+            const SizedBox(height: 2),
             Text(
               action.description,
               style: theme.textTheme.bodySmall?.copyWith(
@@ -309,7 +315,7 @@ class PublicDemoMonthlyPrimaryCtaSection extends StatelessWidget {
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
             ),
-            const SizedBox(height: 6),
+            const SizedBox(height: 4),
             SizedBox(
               width: double.infinity,
               child: FilledButton(
@@ -413,7 +419,10 @@ class _HomeSectionCard extends StatelessWidget {
   Widget build(BuildContext context) => Card(
     key: cardKey,
     child: Padding(
-      padding: const EdgeInsets.all(14),
+      // PUBLIC-DEMO-HOME-UI-3C: trimmed from 14/10 — shared by 今月の重要
+      // タスク/クイックアクセス/今月の支出予定, all real card padding rather
+      // than text/touch-target room — as part of the Issue #173 density pass.
+      padding: const EdgeInsets.all(12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -424,7 +433,7 @@ class _HomeSectionCard extends StatelessWidget {
               color: accent ? SesTheme.primaryBlue : null,
             ),
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 8),
           child,
         ],
       ),

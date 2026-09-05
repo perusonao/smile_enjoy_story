@@ -363,9 +363,8 @@ existing `ses171-tab-screenshot.mjs`):
 ## 12. Final commit SHA / PR
 
 - Branch: `claude/public-demo-home-ui-3c-q7gnb4`
-- Final commit SHA: recorded after push — see the PR itself for the exact
-  SHA merged/reviewed.
-- PR: to be opened against `main`.
+- Final commit SHA: `3dc826aa045ac2aa7a634b8c7498c29716ea8666`
+- PR: [#174](https://github.com/perusonao/smile_enjoy_story/pull/174)
 
 Per this task's instruction, the PR is **not** merged by this session —
 Deployed Screen Verification and the merge decision are left to the

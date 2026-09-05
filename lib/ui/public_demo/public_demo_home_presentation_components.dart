@@ -108,11 +108,11 @@ class _ImportantTaskRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // SES HOME Final Polish: real vertical padding around each row —
-    // restored now that Quick Access and the Navigator's secondary CTA no
-    // longer spend this card's height budget.
+    // SES HOME One-Screen Final Fit: trimmed again, from 6 — real
+    // vertical padding around each row, but the phase's ceiling is a
+    // no-scroll initial view, not this card's own breathing room.
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6),
+      padding: const EdgeInsets.symmetric(vertical: 1),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -238,13 +238,12 @@ class PublicDemoMonthlyPrimaryCtaSection extends StatelessWidget {
         side: BorderSide(color: _accent.withValues(alpha: 0.35)),
       ),
       child: Padding(
-        // SES HOME Final Polish: restored from Final Density's 0 — Quick
-        // Access and the Navigator's secondary CTA freed up real height, and
-        // this card's own vertical padding is where readability (§I) buys
-        // the most back for a card whose whole point is standing out as
-        // this month's clear close-out CTA. No text or the button's own
+        // SES HOME One-Screen Final Fit: trimmed again, from 8 — this
+        // card's own vertical padding is real slack, not text/touch-target
+        // room, and part of closing the 360x800 unscrolled-viewport
+        // overflow (see the result report). No text or the button's own
         // 44pt minimum height changed.
-        padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+        padding: const EdgeInsets.fromLTRB(12, 4, 12, 4),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
@@ -271,7 +270,7 @@ class PublicDemoMonthlyPrimaryCtaSection extends StatelessWidget {
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
             ),
-            const SizedBox(height: 6),
+            const SizedBox(height: 3),
             SizedBox(
               width: double.infinity,
               child: FilledButton(
@@ -376,11 +375,10 @@ class _HomeSectionCard extends StatelessWidget {
     key: cardKey,
     margin: EdgeInsets.zero,
     child: Padding(
-      // SES HOME Final Polish: restored from Final Density's 3/2 — Quick
-      // Access is deleted and the Navigator's secondary CTA is gone (§B/§D
-      // of the Final Polish brief), so the height they used to cost goes
-      // back into this card's own padding/title gap instead (§I).
-      padding: const EdgeInsets.all(12),
+      // SES HOME One-Screen Final Fit: trimmed again, from 12 — real card
+      // padding, not text/touch-target room, and part of closing the
+      // 360x800 unscrolled-viewport overflow (see the result report).
+      padding: const EdgeInsets.all(6),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -391,7 +389,7 @@ class _HomeSectionCard extends StatelessWidget {
               color: accent ? SesTheme.primaryBlue : null,
             ),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 4),
           child,
         ],
       ),

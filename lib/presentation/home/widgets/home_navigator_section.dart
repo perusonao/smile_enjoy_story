@@ -75,7 +75,12 @@ class HomeNavigatorMetrics {
   ///
   /// SES HOME Final Density: trimmed again, from 2 to 1, for the same
   /// reason.
-  static const double textGap = 1;
+  ///
+  /// SES HOME One-Screen Final Fit: trimmed once more, from 1 to 0 — the
+  /// initial 360x800/390x844 April view must fit with no scroll at all,
+  /// and every remaining internal seam gap in this card is real slack,
+  /// never text/touch-target room.
+  static const double textGap = 0;
 
   /// The height at which the navigator would be costing the first view more
   /// than a compact identity plus its advice is worth at the default text

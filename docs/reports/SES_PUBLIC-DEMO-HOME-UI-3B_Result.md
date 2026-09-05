@@ -405,4 +405,6 @@ longer route a fresh-April player into a blank 営業 tab.
 
 ### Final commit SHA
 
-`COMMIT_SHA_PLACEHOLDER`
+Code fix: `531ad8aad1e8d8a08c343a3ad459e9878617802d`
+(this report update follows in a subsequent commit on the same branch,
+`claude/public-demo-home-ui-3b-3aj3ur`.)

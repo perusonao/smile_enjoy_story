@@ -32,6 +32,8 @@ import 'package:smile_enjoy_story/ui/asset_paths.dart';
 import 'package:smile_enjoy_story/ui/public_demo/public_demo_01_placeholder_screen.dart';
 import 'package:smile_enjoy_story/ui/public_demo/public_demo_home_dashboard_section.dart';
 
+import 'public_demo_tab_test_helpers.dart';
+
 PublicDemoState currentState(WidgetTester tester) =>
     (tester.state(find.byType(PublicDemo01PlaceholderScreen)) as dynamic).s
         as PublicDemoState;
@@ -228,8 +230,12 @@ void main() {
       expect(find.byType(HomeNavigatorSection), findsOneWidget);
 
       // A real command through the real aggregate — the same trajectory the
-      // existing playthrough suites open with.
+      // existing playthrough suites open with. The employee
+      // sales-progression card is on 社員 now (PUBLIC-DEMO-HOME-UI-3B); the
+      // navigator itself is checked back on HOME after each tap.
+      await switchPublicDemoTab(tester, PublicDemoTab.employees);
       await tapAndSettle(tester, 'SkillSheet確認');
+      await switchPublicDemoTab(tester, PublicDemoTab.home);
       expect(
         find.byType(HomeNavigatorSection),
         findsOneWidget,
@@ -237,7 +243,9 @@ void main() {
       );
       expect(find.text('佐倉 ひより'), findsOneWidget);
 
+      await switchPublicDemoTab(tester, PublicDemoTab.employees);
       await tapAndSettle(tester, '営業開始');
+      await switchPublicDemoTab(tester, PublicDemoTab.home);
       expect(find.byType(HomeNavigatorSection), findsOneWidget);
       expect(find.text('佐倉 ひより'), findsOneWidget);
       expect(find.byKey(const Key('home-navigator-message')), findsOneWidget);
@@ -443,6 +451,8 @@ void main() {
     ) async {
       await pumpDemoAt(tester);
       final before = workflowSnapshot(tester);
+      // The employee sales-progression card is on 社員 now.
+      await switchPublicDemoTab(tester, PublicDemoTab.employees);
       await tapAndSettle(tester, 'SkillSheet確認');
       expect(workflowSnapshot(tester), isNot(before));
     });
@@ -454,8 +464,12 @@ void main() {
 
       final workflowBefore = workflowSnapshot(tester);
 
+      // The employee sales-progression card is on 社員 now; switch back to
+      // HOME afterward to check the navigator's own fixed identity.
+      await switchPublicDemoTab(tester, PublicDemoTab.employees);
       await tapAndSettle(tester, 'SkillSheet確認');
       await tapAndSettle(tester, '営業開始');
+      await switchPublicDemoTab(tester, PublicDemoTab.home);
 
       expect(
         workflowSnapshot(tester),
@@ -615,7 +629,14 @@ void main() {
             'state — 佐藤健 still waiting',
       );
 
+      // This "SkillSheet確認" is the exact-text legacy employee card's own
+      // button — distinct from the Navigator's own CTA above (labeled
+      // "SkillSheetを確認", checked but not tapped by name), and now real
+      // content on 社員 (PUBLIC-DEMO-HOME-UI-3B). Switch there to reach it,
+      // then back to HOME to re-check the navigator itself.
+      await switchPublicDemoTab(tester, PublicDemoTab.employees);
       await tapAndSettle(tester, 'SkillSheet確認');
+      await switchPublicDemoTab(tester, PublicDemoTab.home);
 
       // 5. The expected existing destination/action actually occurred: the
       // real owner dispatch ran `_startSkillSheetReview`, advancing the

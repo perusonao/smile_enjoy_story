@@ -16,6 +16,8 @@ import 'package:smile_enjoy_story/game/public_demo/public_demo_summer_bonus_plan
 import 'package:smile_enjoy_story/game/public_demo/public_demo_workflow_state.dart';
 import 'package:smile_enjoy_story/ui/public_demo/public_demo_01_placeholder_screen.dart';
 
+import 'public_demo_tab_test_helpers.dart';
+
 class _RecordingSaveService extends PublicDemoSaveService {
   _RecordingSaveService({this.restored, this.clearResult = true});
 
@@ -101,6 +103,10 @@ Future<void> _tapAction(WidgetTester tester, String label) async {
 /// the only change here — the button itself, its key, and everything it
 /// does are unchanged.
 Future<void> _openAprilRestart(WidgetTester tester) async {
+  // The dev/test menu (and its restart control) is its own メニュー tab now
+  // (PUBLIC-DEMO-HOME-UI-3B), not a scroll-reachable fold at the bottom of
+  // HOME's own list.
+  await switchPublicDemoTab(tester, PublicDemoTab.menu);
   final toggle = find.byKey(const Key('public-demo-dev-menu-toggle'));
   await tester.ensureVisible(toggle);
   await tester.pumpAndSettle();
@@ -146,6 +152,9 @@ Future<void> _confirmAndReloadWithoutBonusDialog(
   final service = _RecordingSaveService(restored: _freshJulyAggregate());
   await _mount(tester, service);
 
+  // The summer bonus decision card is finance detail — on 会計 now
+  // (PUBLIC-DEMO-HOME-UI-3B).
+  await switchPublicDemoTab(tester, PublicDemoTab.accounting);
   await _tapAction(tester, '夏季賞与を決める');
   await tester.tap(find.byKey(Key('public-demo-summer-bonus-${plan.name}')));
   await tester.pump();
@@ -259,6 +268,8 @@ void main() {
     final service = _RecordingSaveService();
     await _mount(tester, service);
 
+    // The employee sales-progression card is on 社員 now.
+    await switchPublicDemoTab(tester, PublicDemoTab.employees);
     await _tapAction(tester, 'SkillSheet確認');
     await tester.pump();
 
@@ -278,6 +289,8 @@ void main() {
     final service = _DelayedSaveService();
     await _mount(tester, service);
 
+    // The employee sales-progression card is on 社員 now.
+    await switchPublicDemoTab(tester, PublicDemoTab.employees);
     await _tapAction(tester, 'SkillSheet確認');
     await service.firstSaveStarted.future;
     await _tapAction(tester, '営業開始');
@@ -357,52 +370,64 @@ void main() {
     expect(service.clearCalls, 2);
   });
 
-  testWidgets('test restart cancellation leaves the current session unchanged', (
-    tester,
-  ) async {
-    final current = _freshJulyAggregate();
-    final service = _RecordingSaveService(restored: current);
-    await _mount(tester, service);
+  testWidgets(
+    'test restart cancellation leaves the current session unchanged',
+    (tester) async {
+      final current = _freshJulyAggregate();
+      final service = _RecordingSaveService(restored: current);
+      await _mount(tester, service);
 
-    await _openAprilRestart(tester);
-    await tester.tap(
-      find.byKey(const Key('public-demo-restart-april-cancel')),
-    );
-    await tester.pumpAndSettle();
+      await _openAprilRestart(tester);
+      await tester.tap(
+        find.byKey(const Key('public-demo-restart-april-cancel')),
+      );
+      await tester.pumpAndSettle();
 
-    expect(_screenState(tester).toJson(), current.state.toJson());
-    expect(_screenWorkflow(tester).toJson(), current.workflow.toJson());
-    expect(service.clearCalls, 0);
-    expect(find.text('1年目 7月'), findsOneWidget);
-  });
+      expect(_screenState(tester).toJson(), current.state.toJson());
+      expect(_screenWorkflow(tester).toJson(), current.workflow.toJson());
+      expect(service.clearCalls, 0);
+      // Cancelling never touches domain state, and it also never switches
+      // tabs on its own — this confirms the 月 fact by switching back to
+      // HOME, exactly where a real player would still be if they had opened
+      // メニュー themselves and then backed out.
+      await switchPublicDemoTab(tester, PublicDemoTab.home);
+      expect(find.text('1年目 7月'), findsOneWidget);
+    },
+  );
 
-  testWidgets('Public Demo test restart leaves a normal game save byte-for-byte '
-      'unchanged', (tester) async {
-    SharedPreferences.setMockInitialValues({});
-    final normalService = SaveService.forExperience(
-      AppExperience.development,
-    );
-    final normal = GameEngine.newGame(
-      seed: 133,
-      companyName: 'Issue 133 normal save',
-    );
-    await normalService.save(normal);
-    final publicDemoService = const PublicDemoSaveService();
-    await publicDemoService.save(_freshJulyAggregate());
-    final preferences = await SharedPreferences.getInstance();
-    final normalRawBefore = preferences.getString(normalService.key);
-    expect(normalRawBefore, isNotNull);
+  testWidgets(
+    'Public Demo test restart leaves a normal game save byte-for-byte '
+    'unchanged',
+    (tester) async {
+      SharedPreferences.setMockInitialValues({});
+      final normalService = SaveService.forExperience(
+        AppExperience.development,
+      );
+      final normal = GameEngine.newGame(
+        seed: 133,
+        companyName: 'Issue 133 normal save',
+      );
+      await normalService.save(normal);
+      final publicDemoService = const PublicDemoSaveService();
+      await publicDemoService.save(_freshJulyAggregate());
+      final preferences = await SharedPreferences.getInstance();
+      final normalRawBefore = preferences.getString(normalService.key);
+      expect(normalRawBefore, isNotNull);
 
-    await _mount(tester, publicDemoService);
-    await _openAprilRestart(tester);
-    await tester.tap(
-      find.byKey(const Key('public-demo-restart-april-confirm')),
-    );
-    await tester.pumpAndSettle();
+      await _mount(tester, publicDemoService);
+      await _openAprilRestart(tester);
+      await tester.tap(
+        find.byKey(const Key('public-demo-restart-april-confirm')),
+      );
+      await tester.pumpAndSettle();
 
-    expect(preferences.getString(normalService.key), normalRawBefore);
-    expect((await normalService.load())!.company.name, 'Issue 133 normal save');
-    expect(preferences.getString(PublicDemoSaveService.key), isNull);
-    expect(_screenState(tester).month, 4);
-  });
+      expect(preferences.getString(normalService.key), normalRawBefore);
+      expect(
+        (await normalService.load())!.company.name,
+        'Issue 133 normal save',
+      );
+      expect(preferences.getString(PublicDemoSaveService.key), isNull);
+      expect(_screenState(tester).month, 4);
+    },
+  );
 }

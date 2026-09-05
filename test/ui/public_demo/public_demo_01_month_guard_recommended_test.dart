@@ -38,6 +38,8 @@ import 'package:smile_enjoy_story/game/public_demo/public_demo_state.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_summer_bonus_plan.dart';
 import 'package:smile_enjoy_story/ui/public_demo/public_demo_01_placeholder_screen.dart';
 
+import 'public_demo_tab_test_helpers.dart';
+
 class _FixedSaveService extends PublicDemoSaveService {
   _FixedSaveService(this._aggregate);
   final PublicDemoAggregate _aggregate;
@@ -161,91 +163,89 @@ Future<void> _tapKeyAndSettle(WidgetTester tester, Key key) async {
 }
 
 void main() {
-  group(
-    'Month Guard recommended level at closeOrdinaryMonth (Issue #119)',
-    () {
-      testWidgets(
-        'no-task: nothing outstanding closes August immediately, no warning',
-        (tester) async {
-          await _pump(tester, _reachAugustClean());
-          expect(_currentState(tester).month, 8);
+  group('Month Guard recommended level at closeOrdinaryMonth (Issue #119)', () {
+    testWidgets(
+      'no-task: nothing outstanding closes August immediately, no warning',
+      (tester) async {
+        await _pump(tester, _reachAugustClean());
+        expect(_currentState(tester).month, 8);
 
-          await _tapKeyAndSettle(tester, _closeCtaKey);
+        await _tapKeyAndSettle(tester, _closeCtaKey);
 
-          expect(find.byKey(_dialogKey), findsNothing);
-          expect(_currentState(tester).month, 9);
-        },
+        expect(find.byKey(_dialogKey), findsNothing);
+        expect(_currentState(tester).month, 9);
+      },
+    );
+
+    testWidgets(
+      'recommended-task: an outstanding action shows a warning naming it, '
+      'and does not close the month yet',
+      (tester) async {
+        await _pump(tester, _reachAugustWithOutstandingRecovery());
+        expect(_currentState(tester).month, 8);
+
+        await _tapKeyAndSettle(tester, _closeCtaKey);
+
+        final dialog = find.byKey(_dialogKey);
+        expect(dialog, findsOneWidget);
+        expect(
+          find.descendant(
+            of: dialog,
+            matching: find.textContaining('案件へ復帰させる'),
+          ),
+          findsOneWidget,
+        );
+        expect(
+          find.descendant(of: dialog, matching: find.textContaining('が未対応です')),
+          findsOneWidget,
+        );
+        // The month has NOT advanced while the warning is open.
+        expect(_currentState(tester).month, 8);
+      },
+    );
+
+    testWidgets('"タスクを確認" cancels the close and returns to an actionable state '
+        '— the named action is directly reachable and completable', (
+      tester,
+    ) async {
+      await _pump(tester, _reachAugustWithOutstandingRecovery());
+      await _tapKeyAndSettle(tester, _closeCtaKey);
+      await _tapKeyAndSettle(tester, _reviewKey);
+
+      expect(find.byKey(_dialogKey), findsNothing);
+      expect(
+        _currentState(tester).month,
+        8,
+        reason: 'the month must not advance on review',
       );
 
-      testWidgets(
-        'recommended-task: an outstanding action shows a warning naming it, '
-        'and does not close the month yet',
-        (tester) async {
-          await _pump(tester, _reachAugustWithOutstandingRecovery());
-          expect(_currentState(tester).month, 8);
-
-          await _tapKeyAndSettle(tester, _closeCtaKey);
-
-          final dialog = find.byKey(_dialogKey);
-          expect(dialog, findsOneWidget);
-          expect(
-            find.descendant(
-              of: dialog,
-              matching: find.textContaining('案件へ復帰させる'),
-            ),
-            findsOneWidget,
-          );
-          expect(
-            find.descendant(of: dialog, matching: find.textContaining('が未対応です')),
-            findsOneWidget,
-          );
-          // The month has NOT advanced while the warning is open.
-          expect(_currentState(tester).month, 8);
-        },
+      final engineerId = _firstEngineerId(tester);
+      final recoveryKey = Key('public-demo-recovery-assignment-$engineerId');
+      // 案件へ復帰 is on the employee's own sales-progression card, on 社員
+      // now (PUBLIC-DEMO-HOME-UI-3B).
+      await switchPublicDemoTab(tester, PublicDemoTab.employees);
+      expect(
+        await _scrollUntilFound(tester, find.byKey(recoveryKey)),
+        isTrue,
+        reason: '案件へ復帰 must be directly reachable after review',
       );
 
-      testWidgets(
-        '"タスクを確認" cancels the close and returns to an actionable state '
-        '— the named action is directly reachable and completable',
-        (tester) async {
-          await _pump(tester, _reachAugustWithOutstandingRecovery());
-          await _tapKeyAndSettle(tester, _closeCtaKey);
-          await _tapKeyAndSettle(tester, _reviewKey);
+      await _tapKeyAndSettle(tester, recoveryKey);
 
-          expect(find.byKey(_dialogKey), findsNothing);
-          expect(
-            _currentState(tester).month,
-            8,
-            reason: 'the month must not advance on review',
-          );
+      expect(_currentState(tester).engineersAssigned, 1);
+      expect(find.byKey(recoveryKey), findsNothing);
+    });
 
-          final engineerId = _firstEngineerId(tester);
-          final recoveryKey = Key('public-demo-recovery-assignment-$engineerId');
-          expect(
-            await _scrollUntilFound(tester, find.byKey(recoveryKey)),
-            isTrue,
-            reason: '案件へ復帰 must be directly reachable after review',
-          );
+    testWidgets('"このまま月末処理を進める" proceeds and closes the month anyway — a '
+        'recommended item, unlike a required one, may be bypassed', (
+      tester,
+    ) async {
+      await _pump(tester, _reachAugustWithOutstandingRecovery());
+      await _tapKeyAndSettle(tester, _closeCtaKey);
+      await _tapKeyAndSettle(tester, _proceedKey);
 
-          await _tapKeyAndSettle(tester, recoveryKey);
-
-          expect(_currentState(tester).engineersAssigned, 1);
-          expect(find.byKey(recoveryKey), findsNothing);
-        },
-      );
-
-      testWidgets(
-        '"このまま月末処理を進める" proceeds and closes the month anyway — a '
-        'recommended item, unlike a required one, may be bypassed',
-        (tester) async {
-          await _pump(tester, _reachAugustWithOutstandingRecovery());
-          await _tapKeyAndSettle(tester, _closeCtaKey);
-          await _tapKeyAndSettle(tester, _proceedKey);
-
-          expect(find.byKey(_dialogKey), findsNothing);
-          expect(_currentState(tester).month, 9);
-        },
-      );
-    },
-  );
+      expect(find.byKey(_dialogKey), findsNothing);
+      expect(_currentState(tester).month, 9);
+    });
+  });
 }

@@ -25,6 +25,9 @@ import 'package:smile_enjoy_story/presentation/home/models/home_office_stage_dis
 import 'package:smile_enjoy_story/presentation/home/widgets/home_office_stage_section.dart';
 import 'package:smile_enjoy_story/ui/public_demo/public_demo_01_placeholder_screen.dart';
 import 'package:smile_enjoy_story/ui/public_demo/public_demo_home_dashboard_section.dart';
+import 'package:smile_enjoy_story/ui/public_demo/public_demo_home_presentation_components.dart';
+
+import 'public_demo_tab_test_helpers.dart';
 
 PublicDemoState currentState(WidgetTester tester) =>
     (tester.state(find.byType(PublicDemo01PlaceholderScreen)) as dynamic).s
@@ -94,6 +97,11 @@ Future<void> pumpDemoAt(
 /// April, played to a won May order for 佐藤 健 — the shared opening of the
 /// existing playthrough suites.
 Future<void> playApril(WidgetTester tester) async {
+  // The employee sales-progression card is on 社員 now
+  // (PUBLIC-DEMO-HOME-UI-3B); switch back to HOME before returning so
+  // callers can keep reading the Office Stage (a HOME-only section)
+  // without having to know this detail themselves.
+  await switchPublicDemoTab(tester, PublicDemoTab.employees);
   await tapAndSettle(tester, 'SkillSheet確認');
   await tapAndSettle(tester, '営業開始');
   await tapAndSettle(tester, '案件紹介');
@@ -103,6 +111,7 @@ Future<void> playApril(WidgetTester tester) async {
   await dismiss(tester);
   await tapAndSettle(tester, '受注');
   await dismiss(tester);
+  await switchPublicDemoTab(tester, PublicDemoTab.home);
 }
 
 void main() {
@@ -119,15 +128,19 @@ void main() {
       );
     });
 
-    testWidgets('the order is Recommended Action, then Office Stage, then '
-        'the legacy content', (tester) async {
+    testWidgets('the order is Recommended Action, then Office Stage, then the '
+        'remaining HOME summary sections — the full employee detail that '
+        'used to follow on the same screen is gone from HOME entirely '
+        '(PUBLIC-DEMO-HOME-UI-3B)', (tester) async {
       await pumpDemoAt(tester);
 
       final recommended = tester.getRect(
         find.byKey(const Key('home-recommended-action-cta')),
       );
       final stage = tester.getRect(stageFinder);
-      final legacy = tester.getRect(actionButton('SkillSheet確認'));
+      final quickAccess = tester.getRect(
+        find.byType(PublicDemoQuickAccessSection),
+      );
 
       // The primary interaction stays above the visual layer. This is the
       // one ordering rule the phase must not trade away for a better
@@ -139,7 +152,16 @@ void main() {
             'the Office Stage must never rise above the Recommended '
             'Action: $stage vs $recommended',
       );
-      expect(stage.bottom, lessThanOrEqualTo(legacy.top));
+      // HOME's own remaining summary sections (今月の重要タスク/クイックアク
+      // セス) still follow it — checked against クイックアクセス, the last
+      // of them.
+      expect(stage.bottom, lessThanOrEqualTo(quickAccess.top));
+
+      // The employee sales-progression card ("SkillSheet確認" etc.) that
+      // used to render below the Office Stage on this same screen is
+      // structurally gone from HOME — it is real content on 社員 now, not
+      // merely scrolled past.
+      expect(actionButton('SkillSheet確認'), findsNothing);
     });
 
     testWidgets('it is a sibling of the HOME projection mount, not a child', (

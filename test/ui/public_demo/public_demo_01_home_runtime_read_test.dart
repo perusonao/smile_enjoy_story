@@ -47,6 +47,8 @@ import 'package:smile_enjoy_story/presentation/home/widgets/month_header_bar.dar
 import 'package:smile_enjoy_story/ui/public_demo/public_demo_01_placeholder_screen.dart';
 import 'package:smile_enjoy_story/ui/public_demo/public_demo_home_dashboard_section.dart';
 
+import 'public_demo_tab_test_helpers.dart';
+
 /// The screen's own authoritative finance state, read straight off its
 /// [State] — the same technique
 /// public_demo_01_assignment_carryforward_test.dart already uses, so every
@@ -138,6 +140,11 @@ Future<void> pumpDemo(WidgetTester tester) async {
 /// success/carry-forward playthroughs, reused here so HOME is observed on a
 /// real (not synthesized) trajectory.
 Future<void> playApril(WidgetTester tester) async {
+  // The employee sales-progression card is on 社員 now
+  // (PUBLIC-DEMO-HOME-UI-3B); switch back to HOME before returning so
+  // callers can keep reading the runtime HOME projection (a HOME-only
+  // section) without having to know this detail themselves.
+  await switchPublicDemoTab(tester, PublicDemoTab.employees);
   await tapAndSettle(tester, 'SkillSheet確認');
   await tapAndSettle(tester, '営業開始');
   await tapAndSettle(tester, '案件紹介');
@@ -147,6 +154,7 @@ Future<void> playApril(WidgetTester tester) async {
   await dismiss(tester);
   await tapAndSettle(tester, '受注');
   await dismiss(tester);
+  await switchPublicDemoTab(tester, PublicDemoTab.home);
 }
 
 /// Asserts the injected projection is field-for-field what the authoritative
@@ -298,6 +306,8 @@ void main() {
       expectHomeMatchesAuthority(tester, at: 'May');
 
       // 11. Hire Takahashi in May so a real employee joins at the close.
+      // The recruiting/applicant pipeline is on 営業 now.
+      await switchPublicDemoTab(tester, PublicDemoTab.sales);
       await tapAndSettle(tester, '経歴書確認');
       await tapAndSettle(tester, '採用面談');
       await tapAndSettle(tester, '合格・給与提示');
@@ -305,6 +315,7 @@ void main() {
         find.byKey(const Key('public-demo-salary-offer-320000')),
       );
       await tester.pumpAndSettle();
+      await switchPublicDemoTab(tester, PublicDemoTab.home);
 
       final beforeJoin = homeData(tester);
 
@@ -408,7 +419,8 @@ void main() {
       expect(
         inHome(find.byWidgetPredicate((w) => w is ButtonStyleButton)),
         findsNWidgets(2),
-        reason: 'the primary action CTA and the secondary scroll-jump '
+        reason:
+            'the primary action CTA and the secondary scroll-jump '
             'control are the only buttons',
       );
       // ...and it is genuinely enabled, not a decorative disabled control.

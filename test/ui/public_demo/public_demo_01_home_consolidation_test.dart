@@ -60,6 +60,8 @@ import 'package:smile_enjoy_story/ui/public_demo/public_demo_01_placeholder_scre
 import 'package:smile_enjoy_story/ui/public_demo/public_demo_cash_shortage_card.dart';
 import 'package:smile_enjoy_story/ui/public_demo/public_demo_home_dashboard_section.dart';
 
+import 'public_demo_tab_test_helpers.dart';
+
 /// The screen's own authoritative finance state, read straight off its
 /// [State] — the same technique the existing Public Demo widget suites use,
 /// so every assertion below compares the UI against the real authority
@@ -157,6 +159,11 @@ Future<void> pumpDemoAt(WidgetTester tester, Size size) async {
 /// April: Sato wins the May order — the shared opening of the existing
 /// playthrough suites.
 Future<void> playApril(WidgetTester tester) async {
+  // The employee sales-progression card is on 社員 now
+  // (PUBLIC-DEMO-HOME-UI-3B); switch back to HOME before returning so
+  // callers can keep reading HOME's own projection without having to know
+  // this detail themselves.
+  await switchPublicDemoTab(tester, PublicDemoTab.employees);
   await tapAndSettle(tester, 'SkillSheet確認');
   await tapAndSettle(tester, '営業開始');
   await tapAndSettle(tester, '案件紹介');
@@ -166,6 +173,7 @@ Future<void> playApril(WidgetTester tester) async {
   await dismiss(tester);
   await tapAndSettle(tester, '受注');
   await dismiss(tester);
+  await switchPublicDemoTab(tester, PublicDemoTab.home);
 }
 
 /// The content height a mobile browser actually leaves below the AppBar at
@@ -282,14 +290,23 @@ void main() {
       // also each waiting engineer's own status badge, which is a different
       // statement (this employee is waiting) from the KPI's (two employees
       // are waiting). Pinned exactly rather than loosened to findsWidgets —
-      // one KPI tile plus April's two waiting engineers, and no third.
+      // one KPI tile on HOME, and (PUBLIC-DEMO-HOME-UI-3B) April's two
+      // waiting engineers' own badges on 社員, their own tab now — checked
+      // separately since the two tabs are never built at once.
       expect(inHome(find.text('待機')), findsOneWidget);
       expect(kpiTileValue('waiting', '2名'), findsOneWidget);
       expect(
         find.text('待機'),
-        findsNWidgets(3),
-        reason: 'one KPI tile plus April\'s two waiting engineers',
+        findsOneWidget,
+        reason: 'only the KPI tile is on HOME now',
       );
+      await switchPublicDemoTab(tester, PublicDemoTab.employees);
+      expect(
+        find.text('待機'),
+        findsNWidgets(2),
+        reason: 'April\'s two waiting engineers\' own badges, on 社員',
+      );
+      await switchPublicDemoTab(tester, PublicDemoTab.home);
     });
 
     testWidgets('5: cash is rendered once in the top summary', (tester) async {
@@ -510,7 +527,8 @@ void main() {
       expect(
         inHome(find.byWidgetPredicate((w) => w is ButtonStyleButton)),
         findsNWidgets(2),
-        reason: 'HOME has one primary action CTA and one secondary '
+        reason:
+            'HOME has one primary action CTA and one secondary '
             'scroll-jump control',
       );
 
@@ -622,12 +640,17 @@ void main() {
         expect(stage.top, greaterThan(ctaRect.bottom));
 
         // The action is genuinely usable from where it sits, not just
-        // laid out there — and it still runs April's real first step.
+        // laid out there — and it still runs April's real first step. The
+        // resulting sales-progression state now shows on 社員
+        // (PUBLIC-DEMO-HOME-UI-3B), where the same command's next button
+        // lives.
         await tester.tap(cta);
         await settle(tester);
         await tester.tap(find.widgetWithText(FilledButton, '内容を確認'));
         await tester.pumpAndSettle();
+        await switchPublicDemoTab(tester, PublicDemoTab.employees);
         expect(actionButton('営業開始'), findsWidgets);
+        await switchPublicDemoTab(tester, PublicDemoTab.home);
       });
     }
 
@@ -657,56 +680,56 @@ void main() {
     for (final (:size, :contentBudget) in _targets) {
       final label = '${size.width.toInt()}x${size.height.toInt()}';
 
-      testWidgets('2C: the Recommended Action CTA is itself inside the '
-          'first view, above where the legacy button sits, at $label', (
-        tester,
-      ) async {
-        await pumpDemoAt(tester, size);
+      testWidgets(
+        '2C: the Recommended Action CTA is itself inside the first view, '
+        'and HOME no longer contains the legacy per-employee button it '
+        'used to sit above (PUBLIC-DEMO-HOME-UI-3B moved it to 社員), '
+        'at $label',
+        (tester) async {
+          await pumpDemoAt(tester, size);
 
-        expect(
-          tester
-              .state<ScrollableState>(find.byType(Scrollable).first)
-              .position
-              .pixels,
-          0,
-          reason: 'this must describe the unscrolled screen',
-        );
+          expect(
+            tester
+                .state<ScrollableState>(find.byType(Scrollable).first)
+                .position
+                .pixels,
+            0,
+            reason: 'this must describe the unscrolled screen',
+          );
 
-        final viewport = tester.getRect(find.byType(ListView));
-        final cta = tester.getRect(
-          find.byKey(const Key('home-recommended-action-cta')),
-        );
-        final headline = tester.getRect(
-          find.byKey(const Key('home-recommended-action-headline')),
-        );
-        final legacy = tester.getRect(actionButton('SkillSheet確認'));
+          final viewport = tester.getRect(find.byType(ListView));
+          final cta = tester.getRect(
+            find.byKey(const Key('home-recommended-action-cta')),
+          );
+          final headline = tester.getRect(
+            find.byKey(const Key('home-recommended-action-headline')),
+          );
 
-        // Both halves of the message — who/what, and where to tap — are
-        // painted inside the viewport and inside the browser-chrome budget.
-        expect(headline.top, greaterThanOrEqualTo(viewport.top));
-        expect(cta.bottom, lessThanOrEqualTo(viewport.bottom));
-        expect(
-          cta.bottom - viewport.top,
-          lessThanOrEqualTo(contentBudget),
-          reason:
-              'the CTA ends ${cta.bottom - viewport.top}pt below the AppBar; '
-              'the browser-chrome content budget at $label is '
-              '${contentBudget}pt',
-        );
+          // Both halves of the message — who/what, and where to tap — are
+          // painted inside the viewport and inside the browser-chrome
+          // budget.
+          expect(headline.top, greaterThanOrEqualTo(viewport.top));
+          expect(cta.bottom, lessThanOrEqualTo(viewport.bottom));
+          expect(
+            cta.bottom - viewport.top,
+            lessThanOrEqualTo(contentBudget),
+            reason:
+                'the CTA ends ${cta.bottom - viewport.top}pt below the '
+                'AppBar; the browser-chrome content budget at $label is '
+                '${contentBudget}pt',
+          );
 
-        // The whole point of the phase: the next action is now reachable
-        // far higher than the per-employee button it shortcuts to.
-        expect(
-          cta.bottom,
-          lessThan(legacy.top),
-          reason:
-              'the Recommended Action must sit above the employee card '
-              'action it leads to',
-        );
+          // The whole point of the phase, now structural rather than
+          // positional: the next action is reachable on HOME itself, and
+          // the per-employee button it shortcuts to is not on this screen
+          // at all any more — it is real content on 社員, not merely
+          // scrolled past.
+          expect(actionButton('SkillSheet確認'), findsNothing);
 
-        // A 48pt tap target was not sacrificed to fit.
-        expect(cta.height, greaterThanOrEqualTo(44.0));
-      });
+          // A 48pt tap target was not sacrificed to fit.
+          expect(cta.height, greaterThanOrEqualTo(44.0));
+        },
+      );
     }
   });
 
@@ -720,7 +743,6 @@ void main() {
         // deleted — home-office-stage is the sole employee-roster
         // presentation this group now asserts stays reachable.
         find.byKey(const Key('home-office-stage')),
-        find.byKey(const Key('public-demo-finance-summary')),
         find.byKey(const Key('public-demo-monthly-primary-cta')),
       ]) {
         await tester.ensureVisible(finder.first);
@@ -730,6 +752,19 @@ void main() {
         expect(rect.bottom, greaterThanOrEqualTo(viewport.top));
         expect(rect.top, lessThanOrEqualTo(viewport.bottom));
       }
+
+      // The finance summary is on its own 会計 tab now
+      // (PUBLIC-DEMO-HOME-UI-3B).
+      await switchPublicDemoTab(tester, PublicDemoTab.accounting);
+      final financeSummary = find.byKey(
+        const Key('public-demo-finance-summary'),
+      );
+      await tester.ensureVisible(financeSummary.first);
+      await tester.pumpAndSettle();
+      final financeRect = tester.getRect(financeSummary.first);
+      final financeViewport = tester.getRect(find.byType(ListView));
+      expect(financeRect.bottom, greaterThanOrEqualTo(financeViewport.top));
+      expect(financeRect.top, lessThanOrEqualTo(financeViewport.bottom));
     });
 
     testWidgets(
@@ -771,36 +806,35 @@ void main() {
       },
     );
 
-    testWidgets('2B: the legacy SkillSheet確認 button still exists, still '
-        'sits below the Office Stage, and still works after scrolling', (
-      tester,
-    ) async {
-      await pumpDemoAt(tester, const Size(360, 800));
+    testWidgets(
+      '2B: the legacy SkillSheet確認 button still exists, is not on HOME '
+      'any more (PUBLIC-DEMO-HOME-UI-3B moved it to its own 社員 tab, real '
+      'content rather than merely scrolled past), and still works there',
+      (tester) async {
+        await pumpDemoAt(tester, const Size(360, 800));
 
-      // HOME-RUNTIME-2B moved this button below the browser-chrome budget
-      // (see group 16-17) — it did NOT remove it, disable it, or change
-      // what it does. Nothing about the legacy per-employee cards is 2B's
-      // to delete; that is 2D/2E's scope. This pins the difference between
-      // "relocated" and "lost".
-      final button = actionButton('SkillSheet確認');
-      expect(button, findsOneWidget);
-      expect(tester.widget<ButtonStyleButton>(button).onPressed, isNotNull);
+        // HOME-RUNTIME-2B moved this button below the browser-chrome budget
+        // (see group 16-17); PUBLIC-DEMO-HOME-UI-3B moves it off HOME
+        // entirely. Neither removed it, disabled it, or changed what it
+        // does — this pins the difference between "relocated" and "lost".
+        expect(actionButton('SkillSheet確認'), findsNothing);
 
-      final stage = tester.getRect(find.byKey(const Key('home-office-stage')));
-      expect(
-        tester.getRect(button).top,
-        greaterThan(stage.bottom),
-        reason: 'the legacy employee action belongs below the Office Stage',
-      );
+        await switchPublicDemoTab(tester, PublicDemoTab.employees);
+        final button = actionButton('SkillSheet確認');
+        expect(button, findsOneWidget);
+        expect(tester.widget<ButtonStyleButton>(button).onPressed, isNotNull);
 
-      // Reachable and functional by ordinary scrolling.
-      await tapAndSettle(tester, 'SkillSheet確認');
-      expect(actionButton('営業開始'), findsWidgets);
-    });
+        // Reachable and functional by ordinary scrolling, on its own tab.
+        await tapAndSettle(tester, 'SkillSheet確認');
+        expect(actionButton('営業開始'), findsWidgets);
+      },
+    );
 
     testWidgets('18: the internal-training action still runs the same '
         'command, with the same key and the same eligibility', (tester) async {
       await pumpDemoAt(tester, const Size(390, 844));
+      // Training is employee detail — on 社員 now (PUBLIC-DEMO-HOME-UI-3B).
+      await switchPublicDemoTab(tester, PublicDemoTab.employees);
 
       final card = find.byKey(
         const Key('public-demo-internal-training-eng-01'),
@@ -1147,89 +1181,83 @@ void main() {
     }
   });
 
-  group(
-    'PUBLIC-DEMO-HOME-UI-3A: the compact KPI icon badge must not silently '
-    'truncate or over-shrink the value it sits beside',
-    () {
-      // `find.text(value)` alone cannot catch this class of regression:
-      // an earlier iteration painted the value beside the icon with fixed-
-      // size TextOverflow.ellipsis text, which only changes what is
-      // PAINTED, never the widget's own `data` string — a truncated "¥4…"
-      // and a fully painted "¥400万" both satisfy `find.text('¥400万')`, as
-      // the icon badge proved in real-device review (PR screenshot) while
-      // every existing `kpiTileValue`-style assertion kept passing.
-      //
-      // The value now renders inside a `FittedBox(fit: scaleDown)` instead
-      // (see _CompactKpiTile's own doc), which makes silent truncation
-      // structurally impossible — the full string always paints, just
-      // smaller if the tile is narrow. What that trades away is a floor on
-      // how small "smaller" may get, so this test asserts the OTHER real
-      // constraint instead: the effective on-screen font size the scale-
-      // down settles on never drops below the design's own 10px essential-
-      // text minimum.
-      for (final size in const [Size(360, 800), Size(390, 844)]) {
-        final label = '${size.width.toInt()}x${size.height.toInt()}';
+  group('PUBLIC-DEMO-HOME-UI-3A: the compact KPI icon badge must not silently '
+      'truncate or over-shrink the value it sits beside', () {
+    // `find.text(value)` alone cannot catch this class of regression:
+    // an earlier iteration painted the value beside the icon with fixed-
+    // size TextOverflow.ellipsis text, which only changes what is
+    // PAINTED, never the widget's own `data` string — a truncated "¥4…"
+    // and a fully painted "¥400万" both satisfy `find.text('¥400万')`, as
+    // the icon badge proved in real-device review (PR screenshot) while
+    // every existing `kpiTileValue`-style assertion kept passing.
+    //
+    // The value now renders inside a `FittedBox(fit: scaleDown)` instead
+    // (see _CompactKpiTile's own doc), which makes silent truncation
+    // structurally impossible — the full string always paints, just
+    // smaller if the tile is narrow. What that trades away is a floor on
+    // how small "smaller" may get, so this test asserts the OTHER real
+    // constraint instead: the effective on-screen font size the scale-
+    // down settles on never drops below the design's own 10px essential-
+    // text minimum.
+    for (final size in const [Size(360, 800), Size(390, 844)]) {
+      final label = '${size.width.toInt()}x${size.height.toInt()}';
 
-        testWidgets('every compact KPI value stays >= 10px effective font '
-            'size, at $label', (tester) async {
-          await pumpDemoAt(tester, size);
-          expect(tester.takeException(), isNull);
+      testWidgets('every compact KPI value stays >= 10px effective font '
+          'size, at $label', (tester) async {
+        await pumpDemoAt(tester, size);
+        expect(tester.takeException(), isNull);
 
-          for (final tile in const [
-            'cash',
-            'assigned',
-            'waiting',
-            'sales-remaining',
-            'employees',
-            'revenue',
-            'pending-revenue',
-          ]) {
-            final textFinder = find
-                .descendant(
-                  of: find.byKey(Key('home-kpi-compact-$tile')),
-                  matching: find.byType(Text),
-                )
-                // The tile's Text descendants are [label, value] in tree
-                // order (icon+label row first, value line below) — see
-                // _CompactKpiTile's own class doc.
-                .last;
-            final valueText = tester.widget<Text>(textFinder);
-            final fittedBox = tester.renderObject<RenderFittedBox>(
-              find.ancestor(
-                of: textFinder,
-                matching: find.byType(FittedBox),
-              ),
-            );
+        for (final tile in const [
+          'cash',
+          'assigned',
+          'waiting',
+          'sales-remaining',
+          'employees',
+          'revenue',
+          'pending-revenue',
+        ]) {
+          final textFinder = find
+              .descendant(
+                of: find.byKey(Key('home-kpi-compact-$tile')),
+                matching: find.byType(Text),
+              )
+              // The tile's Text descendants are [label, value] in tree
+              // order (icon+label row first, value line below) — see
+              // _CompactKpiTile's own class doc.
+              .last;
+          final valueText = tester.widget<Text>(textFinder);
+          final fittedBox = tester.renderObject<RenderFittedBox>(
+            find.ancestor(of: textFinder, matching: find.byType(FittedBox)),
+          );
 
-            // The value's natural (unconstrained) size at its base style —
-            // what FittedBox scales down from.
-            final natural = TextPainter(
-              text: TextSpan(text: valueText.data, style: valueText.style),
-              textDirection: TextDirection.ltr,
-            )..layout();
+          // The value's natural (unconstrained) size at its base style —
+          // what FittedBox scales down from.
+          final natural = TextPainter(
+            text: TextSpan(text: valueText.data, style: valueText.style),
+            textDirection: TextDirection.ltr,
+          )..layout();
 
-            // scaleDown only ever shrinks (or leaves at 1.0), and preserves
-            // aspect ratio — the binding constraint here is always width,
-            // since these tiles are far wider than one text line is tall.
-            final availableWidth = fittedBox.constraints.maxWidth;
-            final scale = availableWidth >= natural.width
-                ? 1.0
-                : availableWidth / natural.width;
-            final baseFontSize = valueText.style!.fontSize!;
-            final effectiveFontSize = baseFontSize * scale;
+          // scaleDown only ever shrinks (or leaves at 1.0), and preserves
+          // aspect ratio — the binding constraint here is always width,
+          // since these tiles are far wider than one text line is tall.
+          final availableWidth = fittedBox.constraints.maxWidth;
+          final scale = availableWidth >= natural.width
+              ? 1.0
+              : availableWidth / natural.width;
+          final baseFontSize = valueText.style!.fontSize!;
+          final effectiveFontSize = baseFontSize * scale;
 
-            expect(
-              effectiveFontSize,
-              greaterThanOrEqualTo(10.0),
-              reason:
-                  '$tile value "${valueText.data}" scales to '
-                  '${effectiveFontSize.toStringAsFixed(1)}px at $label '
-                  '(available width ${availableWidth.toStringAsFixed(1)}pt, '
-                  'natural width ${natural.width.toStringAsFixed(1)}pt)',
-            );
-          }
-        });
-      }
-    },
-  );
+          expect(
+            effectiveFontSize,
+            greaterThanOrEqualTo(10.0),
+            reason:
+                '$tile value "${valueText.data}" scales to '
+                '${effectiveFontSize.toStringAsFixed(1)}px at $label '
+                '(available width ${availableWidth.toStringAsFixed(1)}pt, '
+                'natural width ${natural.width.toStringAsFixed(1)}pt)',
+          );
+        }
+      });
+    }
+  });
 }

@@ -6,6 +6,8 @@ import 'package:smile_enjoy_story/presentation/home/widgets/home_office_stage_se
 import 'package:smile_enjoy_story/ui/public_demo/public_demo_01_placeholder_screen.dart';
 import 'package:smile_enjoy_story/ui/public_demo/public_demo_home_presentation_components.dart';
 
+import 'public_demo_tab_test_helpers.dart';
+
 PublicDemoState currentState(WidgetTester tester) =>
     (tester.state(find.byType(PublicDemo01PlaceholderScreen)) as dynamic).s
         as PublicDemoState;
@@ -86,15 +88,18 @@ void main() {
       // HOME-COMPACT-1B.3: PublicDemoMonthlyPrimaryCtaSection moves directly
       // under HomeNavigatorSection so it is visible in the initial no-scroll
       // 390px view alongside 月/KPI/ひより — see Issue #148 Phase 1B.3's own
-      // acceptance criteria. The summary sections below it are unchanged in
-      // relative order and stay reachable by scroll/quick-access/bottom nav.
+      // acceptance criteria. PUBLIC-DEMO-HOME-UI-3B: PublicDemoFinanceSummary
+      // Section is no longer part of this HOME reading order at all — it
+      // moved to its own 会計 tab (see [_buildAccountingTab]'s own doc);
+      // that acceptance criterion ("HOME no longer contains full accounting
+      // detail") is checked below, on 会計, rather than as a tail entry
+      // here.
       final order = [
         find.byType(HomeNavigatorSection),
         find.byType(PublicDemoMonthlyPrimaryCtaSection),
         find.byType(HomeOfficeStageSection),
         find.byType(PublicDemoImportantTasksSection),
         find.byType(PublicDemoQuickAccessSection),
-        find.byType(PublicDemoFinanceSummarySection),
       ];
       for (final section in order) {
         expect(section, findsOneWidget);
@@ -105,17 +110,7 @@ void main() {
           lessThan(treeIndexOf(tester, order[i])),
         );
       }
-      // SES-FIRST-FUN-YEAR-UI-PHASE-1: PublicDemoFinanceSummarySection no
-      // longer carries cash/nextMonthEstimate — both duplicated the compact
-      // KPI, which shows them on every build (see
-      // PublicDemoFinanceSummaryModel's class doc). It still carries the
-      // two figures the KPI does not: payroll and fixed costs, sourced from
-      // the same finance authority as before.
-      final finance = tester.widget<PublicDemoFinanceSummarySection>(
-        find.byType(PublicDemoFinanceSummarySection),
-      );
-      expect(finance.summary.payroll, greaterThan(0));
-      expect(finance.summary.fixedCosts, greaterThan(0));
+      expect(find.byType(PublicDemoFinanceSummarySection), findsNothing);
       expect(find.text('佐藤 健'), findsWidgets);
       // The Office Stage card is the only roster-like employee summary.
       expect(
@@ -125,6 +120,20 @@ void main() {
         ),
         findsOneWidget,
       );
+
+      // SES-FIRST-FUN-YEAR-UI-PHASE-1: PublicDemoFinanceSummarySection no
+      // longer carries cash/nextMonthEstimate — both duplicated the compact
+      // KPI, which shows them on every build (see
+      // PublicDemoFinanceSummaryModel's class doc). It still carries the
+      // two figures the KPI does not: payroll and fixed costs, sourced from
+      // the same finance authority as before. Checked on 会計, its real tab
+      // now.
+      await switchPublicDemoTab(tester, PublicDemoTab.accounting);
+      final finance = tester.widget<PublicDemoFinanceSummarySection>(
+        find.byType(PublicDemoFinanceSummarySection),
+      );
+      expect(finance.summary.payroll, greaterThan(0));
+      expect(finance.summary.fixedCosts, greaterThan(0));
     });
 
     testWidgets('the primary Recommended Action remains initially reachable', (
@@ -201,16 +210,16 @@ void main() {
         (tester) async {
           await pumpDemo(tester, size: Size(width, 844), textScale: 1.3);
 
+          // HOME's own labels — PUBLIC-DEMO-HOME-UI-3B moved the finance
+          // summary's labels (今月の支出予定/給与/固定費) to their own 会計
+          // tab, checked separately below.
           for (final text in [
             '今月の重要タスク',
             'クイックアクセス',
-            '今月の支出予定',
             // HOME-COMPACT-1B.4: the monthly CTA card's former
             // "今月の主要行動" title is replaced by the compact "月次処理"
             // eyebrow — see PublicDemoMonthlyPrimaryCtaSection's own doc.
             '月次処理',
-            '給与',
-            '固定費',
           ]) {
             final label = find.text(text);
             await tester.ensureVisible(label);
@@ -225,6 +234,21 @@ void main() {
           expect(ctaRect.left, greaterThanOrEqualTo(0));
           expect(ctaRect.right, lessThanOrEqualTo(width));
 
+          for (var i = 0; i < 8; i++) {
+            await tester.drag(find.byType(ListView), const Offset(0, -400));
+            await tester.pumpAndSettle();
+            expect(tester.takeException(), isNull);
+          }
+
+          // 会計's own labels — its own tab, its own scroll/overflow check.
+          await switchPublicDemoTab(tester, PublicDemoTab.accounting);
+          for (final text in ['今月の支出予定', '給与', '固定費']) {
+            final label = find.text(text);
+            await tester.ensureVisible(label);
+            final rect = tester.getRect(label);
+            expect(rect.left, greaterThanOrEqualTo(0), reason: text);
+            expect(rect.right, lessThanOrEqualTo(width), reason: text);
+          }
           for (var i = 0; i < 8; i++) {
             await tester.drag(find.byType(ListView), const Offset(0, -400));
             await tester.pumpAndSettle();

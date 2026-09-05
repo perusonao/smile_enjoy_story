@@ -25,6 +25,8 @@ import 'package:smile_enjoy_story/game/public_demo/public_demo_state.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_workflow_state.dart';
 import 'package:smile_enjoy_story/ui/public_demo/public_demo_01_placeholder_screen.dart';
 
+import 'public_demo_tab_test_helpers.dart';
+
 const _appId = 'app-01';
 
 PublicDemoState _currentState(WidgetTester tester) =>
@@ -87,7 +89,11 @@ Future<void> _tapKeyAndSettle(WidgetTester tester, Key key) async {
     await tester.drag(find.byType(ListView), const Offset(0, -300));
     await tester.pumpAndSettle();
   }
-  expect(finder, findsOneWidget, reason: 'Could not find widget with key: $key');
+  expect(
+    finder,
+    findsOneWidget,
+    reason: 'Could not find widget with key: $key',
+  );
   await tester.ensureVisible(finder);
   await tester.pumpAndSettle();
   await tester.tap(finder);
@@ -104,6 +110,9 @@ Future<void> _dismiss(WidgetTester tester) async {
 /// `e2e/tests/public-demo-annual-route.spec.ts`'s own header doc) — then
 /// closes into May.
 Future<void> _sellFoundingEngineerAndCloseApril(WidgetTester tester) async {
+  // The employee sales-progression card is on 社員 now
+  // (PUBLIC-DEMO-HOME-UI-3B).
+  await switchPublicDemoTab(tester, PublicDemoTab.employees);
   await _tapAndSettle(tester, 'SkillSheet確認');
   await _tapAndSettle(tester, '営業開始');
   await _tapAndSettle(tester, '案件紹介');
@@ -113,6 +122,8 @@ Future<void> _sellFoundingEngineerAndCloseApril(WidgetTester tester) async {
   await _dismiss(tester);
   await _tapAndSettle(tester, '受注');
   await _dismiss(tester);
+  // The month-close CTA is HOME's own monthly primary action.
+  await switchPublicDemoTab(tester, PublicDemoTab.home);
   await _tapAndSettle(tester, '4月を終了して5月へ');
   await _dismiss(tester);
 }
@@ -125,6 +136,8 @@ Future<void> _sellFoundingEngineerAndCloseApril(WidgetTester tester) async {
 /// whose pre-entry sales progress silently carried them straight to
 /// `ordered`.
 Future<void> _hireAppOneWithoutPreEntrySales(WidgetTester tester) async {
+  // The recruiting/applicant pipeline is on 営業 now.
+  await switchPublicDemoTab(tester, PublicDemoTab.sales);
   await _tapAndSettle(tester, '経歴書確認');
   await _tapAndSettle(tester, '採用面談');
   expect(find.textContaining('評価 74'), findsOneWidget);
@@ -139,6 +152,8 @@ Future<void> _hireAppOneWithoutPreEntrySales(WidgetTester tester) async {
 /// reachable in July "or any later month" since none of these transitions
 /// are month-gated.
 Future<void> _runAppOneSalesPipelineToOrdered(WidgetTester tester) async {
+  // The employee sales-progression card (and 案件へ復帰) is on 社員 now.
+  await switchPublicDemoTab(tester, PublicDemoTab.employees);
   await _tapAndSettle(tester, 'SkillSheet確認');
   await _tapAndSettle(tester, '営業開始');
   await _tapAndSettle(tester, '案件紹介');
@@ -166,12 +181,16 @@ void main() {
       // `_hireAppOneWithoutPreEntrySales`'s own doc), so May's close mints
       // no "入社・初参画！" first-assignment event to dismiss here, unlike
       // public_demo_01_success_playthrough_test.dart's own hire flow.
+      await switchPublicDemoTab(tester, PublicDemoTab.home);
       await _tapAndSettle(tester, '5月を終了して6月へ');
 
       // June: accept eng-01's July continuation but deliberately leave
-      // app-01 completely untouched — they must still be `waiting`.
+      // app-01 completely untouched — they must still be `waiting`. The
+      // assignment (project continuation) pipeline is on 営業.
+      await switchPublicDemoTab(tester, PublicDemoTab.sales);
       await _tapAndSettle(tester, '7月分の発注を確認');
       await _tapAndSettle(tester, '受注する');
+      await switchPublicDemoTab(tester, PublicDemoTab.home);
       await _tapAndSettle(tester, '6月を終了して7月へ');
 
       var state = _currentState(tester);
@@ -179,14 +198,17 @@ void main() {
       expect(
         state.engineersWaiting,
         2,
-        reason: 'app-01 (unrecovered) and the permanently field-sales-locked '
+        reason:
+            'app-01 (unrecovered) and the permanently field-sales-locked '
             'eng-02 (see public_demo_01_suzuki_sales_lock_test.dart) must '
             'both still be economically waiting entering July',
       );
 
       // July: app-01's waiting-engineer card is reachable with the same
       // sales-pipeline entry point as April/June (STEP 1: "Recovery eligible
-      // waiting engineerにRecovery sales UIが表示される").
+      // waiting engineerにRecovery sales UIが表示される"). Checked on 社員,
+      // where that card now lives.
+      await switchPublicDemoTab(tester, PublicDemoTab.employees);
       expect(
         find.byKey(const Key('public-demo-recovery-assignment-$_appId')),
         findsNothing,
@@ -232,13 +254,16 @@ void main() {
       // Advancing another month re-confirms the recovered assignment stays
       // single and the button never reappears (production defense in depth
       // — see `recoverLateYearAssignment`'s own doc — mirrored here as an
-      // observable UI fact, not just a domain one).
+      // observable UI fact, not just a domain one). The month-close CTA is
+      // HOME's own monthly primary action.
+      await switchPublicDemoTab(tester, PublicDemoTab.home);
       await _tapAndSettle(tester, '7月を終了して8月へ');
       await _tapKeyAndSettle(
         tester,
         const Key('public-demo-summer-bonus-none'),
       );
       await _tapAndSettle(tester, '7月を終了して8月へ');
+      await switchPublicDemoTab(tester, PublicDemoTab.employees);
       expect(find.byKey(recoveryButtonKey), findsNothing);
       expect(
         _currentWorkflow(tester).assignments
@@ -260,9 +285,12 @@ void main() {
 
       await _sellFoundingEngineerAndCloseApril(tester);
       await _hireAppOneWithoutPreEntrySales(tester);
+      await switchPublicDemoTab(tester, PublicDemoTab.home);
       await _tapAndSettle(tester, '5月を終了して6月へ');
+      await switchPublicDemoTab(tester, PublicDemoTab.sales);
       await _tapAndSettle(tester, '7月分の発注を確認');
       await _tapAndSettle(tester, '受注する');
+      await switchPublicDemoTab(tester, PublicDemoTab.home);
       await _tapAndSettle(tester, '6月を終了して7月へ');
 
       await _runAppOneSalesPipelineToOrdered(tester);
@@ -270,7 +298,8 @@ void main() {
       expect(
         find.byKey(recoveryButtonKey),
         findsOneWidget,
-        reason: 'app-01 must be genuinely eligible before training exclusion '
+        reason:
+            'app-01 must be genuinely eligible before training exclusion '
             'is a meaningful assertion',
       );
 
@@ -292,9 +321,14 @@ void main() {
       // still unassigned, still non-terminal, still inside the window) must
       // become Recovery-eligible again in August — proving the training
       // guard is exactly as month-scoped as `selectInternalTraining` itself,
-      // not a wider, accidental lockout.
+      // not a wider, accidental lockout. The month-close CTA is HOME's own
+      // monthly primary action.
+      await switchPublicDemoTab(tester, PublicDemoTab.home);
       await _tapAndSettle(tester, '7月を終了して8月へ');
-      await _tapKeyAndSettle(tester, const Key('public-demo-summer-bonus-none'));
+      await _tapKeyAndSettle(
+        tester,
+        const Key('public-demo-summer-bonus-none'),
+      );
       await _tapAndSettle(tester, '7月を終了して8月へ');
       expect(_currentState(tester).month, 8);
       expect(
@@ -302,6 +336,7 @@ void main() {
         isFalse,
         reason: 'a training selection does not persist past its own month',
       );
+      await switchPublicDemoTab(tester, PublicDemoTab.employees);
       expect(
         find.byKey(recoveryButtonKey),
         findsOneWidget,
@@ -318,6 +353,7 @@ void main() {
       // as it actually occurs, so this is one real playthrough proving
       // whichever of "terminalではRecovery不可" / "MarchではRecovery entry
       // pointなし" actually applies first, not a staged one.
+      await switchPublicDemoTab(tester, PublicDemoTab.home);
       const closeLabels = [
         '8月を終了して翌月へ',
         '9月を終了して翌月へ',
@@ -361,6 +397,12 @@ void main() {
       if (!sawTerminalBeforeMarch) {
         expect(finalState.month, 15, reason: 'March is internal month 15');
       }
+      // Checked on 社員 — the tab that would render 案件へ復帰 if it still
+      // existed anywhere — so this absence assertion still means something.
+      // The bottom nav itself always renders (it lives on the Scaffold,
+      // not inside the terminal card), so this switch is safe whether or
+      // not a terminal state was reached.
+      await switchPublicDemoTab(tester, PublicDemoTab.employees);
       expect(
         find.byKey(recoveryButtonKey),
         findsNothing,

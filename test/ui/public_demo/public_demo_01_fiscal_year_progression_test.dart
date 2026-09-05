@@ -5,6 +5,8 @@ import 'package:smile_enjoy_story/game/public_demo/public_demo_state.dart';
 import 'package:smile_enjoy_story/ui/public_demo/public_demo_01_placeholder_screen.dart';
 import 'package:smile_enjoy_story/ui/public_demo/public_demo_home_dashboard_section.dart';
 
+import 'public_demo_tab_test_helpers.dart';
+
 // `s` (unlike the enclosing `_S` state class) is not library-private, so it
 // can be read directly off the widget's State for precise assertions
 // instead of scraping rendered text (mirrors
@@ -95,7 +97,9 @@ void main() {
       );
 
       // April: Sato wins the May order (deterministic interview scores),
-      // matching public_demo_01_success_playthrough_test.dart's route.
+      // matching public_demo_01_success_playthrough_test.dart's route. The
+      // employee sales-progression card is on 社員 now.
+      await switchPublicDemoTab(tester, PublicDemoTab.employees);
       await tapAndSettle(tester, 'SkillSheet確認');
       await tapAndSettle(tester, '営業開始');
       await tapAndSettle(tester, '案件紹介');
@@ -105,6 +109,8 @@ void main() {
       await dismissDialog(tester, '確認');
       await tapAndSettle(tester, '受注');
       await dismissDialog(tester, '確認');
+      // The month-close CTA is HOME's own monthly primary action.
+      await switchPublicDemoTab(tester, PublicDemoTab.home);
       await tapAndSettle(tester, '4月を終了して5月へ');
       await dismissDialog(tester, '確認');
       expect(find.text('1年目 5月'), findsOneWidget);
@@ -124,10 +130,13 @@ void main() {
       // 12MONTH-3-FIX1 P1-2: no month past May can process a generated
       // applicant, so the paid recruitment-media CTA must not render for
       // any ordinary month (it did briefly, for 8-15, before this fix).
+      // Checked on 営業, the tab that would render it in May.
+      await switchPublicDemoTab(tester, PublicDemoTab.sales);
       expect(
         find.byKey(const Key('public-demo-recruitment-media-card')),
         findsNothing,
       );
+      await switchPublicDemoTab(tester, PublicDemoTab.home);
 
       // August through November: each still closes via the new shared
       // ordinary month button and lands on the next calendar label.
@@ -156,41 +165,45 @@ void main() {
       for (final (buttonLabel, nextMonthLabel) in closes) {
         await tapAndSettle(tester, buttonLabel);
         expect(find.text('1年目 $nextMonthLabel'), findsOneWidget);
+        // Checked on 営業, the tab that would render the recruitment-media
+        // card in May.
+        await switchPublicDemoTab(tester, PublicDemoTab.sales);
         expect(
           find.byKey(const Key('public-demo-recruitment-media-card')),
           findsNothing,
           reason: 'month $nextMonthLabel',
         );
+        await switchPublicDemoTab(tester, PublicDemoTab.home);
         if (nextMonthLabel == '11月') {
           expect(
             currentState(tester).financialStatus,
             PublicDemoFinancialStatus.cashShortage,
           );
-          final flow = find.byKey(
-            const Key('public-demo-monthly-cash-flow-card'),
-          );
           final shortage = find.byKey(
             const Key('public-demo-cash-shortage-card'),
           );
-          expect(flow, findsOneWidget);
           expect(shortage, findsOneWidget);
           // HOME-RUNTIME-2A inverted this ordering deliberately: the
-          // shortage warning is hoisted to the very top of the screen, above
-          // the HOME summary and therefore above the post-close cash-flow
-          // detail. Same two cards, same cardinality, same single ordering
-          // assertion — it now pins the order the phase established, and the
-          // added HOME-relative check makes it stronger than a bare pairwise
-          // comparison could be.
-          expect(
-            tester.getTopLeft(shortage).dy,
-            lessThan(tester.getTopLeft(flow).dy),
-          );
+          // shortage warning is hoisted to the very top of the screen,
+          // above the HOME summary. PUBLIC-DEMO-HOME-UI-3B moved the
+          // post-close cash-flow detail to its own 会計 tab entirely, which
+          // makes this an even stronger form of the same "shortage takes
+          // visual priority" invariant — the two can no longer even render
+          // together for a pairwise position comparison — so this checks
+          // shortage-above-HOME-summary here, and the cash-flow card's own
+          // presence on 会計 separately below.
           expect(
             tester.getTopLeft(shortage).dy,
             lessThan(
               tester.getTopLeft(find.byType(PublicDemoHomeDashboardSection)).dy,
             ),
           );
+          await switchPublicDemoTab(tester, PublicDemoTab.accounting);
+          expect(
+            find.byKey(const Key('public-demo-monthly-cash-flow-card')),
+            findsOneWidget,
+          );
+          await switchPublicDemoTab(tester, PublicDemoTab.home);
         }
       }
       expect(find.text('1年目 12月'), findsOneWidget);

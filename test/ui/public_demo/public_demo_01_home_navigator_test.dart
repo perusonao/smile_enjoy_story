@@ -308,7 +308,7 @@ void main() {
           find.byKey(const Key('home-navigator-message-label')),
           findsOneWidget,
         );
-        expect(find.textContaining('SkillSheet'), findsWidgets);
+        expect(find.textContaining('スキルシート'), findsWidgets);
       });
 
       testWidgets('D: at $label the office strip follows the navigator card', (
@@ -424,10 +424,10 @@ void main() {
         final before = stateSnapshot(tester);
         final workflowBefore = workflowSnapshot(tester);
 
-        expect(find.text('佐藤 健のSkillSheetを確認'), findsOneWidget);
-        expect(find.text('SkillSheetの内容を確認しましょう。'), findsOneWidget);
+        expect(find.text('佐藤 健のスキルシートを確認'), findsOneWidget);
+        expect(find.text('スキルシートの内容を確認しましょう。'), findsOneWidget);
         expect(
-          find.text('SkillSheetは、経験やスキルを案件へ伝えるための資料です。内容を確認して次の手続きに備えます。'),
+          find.text('スキルシートは、経験やスキルを案件へ伝えるための資料です。内容を確認して次の手続きに備えます。'),
           findsOneWidget,
         );
         expect(

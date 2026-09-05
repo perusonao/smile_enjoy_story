@@ -71,7 +71,7 @@ class PublicDemoMonthGuardCandidate {
   final String id;
 
   /// The truthful, specific action name to name in the warning (e.g.
-  /// `佐藤 健のSkillSheetを確認`) — the caller's own headline text, verbatim.
+  /// `佐藤 健のスキルシートを確認`) — the caller's own headline text, verbatim.
   final String actionName;
 }
 

@@ -145,7 +145,7 @@ void main() {
         expect(
           find.descendant(
             of: dialog,
-            matching: find.textContaining('佐藤 健のSkillSheetを確認'),
+            matching: find.textContaining('佐藤 健のスキルシートを確認'),
           ),
           findsOneWidget,
         );

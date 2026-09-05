@@ -178,8 +178,8 @@ enum HomeRecommendedActionKind {
   /// Design row P2 (`stage == waiting && readyForFieldSales`).
   employeeSkillSheetReview(
     presentationPriority: 26,
-    ctaLabel: 'SkillSheetを確認',
-    headline: '{name}のSkillSheetを確認',
+    ctaLabel: 'スキルシートを確認',
+    headline: '{name}のスキルシートを確認',
   ),
 
   // Month-6 assignment: an offer already on the table, then the
@@ -248,8 +248,8 @@ enum HomeRecommendedActionKind {
   ),
   applicantBeginPreEntrySkillSheet(
     presentationPriority: 45,
-    ctaLabel: '入社前SkillSheetへ',
-    headline: '{name}の入社前SkillSheetを確認',
+    ctaLabel: '入社前スキルシートへ',
+    headline: '{name}の入社前スキルシートを確認',
   ),
   applicantSalaryOffer(
     presentationPriority: 46,
@@ -324,7 +324,7 @@ enum HomeRecommendedActionKind {
   /// glance.
   ///
   /// Deliberately never byte-identical to any other Public Demo label —
-  /// not to the legacy button it triggers (`SkillSheetを確認` vs the employee
+  /// not to the legacy button it triggers (`スキルシートを確認` vs the employee
   /// card's `SkillSheet確認`), and not to a dialog title it opens
   /// (`給与提示へ` vs the salary dialog's `給与を提示`). The HOME shortcut and
   /// the thing it leads to are on screen together, so a player — like a
@@ -339,7 +339,7 @@ enum HomeRecommendedActionKind {
   bool get isSubjectSpecific => _headline.contains('{name}');
 
   /// The player-facing "what is this about" line, e.g.
-  /// `佐藤 健のSkillSheetを確認`.
+  /// `佐藤 健のスキルシートを確認`.
   String headlineFor(String? subjectName) =>
       _headline.replaceAll('{name}', subjectName ?? '');
 }
@@ -368,7 +368,7 @@ class HomeRecommendedAction {
   /// downstream ever resolves an id back into a domain object.
   final String? targetId;
 
-  /// The "what is this about" line, e.g. `佐藤 健のSkillSheetを確認`.
+  /// The "what is this about" line, e.g. `佐藤 健のスキルシートを確認`.
   String get headline => kind.headlineFor(subjectName);
 
   /// The CTA button's label.

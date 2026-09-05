@@ -72,7 +72,6 @@ class PublicDemoHomeDashboardSection extends StatelessWidget {
     required this.recommendedAction,
     required this.navigatorAdvice,
     this.cashAdvice,
-    this.onShowOtherActions,
   });
 
   /// The read-only projection to display. Rebuilt from authoritative state
@@ -104,14 +103,6 @@ class PublicDemoHomeDashboardSection extends StatelessWidget {
   /// behavior is completely unchanged.
   final HomeNavigatorAdvice? cashAdvice;
 
-  /// PUBLIC-DEMO-HOME-UI-3A: the mockup's "他の行動を確認する" secondary route
-  /// under the primary CTA. Already an owner-bound callback (the screen's
-  /// own `_scrollToSection(_legacyActionsKey)`) — this section only attaches
-  /// it to the resolved advice via [_effectiveAdvice]; it never invents a
-  /// route or decides when the secondary button should be reachable beyond
-  /// "advice is non-null".
-  final VoidCallback? onShowOtherActions;
-
   /// What [HomeNavigatorSection] renders — [navigatorAdvice] as resolved by
   /// [navigatorAdviceFor], except when [recommendedAction] is
   /// [HomeRecommendedActionNone]: there [navigatorAdviceFor] returns the
@@ -122,28 +113,14 @@ class PublicDemoHomeDashboardSection extends StatelessWidget {
   /// already receives; this only picks which one a single guidance line
   /// states; it ranks nothing and invents no new copy.
   ///
-  /// Also attaches [onShowOtherActions] (as '他の行動を確認する') whenever both
-  /// the resolved advice and the callback are non-null.
+  /// SES HOME Final Polish: the former "他の行動を確認する" secondary route is
+  /// gone — every other action is reachable from "今月の重要タスク" or Bottom
+  /// Navigation instead, so this card states exactly one CTA now.
   HomeNavigatorAdvice? get _effectiveAdvice {
     // Issue #148 Phase 1B.3: a forecasted cash shortage takes the slot over
     // the normal next-action guidance entirely — see [cashAdvice]'s own doc
     // for why this is never additive with the logic below.
-    final cash = cashAdvice;
-    final base = cash ?? _baseAdvice;
-    if (base == null) return null;
-    final onShowOther = onShowOtherActions;
-    if (onShowOther == null) return base;
-    return HomeNavigatorAdvice(
-      title: base.title,
-      headline: base.headline,
-      message: base.message,
-      explanation: base.explanation,
-      semantic: base.semantic,
-      ctaLabel: base.ctaLabel,
-      onCtaPressed: base.onCtaPressed,
-      secondaryLabel: '他の行動を確認する',
-      onSecondaryPressed: onShowOther,
-    );
+    return cashAdvice ?? _baseAdvice;
   }
 
   /// [navigatorAdvice] as resolved by [navigatorAdviceFor], with the

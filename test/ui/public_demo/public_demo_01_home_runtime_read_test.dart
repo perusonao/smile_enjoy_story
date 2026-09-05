@@ -407,25 +407,24 @@ void main() {
         isA<HomeDashboardDisplayData>(),
       );
 
-      // Structural: HOME has the resolved action CTA and, below it, the
-      // secondary "他の行動を確認する" scroll-jump control (PUBLIC-DEMO-HOME-
-      // UI-3A — the former "詳しく見る" local advice-detail toggle is gone;
-      // the explanation is always visible now). Neither receives a domain
-      // API: the primary CTA reuses the resolved action's own owner
-      // callback, and the secondary control is the screen's own
-      // already-bound scroll-jump — not a new mutation path.
+      // Structural: HOME has exactly the resolved action CTA. PUBLIC-DEMO-
+      // HOME-UI-3A removed the former "詳しく見る" local advice-detail toggle
+      // (the explanation is always visible now); HOME-UI-3B then added a
+      // "他の行動を確認する" secondary route beside the CTA, which SES HOME
+      // Final Polish removes outright (§B of the Final Polish brief) — every
+      // other action is reachable from "今月の重要タスク" or Bottom
+      // Navigation only. The primary CTA still receives no domain API of its
+      // own: it reuses the resolved action's own owner callback.
       final cta = find.byKey(const Key('home-recommended-action-cta'));
       final secondaryCta = find.byKey(
         const Key('home-navigator-secondary-cta'),
       );
       expect(inHome(cta), findsOneWidget);
-      expect(inHome(secondaryCta), findsOneWidget);
+      expect(inHome(secondaryCta), findsNothing);
       expect(
         inHome(find.byWidgetPredicate((w) => w is ButtonStyleButton)),
-        findsNWidgets(2),
-        reason:
-            'the primary action CTA and the secondary scroll-jump '
-            'control are the only buttons',
+        findsOneWidget,
+        reason: 'the primary action CTA is the only button',
       );
       // ...and it is genuinely enabled, not a decorative disabled control.
       expect(tester.widget<FilledButton>(cta).onPressed, isNotNull);

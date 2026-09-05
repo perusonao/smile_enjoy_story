@@ -314,8 +314,8 @@ void main() {
         subjectName: '佐藤 健',
         targetId: 'eng-01',
       );
-      expect(action.headline, '佐藤 健のSkillSheetを確認');
-      expect(action.ctaLabel, 'SkillSheetを確認');
+      expect(action.headline, '佐藤 健のスキルシートを確認');
+      expect(action.ctaLabel, 'スキルシートを確認');
       expect(action.kind.isSubjectSpecific, isTrue);
     });
 

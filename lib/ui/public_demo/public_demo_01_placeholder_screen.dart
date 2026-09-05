@@ -484,8 +484,8 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
         : null;
     final (ctaLabel, headline, onPressed) = switch (candidate.actionType) {
       PublicDemoAdviceActionType.confirmSkillSheet => (
-        'SkillSheetを確認',
-        '$nameのSkillSheetを確認',
+        'スキルシートを確認',
+        '$nameのスキルシートを確認',
         skillSheetEngineer == null
             ? null
             : () => unawaited(_openSkillSheetReview(skillSheetEngineer)),
@@ -596,39 +596,6 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
       ),
     ];
   }
-
-  /// Section 7 ("クイックアクセス") — four real destinations. PUBLIC-DEMO-HOME-
-  /// UI-3B: each now switches to the tab that owns the content it names via
-  /// [_switchTab]/[_switchToEligibleSalesDestination]/[_openDevMenuSection],
-  /// instead of scroll-jumping to an anchor inside HOME's own list. No
-  /// fabricated route — every destination is one of the five real tab
-  /// surfaces [build] already constructs.
-  List<PublicDemoQuickAccessItem> get _quickAccessItems => [
-    PublicDemoQuickAccessItem(
-      itemKey: const Key('public-demo-quick-access-office'),
-      icon: Icons.groups_outlined,
-      label: '社員の様子',
-      onPressed: () => _switchTab(_employeesTabIndex),
-    ),
-    PublicDemoQuickAccessItem(
-      itemKey: const Key('public-demo-quick-access-finance'),
-      icon: Icons.account_balance_wallet_outlined,
-      label: '収支・会計',
-      onPressed: () => _switchTab(_accountingTabIndex),
-    ),
-    PublicDemoQuickAccessItem(
-      itemKey: const Key('public-demo-quick-access-actions'),
-      icon: Icons.storefront_outlined,
-      label: '案件・営業',
-      onPressed: _switchToEligibleSalesDestination,
-    ),
-    PublicDemoQuickAccessItem(
-      itemKey: const Key('public-demo-quick-access-dev'),
-      icon: Icons.build_outlined,
-      label: '開発・テスト',
-      onPressed: _openDevMenuSection,
-    ),
-  ];
 
   /// The finance summary is a display of values the existing finance and
   /// payroll authorities already produced. The latest close owns the
@@ -2895,51 +2862,44 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
               // receives only the projection — no aggregate, no state, no
               // commands, no callbacks beyond the bound handlers below.
               //
-              // PUBLIC-DEMO-HOME-UI-3B: its secondary route ("他の行動を確
-              // 認する") now switches to the tab that actually has the
-              // eligible action via [_switchToEligibleSalesDestination]
-              // (社員 or 営業 — see that method's own doc, PR #172 Codex
-              // review) instead of scroll-jumping to a section further
-              // down this same list — never a second mutation path.
+              // SES HOME Final Polish: the former "他の行動を確認する"
+              // secondary route is gone — every other action is now reached
+              // from "今月の重要タスク" or Bottom Navigation only (see
+              // PublicDemoHomeDashboardSection's own doc).
               PublicDemoHomeDashboardSection(
                 data: _homeDashboardData,
                 recommendedAction: _recommendedActionSlot,
                 navigatorAdvice: navigatorAdvice,
                 cashAdvice: _cashForecastAdvice,
-                onShowOtherActions: _isActualCashShortage
-                    ? null
-                    : _switchToEligibleSalesDestination,
               ),
               // HOME-COMPACT-1B.3: the monthly progression CTA sits
               // directly under the Navigator card, visible in the initial
               // 390px-wide view with no scroll. Bound exactly once on
               // this screen (see `_monthlyPrimaryAction`'s own site).
               if (_monthlyPrimaryAction case final monthlyAction?) ...[
-                const SizedBox(height: 1),
+                const SizedBox(height: 6),
                 PublicDemoMonthlyPrimaryCtaSection(action: monthlyAction),
               ],
-              const SizedBox(height: 1),
+              const SizedBox(height: 6),
               // Section 5: employee summary/office card only — the full
               // employee roster/detail lives on the 社員 tab (see
-              // [_buildEmployeesTab]), not here. Quick access / bottom
-              // nav "社員" now switch to that tab instead of scrolling to
-              // this same summary.
+              // [_buildEmployeesTab]), not here. Bottom nav "社員" now
+              // switches to that tab instead of scrolling to this same
+              // summary.
               HomeOfficeStageSection(display: _officeStageDisplay),
-              // PUBLIC-DEMO-HOME-UI-3C: trimmed from 8 — real slack between
-              // sections, not text/touch-target room — as part of bringing
-              // 今月の重要タスク into the unscrolled 360x800 initial view.
-              // SES HOME Final Density: trimmed again, from 6 then 3, as
-              // part of bringing クイックアクセス into the unscrolled
-              // initial view.
-              const SizedBox(height: 2),
+              // SES HOME Final Polish: with クイックアクセス removed (§D) and
+              // "他の行動を確認する" gone from the Navigator card (§B), the
+              // height they used to spend goes back into real spacing
+              // between the remaining sections instead of staying
+              // compressed — see the result report's before/after gap
+              // measurements.
+              const SizedBox(height: 6),
               // Section 6: "今月の重要タスク" — up to three truthful
               // tasks built only from existing authoritative facts
-              // (see _importantTasks's own doc).
+              // (see _importantTasks's own doc). This is now the sole
+              // in-page entry point to the other tabs; Bottom Navigation
+              // is the other (§H/§I of the Final Polish brief).
               PublicDemoImportantTasksSection(items: _importantTasks),
-              const SizedBox(height: 2),
-              // Section 7: クイックアクセス — each item switches to the
-              // real tab that owns the destination it names.
-              PublicDemoQuickAccessSection(items: _quickAccessItems),
             ],
           ),
         ],

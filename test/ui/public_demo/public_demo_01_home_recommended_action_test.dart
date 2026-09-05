@@ -233,7 +233,7 @@ void main() {
         findsOneWidget,
       );
       expect(find.text('次にやること'), findsOneWidget);
-      expect(find.text('佐藤 健のSkillSheetを確認'), findsOneWidget);
+      expect(find.text('佐藤 健のスキルシートを確認'), findsOneWidget);
     });
 
     testWidgets('an already-started pipeline outranks an untouched engineer', (

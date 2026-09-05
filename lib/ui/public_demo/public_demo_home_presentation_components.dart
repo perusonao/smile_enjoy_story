@@ -90,10 +90,10 @@ class PublicDemoImportantTasksSection extends StatelessWidget {
     child: Column(
       children: [
         for (var i = 0; i < items.length; i++) ...[
-          // SES HOME Final Density: trimmed from 10 to 1 (itself trimmed
-          // from 16 by PUBLIC-DEMO-HOME-UI-3C) — still real space between
-          // rows, not a text-height floor, as part of bringing クイック
-          // アクセス closer to the unscrolled initial view.
+          // SES HOME Final Polish: restored from Final Density's 1 — Quick
+          // Access and the Navigator's secondary CTA freed up real height,
+          // and real space between rows is where that height buys back
+          // readability best (§I of the Final Polish brief).
           if (i > 0) const Divider(height: 1),
           _ImportantTaskRow(item: items[i]),
         ],
@@ -108,7 +108,12 @@ class _ImportantTaskRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Row(
+    // SES HOME Final Polish: real vertical padding around each row —
+    // restored now that Quick Access and the Navigator's secondary CTA no
+    // longer spend this card's height budget.
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Expanded(
@@ -127,7 +132,7 @@ class _ImportantTaskRow extends StatelessWidget {
                   _StatusChip(label: item.category, compact: true),
                 ],
               ),
-              const SizedBox(height: 1),
+              const SizedBox(height: 3),
               Text(
                 item.fact,
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
@@ -163,82 +168,6 @@ class _ImportantTaskRow extends StatelessWidget {
           ),
         ),
       ],
-    );
-  }
-}
-
-/// Section 7 of the approved PUBLIC-DEMO-HOME-UI-3A target: "クイックアクセス".
-///
-/// Public Demo is a genuinely single-screen experience with no second route
-/// — every item here is an on-page scroll-jump to an existing section
-/// (never a fabricated destination/placeholder), via the same already-owned
-/// callback the owning screen's other scroll-to-section affordances use.
-class PublicDemoQuickAccessSection extends StatelessWidget {
-  const PublicDemoQuickAccessSection({super.key, required this.items});
-
-  final List<PublicDemoQuickAccessItem> items;
-
-  @override
-  Widget build(BuildContext context) => _HomeSectionCard(
-    cardKey: const Key('public-demo-quick-access'),
-    title: 'クイックアクセス',
-    child: Row(
-      children: [
-        for (var i = 0; i < items.length; i++) ...[
-          if (i > 0) const SizedBox(width: 4),
-          Expanded(child: _QuickAccessButton(item: items[i])),
-        ],
-      ],
-    ),
-  );
-}
-
-/// One quick-access destination — an icon, a short label, and the owning
-/// screen's already-bound scroll-jump callback.
-class PublicDemoQuickAccessItem {
-  const PublicDemoQuickAccessItem({
-    required this.itemKey,
-    required this.icon,
-    required this.label,
-    required this.onPressed,
-  });
-
-  final Key itemKey;
-  final IconData icon;
-  final String label;
-  final VoidCallback onPressed;
-}
-
-class _QuickAccessButton extends StatelessWidget {
-  const _QuickAccessButton({required this.item});
-  final PublicDemoQuickAccessItem item;
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return InkWell(
-      key: item.itemKey,
-      onTap: item.onPressed,
-      borderRadius: BorderRadius.circular(10),
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(minHeight: 48, minWidth: 48),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 6),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(item.icon, color: scheme.primary, size: 22),
-              const SizedBox(height: 4),
-              Text(
-                item.label,
-                textAlign: TextAlign.center,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: Theme.of(context).textTheme.labelSmall,
-              ),
-            ],
-          ),
-        ),
       ),
     );
   }
@@ -309,12 +238,13 @@ class PublicDemoMonthlyPrimaryCtaSection extends StatelessWidget {
         side: BorderSide(color: _accent.withValues(alpha: 0.35)),
       ),
       child: Padding(
-        // PUBLIC-DEMO-HOME-UI-3C: trimmed vertical padding from 6 as part of
-        // compressing this month-close card's own footprint (Issue #173) —
-        // no text or the button's own 44pt minimum height changed.
-        // SES HOME Final Density: trimmed again, from 4 to 0, same
-        // reasoning.
-        padding: const EdgeInsets.fromLTRB(12, 0, 12, 0),
+        // SES HOME Final Polish: restored from Final Density's 0 — Quick
+        // Access and the Navigator's secondary CTA freed up real height, and
+        // this card's own vertical padding is where readability (§I) buys
+        // the most back for a card whose whole point is standing out as
+        // this month's clear close-out CTA. No text or the button's own
+        // 44pt minimum height changed.
+        padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
@@ -332,6 +262,7 @@ class PublicDemoMonthlyPrimaryCtaSection extends StatelessWidget {
                 ),
               ],
             ),
+            const SizedBox(height: 2),
             Text(
               action.description,
               style: theme.textTheme.bodySmall?.copyWith(
@@ -340,7 +271,7 @@ class PublicDemoMonthlyPrimaryCtaSection extends StatelessWidget {
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
             ),
-            const SizedBox(height: 2),
+            const SizedBox(height: 6),
             SizedBox(
               width: double.infinity,
               child: FilledButton(
@@ -445,12 +376,11 @@ class _HomeSectionCard extends StatelessWidget {
     key: cardKey,
     margin: EdgeInsets.zero,
     child: Padding(
-      // SES HOME Final Density: padding trimmed from 12 to 3 (itself
-      // trimmed from 14/10 by PUBLIC-DEMO-HOME-UI-3C) and the
-      // title-to-content gap trimmed from 8 to 2 — shared by 今月の重要
-      // タスク/クイックアクセス/今月の支出予定, all real card padding/gap
-      // rather than text/touch-target room.
-      padding: const EdgeInsets.all(3),
+      // SES HOME Final Polish: restored from Final Density's 3/2 — Quick
+      // Access is deleted and the Navigator's secondary CTA is gone (§B/§D
+      // of the Final Polish brief), so the height they used to cost goes
+      // back into this card's own padding/title gap instead (§I).
+      padding: const EdgeInsets.all(12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -461,7 +391,7 @@ class _HomeSectionCard extends StatelessWidget {
               color: accent ? SesTheme.primaryBlue : null,
             ),
           ),
-          const SizedBox(height: 2),
+          const SizedBox(height: 8),
           child,
         ],
       ),

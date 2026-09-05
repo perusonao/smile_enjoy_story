@@ -54,6 +54,12 @@ Future<void> tapAndDismissMonthEnd(WidgetTester tester) async {
   await tester.ensureVisible(cta);
   await tester.pumpAndSettle();
   await tester.tap(cta);
+  await tester.pumpAndSettle();
+  // Issue #168: April's own outstanding, already-legal action (Sato, ready
+  // and untouched from a fresh game) now produces a genuine Month Guard
+  // warning here — proceed past it, exactly as every other Public Demo
+  // suite that closes a fresh April now does.
+  await dismissMonthGuardIfPresent(tester);
   for (var i = 0; i < 10; i++) {
     await tester.runAsync(
       () => Future<void>.delayed(const Duration(milliseconds: 100)),
@@ -61,8 +67,11 @@ Future<void> tapAndDismissMonthEnd(WidgetTester tester) async {
     await tester.pump();
   }
   await tester.pumpAndSettle();
-  await tester.tap(find.widgetWithText(FilledButton, '確認'));
-  await tester.pumpAndSettle();
+  final confirm = find.widgetWithText(FilledButton, '確認');
+  if (confirm.evaluate().isNotEmpty) {
+    await tester.tap(confirm);
+    await tester.pumpAndSettle();
+  }
 }
 
 Future<void> pumpDemo(WidgetTester tester) async {

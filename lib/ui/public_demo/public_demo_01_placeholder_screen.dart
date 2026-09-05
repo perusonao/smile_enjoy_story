@@ -1953,8 +1953,11 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
                   // specific capability gain, success rate, or sales
                   // eligibility outcome — none of those are safe to state as
                   // a fixed number, and Finding B's own lock-banner copy
-                  // already establishes that training is never guaranteed to
-                  // arrive in time for a given engineer's own sales window.
+                  // already states the truthful, month-agnostic version of
+                  // this: reaching the threshold reopens sales from around
+                  // that point on, but this card promises neither how many
+                  // months of training that takes nor which month it lands
+                  // in.
                   const Text(
                     '待機中の社員が対象です。費用は選択時に発生し、効果は月末に反映されます'
                     '（毎月選び直しが必要です）。',
@@ -2523,6 +2526,21 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
     final capability = capabilityFor(e.id);
     final fieldSalesRequirement =
         PublicDemoEngineerRuntime.fieldSalesCapabilityRequirement;
+    // Issue #168 Finding B (Codex P2, PR #177): the lock banner's
+    // month-agnostic "reaching the threshold reopens sales from around
+    // that point on" line is only truthful while a later month can still
+    // render this same waiting/skillSheet card at all.
+    // `PublicDemoRecoveryEligibility.lastEligibleMonth` (February, 14) is
+    // the existing, authoritative last month `_buildEmployeesTab`'s
+    // `s.month >= 7 && s.month <= 14` loop ever renders it — training
+    // selected in February applies its growth at month-end, entering
+    // March (15), which that loop never covers and this fix does not
+    // extend into. From February on, the forward-looking line would
+    // promise a route this build cannot actually offer, so it is replaced
+    // with the truthful, equally month-agnostic fact instead: this is the
+    // fiscal year's last chance.
+    final isLastEligibleMonth =
+        s.month >= PublicDemoRecoveryEligibility.lastEligibleMonth;
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(12),
@@ -2568,19 +2586,41 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
                       ),
                     ),
                     const SizedBox(height: 2),
-                    // P1 (PR #115 review): this used to promise that
-                    // training would eventually unlock 営業準備
-                    // （SkillSheet確認） here. It doesn't — this card, and the
-                    // stage buttons above, only render in the specific
-                    // month(s) each engineer's sales stage is worked (April
-                    // for founding engineers, the join month for hires); once
-                    // that month closes without meeting
-                    // fieldSalesCapabilityRequirement, no later month offers
-                    // this action again, no matter how much further capability
-                    // training raises. State the lock plainly instead of
-                    // implying a path back to it that this build cannot
-                    // actually provide.
                     const Text('まだ営業を始められません。', style: TextStyle(fontSize: 12)),
+                    const SizedBox(height: 2),
+                    // Issue #168 Finding B: P1 (PR #115 review) had this line
+                    // say nothing at all after "まだ営業を始められません。",
+                    // because — at the time — no later month actually
+                    // reopened this card for a founding engineer once April
+                    // closed without meeting fieldSalesCapabilityRequirement.
+                    // That gap is what Finding B fixes: `_buildEmployeesTab`'s
+                    // own July-February `ec(i, showTrainingCard: false)` loop
+                    // (RECOVERY-LOOP-1) already re-renders every still-
+                    // `waiting`/`skillSheet`, unassigned engineer's card —
+                    // `readyForFieldSales` included — so an engineer who
+                    // reaches the threshold through repeated training does
+                    // get 営業準備（SkillSheet確認） back, just not necessarily in
+                    // the same month training last ran. This line states
+                    // that causal fact without naming a specific month, which
+                    // this build cannot promise (it depends on how many
+                    // months of training the player chooses to buy).
+                    //
+                    // Codex P2 (PR #177): that promise stops being true at
+                    // [isLastEligibleMonth] — training selected there only
+                    // takes effect entering March, which no later `ec(...)`
+                    // render ever covers — so this branches to a second,
+                    // equally month-agnostic truthful line instead of
+                    // dangling a route this build cannot offer.
+                    if (isLastEligibleMonth)
+                      const Text(
+                        '実力が基準に達しても、今年度中の営業再開はもう見込めません。',
+                        style: TextStyle(fontSize: 12),
+                      )
+                    else
+                      const Text(
+                        '実力が基準に達すれば、その月以降に営業を再開できます。',
+                        style: TextStyle(fontSize: 12),
+                      ),
                   ],
                 ),
               ),
@@ -2936,7 +2976,7 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
           // .contains(...)`) so the existing sales-flow buttons (`ec(i)`'s
           // own `waiting` → `ordered` branches, plus the Recovery button
           // once `ordered`) are reachable at all past June.
-          // `showTrainingCard: false` because the `s.month >= 6` block
+          // `showTrainingCard: false` because the `s.month >= 5` block
           // below already renders every engineer runtime's training card
           // unconditionally — rendering it a second time here would
           // duplicate that same card's key.
@@ -2951,7 +2991,17 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
               (a) => s.joinedApplicantIds.contains(a.id) && a.hasJoined,
             ))
               employeeConditionCard(a),
-          if (s.month >= 6)
+          // Issue #168 Finding B: May used to be the one gap in the
+          // training loop — April's `ec(i)` embeds its own training card
+          // (`showTrainingCard` defaults true) and this unconditional block
+          // covered June onward, but nothing rendered a training card in
+          // May at all. That silently cost every founding engineer one
+          // month of `PublicDemoGrowthEngine`'s `internalTraining` growth
+          // on the way to `fieldSalesCapabilityRequirement`, with no rule
+          // change needed to fix it — `PublicDemoInternalTrainingTransaction`
+          // was never month-gated to begin with (see its own doc). Starting
+          // the unconditional block in May instead of June closes that gap.
+          if (s.month >= 5)
             for (final runtime in s.engineerRuntimes)
               internalTrainingCard(
                 engineerId: runtime.engineerId,

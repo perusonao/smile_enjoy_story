@@ -66,9 +66,11 @@ Future<void> dismissDialog(WidgetTester tester, String confirmLabel) async {
 }
 
 void main() {
-  testWidgets('Suzuki explains her sales lock truthfully and never offers the '
-      'SkillSheet route once April closes, no matter how much later training '
-      'raises her capability; Sato and finance are unaffected', (tester) async {
+  testWidgets('Suzuki explains her sales lock truthfully, one month of April '
+      'training is not enough to reopen her SkillSheet route by July, and '
+      'the banner never names a specific month; Sato and finance are '
+      'unaffected (see public_demo_01_suzuki_sales_reentry_test.dart for the '
+      'full train-to-threshold path that does reopen it)', (tester) async {
     tester.view.physicalSize = const Size(360, 800);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.reset);
@@ -124,13 +126,14 @@ void main() {
       find.descendant(of: lock, matching: find.textContaining('まだ営業を始められません')),
       findsOneWidget,
     );
-    // P1 (PR #115 review): the lock banner must not promise that training
-    // will eventually unlock 営業準備（SkillSheet確認） — this build's month
-    // gating (founding-engineer sales card in April only) never gives her
-    // that action again once April closes, however high later training
-    // raises her capability. Assert the banner is exactly the truthful,
-    // non-promising two lines and contains neither the training reference
-    // nor the SkillSheet-review label the old copy used to dangle.
+    // Issue #168 Finding B: the lock banner states the threshold gap, that
+    // she has not started, and the truthful, month-agnostic causal fact —
+    // reaching the threshold reopens sales "from around that point on" —
+    // without ever naming a specific month, which this build cannot
+    // promise (see public_demo_01_suzuki_sales_reentry_test.dart for the
+    // full path that empirically proves the fact this line states). Assert
+    // the banner is exactly these three lines and contains neither the
+    // training-action reference nor the SkillSheet-review label.
     final lockTexts = tester
         .widgetList<Text>(
           find.descendant(of: lock, matching: find.byType(Text)),
@@ -141,6 +144,7 @@ void main() {
       '営業開始には実力 ${PublicDemoEngineerRuntime.fieldSalesCapabilityRequirement} '
           '以上が必要です（現在 ${suzukiRuntime.actualCapability}）。',
       'まだ営業を始められません。',
+      '実力が基準に達すれば、その月以降に営業を再開できます。',
     ]);
     expect(
       find.descendant(of: lock, matching: find.textContaining('社内研修')),
@@ -192,12 +196,17 @@ void main() {
     expect(lockRect.right, lessThanOrEqualTo(360));
     expect(tester.takeException(), isNull);
 
-    // ---- Empirical proof of the fixed claim ---------------------------
-    // Train Suzuki in April (her only chance this month), then drive
-    // real production months forward. If the old copy's promise had been
-    // true, some later month would render a SkillSheet確認 action for her.
-    // It never does — this is exactly the gap the corrected copy no
-    // longer claims doesn't exist.
+    // ---- Empirical proof of the (now truthful, non-promising) claim ---
+    // Train Suzuki in April only, then drive real production months
+    // forward without training her again. One month of +1 growth cannot
+    // reach the threshold on its own, so no later month in this fixture
+    // renders a SkillSheet確認 action for her — consistent with the banner's
+    // new copy, which never claims a specific month, only that reaching the
+    // threshold (which this single training does not do) reopens sales.
+    // public_demo_01_suzuki_sales_reentry_test.dart trains her every month
+    // instead and proves the other half of that same sentence: once she
+    // does reach the threshold, the existing (unmodified) July-February
+    // window puts the SkillSheet route back.
     await tapFinder(
       tester,
       find.byKey(const Key('public-demo-internal-training-action-eng-02')),
@@ -230,10 +239,18 @@ void main() {
       lessThan(PublicDemoEngineerRuntime.fieldSalesCapabilityRequirement),
       reason: 'one month of training cannot reach the field-sales threshold',
     );
-    // May renders no founding-engineer sales card at all — checked on 社員,
-    // the tab that would render it.
+    // May renders no founding-engineer *sales* card (SkillSheet確認 stays
+    // gated to April/June/July-February, unchanged by Finding B) — checked
+    // on 社員, the tab that would render it. Finding B does add May's
+    // training card (see public_demo_01_suzuki_sales_reentry_test.dart),
+    // which this fixture simply does not use again after April.
     await switchPublicDemoTab(tester, PublicDemoTab.employees);
     expect(actionButton('SkillSheet確認'), findsNothing);
+    expect(
+      find.byKey(const Key('public-demo-internal-training-eng-02')),
+      findsOneWidget,
+      reason: 'Finding B: May now offers the training card too',
+    );
 
     await switchPublicDemoTab(tester, PublicDemoTab.home);
     await tapAndSettle(tester, '5月を終了して6月へ');
@@ -245,7 +262,7 @@ void main() {
     // June's founding-engineer sales card is scoped to newly joined
     // applicants (joinedApplicantIds), which excludes Suzuki by design —
     // she gets no SkillSheet action here either, only the standalone
-    // training card the month>=6 loop renders for every runtime.
+    // training card the month>=5 loop renders for every runtime.
     await switchPublicDemoTab(tester, PublicDemoTab.employees);
     expect(actionButton('SkillSheet確認'), findsNothing);
     expect(
@@ -256,11 +273,16 @@ void main() {
     await switchPublicDemoTab(tester, PublicDemoTab.home);
     await tapAndSettle(tester, '6月を終了して7月へ');
     expect(find.text('1年目 7月'), findsOneWidget);
-    // Month 7 onward never renders a founding-engineer sales card again —
-    // the corrected banner's "まだ営業を始められません。" is still true here,
-    // and no button anywhere on screen contradicts it.
+    // Month 7 re-renders Suzuki's sales-flow card (RECOVERY-LOOP-1's own
+    // July-February window — see public_demo_01_suzuki_sales_reentry_test
+    // .dart), but a single month of April training left her well short of
+    // the threshold, so it still shows the lock banner, not SkillSheet確認.
     await switchPublicDemoTab(tester, PublicDemoTab.employees);
     expect(actionButton('SkillSheet確認'), findsNothing);
+    expect(
+      find.byKey(const Key('public-demo-field-sales-lock-eng-02')),
+      findsOneWidget,
+    );
     expect(tester.takeException(), isNull);
   });
 }

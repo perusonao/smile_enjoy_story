@@ -13,11 +13,16 @@
 // app-01 (高橋 翔) is the only Public Demo 0.1 hire that can ever reach this
 // state: app-02 (田中 美咲, interviewScore 58) fails the recruitment
 // interview's own >=60 gate and can never be offered at all, and eng-02
-// (鈴木 葵, capability 52) is permanently locked out of field sales for the
-// whole fiscal year (see public_demo_01_suzuki_sales_lock_test.dart). Every
-// scenario below therefore hires app-01 in May, deliberately leaves them
-// unrecovered through June (skip their post-join sales pipeline), and drives
-// the SAME real production UI used everywhere else in this suite.
+// (鈴木 葵, capability 52) starts below the field-sales threshold and stays
+// locked out for as long as this suite's own fixtures leave her untrained
+// (see public_demo_01_suzuki_sales_lock_test.dart) — repeated training can
+// cross the threshold and reopen her SkillSheet route through this same
+// month 7-14 window (Issue #168 Finding B; see
+// public_demo_01_suzuki_sales_reentry_test.dart), but this suite's own
+// fixtures never train her at all. Every scenario below therefore hires
+// app-01 in May, deliberately leaves them unrecovered through June (skip
+// their post-join sales pipeline), and drives the SAME real production UI
+// used everywhere else in this suite.
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_assignment.dart';
@@ -203,7 +208,7 @@ void main() {
         state.engineersWaiting,
         2,
         reason:
-            'app-01 (unrecovered) and the permanently field-sales-locked '
+            'app-01 (unrecovered) and the still below-threshold, untrained '
             'eng-02 (see public_demo_01_suzuki_sales_lock_test.dart) must '
             'both still be economically waiting entering July',
       );

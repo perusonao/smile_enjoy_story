@@ -102,8 +102,12 @@ Future<void> _driveToNovemberBankruptcy(WidgetTester tester) async {
   await _tapAndSettle(tester, '4月を終了して5月へ');
   await _dismiss(tester);
 
-  // May: no additional hiring.
+  // May: no additional hiring. Issue #168: neither pre-seeded applicant's
+  // résumé is reviewed and recruitment media is never used this month — a
+  // genuine outstanding Month Guard candidate, dismissed the same way; it
+  // does not change this fixture's own no-hire trajectory.
   await _tapAndSettle(tester, '5月を終了して6月へ');
+  await dismissMonthGuardIfPresent(tester);
 
   // June: accept July continuation for Sato (only assignment) — the
   // assignment (project continuation) pipeline is on 営業.
@@ -165,7 +169,11 @@ void main() {
       await switchPublicDemoTab(tester, PublicDemoTab.home);
       await _tapAndSettle(tester, '4月を終了して5月へ');
       await _dismiss(tester);
+      // Issue #168: neither pre-seeded applicant's résumé is reviewed and
+      // recruitment media is never used this month — a genuine outstanding
+      // Month Guard candidate, dismissed the same way.
       await _tapAndSettle(tester, '5月を終了して6月へ');
+      await dismissMonthGuardIfPresent(tester);
       await switchPublicDemoTab(tester, PublicDemoTab.sales);
       await _tapAndSettle(tester, '7月分の発注を確認');
       await _tapAndSettle(tester, '受注する');
@@ -274,7 +282,11 @@ void main() {
       await switchPublicDemoTab(tester, PublicDemoTab.home);
       await _tapAndSettle(tester, '4月を終了して5月へ');
       await _dismiss(tester);
+      // Issue #168: neither pre-seeded applicant's résumé is reviewed and
+      // recruitment media is never used this month — a genuine outstanding
+      // Month Guard candidate, dismissed the same way.
       await _tapAndSettle(tester, '5月を終了して6月へ');
+      await dismissMonthGuardIfPresent(tester);
       await switchPublicDemoTab(tester, PublicDemoTab.sales);
       await _tapAndSettle(tester, '7月分の発注を確認');
       await _tapAndSettle(tester, '受注する');

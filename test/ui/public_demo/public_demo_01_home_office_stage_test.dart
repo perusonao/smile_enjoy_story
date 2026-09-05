@@ -242,7 +242,11 @@ void main() {
       expect(currentState(tester).month, 5);
       assertRosterMatchesAuthority('May');
 
+      // Issue #168: neither pre-seeded applicant's résumé is reviewed and
+      // recruitment media is never used this month — a genuine outstanding
+      // Month Guard candidate, dismissed the same way.
       await tapAndSettle(tester, '5月を終了して6月へ');
+      await dismissMonthGuardIfPresent(tester);
       expect(currentState(tester).month, 6);
       assertRosterMatchesAuthority('June');
     });

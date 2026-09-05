@@ -375,8 +375,11 @@ Future<void> _driveToActualCashShortage(WidgetTester tester) async {
   await tapAndSettle('4月を終了して5月へ');
   await dismiss();
 
-  // May: no additional hiring.
+  // May: no additional hiring. Issue #168: neither pre-seeded applicant's
+  // résumé is reviewed and recruitment media is never used this month — a
+  // genuine outstanding Month Guard candidate, dismissed the same way.
   await tapAndSettle('5月を終了して6月へ');
+  await dismissMonthGuardIfPresent(tester);
 
   // June: accept July continuation for Sato (only assignment) — the
   // assignment (project continuation) pipeline is on 営業.

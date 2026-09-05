@@ -334,7 +334,7 @@ Public Demoの一部ではない）。
 
 ## PR
 
-<!-- PR_URL_PLACEHOLDER -->
+https://github.com/perusonao/smile_enjoy_story/pull/180
 
 ## 残課題
 

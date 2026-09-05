@@ -491,13 +491,14 @@ method, `_salesTabEmptyState()`, both findings live in).
 
 ### Final commit SHA (this follow-up)
 
-Recorded after push — see §13 below.
+`da787d5` (code fix + tests + this report update, one commit, on
+`claude/public-demo-home-ui-3c-q7gnb4`).
 
 ## 13. Final commit SHA / PR
 
 - Branch: `claude/public-demo-home-ui-3c-q7gnb4`
-- Final commit SHA: `3dc826aa045ac2aa7a634b8c7498c29716ea8666` (original
-  phase) / see §12 for the Codex-fix follow-up commit on the same branch.
+- Final commit SHA: `da787d5` (Codex P2 follow-up; original phase commit:
+  `3dc826aa045ac2aa7a634b8c7498c29716ea8666`)
 - PR: [#174](https://github.com/perusonao/smile_enjoy_story/pull/174)
 
 Per this task's instruction, the PR is **not** merged by this session —

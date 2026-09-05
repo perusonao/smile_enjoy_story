@@ -7,6 +7,7 @@
 // valid "none" route from #133) the same CTA must close July into August.
 import { test, expect } from '@playwright/test';
 import { watchForErrors } from '../helpers/artifacts';
+import { dismissMonthGuardIfPresent } from '../helpers/public-demo-player';
 
 const viewports = [
   { label: '360px', width: 360, height: 800 },
@@ -91,14 +92,34 @@ for (const viewport of viewports) {
       await expectNoHorizontalOverflow(page);
 
       await clickScrollableButton(page, canonicalAprilLabel);
+      // Issue #168 (FIRST-FUN-YEAR-ONBOARDING-1): April's close now runs
+      // the Month Guard before its own new-applicant event dialog — a
+      // fresh playthrough's untouched 佐藤 健 SkillSheet確認 is a genuinely
+      // outstanding recommended-level action, so the guard's warning shows
+      // first. Proceed through it exactly as a player choosing "このまま
+      // 月末処理を進める" would; this suite's own subject is the July Month
+      // Guard below, not April's dialogs.
+      await dismissMonthGuardIfPresent(page);
       const applicationDialog = page.getByRole('alertdialog');
       await expect(applicationDialog).toBeVisible();
       await applicationDialog.getByRole('button', { name: '確認', exact: true }).click();
       await expectMonth(page, 5);
 
       await clickScrollableButton(page, canonicalMayLabel);
+      // Same Issue #168 wiring as April, on May's own close: the two
+      // pre-seeded applicants are still unreviewed and recruitment media
+      // unused at this point, a genuinely outstanding recommended-level
+      // action, so the guard can warn here too. May's close has no event
+      // dialog of its own, so this is the only dialog to proceed through
+      // before the month advances.
+      await dismissMonthGuardIfPresent(page);
       await expectMonth(page, 6);
       await clickScrollableButton(page, canonicalJuneLabel);
+      // Same Issue #168 wiring on June's own close: this playthrough never
+      // performed the recommended April/May actions (this suite's own
+      // subject is July's Month Guard, not the earlier months'), so June
+      // may still see outstanding items and warn.
+      await dismissMonthGuardIfPresent(page);
       await expectMonth(page, 7);
       await expectNoHorizontalOverflow(page);
 

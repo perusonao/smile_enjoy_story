@@ -57,9 +57,18 @@ Future<void> tapAndDismissMonthEnd(WidgetTester tester) async {
   final cta = find.byKey(const Key('public-demo-monthly-primary-cta'));
   await scrollToVisible(tester, cta);
   await tester.tap(cta);
-  await settleDialogImage(tester);
-  await tester.tap(find.widgetWithText(FilledButton, '確認'));
   await tester.pumpAndSettle();
+  // Issue #168: April's own outstanding, already-legal action (Sato, ready
+  // and untouched from a fresh game) now produces a genuine Month Guard
+  // warning here — proceed past it, exactly as every other Public Demo
+  // suite that closes a fresh April now does.
+  await dismissMonthGuardIfPresent(tester);
+  await settleDialogImage(tester);
+  final confirm = find.widgetWithText(FilledButton, '確認');
+  if (confirm.evaluate().isNotEmpty) {
+    await tester.tap(confirm);
+    await tester.pumpAndSettle();
+  }
 }
 
 int treeIndexOf(WidgetTester tester, Finder finder) {

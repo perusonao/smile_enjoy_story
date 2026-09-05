@@ -103,7 +103,13 @@ Future<void> tapAndSettle(WidgetTester tester, String text) async {
   );
   if (monthGuardProceed.evaluate().isNotEmpty) {
     await tester.tap(monthGuardProceed);
-    await tester.pumpAndSettle();
+    // Issue #168: proceeding here resumes the month-close handler
+    // (`april()`'s own event dialog, in particular) past the point this
+    // clause used to assume was already reached — that handler's own
+    // `_precacheEventImage` needs the same real-time wait window `settle`
+    // already gives every other tap, not a single fake-clock
+    // `pumpAndSettle()`, or its dialog never actually appears.
+    await settle(tester);
   }
 }
 

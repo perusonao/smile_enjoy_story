@@ -104,8 +104,13 @@ void main() {
       await tapAndSettle(tester, '4月を終了して5月へ');
       await dismiss(tester);
 
-      // May: no further hiring.
+      // May: no further hiring. Issue #168: neither pre-seeded applicant's
+      // résumé is reviewed and recruitment media is never used this month —
+      // a genuine outstanding Month Guard candidate, dismissed the same way
+      // every other Public Demo suite that skips May's applicant pipeline
+      // now does; it does not change this test's own trajectory.
       await tapAndSettle(tester, '5月を終了して6月へ');
+      await dismissMonthGuardIfPresent(tester);
 
       // June: explicitly accept July's continuation — the one real decision
       // this contract is built on. The assignment (project continuation)

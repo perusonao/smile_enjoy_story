@@ -3,6 +3,7 @@ import { watchForErrors } from '../helpers/artifacts';
 import {
   openPublicDemo,
   assertCalendarMonth,
+  dismissMonthGuardIfPresent,
   scrollToButton,
   scrollToTop,
 } from '../helpers/public-demo-player';
@@ -40,15 +41,35 @@ test.describe('Public Demo July close and April restart', () => {
     await assertCalendarMonth(page, 4);
 
     await clickScrollableButton(page, '4月を終了して5月へ');
+    // Issue #168 (FIRST-FUN-YEAR-ONBOARDING-1): April's close now runs the
+    // Month Guard before its own new-applicant event dialog — a fresh
+    // playthrough's untouched 佐藤 健 SkillSheet確認 is a genuinely
+    // outstanding recommended-level action, so the guard's warning shows
+    // first. Proceed through it exactly as a player choosing "このまま月末
+    // 処理を進める" would, then the applicant dialog this test actually
+    // means to assert on follows.
+    await dismissMonthGuardIfPresent(page);
     const applicationDialog = page.getByRole('alertdialog');
     await expect(applicationDialog).toBeVisible();
-    expect(await applicationDialog.ariaSnapshot()).toContain('新しい応募が届きました');
+    expect(await applicationDialog.ariaSnapshot()).toContain('採用候補者の情報を確認できます');
     await applicationDialog.getByRole('button', { name: '確認', exact: true }).click();
     await assertCalendarMonth(page, 5);
 
     await clickScrollableButton(page, '5月を終了して6月へ');
+    // Same Issue #168 wiring as April, on May's own close: the two
+    // pre-seeded applicants are still unreviewed and recruitment media
+    // unused at this point in the playthrough, a genuinely outstanding
+    // recommended-level action, so the guard can warn here too. May's
+    // close has no event dialog of its own, so this is the only dialog to
+    // proceed through before the month advances.
+    await dismissMonthGuardIfPresent(page);
     await assertCalendarMonth(page, 6);
     await clickScrollableButton(page, '6月を終了して7月へ');
+    // Same Issue #168 wiring on June's own close: this playthrough never
+    // actually performed the recommended April/May actions (this test's
+    // subject is July's own Month Guard, not the earlier months'), so June
+    // may still see outstanding items and warn.
+    await dismissMonthGuardIfPresent(page);
     await assertCalendarMonth(page, 7);
 
     await clickScrollableButton(page, '夏季賞与を決める');

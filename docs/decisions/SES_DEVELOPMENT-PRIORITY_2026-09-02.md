@@ -37,13 +37,13 @@ This document is the current single source of truth for **how development is pri
 
 ## Current execution order
 
-**HOME Freeze → #167 Late Game Phase 1 → Year-End Phase 1 → Active Project Visibility Phase 1 → 小規模UX修正 → Employee UI Phase A再評価 → 年間通しプレイ(replay) → 後半強化 → 成長実感 → 月次結果 → 戦略性 → バランス → Public Demo仕上げ**
+**HOME Freeze → #167 Late Game Phase 1 → Year-End Phase 1 → Active Project Visibility Phase 1 → Employee UI Phase 1 → Sales UI Phase 1 → Accounting UI Phase 1 → April→March human replay → 後半強化 → 成長実感 → 月次結果 → 戦略性 → バランス → Public Demo仕上げ**
 
 Issue番号順に機械的に実装しない。実プレイ結果を根拠に、First Fun Yearを最も改善するものを選ぶ。
 
 ### HOME Freeze（2026-09-06）
 
-**HOME One-Screen Final Fit が PR #184のマージ・main CI・実機確認まで完了し、HOMEをFreezeする。** HOMEの追加レイアウト変更は禁止。HOME完成を前提としていたP0「進行中HOME UI改修を完成」系列のタスクは、HOME自体の変更としては完全終了。Employee UI Phase AおよびActive Project Visibilityは、HOMEへの先取りを禁止したまま、それぞれ社員タブ・案件/営業タブ側の独立実装として引き続き有効（下記の次順序を参照）。
+**HOME One-Screen Final Fit が PR #184のマージ・main CI・実機確認まで完了し、HOMEをFreezeする。** HOMEの追加レイアウト変更は禁止。HOME完成を前提としていたP0「進行中HOME UI改修を完成」系列のタスクは、HOME自体の変更としては完全終了。Employee UI Phase 1（Active Project Visibility Phase 1を前提コンポーネントとして統合済み）、Sales UI Phase 1、Accounting UI Phase 1は、HOMEへの先取りを禁止したまま、それぞれ社員タブ・営業タブ・会計タブ側の独立実装として引き続き有効（下記の次順序を参照）。
 
 ### Prioritized backlog and AI processing-time budget
 
@@ -54,9 +54,10 @@ Issue番号順に機械的に実装しない。実プレイ結果を根拠に、
 1. ~~**#167 Late Game Phase 1**~~ — 完了。8月〜2月の「創業エンジニアのフォロー判断」実装。
 2. ~~**Year-End Phase 1**~~ — 完了。年度末の振り返り演出。
 3. ~~**Active Project Visibility Phase 1**~~ — 完了。参画中社員の案件状態を社員タブから可視化。
-4. **stale「翌月参画予定」/ 空の「○月開始結果」等の小規模UX修正**。
-5. **Employee UI Phase A 再評価** — 社員個々の状態・スキル・経歴を安全に閲覧できるUIを整える（HOMEへの先取り禁止、実装場所は社員タブ側）。
-6. **April→March human replay** — 上記反映後の年間通しプレイ監査。
+4. ~~**Employee UI Phase 1**~~ — 完了。社員タブを「社員一覧・現在状態 → 今やるべき社員アクション → 参画中案件（Active Project Visibility Phase 1を統合） → 成長・SkillSheet・研修」の4段階へ再設計。stale「翌月参画予定」の社員タブ側の残差も解消（会計側の「空の○月開始結果」はPOST-HOME-FREEZE Small-UX-Fixで既に解消済み）。
+5. **Sales UI Phase 1** — 営業タブの情報設計（HOMEへの先取り禁止、実装場所は営業タブ側）。
+6. **Accounting UI Phase 1** — 会計タブの情報設計（HOMEへの先取り禁止、実装場所は会計タブ側）。
+7. **April→March human replay** — 上記反映後の年間通しプレイ監査。
 
 **#148の追加production実装は次P0として扱わない。** #183（CI高速化）はdev-efficiency用の別ラインとして記録し、gameplayより前へ出さない。
 
@@ -66,8 +67,9 @@ Issue番号順に機械的に実装しない。実プレイ結果を根拠に、
 | P0 | #167 Late Game Phase 1 | 実績: 完了 | 8月〜2月の「創業エンジニアのフォロー判断」— 詳細はUpdate history |
 | P0 | Year-End Phase 1 | 実績: 完了（本エントリ） | 年度末の振り返り演出（会計タブ「第1期終了」強化） — 詳細はUpdate history |
 | P0 | ~~Active Project Visibility Phase 1~~ | 実績: 完了 | 参画中社員の案件状態（engineerName/projectName/deliveryPressure/budgetHealth）を社員タブから可視化 — 詳細はUpdate history |
-| P0 | stale「翌月参画予定」/ 空の「○月開始結果」等の小規模UX修正 | 目安未確定 | 既存の小規模だが目につくUX不整合を解消する |
-| P0 | Employee UI Phase A（再評価） | 目安未確定 / 分割検討 | 社員個々の状態・スキル・経歴を安全に閲覧できるUIを整える（HOMEへの先取りは禁止、実装場所は社員タブ側） |
+| P0 | ~~Employee UI Phase 1~~ | 実績: 完了（本エントリ） | 社員タブを4段階の情報階層へ再設計、stale「翌月参画予定」の社員タブ側を解消 — 詳細はUpdate history |
+| P0 | Sales UI Phase 1 | 目安未確定 / 分割検討 | 営業タブの情報設計を整える（HOMEへの先取りは禁止、実装場所は営業タブ側） |
+| P0 | Accounting UI Phase 1 | 目安未確定 / 分割検討 | 会計タブの情報設計を整える（HOMEへの先取りは禁止、実装場所は会計タブ側） |
 | P0 | 4月→翌3月 First Fun Year通しプレイ（human replay） | 1〜2h | 上記反映後、年間完走可否・退屈な期間・重大問題を実プレイで再特定 |
 | P0 | 年間進行Blocker修正 | 1件0.5〜3h | 月送り不能、二重処理、セーブ破壊等を除去 |
 | P1 | 9月〜2月コンテンツ強化（#167 Phase 1以降の追加分） | 4〜8h / 分割必須 | 年度後半にも判断・イベント・変化がさらに発生 |
@@ -197,6 +199,20 @@ Result Reportは履歴・証拠であり、この文書の代わりにはしな�
 - `docs/reports/` — 実施結果と証拠。計画変更が必要なら結果報告だけで終わらせず、この文書も更新する。
 
 ## Update history
+
+### 2026-09-06（Employee UI Phase 1完了 / governing plan sync）
+
+- **Employee UI Phase 1を実装。** 社員タブ（`_buildEmployeesTab`、`lib/ui/public_demo/public_demo_01_placeholder_screen.dart`）を、単一`Column`内の条件分岐カード列から、4段階の情報階層を持つセクション構成へ再設計した: 1) 社員一覧・現在状態（`_employeeRosterSection`、新規）、2) 今やるべき社員アクション（`_employeeNextActionsSection`）、3) 参画中案件（`_employeeActiveProjectsSection`、Active Project Visibility Phase 1のカードをそのまま統合）、4) 成長・SkillSheet・研修（`_employeeGrowthSection`）。
+  - Section 2〜4は既存のカード・key・月ゲート・eligibility判定を1つも変更せず、そのままセクションメソッドへ移動しただけ。新しいゲームルールは追加していない。
+  - Section 1（新規）は、`workflow.engineers`（既存の全社員ロースター）を1行ずつ列挙し、既存authoritativeフィールド（`PublicDemoState.engineersWaiting`/`engineersAssigned`、`PublicDemoEngineerSales.stage`、`PublicDemoWorkflowState.assignedEngineerIds`）のみから現在状態バッジと集計を表示する。新規の永続フィールドや集計ロジックは追加していない。
+  - **stale「翌月参画予定」の社員タブ側を解消**: HOMEのOffice Stage表示はPOST-HOME-FREEZE Small-UX-Fixで既に修正済みだったが、社員タブの`ec(i)`バッジは当時明示的にスコープ外だった。本Phaseで社員タブ専用の`_currentEmployeeStatusLabel`を新規追加（HOME側の`_officeStageStatusFor`と同一ロジックだが独立したメソッド — HOME側のコードは1行も変更していない）し、実際に参画済みの`ordered`社員には「参画中」を表示するようにした。
+  - 実装過程で、既存回帰テスト（`public_demo_01_home_consolidation_test.dart`の「待機」テキスト重複防止アサーション）により、Section 1の新規バッジと`ec(i)`カード自身のバッジが重複することが判明したため、`ec(i)`のバッジは削除し、現在状態表示をSection 1に一元化した（SSOTが求める「重複情報を減らす」の実践）。
+  - HOME（`lib/presentation/home/`配下）、Domain（`lib/game/public_demo/`配下）、Save/schema、Finance/Balance、Month transition、Sales/Employee gameplay authority、Year-Endは無変更。`fieldEvaluation`は引き続き非表示。
+  - 詳細・変更ファイル・テスト結果は`docs/reports/SES_NON-HOME-UI_EMPLOYEE_Phase1_Implementation_Result.md`を参照。
+- **次のproduction priorityを以下の順に更新する**（本文書冒頭「Current execution order」および直後のPrioritized backlog tableも同時に更新済み）:
+  1. Sales UI Phase 1
+  2. Accounting UI Phase 1
+  3. April→March human replay
 
 ### 2026-09-06（Active Project Visibility Phase 1完了 / governing plan sync）
 

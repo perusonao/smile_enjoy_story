@@ -361,11 +361,15 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
   /// concept, so `engineersWaiting` still names exactly who it always did.
   ///
   /// SES HOME Final Visual Match (structural pass): each member's [status]
-  /// is `engineerStatus(engineer)` — the exact same string, from the exact
-  /// same single authority (`engineer.stage`), the 社員 tab already shows
-  /// for them. See [HomeOfficeStageMember.status]'s own doc for why this
-  /// is a different, safe fact from the 参画/待機 aggregate this getter's
-  /// own doc above already explains the Office Stage must never restate.
+  /// is [_officeStageStatusFor], which reads `engineer.stage` — the same
+  /// single authority the 社員 tab's own `engineerStatus(engineer)` badge
+  /// reads — except for the one case (POST-HOME-FREEZE Small-UX-Fix) where
+  /// an `ordered` engineer already appears in [_currentlyAssignedEngineerIds]
+  /// and would otherwise show a stale '翌月参画予定' for a project they have
+  /// already joined. See [_officeStageStatusFor]'s own doc, and
+  /// [HomeOfficeStageMember.status]'s own doc for why this is a different,
+  /// safe fact from the 参画/待機 aggregate this getter's own doc above
+  /// already explains the Office Stage must never restate.
   HomeOfficeStageDisplay get _officeStageDisplay => HomeOfficeStageDisplay(
     members: [
       for (final engineer in workflow.engineers)
@@ -373,12 +377,33 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
           id: engineer.id,
           name: engineer.name,
           portraitAssetPath: homeOfficeStagePortraitFor(engineer.id),
-          status: engineerStatus(engineer),
+          status: _officeStageStatusFor(engineer),
         ),
     ],
     employeeCount: _homeDashboardData.totalEmployeeCount,
     waitingCount: s.engineersWaiting,
   );
+
+  /// SES POST-HOME-FREEZE Small-UX-Fix: an `ordered` engineer already
+  /// counted into [_currentlyAssignedEngineerIds] — the existing SSOT for
+  /// "currently on a project", the same one the cash-forecast advice filter
+  /// above and the training card already read — has actually joined their
+  /// project. [engineerStatus]'s '翌月参画予定' is stale for that one case,
+  /// so the Office Stage reports the truthful '参画中' instead.
+  ///
+  /// Deliberately local to the Office Stage, not a change to [engineerStatus]
+  /// itself: the 社員 tab's own badge (`ec`'s `badge(engineerStatus(e))`) and
+  /// the SkillSheet sheet keep showing the raw pipeline stage untouched, and
+  /// no new domain authority is introduced — this only re-reads the same
+  /// [workflow.assignedEngineerIds] fact [_currentlyAssignedEngineerIds]
+  /// already exposes.
+  String _officeStageStatusFor(PublicDemoEngineerSales engineer) {
+    if (engineer.stage == PublicDemoSalesStage.ordered &&
+        _currentlyAssignedEngineerIds.contains(engineer.id)) {
+      return '参画中';
+    }
+    return engineerStatus(engineer);
+  }
 
   /// Issue #148 Phase 1B.3 — connects the existing confirmed-information
   /// cash forecast ([PublicDemoCashForecast], PR #153) through the existing
@@ -3166,25 +3191,25 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
                 ),
               ),
             ),
-          if (s.month >= 8 && s.month <= 14) ...[
+          // SES POST-HOME-FREEZE Small-UX-Fix (Fresh Audit Option 1): August
+          // is the only month in this range with a body to show (the July
+          // payroll/summer-bonus recap below). Months 9-14, and March before
+          // fiscal-year completion, used to render this heading with nothing
+          // under it — a truthful-looking section that was actually empty.
+          // No new per-month content is added here; the heading now only
+          // renders where a body already exists.
+          if (s.month == 8) ...[
             Text(
               '${publicDemoMonthLabel(s.month)}開始結果',
               style: Theme.of(c).textTheme.titleLarge,
             ),
-            if (s.month == 8) ...[
-              const Text('7月分の給与を反映しました'),
-              Text(
-                s.summerBonusPaidAmount == 0
-                    ? '夏季賞与 なし'
-                    : '夏季賞与 ¥${s.summerBonusPaidAmount}',
-              ),
-            ],
+            const Text('7月分の給与を反映しました'),
+            Text(
+              s.summerBonusPaidAmount == 0
+                  ? '夏季賞与 なし'
+                  : '夏季賞与 ¥${s.summerBonusPaidAmount}',
+            ),
           ],
-          if (s.month == 15 && !s.fiscalYearCompleted)
-            Text(
-              '${publicDemoMonthLabel(s.month)}開始結果',
-              style: Theme.of(c).textTheme.titleLarge,
-            ),
           if (s.fiscalYearCompleted)
             Card(
               key: const Key('public-demo-fiscal-year-complete'),

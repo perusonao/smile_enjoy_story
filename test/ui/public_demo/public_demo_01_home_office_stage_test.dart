@@ -19,6 +19,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:smile_enjoy_story/game/public_demo/public_demo_sales.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_state.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_workflow_state.dart';
 import 'package:smile_enjoy_story/presentation/home/models/home_office_stage_display.dart';
@@ -399,6 +400,105 @@ void main() {
       final home = tester.getRect(find.byType(PublicDemoHomeDashboardSection));
       expect(cta.bottom, lessThan(home.bottom));
       expect(tester.getRect(stageFinder).top, greaterThan(home.bottom));
+    });
+  });
+
+  group('POST-HOME-FREEZE Small-UX-Fix: truthful ordered-vs-assigned status', () {
+    // Before this fix, `engineerStatus` read `engineer.stage` alone: once an
+    // engineer reached `ordered` (via a real client-interview win) the Office
+    // Stage kept showing '翌月参画予定' forever — `ordered` has no further
+    // production transition, so the label stayed stale even after
+    // `assignOrderedForMay` actually assigned them. These pin the fix at its
+    // two truthful states, both read from the existing
+    // `workflow.assignedEngineerIds` authority — no new domain fact.
+    testWidgets('an ordered-but-not-yet-assigned engineer still truthfully '
+        'shows 翌月参画予定', (tester) async {
+      await pumpDemoAt(tester);
+      await playApril(tester);
+
+      final workflow = currentWorkflow(tester);
+      final sato = workflow.engineers.firstWhere((e) => e.name == '佐藤 健');
+      expect(sato.stage, PublicDemoSalesStage.ordered);
+      expect(
+        workflow
+            .assignedEngineerIds(month: currentState(tester).month)
+            .contains(sato.id),
+        isFalse,
+        reason: 'assignOrderedForMay has not run yet in April',
+      );
+
+      final member = stageDisplay(
+        tester,
+      ).members.firstWhere((m) => m.id == sato.id);
+      expect(member.status, '翌月参画予定');
+    });
+
+    testWidgets('once May\'s close actually assigns that engineer, the Office '
+        'Stage shows the truthful 参画中, never the stale 翌月参画予定', (
+      tester,
+    ) async {
+      await pumpDemoAt(tester);
+      await playApril(tester);
+      final satoId = currentWorkflow(
+        tester,
+      ).engineers.firstWhere((e) => e.name == '佐藤 健').id;
+
+      // `assignOrderedForMay` — the call that actually builds the assignment
+      // roster for an engineer won in April — runs inside `closeMay` (May's
+      // own close), not `closeApril`; see `PublicDemoAggregate.closeMay`'s
+      // own doc. So April's close alone is not enough: the engineer is still
+      // truthfully un-assigned through the whole of May.
+      await tapAndSettle(tester, '4月を終了して5月へ');
+      await dismiss(tester);
+      expect(currentState(tester).month, 5);
+      expect(
+        currentWorkflow(
+          tester,
+        ).assignedEngineerIds(month: 5).contains(satoId),
+        isFalse,
+        reason: 'assignOrderedForMay has not run yet in May itself',
+      );
+
+      await tapAndSettle(tester, '5月を終了して6月へ');
+      await dismissMonthGuardIfPresent(tester);
+      expect(currentState(tester).month, 6);
+
+      final workflow = currentWorkflow(tester);
+      expect(
+        workflow.assignedEngineerIds(month: 6).contains(satoId),
+        isTrue,
+        reason: 'assignOrderedForMay has now built the assignment, in June',
+      );
+      expect(
+        workflow.engineers.firstWhere((e) => e.id == satoId).stage,
+        PublicDemoSalesStage.ordered,
+        reason:
+            'the engineer\'s own stage never advances past ordered — the '
+            'fix must read assignment, not wait for a stage change that '
+            'never comes',
+      );
+
+      final member = stageDisplay(
+        tester,
+      ).members.firstWhere((m) => m.id == satoId);
+      expect(member.status, '参画中');
+      expect(member.status, isNot('翌月参画予定'));
+    });
+
+    testWidgets('a still-waiting engineer is unaffected by the fix', (
+      tester,
+    ) async {
+      await pumpDemoAt(tester);
+      await playApril(tester);
+
+      final workflow = currentWorkflow(tester);
+      final suzuki = workflow.engineers.firstWhere((e) => e.name == '鈴木 葵');
+      expect(suzuki.stage, PublicDemoSalesStage.waiting);
+
+      final member = stageDisplay(
+        tester,
+      ).members.firstWhere((m) => m.id == suzuki.id);
+      expect(member.status, '待機');
     });
   });
 

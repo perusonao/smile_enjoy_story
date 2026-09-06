@@ -178,12 +178,19 @@ sizes with `tester.takeException()` asserted `isNull`.
   overflow checks and the replay-flow tests).
 - `flutter test` (10 targeted regression files above) — **120/120 passed**,
   0 failures.
-- A full-repository `flutter test` (176 files) was additionally started as a
-  supplementary check; see the PR/final report for its outcome if it
-  completed before this report was finalized — the targeted regression
-  selection above was chosen to directly cover every prohibited/must-preserve
-  area named in the task (#167, #186, HOME, bankruptcy/recovery,
-  fiscal-year completion/save) and is what this PASS verdict is based on.
+- A full-repository `flutter test` (176 files, 1607 tests) was additionally
+  run as a supplementary check: **1605/1607 passed**. The 2 failures
+  (`test/presentation/home/home_shell_page_test.dart`'s "Month-end CTA is
+  disabled" and `test/presentation/home/home_dashboard_data_wiring_test.dart`'s
+  "the month-end CTA stays disabled even with real dashboard data") are
+  **pre-existing and unrelated to this change** — confirmed by checking out
+  the unmodified BASE SHA (`3806cda1d9ce434024be25719f559806c4f81e4b`) into a
+  separate worktree and re-running just those two files: the identical
+  `StateError: Bad state: No element` (`Iterable.single` finding zero
+  matching widgets) reproduces there too, before any of this PR's changes
+  exist. Neither file is under `test/ui/public_demo/` or
+  `test/presentation/home/` in a way this PR touches — this PR does not
+  modify `lib/presentation/home/` at all.
 
 ## 8. Known limitations
 

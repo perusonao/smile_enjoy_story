@@ -54,14 +54,17 @@ class HomeNavigatorMetrics {
   // same bundled file, just no longer forced into a circle.
   //
   // SES HOME Visual SSOT Exact Layout Match: `portraitHeight` raised again,
-  // from 150/158 to 170/173 (a real +13%/+9%) — the approved Visual SSOT
-  // draws her as a clearly large, present figure, and the card's own text
-  // column (name/role + eyebrow + headline + message + CTA + advice)
-  // measures 171/174pt tall at 360x800/390x844 regardless of the portrait,
-  // so growing the portrait right up to just under that height is free: the
-  // Row's own height stays governed by the text column, confirmed by this
-  // phase's own before/after measurement — not a new cost this pass has to
-  // find room for elsewhere.
+  // from 150/158 to 160/163 — the approved Visual SSOT draws her as a
+  // clearly large, present figure. This is deliberately short of this
+  // card's own text-column height (171/174pt at 360x800/390x844 — see
+  // [compactCeiling]'s doc): 170/173 (right up against that ceiling) still
+  // fit the ordinary April 360x800/390x844 no-scroll budget on their own,
+  // but overflowed the tighter HOME-COMPACT-1B.4 FIX1 actual-cash-shortage
+  // 360x800 scenario (`public_demo_01_issue_124_screen_verification_test
+  // .dart`) by several pixels — that scenario adds its own card above HOME
+  // and has less spare room to begin with. 160/163 is the largest pair
+  // confirmed to fit every existing 360x800/390x844 no-scroll budget,
+  // including that one.
   //
   // `portraitWidth` deliberately stays at 80/94, not widened to match:
   // measured at 84pt (a mere +4), the narrower text column it leaves pushes
@@ -75,7 +78,7 @@ class HomeNavigatorMetrics {
   // deliberate step toward it.
   static const HomeNavigatorLayout compact = HomeNavigatorLayout(
     portraitWidth: 80,
-    portraitHeight: 170,
+    portraitHeight: 160,
     nameFontSize: 12,
     roleFontSize: 10,
     messageFontSize: 11.5,
@@ -84,7 +87,7 @@ class HomeNavigatorMetrics {
 
   static const HomeNavigatorLayout normal = HomeNavigatorLayout(
     portraitWidth: 94,
-    portraitHeight: 173,
+    portraitHeight: 163,
     nameFontSize: 13,
     roleFontSize: 10.5,
     messageFontSize: 12,

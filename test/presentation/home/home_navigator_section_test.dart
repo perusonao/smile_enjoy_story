@@ -251,6 +251,30 @@ void main() {
     });
 
     testWidgets(
+      // SES HOME Final Touch, Codex review (PR #184, P2): the CTA's real
+      // height is `minimumSize`-floored regardless of label length, so a
+      // short recommendation label (e.g. "研修する") must clear the same
+      // real accessible tap target a long one does — see the CTA's own
+      // doc in home_navigator_section.dart for why 44, not 40 or 48.
+      'the CTA stays a real >=44pt tap target even for a short label',
+      (tester) async {
+        await pumpNavigator(
+          tester,
+          advice: HomeNavigatorAdvice(
+            title: 'ひよりからのご案内',
+            message: '既存の案内です。',
+            ctaLabel: '研修する',
+            onCtaPressed: () {},
+          ),
+        );
+        final rect = tester.getRect(
+          find.byKey(const Key('home-recommended-action-cta')),
+        );
+        expect(rect.height, greaterThanOrEqualTo(44));
+      },
+    );
+
+    testWidgets(
       // PUBLIC-DEMO-HOME-UI-3A: the approved visual target shows the
       // "ひよりからのアドバイス" box open at all times, with no "詳しく見る"/
       // "閉じる" tap-to-reveal — matching this is the whole point of this

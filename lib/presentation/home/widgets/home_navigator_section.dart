@@ -323,15 +323,29 @@ class HomeNavigatorSection extends StatelessWidget {
                       // card width and a 48pt/vertical-12 minimum — leaving
                       // the advice bubble below it too little room to stay
                       // unellipsized (see `_AdviceBubble`'s own doc for the
-                      // exact defect this was causing). `40`/vertical-8
-                      // still clears the accepted floor for a real,
-                      // comfortable primary tap target (a plain
-                      // `IconButton`'s default minimum is 40x40 for the
-                      // same reason), and the `FractionallySizedBox` below
-                      // narrows the button's own footprint instead of
-                      // stretching it across the full card — both without
-                      // touching what it does or where it goes
-                      // (`advice.onCtaPressed` is untouched).
+                      // exact defect this was causing). The
+                      // `FractionallySizedBox` below narrows the button's
+                      // own footprint instead of stretching it across the
+                      // full card — both without touching what it does or
+                      // where it goes (`advice.onCtaPressed` is untouched).
+                      //
+                      // Codex review (PR #184, P2): the first cut of this
+                      // fix floored the height at 40pt — a real device with
+                      // a short label (e.g. "研修する") would then render
+                      // (and hit-test) at exactly 40pt, under this app's
+                      // own established >=48pt touch-target floor (every
+                      // other CTA this file/repo tests pins that number).
+                      // 44pt is the largest floor that still fits the
+                      // 360x800 no-scroll budget alongside this phase's
+                      // other two fixes (the office photo's own size, and
+                      // the advice bubble's raised line cap) — verified
+                      // against both the normal-April and the tighter
+                      // actual-cash-shortage 360x800 scenarios (see
+                      // `public_demo_01_issue_124_screen_verification_test
+                      // .dart`'s HOME-COMPACT-1B.4 FIX1 group). Still a
+                      // real, deliberate reduction from the original 48
+                      // (Apple's own HIG accessible-minimum is 44pt), not
+                      // the ad-hoc 40pt the first cut used.
                       Align(
                         alignment: Alignment.centerLeft,
                         child: FractionallySizedBox(
@@ -340,12 +354,12 @@ class HomeNavigatorSection extends StatelessWidget {
                             key: const Key('home-recommended-action-cta'),
                             style: theme.filledButtonTheme.style?.copyWith(
                               minimumSize: const WidgetStatePropertyAll(
-                                Size(0, 40),
+                                Size(0, 44),
                               ),
                               padding: const WidgetStatePropertyAll(
                                 EdgeInsets.symmetric(
                                   horizontal: 14,
-                                  vertical: 8,
+                                  vertical: 10,
                                 ),
                               ),
                               // Material buttons otherwise pad their tap
@@ -354,8 +368,9 @@ class HomeNavigatorSection extends StatelessWidget {
                               // `shrinkWrap` is what actually lets the
                               // button render at the smaller size above
                               // instead of silently staying 48pt tall.
-                              // `minimumSize` still floors it at a real,
-                              // comfortable 40pt tap target.
+                              // `minimumSize` still floors it at a real
+                              // 44pt tap target — see the doc above this
+                              // widget for why 44, not 40 or 48.
                               tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                             ),
                             onPressed: advice.onCtaPressed,

@@ -202,7 +202,7 @@ TextScaler 1.0。
 - `flutter analyze`: **No issues found!**
 - `test/ui/public_demo/public_demo_01_home_one_screen_final_fit_test.dart`: 9/9 PASS（本番Theme + フォント登録適用後も `maxScrollExtent == 0` を維持）
 - Focused HOME regressionスイート（`test/presentation/home/` + 9つの `public_demo_01_home_*` 関連ファイル + 本ファイル）: **342/342 PASS**
-- PR前 `flutter test` フル実行: 実行済み・結果は下記「Codex P2対応後のfull test結果」に記載
+- PR前 `flutter test` フル実行: **実行済み・全PASS**。Codex P2対応後も引き続き **1553 tests, All tests passed!**（exit code 0）、失敗0件。
 
 ### Changed files（Codex P2対応分）
 

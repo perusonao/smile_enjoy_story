@@ -176,6 +176,11 @@ _guidanceCopyFor(HomeRecommendedActionKind kind) => switch (kind) {
     explanation: '昇給の相談は、従業員との条件を確認する機会です。既存の選択肢を読んで回答を決めます。',
     semantic: HomeNavigatorAdviceSemantic.neutral,
   ),
+  HomeRecommendedActionKind.founderFollowUp => (
+    message: '参画が続く社員のフォローを検討しましょう。',
+    explanation: '長く現場に参画している社員には、会社から声をかけたり支援したりする機会があります。既存の選択肢からどう対応するか決めます。',
+    semantic: HomeNavigatorAdviceSemantic.neutral,
+  ),
   HomeRecommendedActionKind.employeeAcceptOrder ||
   HomeRecommendedActionKind.assignmentAcceptNextOrder ||
   HomeRecommendedActionKind.assignmentAcceptReplacementOrder ||

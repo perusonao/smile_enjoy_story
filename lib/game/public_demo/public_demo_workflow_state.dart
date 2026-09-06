@@ -1,6 +1,7 @@
 import 'public_demo_assignment.dart';
 import 'public_demo_binding_offer.dart';
 import 'public_demo_fiscal_close_id.dart';
+import 'public_demo_founder_follow_up.dart';
 import 'public_demo_interview.dart';
 import 'public_demo_join.dart';
 import 'public_demo_raise_transaction.dart';
@@ -521,6 +522,41 @@ class PublicDemoWorkflowState {
       actualCapability: actualCapability,
     ),
   );
+
+  /// The single sanctioned way to decide a founder follow-up (Issue #167
+  /// FIRST-FUN-YEAR-LATE-GAME-1 Phase 1) for [engineerId]. Defense in depth
+  /// alongside [PublicDemoAggregate.applyFounderFollowUpDecision]:
+  /// re-validates [PublicDemoFounderFollowUp.isEligible] here too, using
+  /// this workflow's own authoritative [engineers]/[assignedEngineerIds] —
+  /// never the caller-supplied [month] alone — so a stale or
+  /// independently-constructed caller can never apply this decision twice,
+  /// to a non-founding engineer, or outside its eligible window/roster,
+  /// even if the aggregate's own pre-check were ever skipped.
+  PublicDemoWorkflowState applyFounderFollowUpDecision(
+    String engineerId, {
+    required int month,
+    required PublicDemoFounderFollowUpDecision decision,
+  }) {
+    final assigned = assignedEngineerIds(month: month);
+    return _withEngineer(engineerId, (engineer) {
+      if (!PublicDemoFounderFollowUp.isEligible(
+        engineer: engineer,
+        month: month,
+        assignedEngineerIds: assigned,
+      )) {
+        return engineer;
+      }
+      return engineer.copyWith(
+        mental: (engineer.mental +
+                PublicDemoFounderFollowUp.mentalDeltaFor(decision))
+            .clamp(0, 100),
+        trust: (engineer.trust +
+                PublicDemoFounderFollowUp.trustDeltaFor(decision))
+            .clamp(0, 100),
+        founderFollowUpMonth: month,
+      );
+    });
+  }
 
   /// Adds newly joined applicants as engineers (May's join step), skipping
   /// anyone already present by id — mirrors the widget's former inline

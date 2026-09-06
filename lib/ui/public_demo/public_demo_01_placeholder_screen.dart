@@ -8,6 +8,7 @@ import '../../game/public_demo/public_demo_cash_forecast.dart';
 import '../../game/public_demo/public_demo_cash_status_presentation.dart';
 import '../../game/public_demo/public_demo_engineer_runtime.dart';
 import '../../game/public_demo/public_demo_fiscal_close_id.dart';
+import '../../game/public_demo/public_demo_founder_follow_up.dart';
 import '../../game/public_demo/public_demo_interview.dart';
 import '../../game/public_demo/public_demo_internal_training_transaction.dart';
 import '../../game/public_demo/public_demo_month_guard.dart';
@@ -35,6 +36,7 @@ import '../asset_paths.dart';
 import '../theme.dart';
 import 'public_demo_event_dialog.dart';
 import 'public_demo_cash_shortage_card.dart';
+import 'public_demo_founder_follow_up_dialog.dart';
 import 'public_demo_growth_result_card.dart';
 import 'public_demo_home_dashboard_section.dart';
 import 'public_demo_home_presentation_components.dart';
@@ -1591,6 +1593,54 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
     );
   }
 
+  /// Issue #167 FIRST-FUN-YEAR-LATE-GAME-1 Phase 1: the single entry point
+  /// for the founder follow-up decision, bound identically from the
+  /// employees-tab card and the HOME recommended-action CTA (see
+  /// [_addFounderFollowUpCandidate]). Mirrors [raise]'s shape: a dialog
+  /// collects the decision, [PublicDemoAggregate
+  /// .applyFounderFollowUpDecision] commits it, then a result dialog
+  /// explains exactly what changed — never shown when the commit was
+  /// silently rejected (`identical(next, _game)`), so the player is never
+  /// told an effect happened when it did not.
+  Future<void> founderFollowUp(PublicDemoEngineerSales e) async {
+    final canAffordInvestSupport =
+        s.cash >= PublicDemoFounderFollowUp.investSupportCost &&
+        !s.isFinanciallyRestricted;
+    final decision = await showDialog<PublicDemoFounderFollowUpDecision>(
+      context: context,
+      builder: (context) => PublicDemoFounderFollowUpDialog(
+        engineer: e,
+        canAffordInvestSupport: canAffordInvestSupport,
+      ),
+    );
+    if (!mounted || decision == null) return;
+    final next = _game.applyFounderFollowUpDecision(
+      engineerId: e.id,
+      decision: decision,
+    );
+    final applied = !identical(next, _game);
+    _commitAggregate(next);
+    if (!applied || !mounted) return;
+    await _precacheEventImage(AssetPaths.eventCompanyManagement);
+    if (!mounted) return;
+    final mentalDelta = PublicDemoFounderFollowUp.mentalDeltaFor(decision);
+    final trustDelta = PublicDemoFounderFollowUp.trustDeltaFor(decision);
+    final cost = PublicDemoFounderFollowUp.costFor(decision);
+    String signed(int delta) => delta >= 0 ? '+$delta' : '$delta';
+    await showDialog<void>(
+      context: context,
+      builder: (context) => PublicDemoEventDialog(
+        title: '${e.name}へのフォローを実施しました',
+        imageAsset: AssetPaths.eventCompanyManagement,
+        imageKey: Key('public-demo-founder-follow-up-result-image-${e.id}'),
+        message: PublicDemoFounderFollowUp.reasonFor(decision),
+        nextAction:
+            'メンタル${signed(mentalDelta)} / 信頼${signed(trustDelta)}'
+            '${cost > 0 ? ' / 費用 ¥$cost' : ''}',
+      ),
+    );
+  }
+
   int get _julyMonthlyExpenses => PublicDemoSalaryFinance.monthlyExpenses(
     baselineExpenses: expense,
     hires: workflow.joinedApplicants,
@@ -1613,11 +1663,21 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
   ///    this getter while it is outstanding (it returns from
   ///    `decideSummerBonus` first), so this exclusion is defense in depth,
   ///    not load-bearing.
+  ///  * [HomeRecommendedActionKind.founderFollowUp] — Issue #167
+  ///    FIRST-FUN-YEAR-LATE-GAME-1 Phase 1's design principle #1 is
+  ///    explicit that this decision "does not need to be a forced modal
+  ///    every month": it stays eligible across the whole August-February
+  ///    window (`PublicDemoFounderFollowUp.isEligible`), so warning on
+  ///    every single month-close attempt during that stretch would turn an
+  ///    optional, player-paced decision into exactly the nag this feature
+  ///    exists to avoid. The card and HOME CTA remain visible and available
+  ///    the whole window regardless of this exclusion.
   List<PublicDemoMonthGuardCandidate> get _monthGuardRecommendedCandidates => [
     for (final candidate in _recommendedActionCandidates)
       if (!candidate.action.kind.isInformational &&
           candidate.action.kind !=
-              HomeRecommendedActionKind.summerBonusDecision)
+              HomeRecommendedActionKind.summerBonusDecision &&
+          candidate.action.kind != HomeRecommendedActionKind.founderFollowUp)
         PublicDemoMonthGuardCandidate(
           id: candidate.action.targetId == null
               ? candidate.action.kind.name
@@ -1891,6 +1951,40 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
       ),
     );
   }
+
+  /// Issue #167 FIRST-FUN-YEAR-LATE-GAME-1 Phase 1: the card for a
+  /// currently-assigned founding engineer whose follow-up decision is still
+  /// outstanding. Rendered only where [PublicDemoFounderFollowUp.isEligible]
+  /// already holds (see the call site in `_buildEmployeesTab`); the button
+  /// re-runs the exact same check via [PublicDemoAggregate
+  /// .applyFounderFollowUpDecision] before it does anything, never relying
+  /// on the UI alone.
+  Widget founderFollowUpCard(PublicDemoEngineerSales e) => Card(
+    key: Key('public-demo-founder-follow-up-card-${e.id}'),
+    child: Padding(
+      padding: const EdgeInsets.all(12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            e.name,
+            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+          ),
+          const SizedBox(height: 4),
+          const Text(
+            '案件への参画が続いています。しばらくフォローの機会がありません。',
+            style: TextStyle(fontSize: 12),
+          ),
+          const SizedBox(height: 8),
+          FilledButton(
+            key: Key('public-demo-founder-follow-up-${e.id}'),
+            onPressed: () => unawaited(founderFollowUp(e)),
+            child: const Text('フォローする'),
+          ),
+        ],
+      ),
+    ),
+  );
 
   Widget internalTrainingCard({
     required String engineerId,
@@ -2172,7 +2266,41 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
       }
     }
 
+    // ---- months 8-14: founder follow-up (Issue #167
+    // FIRST-FUN-YEAR-LATE-GAME-1 Phase 1) — the same
+    // `founderFollowUpCard(e)` render site further down in
+    // `_buildEmployeesTab` uses this exact eligibility check and binds the
+    // exact same handler.
+    if (s.month >= publicDemoFounderFollowUpWindowStart &&
+        s.month <= publicDemoFounderFollowUpWindowEnd) {
+      for (final e in workflow.engineers) {
+        _addFounderFollowUpCandidate(add, e);
+      }
+    }
+
     return candidates;
+  }
+
+  /// Mirrors `founderFollowUpCard`'s button. `PublicDemoFounderFollowUp
+  /// .isEligible` is the same authority the card itself re-checks before
+  /// rendering.
+  void _addFounderFollowUpCandidate(
+    _AddCandidate add,
+    PublicDemoEngineerSales e,
+  ) {
+    if (!PublicDemoFounderFollowUp.isEligible(
+      engineer: e,
+      month: s.month,
+      assignedEngineerIds: workflow.assignedEngineerIds(month: s.month),
+    )) {
+      return;
+    }
+    add(
+      HomeRecommendedActionKind.founderFollowUp,
+      () => unawaited(founderFollowUp(e)),
+      subjectName: e.name,
+      targetId: e.id,
+    );
   }
 
   /// The joined employees `employeeConditionCard` is rendered for — the
@@ -2999,6 +3127,26 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
               (a) => s.joinedApplicantIds.contains(a.id) && a.hasJoined,
             ))
               employeeConditionCard(a),
+          // Issue #167 FIRST-FUN-YEAR-LATE-GAME-1 Phase 1: the only card a
+          // currently-assigned founding engineer gets during August-
+          // February — the RECOVERY-LOOP-1 loop above only renders `ec(i)`
+          // for economically-waiting engineers in this window, so a still-
+          // assigned founding engineer would otherwise have no card at all
+          // here (HOME's recommended-action slot binds this exact same
+          // `founderFollowUp(e)` handler; see `_addFounderFollowUpCandidate`
+          // — no candidate is ever emitted for a button that is not also
+          // rendered here).
+          if (s.month >= publicDemoFounderFollowUpWindowStart &&
+              s.month <= publicDemoFounderFollowUpWindowEnd)
+            for (final e in workflow.engineers)
+              if (PublicDemoFounderFollowUp.isEligible(
+                engineer: e,
+                month: s.month,
+                assignedEngineerIds: workflow.assignedEngineerIds(
+                  month: s.month,
+                ),
+              ))
+                founderFollowUpCard(e),
           // Issue #168 Finding B: May used to be the one gap in the
           // training loop — April's `ec(i)` embeds its own training card
           // (`showTrainingCard` defaults true) and this unconditional block

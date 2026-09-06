@@ -91,15 +91,21 @@ class HomeOfficeStageMember {
   /// SES HOME Final Visual Match (structural pass): this is deliberately
   /// **not** the 参画/待機 aggregate the note at the top of this file
   /// explains three authorities can disagree about — it is this one
-  /// employee's own sales-pipeline stage, the exact same value the 社員 tab
-  /// already shows for them (`engineerStatus` in
-  /// `public_demo_01_placeholder_screen.dart`), read once from its single
-  /// authority (`PublicDemoEngineerSales.stage`) and displayed verbatim.
+  /// employee's own sales-pipeline stage, the same value the 社員 tab shows
+  /// for them (`engineerStatus` in `public_demo_01_placeholder_screen.dart`),
+  /// read from its single authority (`PublicDemoEngineerSales.stage`).
   /// Nothing here counts, sums, or cross-checks it against
   /// `engineersWaiting`/`workflow.assignments`, so it cannot produce the
   /// cross-authority contradiction that note warns about. `null` (never an
   /// invented placeholder) for a member this stage-vocabulary does not
   /// apply to.
+  ///
+  /// POST-HOME-FREEZE Small-UX-Fix: the one exception is an `ordered`
+  /// engineer already present in `workflow.assignedEngineerIds` — they have
+  /// actually joined their project, so `engineerStatus`'s '翌月参画予定'
+  /// would be stale here. The owning screen's `_officeStageStatusFor`
+  /// substitutes '参画中' for that one case before this value ever reaches
+  /// this class; this file still only displays what it is given.
   final String? status;
 
   @override

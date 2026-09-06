@@ -37,7 +37,7 @@ This document is the current single source of truth for **how development is pri
 
 ## Current execution order
 
-**HOME Freeze → #167 Late Game Phase 1 → Year-End Phase 1 → Active Project Visibility → 小規模UX修正 → Employee UI Phase A再評価 → 年間通しプレイ(replay) → 後半強化 → 成長実感 → 月次結果 → 戦略性 → バランス → Public Demo仕上げ**
+**HOME Freeze → #167 Late Game Phase 1 → Year-End Phase 1 → Active Project Visibility Phase 1 → 小規模UX修正 → Employee UI Phase A再評価 → 年間通しプレイ(replay) → 後半強化 → 成長実感 → 月次結果 → 戦略性 → バランス → Public Demo仕上げ**
 
 Issue番号順に機械的に実装しない。実プレイ結果を根拠に、First Fun Yearを最も改善するものを選ぶ。
 
@@ -53,7 +53,7 @@ Issue番号順に機械的に実装しない。実プレイ結果を根拠に、
 
 1. ~~**#167 Late Game Phase 1**~~ — 完了。8月〜2月の「創業エンジニアのフォロー判断」実装。
 2. ~~**Year-End Phase 1**~~ — 完了。年度末の振り返り演出。
-3. **Active Project Visibility** — 参画中案件の状態を社員/営業視点で可視化（HOMEへの先取り禁止）。
+3. ~~**Active Project Visibility Phase 1**~~ — 完了。参画中社員の案件状態を社員タブから可視化。
 4. **stale「翌月参画予定」/ 空の「○月開始結果」等の小規模UX修正**。
 5. **Employee UI Phase A 再評価** — 社員個々の状態・スキル・経歴を安全に閲覧できるUIを整える（HOMEへの先取り禁止、実装場所は社員タブ側）。
 6. **April→March human replay** — 上記反映後の年間通しプレイ監査。
@@ -65,7 +65,7 @@ Issue番号順に機械的に実装しない。実プレイ結果を根拠に、
 | P0 | ~~進行中HOME UI改修を完成~~ — **完了・HOME Freeze**（HOME Final Density + Final Polish + One-Screen Final Fit, PR #180/#184。詳細はUpdate history） | 実績: 完了 | HOMEで会社状況・推奨行動・KPI・次の行動を理解できる — 達成済み。HOMEへの追加レイアウト変更は禁止 |
 | P0 | #167 Late Game Phase 1 | 実績: 完了 | 8月〜2月の「創業エンジニアのフォロー判断」— 詳細はUpdate history |
 | P0 | Year-End Phase 1 | 実績: 完了（本エントリ） | 年度末の振り返り演出（会計タブ「第1期終了」強化） — 詳細はUpdate history |
-| P0 | Active Project Visibility | 目安未確定 / 分割検討 | 参画中案件の状態を社員/営業視点で可視化する（HOMEへの先取りは禁止） |
+| P0 | ~~Active Project Visibility Phase 1~~ | 実績: 完了 | 参画中社員の案件状態（engineerName/projectName/deliveryPressure/budgetHealth）を社員タブから可視化 — 詳細はUpdate history |
 | P0 | stale「翌月参画予定」/ 空の「○月開始結果」等の小規模UX修正 | 目安未確定 | 既存の小規模だが目につくUX不整合を解消する |
 | P0 | Employee UI Phase A（再評価） | 目安未確定 / 分割検討 | 社員個々の状態・スキル・経歴を安全に閲覧できるUIを整える（HOMEへの先取りは禁止、実装場所は社員タブ側） |
 | P0 | 4月→翌3月 First Fun Year通しプレイ（human replay） | 1〜2h | 上記反映後、年間完走可否・退屈な期間・重大問題を実プレイで再特定 |
@@ -197,6 +197,19 @@ Result Reportは履歴・証拠であり、この文書の代わりにはしな�
 - `docs/reports/` — 実施結果と証拠。計画変更が必要なら結果報告だけで終わらせず、この文書も更新する。
 
 ## Update history
+
+### 2026-09-06（Active Project Visibility Phase 1完了 / governing plan sync）
+
+- **Active Project Visibilityを実装（Phase 1）。** 社員タブに、参画中社員ごとのread-only「案件ステータス」カード（`activeProjectStatusCard`、`lib/ui/public_demo/public_demo_01_placeholder_screen.dart`内の新規メソッド）を追加した。表示項目は`engineerName`/`projectName`/`deliveryPressure`/`budgetHealth`の4項目のみで、いずれも既存の`PublicDemoAssignment`（`PublicDemoWorkflowState.assignments`）が既に持つフィールドの読み取りにとどまる。新規のpersist/Finance/save-schemaフィールドは追加していない。
+  - 表示対象は`PublicDemoWorkflowState.assignedEngineerIds(month:)`が返す「その月に実際に参画中」の社員のみで、月による除外を設けていない — 8月〜翌3月（internal month 8-15）を含むどの月でも、参画が続く限りカードが表示され続ける。待機（waiting）社員には表示されない。
+  - `fieldEvaluation`はPhase 1では意図的に非表示とした。現状のproduction経路では`PublicDemoAssignment.fieldEvaluation`は常にコンストラクタ既定値（50）のままで、`withAssignmentUpdate`の`fieldEvaluation`引数を渡す呼び出しが存在しないため実質固定値であり、意味のある評価として提示できないため。
+  - 顧客名・会社名・単価・契約金額・契約期間など、`PublicDemoAssignment`が保持していない情報は一切生成していない。
+  - Issue #167 founder follow-upカード（`founderFollowUpCard`）とは同じ社員タブの同一`Column`内に共存させ、どちらの既存ロジック・キーも変更していない。HOME（`lib/presentation/home/`配下）、Year-End（`PublicDemoYearEndResultCard`等）、Save/schema、Finance計算、Balance、Month transition、workflow authorityは無変更。
+  - 詳細・変更ファイル・テスト結果は`docs/reports/SES_ACTIVE-PROJECT-VISIBILITY_Phase1_Implementation_Result.md`を参照。
+- **次のproduction priorityを以下の順に更新する**（本文書冒頭「Current execution order」および直後のPrioritized backlog tableも同時に更新済み）:
+  1. stale「翌月参画予定」/ 空の「○月開始結果」等の小規模UX修正
+  2. Employee UI Phase A 再評価
+  3. April→March human replay
 
 ### 2026-09-06（Year-End Phase 1完了 / governing plan sync）
 

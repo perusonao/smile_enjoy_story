@@ -60,6 +60,7 @@ class PublicDemoEngineerSales {
     this.interviewRecord,
     this.mental = 50,
     this.trust = 50,
+    this.founderFollowUpMonth,
   });
 
   final String id;
@@ -75,6 +76,15 @@ class PublicDemoEngineerSales {
   final PublicDemoEngineerInterviewRecord? interviewRecord;
   final int mental;
   final int trust;
+
+  /// One-time guard for Issue #167 FIRST-FUN-YEAR-LATE-GAME-1 Phase 1's
+  /// founder follow-up decision (`PublicDemoFounderFollowUp` in
+  /// public_demo_founder_follow_up.dart): the internal month this engineer's
+  /// decision was made, or `null` if it has not happened yet this fiscal
+  /// year. Absent on any save written before this field existed —
+  /// `fromJson` defaults it to `null`, reproducing exactly the
+  /// not-yet-decided state those saves already had.
+  final int? founderFollowUpMonth;
 
   /// Public Demo currently uses the existing morale value as the
   /// Motivation-equivalent, matching the shared Engineer model semantics.
@@ -109,6 +119,7 @@ class PublicDemoEngineerSales {
     PublicDemoEngineerInterviewRecord? interviewRecord,
     int? mental,
     int? trust,
+    int? founderFollowUpMonth,
   }) => PublicDemoEngineerSales(
     id: id,
     name: name,
@@ -119,6 +130,7 @@ class PublicDemoEngineerSales {
     interviewRecord: interviewRecord ?? this.interviewRecord,
     mental: mental ?? this.mental,
     trust: trust ?? this.trust,
+    founderFollowUpMonth: founderFollowUpMonth ?? this.founderFollowUpMonth,
   );
 
   Map<String, dynamic> toJson() => {
@@ -136,6 +148,7 @@ class PublicDemoEngineerSales {
     'interviewRecordEngineerId': interviewRecord?.engineerId,
     'mental': mental,
     'trust': trust,
+    'founderFollowUpMonth': founderFollowUpMonth,
   };
 
   factory PublicDemoEngineerSales.fromJson(Map<String, dynamic> json) {
@@ -177,6 +190,7 @@ class PublicDemoEngineerSales {
           : PublicDemoEngineerInterviewRecord._(engineerId: recordId),
       mental: required<int>('mental'),
       trust: required<int>('trust'),
+      founderFollowUpMonth: json['founderFollowUpMonth'] as int?,
     );
   }
 

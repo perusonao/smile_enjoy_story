@@ -37,22 +37,40 @@ This document is the current single source of truth for **how development is pri
 
 ## Current execution order
 
-**HOME完成 → 年間通しプレイ → Blocker修正 → 後半強化 → 成長実感 → 月次結果 → 年度末 → 戦略性 → バランス → Public Demo仕上げ**
+**HOME Freeze → #167 Late Game Phase 1 → Year-End Phase 1 → Active Project Visibility → 小規模UX修正 → Employee UI Phase A再評価 → 年間通しプレイ(replay) → 後半強化 → 成長実感 → 月次結果 → 戦略性 → バランス → Public Demo仕上げ**
 
 Issue番号順に機械的に実装しない。実プレイ結果を根拠に、First Fun Yearを最も改善するものを選ぶ。
+
+### HOME Freeze（2026-09-06）
+
+**HOME One-Screen Final Fit が PR #184のマージ・main CI・実機確認まで完了し、HOMEをFreezeする。** HOMEの追加レイアウト変更は禁止。HOME完成を前提としていたP0「進行中HOME UI改修を完成」系列のタスクは、HOME自体の変更としては完全終了。Employee UI Phase AおよびActive Project Visibilityは、HOMEへの先取りを禁止したまま、それぞれ社員タブ・案件/営業タブ側の独立実装として引き続き有効（下記の次順序を参照）。
 
 ### Prioritized backlog and AI processing-time budget
 
 処理時間は調査・実装・関連テスト・結果報告作成を含む概算。CI待ち時間は含めない。
 
+次順序（2026-09-06時点、詳細はUpdate history）:
+
+1. **#167 Late Game Phase 1** — 8月〜2月の「創業エンジニアのフォロー判断」実装。
+2. **Year-End Phase 1** — 年度末の振り返り演出。
+3. **Active Project Visibility** — 参画中案件の状態を社員/営業視点で可視化（HOMEへの先取り禁止）。
+4. **stale「翌月参画予定」/ 空の「○月開始結果」等の小規模UX修正**。
+5. **Employee UI Phase A 再評価** — 社員個々の状態・スキル・経歴を安全に閲覧できるUIを整える（HOMEへの先取り禁止、実装場所は社員タブ側）。
+6. **April→March human replay** — 上記反映後の年間通しプレイ監査。
+
+**#148の追加production実装は次P0として扱わない。** #183（CI高速化）はdev-efficiency用の別ラインとして記録し、gameplayより前へ出さない。
+
 | Priority | Task | Claude Code / Codex目安 | Outcome |
 |---|---|---:|---|
-| P0 | ~~進行中HOME UI改修を完成~~ — **完了**（HOME Final Density + Final Polish, PR #180。詳細はUpdate history） | 実績: 完了 | HOMEで会社状況・推奨行動・KPI・次の行動を理解できる — 達成済み |
-| P0 | Employee UI Phase A | 目安未確定 / 分割検討 | 社員個々の状態・スキル・経歴を安全に閲覧できるUIを整える（HOMEへの先取りは禁止、実装場所は社員タブ側） |
+| P0 | ~~進行中HOME UI改修を完成~~ — **完了・HOME Freeze**（HOME Final Density + Final Polish + One-Screen Final Fit, PR #180/#184。詳細はUpdate history） | 実績: 完了 | HOMEで会社状況・推奨行動・KPI・次の行動を理解できる — 達成済み。HOMEへの追加レイアウト変更は禁止 |
+| P0 | #167 Late Game Phase 1 | 実績: 完了（本エントリ） | 8月〜2月の「創業エンジニアのフォロー判断」— 詳細はUpdate history |
+| P0 | Year-End Phase 1 | 目安未確定 / 分割検討 | 年度末の振り返り演出を実装する |
 | P0 | Active Project Visibility | 目安未確定 / 分割検討 | 参画中案件の状態を社員/営業視点で可視化する（HOMEへの先取りは禁止） |
-| P0 | 4月→翌3月 First Fun Year通しプレイ | 1〜2h | 年間完走可否、退屈な期間、重大問題を実プレイで特定 |
+| P0 | stale「翌月参画予定」/ 空の「○月開始結果」等の小規模UX修正 | 目安未確定 | 既存の小規模だが目につくUX不整合を解消する |
+| P0 | Employee UI Phase A（再評価） | 目安未確定 / 分割検討 | 社員個々の状態・スキル・経歴を安全に閲覧できるUIを整える（HOMEへの先取りは禁止、実装場所は社員タブ側） |
+| P0 | 4月→翌3月 First Fun Year通しプレイ（human replay） | 1〜2h | 上記反映後、年間完走可否・退屈な期間・重大問題を実プレイで再特定 |
 | P0 | 年間進行Blocker修正 | 1件0.5〜3h | 月送り不能、二重処理、セーブ破壊等を除去 |
-| P1 | 9月〜2月コンテンツ強化 | 4〜8h / 分割必須 | 年度後半にも判断・イベント・変化が発生 |
+| P1 | 9月〜2月コンテンツ強化（#167 Phase 1以降の追加分） | 4〜8h / 分割必須 | 年度後半にも判断・イベント・変化がさらに発生 |
 | P1 | 会社の成長実感強化 | 3〜6h | 社員・売上・資金・オフィス等から成長を実感 |
 | P1 | 月次結果・経営フィードバック改善 | 2〜4h | 前月比・収支理由・危険要因が次の判断につながる |
 | P1 | 年度末結果・年間評価強化 | 2〜4h | 一年間の成果を振り返り、年度完走に意味が生まれる |
@@ -179,6 +197,25 @@ Result Reportは履歴・証拠であり、この文書の代わりにはしな�
 - `docs/reports/` — 実施結果と証拠。計画変更が必要なら結果報告だけで終わらせず、この文書も更新する。
 
 ## Update history
+
+### 2026-09-06（HOME Freeze / Issue #167 Late Game Phase 1完了 / governing plan sync）
+
+- **HOME One-Screen Final Fit がPR #184のマージ・main CI・実機確認まで完了し、HOMEをFreezeする。** HOMEの追加レイアウト変更は禁止。
+- **Issue #167 FIRST-FUN-YEAR-LATE-GAME-1 Phase 1を実装。** 設計監査（Issue #167コメント、`READY WITH CONDITIONS`）が推奨した「参画中エンジニアへのフォロー投資」方向を、監査どおり**創業エンジニア（`publicDemoInitialEngineers`: eng-01/eng-02）限定**でPhase 1として実装。
+  - トリガー: 対象エンジニアが8月〜2月（internal month 8-14）の間、実際に案件へ参画中（`PublicDemoWorkflowState.assignedEngineerIds`）であり、当該年度でまだこの決定を行っていないこと（1エンジニア1回、`PublicDemoEngineerSales.founderFollowUpMonth`で管理）。
+  - 選択肢: 「そのまま任せる」（無料・メンタル/信頼small減）「声をかける」（無料・small増）「支援に投資する」（¥50,000・larger増）の3択で、単一の明白な正解を作らない。
+  - 既存のPublicDemoEngineerSales.mental/trustフィールド（既存だが従来どこからも更新されていなかった）を再利用し、新規のrelationship/employee-stateシステムは追加していない。
+  - 新規追加はnullableな`PublicDemoEngineerSales.founderFollowUpMonth`（1フィールドのみ、`fromJson`は既存save向けに`null`へ後方互換デフォルト）。Finance側は既存の`monthTrainingSpent`バケットを再利用し、新しいFinance/save-schemaカテゴリは追加していない（`PublicDemoSaveCodec`の資金整合チェックとの整合のため）。
+  - HOME Recommended Actionには新規`HomeRecommendedActionKind.founderFollowUp`を追加したが、**Month Guardの「未対応の推奨アクション」警告からは明示的に除外**した — この決定は8月〜2月の間ずっと有効なままにしてよい設計（「毎月強制モーダルにする必要はない」）であり、含めると月送りのたびに警告が出る回帰を招くため。
+  - 詳細・監査結果・変更ファイル・テスト結果は `docs/reports/SES_ISSUE-167_Late-Game-Phase1_Implementation_Result.md` を参照。
+- **次のproduction priorityを以下の順に更新する**（本文書冒頭「Current execution order」および直後のPrioritized backlog tableも同時に更新済み）:
+  1. Year-End Phase 1
+  2. Active Project Visibility
+  3. stale「翌月参画予定」/ 空の「○月開始結果」等の小規模UX修正
+  4. Employee UI Phase A 再評価
+  5. April→March human replay
+- **#148の追加production実装は次P0として扱わない。** #183（CI高速化）はdev-efficiency用の別ラインとして記録し、gameplayより前へ出さない — これは新しい方針ではなく、本ユーザー指示に基づく既存優先順位の明文化。
+- Domain/Save/Balance/Finance truth/Month transition/Recovery/Sales/Employee/SkillSheet domain logic/HOME layout/Year-End仕様/workflowは、上記フィールド追加とMonth Guard除外を除き無変更。
 
 ### 2026-09-05（HOME Final Polish 完了 / governing plan sync — PR #180 Codex P2対応）
 

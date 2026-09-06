@@ -607,9 +607,10 @@ Employee UI Phase Aへは進んでいない。
 
 ## SCREENSHOT DOWNLOAD
 
-実装完了後、PR #182のbranch (`claude/ses-home-final-visual-lfizhq`) へpushし、
-GitHub上でファイルの存在を確認したうえでURLを記載する（push前の推測URLは
-記載しない）。
+PR #182のbranch (`claude/ses-home-final-visual-lfizhq`)、コミット
+`466e134bb268804cfcfe7964400400d65eb7a7ce`へpush後、GitHub API
+（`get_file_contents`）でファイルの存在を確認し、続けて各raw URLに対して
+`curl`でHTTP 200が返ることを実際に確認した（推測URLではない）。
 
-- 360×800: `__SCREENSHOT_URL_360x800__`
-- 390×844: `__SCREENSHOT_URL_390x844__`
+- 360×800: https://raw.githubusercontent.com/perusonao/smile_enjoy_story/466e134bb268804cfcfe7964400400d65eb7a7ce/docs/reports/screenshots/SES_HOME-FINAL-VISUAL-MATCH_AFTER_360x800.png
+- 390×844: https://raw.githubusercontent.com/perusonao/smile_enjoy_story/466e134bb268804cfcfe7964400400d65eb7a7ce/docs/reports/screenshots/SES_HOME-FINAL-VISUAL-MATCH_AFTER_390x844.png

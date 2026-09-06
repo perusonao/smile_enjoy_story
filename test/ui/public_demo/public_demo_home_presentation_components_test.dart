@@ -100,10 +100,16 @@ void main() {
       expect(find.text('営業残: 4回'), findsOneWidget);
       expect(find.text('待機: 2名'), findsOneWidget);
       expect(find.text('今月の固定費: ¥85,000'), findsOneWidget);
-      // Neutral category chips, not a priority/urgency claim.
-      expect(find.text('営業'), findsOneWidget);
-      expect(find.text('採用'), findsOneWidget);
-      expect(find.text('資金'), findsOneWidget);
+      // SES HOME Final Visual Match (structural pass): the Visual SSOT's
+      // `icon → title → fact` tiles show a category icon, not a visible
+      // category-name chip — [item.category] itself is unchanged and
+      // still reaches assistive technology verbatim via Semantics.
+      expect(find.text('営業'), findsNothing);
+      expect(find.text('採用'), findsNothing);
+      expect(find.text('資金'), findsNothing);
+      expect(find.bySemanticsLabel('営業'), findsOneWidget);
+      expect(find.bySemanticsLabel('採用'), findsOneWidget);
+      expect(find.bySemanticsLabel('資金'), findsOneWidget);
       expect(find.text('High Priority'), findsNothing);
       expect(find.text('重要'), findsNothing);
       // SES HOME Final Density: the CTA is icon-only now — its label never
@@ -172,8 +178,12 @@ void main() {
   });
 
   testWidgets(
-    'important tasks separates rows with a divider and never duplicates '
-    'a category chip as a priority claim across items',
+    // SES HOME Final Visual Match: the former single vertical list
+    // (separated by `Divider`s) is now a 2-column grid — the first two
+    // items share one row, and a third starts a second row instead of
+    // squeezing three columns into 360px.
+    'important tasks lays items out two per row, in order, with no '
+    'priority claim duplicated across items',
     (tester) async {
       await tester.pumpWidget(
         host(
@@ -182,8 +192,106 @@ void main() {
           ),
         ),
       );
-      expect(find.byType(Divider), findsNWidgets(2));
       expect(tester.takeException(), isNull);
+
+      final sales = tester.getRect(find.text('営業活動を進める'));
+      final recruiting = tester.getRect(find.text('採用・面談に対応する'));
+      final finance = tester.getRect(find.text('資金計画を確認する'));
+
+      // Row 1: 営業/採用 share the same row, 営業 on the left.
+      expect(sales.top, recruiting.top);
+      expect(sales.left, lessThan(recruiting.left));
+      // Row 2: 資金 starts a new row below both, on the left column.
+      expect(finance.top, greaterThan(sales.bottom));
+      expect(finance.left, sales.left);
+    },
+  );
+
+  testWidgets(
+    // PR #182 Codex P2: a lone item used to still sit in a half-width
+    // `Expanded` beside an empty, reserved right column. It now spans the
+    // full row instead of leaving that half unused.
+    'important tasks with a single item spans the full row width, not a '
+    'half-width column with an empty reserved half',
+    (tester) async {
+      await tester.pumpWidget(
+        host(
+          PublicDemoImportantTasksSection(
+            items: [
+              PublicDemoImportantTaskItem(
+                title: '資金計画を確認する',
+                fact: '今月の固定費: ¥85,000',
+                category: '資金',
+                ctaLabel: '確認する',
+                onPressed: _noOp,
+              ),
+            ],
+          ),
+        ),
+      );
+      expect(find.text('資金計画を確認する'), findsOneWidget);
+      expect(find.text('今月の固定費: ¥85,000'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+
+      final section = tester.getRect(
+        find.byKey(const Key('public-demo-important-tasks')),
+      );
+      final cta = tester.getRect(
+        find.byKey(const Key('important-task-cta-資金計画を確認する')),
+      );
+      // The lone tile's own trailing CTA sits near the section's right
+      // edge — proof the tile spans (close to) the full row — rather than
+      // stopping around the midpoint the way an unused, still-reserved
+      // right-hand `Expanded` would leave it at.
+      expect(cta.right, greaterThan(section.left + section.width * 0.7));
+    },
+  );
+
+  testWidgets(
+    // PR #182 Codex P2: the 2-column grid's half-width cell used to
+    // ellipsize the finance task's only supporting fact — the real April
+    // production string ("今月の固定費: ¥50,000") — at both target widths.
+    // `item.fact` is now allowed to wrap onto a 2nd line instead of
+    // truncating, so the full amount stays readable.
+    'important tasks: the finance fact stays fully readable (not '
+    'ellipsized) in the 2-column grid at both target widths',
+    (tester) async {
+      for (final width in [360.0, 390.0]) {
+        tester.view.physicalSize = Size(width, 1000);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
+
+        await tester.pumpWidget(
+          host(
+            PublicDemoImportantTasksSection(
+              items: [
+                PublicDemoImportantTaskItem(
+                  title: '営業活動を進める',
+                  fact: '営業残: 4回',
+                  category: '営業',
+                  ctaLabel: '対応する',
+                  onPressed: _noOp,
+                ),
+                PublicDemoImportantTaskItem(
+                  title: '資金計画を確認する',
+                  fact: '今月の固定費: ¥50,000',
+                  category: '資金',
+                  ctaLabel: '確認する',
+                  onPressed: _noOp,
+                ),
+              ],
+            ),
+          ),
+        );
+        expect(tester.takeException(), isNull);
+        expect(
+          find.text('今月の固定費: ¥50,000'),
+          findsOneWidget,
+          reason: 'the full amount must be readable at width $width, not '
+              'ellipsized (e.g. "今月の固定費: ¥5…")',
+        );
+      }
     },
   );
 

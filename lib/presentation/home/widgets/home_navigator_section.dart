@@ -36,8 +36,29 @@ class HomeNavigatorMetrics {
   // often headline + CTA + advice bubble too) already measures well past
   // either size, so growing the portrait costs no extra card height — see
   // [compactCeiling]'s own doc for the measured total.
+  //
+  // SES HOME Final Visual Match: raised again, from 60/68, to match the
+  // Visual SSOT's "大きなひより画像" — an 88×88pt portrait at 360×800. Still
+  // free in height: the text column stays the taller of the two (see
+  // [compactCeiling]) and this only narrows the column's own width, which
+  // the section's widget test (measured before/after) confirms does not
+  // push its wrapped text past the existing budget.
+  //
+  // SES HOME Final Visual Match (structural pass): a circular 80/88pt crop
+  // of [AssetPaths.navigatorHomeCompact] (a 512×768 upper-body portrait)
+  // still read as "a small icon", not "the navigator" — a circle that size
+  // shows mostly just her face. `portraitWidth`/`portraitHeight` below
+  // replace the single square `portraitSize` with a portrait-oriented
+  // rounded rectangle instead, so `BoxFit.cover` keeps her shoulders/torso
+  // in frame the way the Visual SSOT's own tall photo does. No new asset —
+  // same bundled file, just no longer forced into a circle. Heights
+  // (150/158) are chosen to stay under the text column's own measured
+  // height (171/174pt — see [compactCeiling]'s doc) so this is still free:
+  // the Row's height stays governed by the text column, confirmed by the
+  // section's own before/after measurement.
   static const HomeNavigatorLayout compact = HomeNavigatorLayout(
-    portraitSize: 60,
+    portraitWidth: 80,
+    portraitHeight: 150,
     nameFontSize: 12,
     roleFontSize: 10,
     messageFontSize: 11.5,
@@ -45,7 +66,8 @@ class HomeNavigatorMetrics {
   );
 
   static const HomeNavigatorLayout normal = HomeNavigatorLayout(
-    portraitSize: 68,
+    portraitWidth: 94,
+    portraitHeight: 158,
     nameFontSize: 13,
     roleFontSize: 10.5,
     messageFontSize: 12,
@@ -117,21 +139,23 @@ class HomeNavigatorMetrics {
 @immutable
 class HomeNavigatorLayout {
   const HomeNavigatorLayout({
-    required this.portraitSize,
+    required this.portraitWidth,
+    required this.portraitHeight,
     required this.nameFontSize,
     required this.roleFontSize,
     required this.messageFontSize,
     required this.horizontalGap,
   });
 
-  final double portraitSize;
+  final double portraitWidth;
+  final double portraitHeight;
   final double nameFontSize;
   final double roleFontSize;
   final double messageFontSize;
   final double horizontalGap;
 
   bool get isCompact =>
-      portraitSize == HomeNavigatorMetrics.compact.portraitSize;
+      portraitWidth == HomeNavigatorMetrics.compact.portraitWidth;
 }
 
 /// NAVIGATOR-1A — 佐倉 ひより, on HOME.
@@ -619,20 +643,21 @@ class _NavigatorPortraitState extends State<_NavigatorPortrait> {
     final fallback = Icon(
       Icons.person,
       key: const Key('home-navigator-portrait-fallback'),
-      size: widget.layout.portraitSize * 0.6,
+      size: widget.layout.portraitWidth * 0.6,
       color: scheme.onSurfaceVariant,
     );
 
     return SizedBox(
-      height: widget.layout.portraitSize,
-      width: widget.layout.portraitSize,
+      height: widget.layout.portraitHeight,
+      width: widget.layout.portraitWidth,
       child: DecoratedBox(
         decoration: BoxDecoration(
           color: scheme.surfaceContainerHighest,
-          shape: BoxShape.circle,
+          borderRadius: BorderRadius.circular(16),
           border: Border.all(color: scheme.outlineVariant),
         ),
-        child: ClipOval(
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(14),
           child: path == null
               ? Center(child: fallback)
               : Semantics(

@@ -68,6 +68,7 @@ class HomeOfficeStageMember {
     required this.id,
     required this.name,
     this.portraitAssetPath,
+    this.status,
   });
 
   /// The employee's authoritative id, used as the deterministic portrait
@@ -84,15 +85,33 @@ class HomeOfficeStageMember {
   /// image decode happens to fail at runtime.
   final String? portraitAssetPath;
 
+  /// A truthful, already-computed per-employee status label (e.g. `待機`,
+  /// `営業準備`), or `null` to render no status pill at all.
+  ///
+  /// SES HOME Final Visual Match (structural pass): this is deliberately
+  /// **not** the 参画/待機 aggregate the note at the top of this file
+  /// explains three authorities can disagree about — it is this one
+  /// employee's own sales-pipeline stage, the exact same value the 社員 tab
+  /// already shows for them (`engineerStatus` in
+  /// `public_demo_01_placeholder_screen.dart`), read once from its single
+  /// authority (`PublicDemoEngineerSales.stage`) and displayed verbatim.
+  /// Nothing here counts, sums, or cross-checks it against
+  /// `engineersWaiting`/`workflow.assignments`, so it cannot produce the
+  /// cross-authority contradiction that note warns about. `null` (never an
+  /// invented placeholder) for a member this stage-vocabulary does not
+  /// apply to.
+  final String? status;
+
   @override
   bool operator ==(Object other) =>
       other is HomeOfficeStageMember &&
       other.id == id &&
       other.name == name &&
-      other.portraitAssetPath == portraitAssetPath;
+      other.portraitAssetPath == portraitAssetPath &&
+      other.status == status;
 
   @override
-  int get hashCode => Object.hash(id, name, portraitAssetPath);
+  int get hashCode => Object.hash(id, name, portraitAssetPath, status);
 }
 
 /// Everything the Office Stage needs to draw one frame of the company

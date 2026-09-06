@@ -359,6 +359,13 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
   /// engineer-only count under that label. [waitingCount] is unaffected:
   /// the 総務 employee is not part of the assigned/waiting engineer
   /// concept, so `engineersWaiting` still names exactly who it always did.
+  ///
+  /// SES HOME Final Visual Match (structural pass): each member's [status]
+  /// is `engineerStatus(engineer)` — the exact same string, from the exact
+  /// same single authority (`engineer.stage`), the 社員 tab already shows
+  /// for them. See [HomeOfficeStageMember.status]'s own doc for why this
+  /// is a different, safe fact from the 参画/待機 aggregate this getter's
+  /// own doc above already explains the Office Stage must never restate.
   HomeOfficeStageDisplay get _officeStageDisplay => HomeOfficeStageDisplay(
     members: [
       for (final engineer in workflow.engineers)
@@ -366,6 +373,7 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
           id: engineer.id,
           name: engineer.name,
           portraitAssetPath: homeOfficeStagePortraitFor(engineer.id),
+          status: engineerStatus(engineer),
         ),
     ],
     employeeCount: _homeDashboardData.totalEmployeeCount,
@@ -2887,7 +2895,7 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
                 const SizedBox(height: 3),
                 PublicDemoMonthlyPrimaryCtaSection(action: monthlyAction),
               ],
-              const SizedBox(height: 3),
+              const SizedBox(height: 2),
               // Section 5: employee summary/office card only — the full
               // employee roster/detail lives on the 社員 tab (see
               // [_buildEmployeesTab]), not here. Bottom nav "社員" now
@@ -2896,7 +2904,12 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
               HomeOfficeStageSection(display: _officeStageDisplay),
               // SES HOME One-Screen Final Fit: trimmed again, from 6 — see
               // the gap above this block for why.
-              const SizedBox(height: 3),
+              //
+              // SES HOME Final Visual Match (structural pass): trimmed once
+              // more, from 3, to buy back safety margin for the enlarged
+              // employee cards this pass adds — real inter-section slack,
+              // not a touch target.
+              const SizedBox(height: 2),
               // Section 6: "今月の重要タスク" — up to three truthful
               // tasks built only from existing authoritative facts
               // (see _importantTasks's own doc). This is now the sole

@@ -722,14 +722,22 @@ void main() {
               .height;
         }
 
+        // SES HOME Final Visual Match (structural pass): the portrait is
+        // now a fixed-height rectangle (not sized around text), so at the
+        // smallest scale steps the card's height can be pinned by the
+        // portrait rather than the text column without anything being
+        // clipped — a plateau here is not the same failure a shrink would
+        // be. `greaterThanOrEqualTo` still catches an actual regression
+        // (height going down), and the strict 2x check below still proves
+        // the text column genuinely takes real room once it exceeds the
+        // portrait's own fixed height.
         for (var i = 1; i < _scales.length; i++) {
           expect(
             heights[_scales[i]]!,
-            greaterThan(heights[_scales[i - 1]]!),
+            greaterThanOrEqualTo(heights[_scales[i - 1]]!),
             reason:
-                'a card that does not grow between textScale '
-                '${_scales[i - 1]} and ${_scales[i]} is absorbing the '
-                'growth by clipping',
+                'a card that shrinks between textScale '
+                '${_scales[i - 1]} and ${_scales[i]} is clipping content',
           );
         }
         expect(
@@ -752,7 +760,7 @@ void main() {
       expect(height, lessThanOrEqualTo(HomeNavigatorMetrics.compactCeiling));
       expect(
         height,
-        greaterThan(HomeNavigatorMetrics.compact.portraitSize),
+        greaterThanOrEqualTo(HomeNavigatorMetrics.compact.portraitHeight),
         reason: 'the card must include readable identity and an open control',
       );
     });
@@ -791,8 +799,8 @@ void main() {
           .getRect(find.byKey(const Key('home-navigator-portrait')))
           .width;
 
-      expect(compact, HomeNavigatorMetrics.compact.portraitSize);
-      expect(normal, HomeNavigatorMetrics.normal.portraitSize);
+      expect(compact, HomeNavigatorMetrics.compact.portraitWidth);
+      expect(normal, HomeNavigatorMetrics.normal.portraitWidth);
       expect(compact, lessThan(normal));
       expect(
         HomeNavigatorMetrics.compactWidthThreshold,

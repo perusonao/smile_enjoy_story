@@ -21,12 +21,47 @@
 // (>=48 logical px) at an enlarged TextScaler (1.3, 2.0) — where HOME is
 // explicitly allowed to grow past one screen and need scrolling instead of
 // truncating text.
+//
+// PR #181 Codex P2: the suite used to pump a bare `MaterialApp` — no
+// `theme` at all — so it never carried production's real `SesTheme.build()`
+// (the exact call `main.dart`'s `SesApp.build` makes:
+// `MaterialApp(theme: SesTheme.build(), ...)`). `_pump` now applies that
+// same call, which is a genuine layout fix: `SesTheme.build()`'s
+// `filledButtonThemeData`/`cardTheme`/`navigationBarTheme` set real
+// padding/minimumSize/shape this suite's measurements depend on, not just
+// colors.
+//
+// `_loadProductionFonts` additionally registers the exact bundled
+// `NotoSansJP` `.woff2` bytes `pubspec.yaml` declares, for the same reason
+// — but this is verified *not* to change any measurement in this file, and
+// it structurally cannot: `flutter_tools` (`test/runner.dart`,
+// `flutter_tester_device.dart`) launches every `flutter test` process with
+// `--use-test-fonts --disable-asset-fonts` unconditionally — there is no
+// flag to opt out. That forces ALL text in ANY `flutter test` in this repo
+// (not something this PR introduced) onto Flutter's deterministic
+// test-only glyph substitution, ignoring both the app's declared assets
+// and anything registered via `FontLoader`. Confirmed empirically: with
+// the real 2MB `NotoSansJP-Regular.subset.woff2` loaded, a Japanese string
+// styled with `fontFamily: 'NotoSansJP'` measures byte-identical to the
+// same string with no font loaded at all, and to the same string given an
+// entirely unregistered `fontFamily: 'Ahem'` — three different (or absent)
+// fonts, one identical `Size`. So the glyph-metric half of "same Theme/Font
+// condition as production" cannot be verified inside `flutter test` at
+// all; doing so for real would need a browser-rendered run
+// (`flutter test --platform chrome`) or a full `integration_test`/E2E
+// pass, which is out of scope for this minimal fix (see this PR's
+// already-documented decision to skip full E2E for a pure-layout change).
+// `_loadProductionFonts` is kept anyway — it is harmless, and becomes
+// correct the moment this suite ever runs somewhere that does honor
+// registered fonts.
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:smile_enjoy_story/game/persistence/public_demo_save_service.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_aggregate.dart';
 import 'package:smile_enjoy_story/ui/public_demo/public_demo_01_placeholder_screen.dart';
+import 'package:smile_enjoy_story/ui/theme.dart';
 
 class _FixedSaveService extends PublicDemoSaveService {
   _FixedSaveService(this._aggregate);
@@ -40,6 +75,18 @@ class _FixedSaveService extends PublicDemoSaveService {
 
   @override
   Future<bool> clear() async => true;
+}
+
+/// Registers the exact `.woff2` bytes `pubspec.yaml` declares for
+/// [SesTheme.fontFamily] with the test binding's font registry. See the
+/// file-level doc above for why this is verified to have no effect under
+/// plain `flutter test` (the runner forces `--disable-asset-fonts`) — kept
+/// as the correct, harmless call regardless.
+Future<void> _loadProductionFonts() async {
+  final loader = FontLoader(SesTheme.fontFamily)
+    ..addFont(rootBundle.load('assets/fonts/NotoSansJP-Regular.subset.woff2'))
+    ..addFont(rootBundle.load('assets/fonts/NotoSansJP-Bold.subset.woff2'));
+  await loader.load();
 }
 
 /// The unscrolled HOME viewport — the raw `ListView`'s own rect. Not
@@ -67,6 +114,11 @@ Future<void> _pump(
   addTearDown(tester.view.reset);
   await tester.pumpWidget(
     MaterialApp(
+      // PR #181 Codex P2: the same theme call `main.dart`'s `SesApp.build`
+      // passes to its own `MaterialApp` — this is what actually resolves
+      // `SesTheme.fontFamily` (NotoSansJP) onto every `Text` below, not
+      // just a name that happens to match.
+      theme: SesTheme.build(),
       home: MediaQuery(
         data: MediaQueryData(
           size: size,
@@ -82,6 +134,9 @@ Future<void> _pump(
 }
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+  setUpAll(_loadProductionFonts);
+
   group('SES HOME One-Screen Final Fit: the initial April HOME view needs '
       'no scrolling at all, at TextScaler 1.0', () {
     for (final size in _targetSizes) {

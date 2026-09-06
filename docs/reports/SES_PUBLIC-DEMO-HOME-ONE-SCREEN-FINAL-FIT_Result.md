@@ -4,11 +4,14 @@
 
 Public Demo HOME の初期4月画面を、360×800 / 390×844 の両方で「縦スクロール不要の1画面」に完全に収めた。HOME Final Polish で確定した情報階層・機能・文言（KPI 4+3、ひより primary CTA 1個、Quick Access なし、「他の行動を確認する」なし、「スキルシート」表記、月次処理、社員の様子、今月の重要タスク、Bottom Navigation、既存画像アセット、既存の遷移/操作/状態）は一切変更していない。変更したのは各セクション間の余白・カード内パディングのみ（純粋なレイアウト調整）。
 
+**追記（PR #181 Codex P2 対応）**: 検証widget testが本番Theme/Font条件を反映していないという指摘を受け、`test/ui/public_demo/public_demo_01_home_one_screen_final_fit_test.dart` に本番と同じ `SesTheme.build()` を適用し、本番の `NotoSansJP` フォントアセット読み込みを追加した。詳細は末尾の「Codex P2 対応」節を参照。
+
 ## BASE
 
-- **BASE SHA**: `e0172ee7bf0e39cfa9d297c1f56452ca4b18cbee`（`origin/main`、"Merge pull request #180 from perusonao/claude/ses-home-final-polish-3odl0v"）
+- **BASE SHA（本タスク開始時点）**: `e0172ee7bf0e39cfa9d297c1f56452ca4b18cbee`（`origin/main`、"Merge pull request #180 from perusonao/claude/ses-home-final-polish-3odl0v"）
 - 作業ブランチ: `claude/ses-home-one-screen-fit-9w0app`（origin/main から作り直し。既存ブランチには未マージの独自コミットがなかったため `git checkout -B` でリセットして開始）
 - **PR番号**: [#181](https://github.com/perusonao/smile_enjoy_story/pull/181)
+- **Codex P2対応の CURRENT HEAD（対応開始時点）**: `ccc1f1a50b85da049fc5f5331c78f4cd1438f5ff`
 
 ## Phase 1: READ-ONLY 実測（修正前 / Before）
 
@@ -157,3 +160,53 @@ TextScaler 1.0。
 | 390×844 overflow | +44px | **0px**（余裕+39px） |
 
 初期4月のPublic Demo HOMEは、360×800・390×844の両方で縦スクロール不要の1画面に収まることを、目視ではなくwidget testの数値（`maxScrollExtent`・各セクションの`Rect`）で確認した。
+
+---
+
+## Codex P2 対応（本番Theme/Font条件でのHOME widget test検証）
+
+### 指摘内容
+
+`public_demo_01_home_one_screen_final_fit_test.dart` が bare `MaterialApp`（`theme` 未指定）を使用しており、本番の `SesTheme.build()` / `NotoSansJP` タイポグラフィを反映したレイアウト検証になっていなかった。
+
+### 対応方法（production theme適用方法）
+
+`test/ui/public_demo/public_demo_01_home_one_screen_final_fit_test.dart` の `_pump` ヘルパーを修正し、`main.dart` の `SesApp.build()` が実際に行っているのと同じ呼び出し `MaterialApp(theme: SesTheme.build(), ...)` を適用した。あわせて、`pubspec.yaml` が `NotoSansJP` として宣言している実際の `.woff2` バイト列（`assets/fonts/NotoSansJP-Regular.subset.woff2` / `-Bold.subset.woff2`）を `FontLoader` でテストのフォントレジストリに登録する `_loadProductionFonts()` を追加し、`setUpAll` で1回だけ実行するようにした。
+
+### 重要な検証結果（Flutter SDKの制約の発見）
+
+対応の過程で、**`flutter test` はテスト対象のフォントに関わらず実グリフメトリクスを反映できない**ことを実測で確認した。
+
+- `flutter_tools`（`packages/flutter_tools/lib/src/test/runner.dart` および `flutter_tester_device.dart`）は `flutter test` 実行時、テスト対象の `flutter_tester` プロセスに **`--use-test-fonts --disable-asset-fonts` を無条件で付与**しており、これを無効化するCLIオプションは存在しない。
+- 実機検証: 実際の `NotoSansJP-Regular.subset.woff2`（2,022,128 bytes）を `FontLoader('NotoSansJP')` で正しく読み込み・登録（`loader.load()` は例外なく成功）した上で、日本語文字列を (a) フォント未指定、(b) `fontFamily: 'NotoSansJP'`（登録済み）、(c) `fontFamily: 'Ahem'`（**未登録**）の3通りで `Text` としてレンダリングして `tester.getSize()` を比較したところ、**3パターンとも完全に同一の `Size(220.0, 20.0)`** となった。これは実フォントの登録有無・フォント種別に関わらず、`flutter test` が常に決定論的なテスト専用グリフに置き換えていることを示す。
+- したがって、本番と同一の実フォントグリフメトリクスをもって高さを計測することは、通常の `flutter test`（`flutter_tester`、headless、software rendering）では**構造的に不可能**であり、これはこのPRが持ち込んだ制約ではなく、このリポジトリの既存1553テストすべてに等しく当てはまるFlutter SDK自体の制約である。これを回避するには `flutter test --platform chrome`（ブラウザ実行）または `integration_test`/フルE2E が必要で、「最小修正」の範囲を超える。
+
+### 実施した最小修正の範囲
+
+- `SesTheme.build()` の適用は**実際にレイアウトへ影響しうる本番Theme条件**（`filledButtonThemeData`・`cardTheme`・`navigationBarTheme` 等のpadding/minimumSize/shape）を正しく反映させるため、そのまま適用した。
+- `_loadProductionFonts()`（実フォント読み込み）は上記のとおり `flutter test` では計測結果に影響しないことを確認済みだが、無害であり、将来 `flutter test` の挙動が変わった場合や別の実行方式（ブラウザ/統合テスト）で実行された場合に正しく機能するため、そのまま残した。テストファイルの先頭コメントにこの制約と実測結果を明記した。
+
+### 実測結果（本番Theme + フォント登録適用後）
+
+上記のとおりフォント登録は計測に影響しないため、**Before（Theme未適用）と After（Theme適用後）の実測値は完全に同一**だった。
+
+| | 360×800 | 390×844 |
+|---|---|---|
+| overflow（`maxScrollExtent`） | **0px**（変更前と同じ） | **0px**（変更前と同じ） |
+| 余裕（important-tasks bottom と viewport bottom の差） | 8px（変更なし） | 39px（変更なし） |
+
+指示された「もし本番テーマ適用後に360×800でスクロールが発生した場合のみ、非コンテンツ余白を最小限追加調整する」の条件は発生しなかったため（`maxScrollExtent` は Theme適用前後で 0px のまま変化なし）、**追加のpadding/gap調整は行っていない**。KPI/文言/情報階層/Domain/Save/Balance/Finance/Month transition/Sales/Employeeロジック/Employee UI Phase A/Active Project Visibility/workflowはすべて無変更。
+
+### テスト（Codex P2対応分）
+
+- `flutter analyze`: **No issues found!**
+- `test/ui/public_demo/public_demo_01_home_one_screen_final_fit_test.dart`: 9/9 PASS（本番Theme + フォント登録適用後も `maxScrollExtent == 0` を維持）
+- Focused HOME regressionスイート（`test/presentation/home/` + 9つの `public_demo_01_home_*` 関連ファイル + 本ファイル）: **342/342 PASS**
+- PR前 `flutter test` フル実行: 実行済み・結果は下記「Codex P2対応後のfull test結果」に記載
+
+### Changed files（Codex P2対応分）
+
+- `test/ui/public_demo/public_demo_01_home_one_screen_final_fit_test.dart`（`_pump` に `theme: SesTheme.build()` を追加、`_loadProductionFonts()` を新設して `setUpAll` で実行、ファイル先頭コメントに制約の実測結果を追記）
+- `docs/reports/SES_PUBLIC-DEMO-HOME-ONE-SCREEN-FINAL-FIT_Result.md`（本節を追記）
+
+production/domain/save/balance/finance/month transition/sales・employeeロジックの変更は **なし**（テストファイルとレポートのみの変更）。

@@ -100,10 +100,16 @@ void main() {
       expect(find.text('営業残: 4回'), findsOneWidget);
       expect(find.text('待機: 2名'), findsOneWidget);
       expect(find.text('今月の固定費: ¥85,000'), findsOneWidget);
-      // Neutral category chips, not a priority/urgency claim.
-      expect(find.text('営業'), findsOneWidget);
-      expect(find.text('採用'), findsOneWidget);
-      expect(find.text('資金'), findsOneWidget);
+      // SES HOME Final Visual Match (structural pass): the Visual SSOT's
+      // `icon → title → fact` tiles show a category icon, not a visible
+      // category-name chip — [item.category] itself is unchanged and
+      // still reaches assistive technology verbatim via Semantics.
+      expect(find.text('営業'), findsNothing);
+      expect(find.text('採用'), findsNothing);
+      expect(find.text('資金'), findsNothing);
+      expect(find.bySemanticsLabel('営業'), findsOneWidget);
+      expect(find.bySemanticsLabel('採用'), findsOneWidget);
+      expect(find.bySemanticsLabel('資金'), findsOneWidget);
       expect(find.text('High Priority'), findsNothing);
       expect(find.text('重要'), findsNothing);
       // SES HOME Final Density: the CTA is icon-only now — its label never

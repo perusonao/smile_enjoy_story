@@ -290,19 +290,24 @@ void main() {
       );
       expect(find.text('社員'), findsNWidgets(2));
 
-      // 待機 is the one label that legitimately appears outside HOME: it is
-      // also each waiting engineer's own status badge, which is a different
-      // statement (this employee is waiting) from the KPI's (two employees
-      // are waiting). Pinned exactly rather than loosened to findsWidgets —
-      // one KPI tile on HOME, and (PUBLIC-DEMO-HOME-UI-3B) April's two
-      // waiting engineers' own badges on 社員, their own tab now — checked
-      // separately since the two tabs are never built at once.
+      // 待機 is the one label that legitimately appears more than once: it
+      // is also each waiting engineer's own truthful status (SES HOME
+      // Final Visual Match structural pass — 社員の様子's own per-employee
+      // status card, next to their portrait, is that employee's own
+      // sales-pipeline stage, not a restatement of the KPI's aggregate
+      // count; see HomeOfficeStageMember.status's own doc). `inHome` is
+      // scoped to PublicDemoHomeDashboardSection specifically (month
+      // header/KPI/navigator only — 社員の様子 is a sibling section, not
+      // inside it), so the KPI tile there is still the only one — the
+      // office-stage cards are what take the unscoped, whole-HOME count
+      // from 1 to 3 below.
       expect(inHome(find.text('待機')), findsOneWidget);
       expect(kpiTileValue('waiting', '2名'), findsOneWidget);
       expect(
         find.text('待機'),
-        findsOneWidget,
-        reason: 'only the KPI tile is on HOME now',
+        findsNWidgets(3),
+        reason: 'the KPI tile plus both April engineers\' own 社員の様子 '
+            'status cards are on HOME now',
       );
       await switchPublicDemoTab(tester, PublicDemoTab.employees);
       expect(
@@ -802,9 +807,11 @@ void main() {
         await tester.pumpAndSettle();
         expect(tasks, findsOneWidget);
         expect(find.text('今月の重要タスク'), findsOneWidget);
-        // Scoped to the section itself: '資金' only ever appears here.
+        // SES HOME Final Visual Match (structural pass): the 資金 category
+        // is now an icon, not visible text — still reachable via its
+        // Semantics label, scoped to the section itself.
         expect(
-          find.descendant(of: tasks, matching: find.text('資金')),
+          find.descendant(of: tasks, matching: find.bySemanticsLabel('資金')),
           findsOneWidget,
         );
       },

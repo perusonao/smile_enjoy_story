@@ -73,7 +73,9 @@ for (const size of sizes) {
   await page.locator('flt-semantics').first().waitFor({ state: 'attached', timeout: 45_000 });
   await page.waitForTimeout(3000);
 
-  const homeOut = `${OUT_DIR}/ses-home-final-visual-match-${size.name}.png`;
+  // SES HOME Final Visual Match - Structural Layout Fix: filenames per the
+  // task's required deliverable naming, in docs/reports/screenshots/.
+  const homeOut = `${OUT_DIR}/SES_HOME-FINAL-VISUAL-MATCH_AFTER_${size.name}.png`;
   await page.screenshot({ path: homeOut });
   console.log(`saved ${homeOut}`);
 

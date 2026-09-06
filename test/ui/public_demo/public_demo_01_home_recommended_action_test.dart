@@ -1102,21 +1102,24 @@ void main() {
       expect(tasks, findsOneWidget);
 
       // 資金計画 is never gated — viewing the finance summary never
-      // becomes illegal.
+      // becomes illegal. SES HOME Final Visual Match (structural pass):
+      // the category is now an icon, reachable via its Semantics label.
       expect(
-        find.descendant(of: tasks, matching: find.text('資金')),
+        find.descendant(of: tasks, matching: find.bySemanticsLabel('資金')),
         findsOneWidget,
       );
       // '営業' is also the bottom nav's own destination label (section
       // 8) — scoped strictly to the important-tasks section so this
       // cannot pass by matching that unrelated, always-present label
-      // instead.
+      // instead. Checked via Semantics label (not visible text) so this
+      // still proves the 営業/採用 tiles themselves are absent, not merely
+      // that their category text was never painted.
       expect(
-        find.descendant(of: tasks, matching: find.text('営業')),
+        find.descendant(of: tasks, matching: find.bySemanticsLabel('営業')),
         findsNothing,
       );
       expect(
-        find.descendant(of: tasks, matching: find.text('採用')),
+        find.descendant(of: tasks, matching: find.bySemanticsLabel('採用')),
         findsNothing,
       );
     });

@@ -125,9 +125,18 @@ class PublicDemoImportantTasksSection extends StatelessWidget {
   );
 }
 
-/// One task tile in the 2-column grid: category chip, title, the one
+/// One task tile in the 2-column grid: a category icon, title, the one
 /// truthful supporting fact, and the same icon-only "proceed" CTA the
 /// former vertical row used.
+///
+/// SES HOME Final Visual Match (structural pass): the Visual SSOT's tiles
+/// show `icon → title → supporting fact`, not a separate category-name
+/// chip above the title — a real, deliberate structural change (not a
+/// padding tweak), and one that also buys back the vertical room the
+/// chip row used to spend. [item.category] itself is unchanged and never
+/// dropped from the data: [_CategoryIcon] still exposes it verbatim via
+/// [Semantics.label] for assistive technology, only sighted users now see
+/// the icon glyph instead of the text.
 class _ImportantTaskCell extends StatelessWidget {
   const _ImportantTaskCell({required this.item});
   final PublicDemoImportantTaskItem item;
@@ -149,20 +158,31 @@ class _ImportantTaskCell extends StatelessWidget {
         // [item.fact] now genuinely needing a 2nd line (see below) without
         // reopening the 360x800 no-scroll overflow One-Screen Final Fit
         // (PR #181) closed.
-        padding: const EdgeInsets.fromLTRB(8, 4, 2, 4),
+        padding: const EdgeInsets.fromLTRB(8, 3, 2, 3),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            _CategoryIcon(category: item.category),
+            const SizedBox(width: 6),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  _StatusChip(label: item.category, compact: true),
-                  const SizedBox(height: 3),
                   Text(
                     item.title,
-                    style: const TextStyle(fontWeight: FontWeight.bold),
+                    // A real Chromium screenshot (real NotoSansJP glyphs —
+                    // see item.fact's own doc a few lines below for why
+                    // these differ from `flutter test`'s substituted ones)
+                    // found the ambient default size ellipsizing a real
+                    // title ("資金計画を確認する") at this half-width
+                    // column even at maxLines: 2. An explicit, slightly
+                    // smaller size — still fully legible, still bold —
+                    // gives every real title room to fit both lines.
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 13,
+                    ),
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                   ),
@@ -171,12 +191,19 @@ class _ImportantTaskCell extends StatelessWidget {
                   // ellipsized real amounts (e.g. "今月の固定費: ¥50,000")
                   // at the half-width column this grid gives each tile —
                   // [item.fact] is the task's only supporting financial
-                  // value, so it must stay fully readable. Two lines is
-                  // real wrap room, not a truncation: every real production
-                  // fact fits within it at both 360px and 390px (checked in
-                  // the focused test), and the `overflow` fallback only
-                  // guards a fact genuinely too long for that, which never
-                  // happens with today's real content.
+                  // value, so it must stay fully readable.
+                  //
+                  // SES HOME Final Visual Match (structural pass): raised
+                  // once more, from 2 to 3. `flutter test`'s deterministic
+                  // test-font glyph substitution (see the One-Screen Final
+                  // Fit suite's own file-level doc for the documented
+                  // Flutter SDK constraint) measures every real fact string
+                  // as fitting in 2 lines at this width, but the *real*
+                  // NotoSansJP glyphs a real browser paints are wider — a
+                  // real Chromium screenshot after the category icon was
+                  // added found "今月の固定費: ¥50,000" genuinely needing a
+                  // 3rd line to stay unellipsized. `overflow` remains the
+                  // guard for a fact even that cannot rescue.
                   Text(
                     item.fact,
                     style: theme.textTheme.bodySmall?.copyWith(
@@ -373,32 +400,44 @@ class _FinanceRow extends StatelessWidget {
   );
 }
 
-/// A small neutral category chip. Deliberately styled identically for every
-/// caller (PUBLIC-DEMO-HOME-UI-3A): the approved mockup's "High Priority" /
-/// "重要" chip color implies a priority ranking Public Demo's current model
-/// has no authority for, so this never varies its color as a priority
-/// signal — see [PublicDemoImportantTaskItem]'s own doc.
-class _StatusChip extends StatelessWidget {
-  const _StatusChip({required this.label, this.compact = false});
-  final String label;
+/// The important-tasks grid's `icon → title → fact` glyph — a small neutral
+/// circle, deliberately styled identically for every category (no priority
+/// color signal; see [PublicDemoImportantTaskItem]'s own doc for why).
+/// [category] is never dropped from the accessibility tree even though
+/// sighted users see only the icon: [Semantics.label] carries it verbatim.
+class _CategoryIcon extends StatelessWidget {
+  const _CategoryIcon({required this.category});
+  final String category;
 
-  /// A slightly smaller variant used by dense inline rows (the important
-  /// task list). The default size is used elsewhere.
-  final bool compact;
+  /// Known categories map to a representative glyph; anything else
+  /// (defensively — every category this screen actually builds is one of
+  /// the three below today) falls back to a neutral generic icon rather
+  /// than guessing or inventing a new one.
+  IconData get _icon => switch (category) {
+    '営業' => Icons.campaign_outlined,
+    '採用' => Icons.person_search_outlined,
+    '資金' => Icons.savings_outlined,
+    _ => Icons.task_alt_outlined,
+  };
 
   @override
-  Widget build(BuildContext context) => Container(
-    padding: EdgeInsets.symmetric(horizontal: 8, vertical: compact ? 1 : 3),
-    decoration: BoxDecoration(
-      color: SesTheme.primaryBlue.withValues(alpha: .12),
-      borderRadius: BorderRadius.circular(12),
-    ),
-    child: Text(
-      label,
-      style: TextStyle(
-        fontSize: compact ? 11 : 12,
-        fontWeight: FontWeight.w600,
-        color: SesTheme.primaryBlue,
+  Widget build(BuildContext context) => Semantics(
+    label: category,
+    container: true,
+    child: DecoratedBox(
+      decoration: BoxDecoration(
+        color: SesTheme.primaryBlue.withValues(alpha: .12),
+        shape: BoxShape.circle,
+      ),
+      child: Padding(
+        // Kept small deliberately: at the half-width grid column this
+        // circle competes with the title/fact text for real width, and a
+        // real Chromium screenshot (real NotoSansJP glyphs, wider than
+        // `flutter test`'s substituted ones — see `item.fact`'s own doc a
+        // few lines below) found the original 6/16 pushed the finance
+        // fact into a 3rd wrapped line it did not have room for.
+        padding: const EdgeInsets.all(4),
+        child: Icon(_icon, size: 14, color: SesTheme.primaryBlue),
       ),
     ),
   );

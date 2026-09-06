@@ -137,6 +137,20 @@ enum HomeRecommendedActionKind {
     headline: '{name}の昇給要求を確認',
   ),
 
+  /// Not in the original design table — added for Issue #167
+  /// FIRST-FUN-YEAR-LATE-GAME-1 Phase 1. A company-initiated check-in for a
+  /// founding engineer who has been continuously assigned for months
+  /// without any follow-up (`PublicDemoFounderFollowUp.isEligible`).
+  /// Ranked just below [raiseRequest]: both are periodic relationship-
+  /// management decisions worth surfacing promptly, but this one is
+  /// company-initiated and optional rather than an employee-initiated ask
+  /// already waiting on an answer, so it never outranks one.
+  founderFollowUp(
+    presentationPriority: 15,
+    ctaLabel: 'フォローする',
+    headline: '{name}のフォロー',
+  ),
+
   // ---- P2: the next step of an already-started pipeline ----------------
   // Engineer field sales (months 4 and 6), closest-to-done first.
   /// Design row P2 (`stage == clientInterviewPassed`).

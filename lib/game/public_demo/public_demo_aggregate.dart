@@ -1,6 +1,7 @@
 import 'public_demo_assignment.dart';
 import 'public_demo_engineer_runtime.dart';
 import 'public_demo_fiscal_close_id.dart';
+import 'public_demo_founder_follow_up.dart';
 import 'public_demo_interview.dart';
 import 'public_demo_internal_training_transaction.dart';
 import 'public_demo_monthly_close.dart';
@@ -587,6 +588,58 @@ class PublicDemoAggregate {
       decision: decision,
     ),
   );
+
+  /// The single sanctioned way to decide a founder follow-up for
+  /// [engineerId] (Issue #167 FIRST-FUN-YEAR-LATE-GAME-1 Phase 1). A no-op
+  /// unless [PublicDemoFounderFollowUp.isEligible] already holds for this
+  /// engineer at the current month, the fiscal year is not completed, and —
+  /// for [PublicDemoFounderFollowUpDecision.investSupport] specifically —
+  /// [PublicDemoFounderFollowUp.investSupportCost] is actually affordable
+  /// and not blocked by [PublicDemoState.isFinanciallyRestricted]
+  /// (FINANCE-FAILURE-1A+1B), checked before cash is ever deducted, exactly
+  /// like [selectInternalTraining] above. This is the only place cash is
+  /// touched for this decision — [PublicDemoWorkflowState
+  /// .applyFounderFollowUpDecision] only ever mutates the engineer's
+  /// mental/trust/guard fields.
+  PublicDemoAggregate applyFounderFollowUpDecision({
+    required String engineerId,
+    required PublicDemoFounderFollowUpDecision decision,
+  }) {
+    if (state.fiscalYearCompleted) return this;
+    final engineer = workflow.engineers
+        .where((candidate) => candidate.id == engineerId)
+        .firstOrNull;
+    if (engineer == null) return this;
+    if (!PublicDemoFounderFollowUp.isEligible(
+      engineer: engineer,
+      month: state.month,
+      assignedEngineerIds: workflow.assignedEngineerIds(month: state.month),
+    )) {
+      return this;
+    }
+    final cost = PublicDemoFounderFollowUp.costFor(decision);
+    if (cost > 0 && (state.cash < cost || state.isFinanciallyRestricted)) {
+      return this;
+    }
+    return _copyWith(
+      // Booked as training spend — the same monthly bucket
+      // [PublicDemoInternalTrainingTransaction] already uses — rather than a
+      // new tracked-spend category: `PublicDemoSaveCodec`'s consistency
+      // check requires every discretionary cash deduction to reconcile
+      // against `monthOpeningCash - monthTrainingSpent -
+      // monthRecruitmentSpent`, and this spend is conceptually the same
+      // kind of optional employee-support cost internal training already
+      // represents.
+      state: cost > 0
+          ? state.copyWith(cash: state.cash - cost).recordTrainingSpend(cost)
+          : state,
+      workflow: workflow.applyFounderFollowUpDecision(
+        engineerId,
+        month: state.month,
+        decision: decision,
+      ),
+    );
+  }
 
   PublicDemoAggregate selectSummerBonus(PublicDemoSummerBonusPlan plan) =>
       _copyWith(state: state.selectSummerBonus(plan));

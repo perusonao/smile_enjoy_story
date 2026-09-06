@@ -202,8 +202,11 @@ void main() {
   );
 
   testWidgets(
-    'important tasks with a single item still renders in the left column, '
-    'with no overflow from the empty right column',
+    // PR #182 Codex P2: a lone item used to still sit in a half-width
+    // `Expanded` beside an empty, reserved right column. It now spans the
+    // full row instead of leaving that half unused.
+    'important tasks with a single item spans the full row width, not a '
+    'half-width column with an empty reserved half',
     (tester) async {
       await tester.pumpWidget(
         host(
@@ -221,7 +224,68 @@ void main() {
         ),
       );
       expect(find.text('資金計画を確認する'), findsOneWidget);
+      expect(find.text('今月の固定費: ¥85,000'), findsOneWidget);
       expect(tester.takeException(), isNull);
+
+      final section = tester.getRect(
+        find.byKey(const Key('public-demo-important-tasks')),
+      );
+      final cta = tester.getRect(
+        find.byKey(const Key('important-task-cta-資金計画を確認する')),
+      );
+      // The lone tile's own trailing CTA sits near the section's right
+      // edge — proof the tile spans (close to) the full row — rather than
+      // stopping around the midpoint the way an unused, still-reserved
+      // right-hand `Expanded` would leave it at.
+      expect(cta.right, greaterThan(section.left + section.width * 0.7));
+    },
+  );
+
+  testWidgets(
+    // PR #182 Codex P2: the 2-column grid's half-width cell used to
+    // ellipsize the finance task's only supporting fact — the real April
+    // production string ("今月の固定費: ¥50,000") — at both target widths.
+    // `item.fact` is now allowed to wrap onto a 2nd line instead of
+    // truncating, so the full amount stays readable.
+    'important tasks: the finance fact stays fully readable (not '
+    'ellipsized) in the 2-column grid at both target widths',
+    (tester) async {
+      for (final width in [360.0, 390.0]) {
+        tester.view.physicalSize = Size(width, 1000);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
+
+        await tester.pumpWidget(
+          host(
+            PublicDemoImportantTasksSection(
+              items: [
+                PublicDemoImportantTaskItem(
+                  title: '営業活動を進める',
+                  fact: '営業残: 4回',
+                  category: '営業',
+                  ctaLabel: '対応する',
+                  onPressed: _noOp,
+                ),
+                PublicDemoImportantTaskItem(
+                  title: '資金計画を確認する',
+                  fact: '今月の固定費: ¥50,000',
+                  category: '資金',
+                  ctaLabel: '確認する',
+                  onPressed: _noOp,
+                ),
+              ],
+            ),
+          ),
+        );
+        expect(tester.takeException(), isNull);
+        expect(
+          find.text('今月の固定費: ¥50,000'),
+          findsOneWidget,
+          reason: 'the full amount must be readable at width $width, not '
+              'ellipsized (e.g. "今月の固定費: ¥5…")',
+        );
+      }
     },
   );
 

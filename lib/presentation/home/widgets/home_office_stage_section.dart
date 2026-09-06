@@ -407,24 +407,36 @@ class _MemberFigure extends StatelessWidget {
   final HomeOfficeStageMember member;
   final HomeOfficeStageLayout layout;
 
-  /// How much wider than the portrait circle the name label is allowed to
-  /// be.
+  /// How much wider than the portrait circle the name caption is allowed to
+  /// *paint*, without changing how much width this figure *reserves* in the
+  /// figures [Row].
   ///
-  /// SES HOME Final Visual Match: the label used to share the portrait's
+  /// SES HOME Final Visual Match: the caption used to share the portrait's
   /// own width exactly (28-32pt), which left no real room for even a short
   /// two/three-character Japanese name (e.g. real production's "佐藤 健" /
-  /// "鈴木 葵") — every name on the real screen collapsed to a single
-  /// glyph plus an ellipsis ("佐…"/"鈴…"), a meaningless truncation with no
-  /// affordance to read the rest. The name still ellipsises at `maxLines: 1`
-  /// below for a name genuinely too long even at this width (existing "very
-  /// long name" coverage), but a real short name no longer needs to.
-  static const double _labelWidthFactor = 2.0;
+  /// "鈴木 葵") — every name on the real screen collapsed to a single glyph
+  /// plus an ellipsis ("佐…"/"鈴…"), a meaningless truncation with no
+  /// affordance to read the rest.
+  ///
+  /// PR #182 Codex P2: the first fix for that widened the *whole figure
+  /// slot* to `portraitSize * 2.0` — which doubled how much width every
+  /// figure reserves from the shared [Row], so at 4+ engineers (3 figures
+  /// plus the "+N" [_MoreMembersChip]) the row's total reserved width grew
+  /// enough to intrude under the top-right [_HeadcountSummaryChip]. The
+  /// slot [SizedBox] below is back to exactly [HomeOfficeStageLayout
+  /// .portraitSize] — identical to every layout-safety measurement this
+  /// file's tests already pin — and only the caption itself is allowed to
+  /// paint wider, via the [OverflowBox] below, which does not add anything
+  /// to what this figure claims from its siblings or from the chip. The
+  /// name still ellipsises at `maxLines: 1` below for a name genuinely too
+  /// long even at this width (existing "very long name" coverage), but a
+  /// real short name no longer needs to.
+  static const double _captionWidthFactor = 2.0;
 
   @override
   Widget build(BuildContext context) {
-    final labelWidth = layout.portraitSize * _labelWidthFactor;
     return SizedBox(
-      width: labelWidth,
+      width: layout.portraitSize,
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.center,
@@ -447,8 +459,10 @@ class _MemberFigure extends StatelessWidget {
           ),
           const SizedBox(height: 3),
           // The label is a single ellipsised line on a translucent pill: it
-          // must never wrap into the portrait above it, and never widen the
-          // figure past [labelWidth].
+          // must never wrap into the portrait above it. It may now paint up
+          // to [_captionWidthFactor] × the portrait's width (via the
+          // [OverflowBox] below) without widening the slot itself — see
+          // this class's own doc above for why that split matters.
           //
           // SES-ISSUE-124: the scene itself is now sized to the compacted
           // HOME budget, not to the original design's generous 2x-scale
@@ -458,27 +472,49 @@ class _MemberFigure extends StatelessWidget {
           // scaling per-employee cards below), so a capped decorative
           // caption over a photo does not cost legibility the way an
           // uncapped body-text control would.
-          DecoratedBox(
-            decoration: BoxDecoration(
-              color: Colors.black54,
-              borderRadius: BorderRadius.circular(6),
-            ),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
-              child: Text(
-                member.name,
-                key: ValueKey('home-office-stage-name-${member.id}'),
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: layout.nameFontSize,
-                  fontWeight: FontWeight.w600,
+          // IntrinsicHeight matters here, not just the OverflowBox: a plain
+          // Column gives a non-flex child an *unbounded* main-axis (height)
+          // constraint, and `OverflowBox` — unlike a normal box — reports
+          // that unbounded incoming maxHeight as its own size whenever a
+          // dimension override is left unset (by design: its whole point is
+          // to decouple its own reported size from its child's). Left
+          // as-is, that infinite self-reported height fed straight into
+          // `Alignment.topCenter`'s offset math ((height - childHeight) / 2
+          // * ...), producing a `NaN` paint offset — a real crash caught by
+          // the existing widget tests. `IntrinsicHeight` measures the
+          // caption's real (finite, text-scale-aware) height first and
+          // hands `OverflowBox` a bounded constraint instead, so only the
+          // width override below is still in effect.
+          IntrinsicHeight(
+            child: OverflowBox(
+              maxWidth: layout.portraitSize * _captionWidthFactor,
+              alignment: Alignment.topCenter,
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  color: Colors.black54,
+                  borderRadius: BorderRadius.circular(6),
                 ),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                textAlign: TextAlign.center,
-                textScaler: MediaQuery.textScalerOf(
-                  context,
-                ).clamp(maxScaleFactor: 1.15),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 4,
+                    vertical: 1,
+                  ),
+                  child: Text(
+                    member.name,
+                    key: ValueKey('home-office-stage-name-${member.id}'),
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: layout.nameFontSize,
+                      fontWeight: FontWeight.w600,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.center,
+                    textScaler: MediaQuery.textScalerOf(
+                      context,
+                    ).clamp(maxScaleFactor: 1.15),
+                  ),
+                ),
               ),
             ),
           ),

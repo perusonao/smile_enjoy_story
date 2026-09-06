@@ -108,6 +108,73 @@ void main() {
     });
   });
 
+  group('PR #182 Codex P2: widened name captions never intrude on the '
+      'headcount summary chip', () {
+    // The first fix for "佐藤 健"/"鈴木 葵" collapsing to "佐…"/"鈴…" widened
+    // the whole figure *slot* (portraitSize * 2.0), which doubled how much
+    // width every figure reserves from the shared Row — at 4+ employees (3
+    // figures plus the "+N" chip), that reserved width grew enough to reach
+    // under the top-right headcount summary chip. This pins the fix: real
+    // names are still painted in full, but neither a name caption nor the
+    // "+N" chip ever overlaps the summary chip, at either target size.
+    for (final size in const [Size(360, 800), Size(390, 844)]) {
+      testWidgets(
+        '${size.width.toInt()}x${size.height.toInt()}: 3 figures + "+N" '
+        'with real names stay clear of the summary chip',
+        (tester) async {
+          await pumpStage(
+            tester,
+            HomeOfficeStageDisplay(
+              members: [
+                member('eng-01', name: '佐藤 健'),
+                member('eng-02', name: '鈴木 葵'),
+                member('emp-3', name: '高橋 花子'),
+                member('emp-4', name: '田中 太郎'),
+              ],
+              employeeCount: 5,
+              waitingCount: 3,
+            ),
+            size: size,
+          );
+          expect(tester.takeException(), isNull);
+
+          // Real short names are painted in full — never collapsed to a
+          // single glyph plus an ellipsis.
+          expect(find.text('佐藤 健'), findsOneWidget);
+          expect(find.text('鈴木 葵'), findsOneWidget);
+          expect(find.text('高橋 花子'), findsOneWidget);
+
+          final chip = tester.getRect(
+            find.byKey(const Key('home-office-stage-headcount-summary')),
+          );
+          final moreChip = tester.getRect(
+            find.byKey(const Key('home-office-stage-more')),
+          );
+          expect(
+            chip.overlaps(moreChip),
+            isFalse,
+            reason:
+                'summary chip $chip overlaps the "+N" chip $moreChip '
+                'at $size',
+          );
+
+          for (final id in ['eng-01', 'eng-02', 'emp-3']) {
+            final nameRect = tester.getRect(
+              find.byKey(ValueKey('home-office-stage-name-$id')),
+            );
+            expect(
+              chip.overlaps(nameRect),
+              isFalse,
+              reason:
+                  'name caption $id ($nameRect) overlaps the summary '
+                  'chip $chip at $size',
+            );
+          }
+        },
+      );
+    }
+  });
+
   group('O: rendering is deterministic', () {
     test(
       'the same roster always selects the same three, in the same order',

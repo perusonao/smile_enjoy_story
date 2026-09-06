@@ -86,6 +86,11 @@ class PublicDemoMonthlyPrimaryCtaModel {
 /// by side exactly as the SSOT shows; a third item (when 採用 is also
 /// eligible) starts a second row rather than forcing a 3-wide row that would
 /// cramp every tile's text at 360px.
+///
+/// PR #182 Codex P2: a row with only one item (an odd-length [items], most
+/// often a lone 資金計画 tile once 営業/採用 are both exhausted) used to still
+/// reserve its unused half with an empty `Expanded`, halving that tile's own
+/// width for no reason. That lone tile now spans the full row instead.
 class PublicDemoImportantTasksSection extends StatelessWidget {
   const PublicDemoImportantTasksSection({super.key, required this.items});
 
@@ -100,18 +105,20 @@ class PublicDemoImportantTasksSection extends StatelessWidget {
       children: [
         for (var i = 0; i < items.length; i += 2) ...[
           if (i > 0) const SizedBox(height: 6),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(child: _ImportantTaskCell(item: items[i])),
-              const SizedBox(width: 6),
-              Expanded(
-                child: i + 1 < items.length
-                    ? _ImportantTaskCell(item: items[i + 1])
-                    : const SizedBox.shrink(),
-              ),
-            ],
-          ),
+          if (i + 1 < items.length)
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(child: _ImportantTaskCell(item: items[i])),
+                const SizedBox(width: 6),
+                Expanded(child: _ImportantTaskCell(item: items[i + 1])),
+              ],
+            )
+          else
+            SizedBox(
+              width: double.infinity,
+              child: _ImportantTaskCell(item: items[i]),
+            ),
         ],
       ],
     ),
@@ -137,7 +144,12 @@ class _ImportantTaskCell extends StatelessWidget {
         border: Border.all(color: theme.colorScheme.outlineVariant),
       ),
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(8, 6, 2, 6),
+        // PR #182 Codex P2: trimmed vertical from 6/6 to 4/4 — real card
+        // padding, not text/touch-target room — to buy back headroom for
+        // [item.fact] now genuinely needing a 2nd line (see below) without
+        // reopening the 360x800 no-scroll overflow One-Screen Final Fit
+        // (PR #181) closed.
+        padding: const EdgeInsets.fromLTRB(8, 4, 2, 4),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -155,12 +167,22 @@ class _ImportantTaskCell extends StatelessWidget {
                     overflow: TextOverflow.ellipsis,
                   ),
                   const SizedBox(height: 2),
+                  // PR #182 Codex P2: this used to be `maxLines: 1`, which
+                  // ellipsized real amounts (e.g. "今月の固定費: ¥50,000")
+                  // at the half-width column this grid gives each tile —
+                  // [item.fact] is the task's only supporting financial
+                  // value, so it must stay fully readable. Two lines is
+                  // real wrap room, not a truncation: every real production
+                  // fact fits within it at both 360px and 390px (checked in
+                  // the focused test), and the `overflow` fallback only
+                  // guards a fact genuinely too long for that, which never
+                  // happens with today's real content.
                   Text(
                     item.fact,
                     style: theme.textTheme.bodySmall?.copyWith(
                       color: theme.colorScheme.onSurfaceVariant,
                     ),
-                    maxLines: 1,
+                    maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                   ),
                 ],
@@ -402,7 +424,11 @@ class _HomeSectionCard extends StatelessWidget {
       // SES HOME One-Screen Final Fit: trimmed again, from 12 — real card
       // padding, not text/touch-target room, and part of closing the
       // 360x800 unscrolled-viewport overflow (see the result report).
-      padding: const EdgeInsets.all(6),
+      //
+      // PR #182 Codex P2: trimmed once more, from 6 — real card padding,
+      // buying back headroom for the important-tasks grid's finance fact
+      // now genuinely needing a 2nd line (see `_ImportantTaskCell`).
+      padding: const EdgeInsets.all(4),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -413,7 +439,9 @@ class _HomeSectionCard extends StatelessWidget {
               color: accent ? SesTheme.primaryBlue : null,
             ),
           ),
-          const SizedBox(height: 4),
+          // PR #182 Codex P2: trimmed from 4 — real gap, same headroom
+          // reasoning as this card's own padding above.
+          const SizedBox(height: 2),
           child,
         ],
       ),

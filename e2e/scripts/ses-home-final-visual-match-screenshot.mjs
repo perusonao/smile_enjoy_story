@@ -3,6 +3,23 @@
 // mobile viewports. Throwaway script for this task's Visual Acceptance
 // evidence, mirrors e2e/scripts/ses173-home-density-screenshot.mjs's own
 // server/browser setup.
+//
+// PR #182 Codex P2: this script used to also compare
+// `document.scrollingElement`'s `scrollHeight`/`clientHeight` and report
+// that as "real-browser no-scroll confirmed". That comparison is not
+// evidence of anything: Flutter Web's `HTMLElementView`/canvas host paints
+// into a browser document that is itself viewport-sized regardless of
+// whatever a Flutter-side `ListView` is doing internally — an *overflowing*
+// Flutter `ListView` still reports `scrollHeight == clientHeight` on the
+// surrounding HTML document, because the scrolling happens entirely inside
+// Flutter's own engine/semantics tree, never as browser-level document
+// overflow. This script no longer makes that check or that claim. The
+// numeric no-scroll evidence is
+// `test/ui/public_demo/public_demo_01_home_one_screen_final_fit_test.dart`'s
+// `ScrollableState.position.maxScrollExtent == 0` (a real Flutter
+// `ScrollPosition`, not a DOM measurement) — see the Result Report. This
+// script now only captures screenshots, for visual (not numeric) SSOT
+// comparison.
 import { chromium } from '@playwright/test';
 import { createServer } from 'http';
 import { readFile } from 'fs/promises';
@@ -59,14 +76,6 @@ for (const size of sizes) {
   const homeOut = `${OUT_DIR}/ses-home-final-visual-match-${size.name}.png`;
   await page.screenshot({ path: homeOut });
   console.log(`saved ${homeOut}`);
-
-  // maxScrollExtent, measured in the real browser, on the real element the
-  // app's HOME tab scrolls.
-  const scrollInfo = await page.evaluate(() => {
-    const el = document.scrollingElement || document.documentElement;
-    return { scrollHeight: el.scrollHeight, clientHeight: el.clientHeight };
-  });
-  console.log(`  ${size.name} scrollHeight=${scrollInfo.scrollHeight} clientHeight=${scrollInfo.clientHeight}`);
 
   await context.close();
 }

@@ -254,8 +254,8 @@ flutter test test/ui/public_demo/public_demo_founder_follow_up_dialog_test.dart
   → 2/2 passed
 
 flutter test test/game/public_demo test/ui/public_demo test/app
-  → all passed (full run; see Known Issues for the one regression found and
-    fixed mid-implementation)
+  → 803/803 passed (full run confirmed complete; see Known Issues for the
+    one regression found and fixed mid-implementation)
 
 git diff --check
   → clean

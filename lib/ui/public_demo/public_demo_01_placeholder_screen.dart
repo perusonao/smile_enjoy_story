@@ -1988,6 +1988,41 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
     ),
   );
 
+  /// SES ACTIVE-PROJECT-VISIBILITY Phase 1: a read-only per-engineer card
+  /// showing which project a currently-assigned engineer is in and its
+  /// state, using only [PublicDemoAssignment]'s existing
+  /// `engineerName`/`projectName`/`deliveryPressure`/`budgetHealth` fields
+  /// — the authoritative facts [PublicDemoWorkflowState.assignments] /
+  /// [PublicDemoWorkflowState.assignedEngineerIds] already hold. No new
+  /// domain field, persisted value, or client/company/pricing/contract
+  /// data is introduced. `fieldEvaluation` is deliberately not shown here:
+  /// today it is always its constructed default (50) for every assignment
+  /// in every reachable game state, so surfacing it would present a
+  /// constant as a meaningful evaluation.
+  Widget activeProjectStatusCard(PublicDemoAssignment a) => Card(
+    key: Key('public-demo-active-project-status-${a.engineerId}'),
+    child: Padding(
+      padding: const EdgeInsets.all(12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            a.engineerName,
+            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+          ),
+          const SizedBox(height: 4),
+          Text('参画中案件：${a.projectName}', style: const TextStyle(fontSize: 13)),
+          const SizedBox(height: 4),
+          Text(
+            '納期プレッシャー：${a.deliveryPressure}',
+            style: const TextStyle(fontSize: 12),
+          ),
+          Text('予算健全度：${a.budgetHealth}', style: const TextStyle(fontSize: 12)),
+        ],
+      ),
+    ),
+  );
+
   Widget internalTrainingCard({
     required String engineerId,
     required String engineerName,
@@ -3129,6 +3164,17 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
               (a) => s.joinedApplicantIds.contains(a.id) && a.hasJoined,
             ))
               employeeConditionCard(a),
+          // SES ACTIVE-PROJECT-VISIBILITY Phase 1: read-only project status
+          // for every currently-assigned engineer (`assignedEngineerIds`
+          // already differs by month; see that getter's own doc for why).
+          // Unconditional on month so an engineer who is still assigned in
+          // August-March keeps a card here even in the window where the
+          // RECOVERY-LOOP-1 loop above stops rendering `ec(i)` for them.
+          for (final a in workflow.assignments)
+            if (workflow.assignedEngineerIds(
+              month: s.month,
+            ).contains(a.engineerId))
+              activeProjectStatusCard(a),
           // Issue #167 FIRST-FUN-YEAR-LATE-GAME-1 Phase 1: the only card a
           // currently-assigned founding engineer gets during August-
           // February — the RECOVERY-LOOP-1 loop above only renders `ec(i)`

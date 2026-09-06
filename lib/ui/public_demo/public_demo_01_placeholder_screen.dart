@@ -48,6 +48,8 @@ import 'public_demo_skill_sheet_sheet.dart';
 import 'public_demo_salary_offer_dialog.dart';
 import 'public_demo_raise_dialog.dart';
 import 'public_demo_summer_bonus_dialog.dart';
+import 'public_demo_year_end_display_data.dart';
+import 'public_demo_year_end_result_card.dart';
 
 /// Signature of the local collector the HOME-RUNTIME-2C emit helpers append
 /// to. Named rather than inlined so each helper's shape is obvious at a
@@ -3358,22 +3360,23 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
                   : '夏季賞与 ¥${s.summerBonusPaidAmount}',
             ),
           ],
+          // SES YEAR-END-PHASE-1: this used to show only the final cash
+          // balance. It now shows the full authoritative year-end
+          // projection (PublicDemoYearEndDisplayData) — cash start->end,
+          // headcount, hires, participation/waiting, founder growth, and a
+          // fact-based summary — plus the replay CTA, wired to the exact
+          // same canonical restart confirmation flow the dev-menu and
+          // bankruptcy terminal cards already use
+          // (_confirmRestartFromApril -> _restartGame). The Key stays
+          // `public-demo-fiscal-year-complete` on the outer Card so the
+          // existing pre-completion regression
+          // (public_demo_01_accounting_tab_empty_heading_test.dart) keeps
+          // asserting `findsNothing` unchanged.
           if (s.fiscalYearCompleted)
-            Card(
-              key: const Key('public-demo-fiscal-year-complete'),
-              child: Padding(
-                padding: const EdgeInsets.all(14),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('第1期終了', style: Theme.of(c).textTheme.titleLarge),
-                    const SizedBox(height: 8),
-                    const Text('1年間の経営が終了しました。'),
-                    const SizedBox(height: 8),
-                    Text('最終現預金 ¥${s.cash}'),
-                  ],
-                ),
-              ),
+            PublicDemoYearEndResultCard(
+              data: PublicDemoYearEndDisplayData.fromPublicDemoState(s),
+              isReplaying: _isRestarting,
+              onReplay: _confirmRestartFromApril,
             ),
         ],
       ),

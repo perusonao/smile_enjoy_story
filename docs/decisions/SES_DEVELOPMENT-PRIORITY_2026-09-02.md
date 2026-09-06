@@ -51,8 +51,8 @@ Issue番号順に機械的に実装しない。実プレイ結果を根拠に、
 
 次順序（2026-09-06時点、詳細はUpdate history）:
 
-1. **#167 Late Game Phase 1** — 8月〜2月の「創業エンジニアのフォロー判断」実装。
-2. **Year-End Phase 1** — 年度末の振り返り演出。
+1. ~~**#167 Late Game Phase 1**~~ — 完了。8月〜2月の「創業エンジニアのフォロー判断」実装。
+2. ~~**Year-End Phase 1**~~ — 完了。年度末の振り返り演出。
 3. **Active Project Visibility** — 参画中案件の状態を社員/営業視点で可視化（HOMEへの先取り禁止）。
 4. **stale「翌月参画予定」/ 空の「○月開始結果」等の小規模UX修正**。
 5. **Employee UI Phase A 再評価** — 社員個々の状態・スキル・経歴を安全に閲覧できるUIを整える（HOMEへの先取り禁止、実装場所は社員タブ側）。
@@ -63,8 +63,8 @@ Issue番号順に機械的に実装しない。実プレイ結果を根拠に、
 | Priority | Task | Claude Code / Codex目安 | Outcome |
 |---|---|---:|---|
 | P0 | ~~進行中HOME UI改修を完成~~ — **完了・HOME Freeze**（HOME Final Density + Final Polish + One-Screen Final Fit, PR #180/#184。詳細はUpdate history） | 実績: 完了 | HOMEで会社状況・推奨行動・KPI・次の行動を理解できる — 達成済み。HOMEへの追加レイアウト変更は禁止 |
-| P0 | #167 Late Game Phase 1 | 実績: 完了（本エントリ） | 8月〜2月の「創業エンジニアのフォロー判断」— 詳細はUpdate history |
-| P0 | Year-End Phase 1 | 目安未確定 / 分割検討 | 年度末の振り返り演出を実装する |
+| P0 | #167 Late Game Phase 1 | 実績: 完了 | 8月〜2月の「創業エンジニアのフォロー判断」— 詳細はUpdate history |
+| P0 | Year-End Phase 1 | 実績: 完了（本エントリ） | 年度末の振り返り演出（会計タブ「第1期終了」強化） — 詳細はUpdate history |
 | P0 | Active Project Visibility | 目安未確定 / 分割検討 | 参画中案件の状態を社員/営業視点で可視化する（HOMEへの先取りは禁止） |
 | P0 | stale「翌月参画予定」/ 空の「○月開始結果」等の小規模UX修正 | 目安未確定 | 既存の小規模だが目につくUX不整合を解消する |
 | P0 | Employee UI Phase A（再評価） | 目安未確定 / 分割検討 | 社員個々の状態・スキル・経歴を安全に閲覧できるUIを整える（HOMEへの先取りは禁止、実装場所は社員タブ側） |
@@ -197,6 +197,19 @@ Result Reportは履歴・証拠であり、この文書の代わりにはしな�
 - `docs/reports/` — 実施結果と証拠。計画変更が必要なら結果報告だけで終わらせず、この文書も更新する。
 
 ## Update history
+
+### 2026-09-06（Year-End Phase 1完了 / governing plan sync）
+
+- **Year-End Phase 1を実装。** 会計タブの既存「第1期終了」領域を強化し、`PublicDemoYearEndDisplayData`/`PublicDemoYearEndResultCard`（いずれも新規、`lib/ui/public_demo/`配下）として、開始時現金→終了時現金と年間の増減、最終社員数（`engineerCount+adminCount`）、年間採用数（`joinedApplicantIds.length`）、最終参画/待機人数（`engineersAssigned`/`engineersWaiting`）、創業社員（eng-01/eng-02）の成長（`publicDemoInitialEngineerRuntimes`比較の`actualCapability`）、事実ベースのひより総括、および「4月からもう一度」CTAを表示する。
+  - すべての値は既存authoritativeフィールドの読み取りまたは単純な差分計算のみで、新規persist/Finance/save-schemaフィールドは追加していない。年間売上・年間営業回数・危機回数・回復回数など、Public Demo 0.1が年間集計として保持していない値は一切表示しない（監査結果は`docs/reports/SES_YEAR-END-PHASE1_Implementation_Result.md`§2参照）。
+  - 「4月からもう一度」は既存の`_confirmRestartFromApril`/`_restartGame`（開発・テストメニューおよび倒産カードの「最初からやり直す」と同一のcanonical reset/replay経路）をそのまま再利用し、新しいreset authorityは追加していない。
+  - HOME（レイアウト・`lib/presentation/home/`配下）、Save/schema、Finance計算、Balance、Month transition、workflow authorityは無変更。Issue #167（founder follow-up）・PR #186（truthful HOME Office Stage / 空の会計見出し除去）の既存挙動は無変更・回帰テストで確認済み。
+  - 詳細・監査結果・変更ファイル・テスト結果は `docs/reports/SES_YEAR-END-PHASE1_Implementation_Result.md` を参照。
+- **次のproduction priorityを以下の順に更新する**（本文書冒頭「Current execution order」直後のPrioritized backlog tableも同時に更新済み）:
+  1. Active Project Visibility
+  2. stale「翌月参画予定」/ 空の「○月開始結果」等の小規模UX修正
+  3. Employee UI Phase A 再評価
+  4. April→March human replay
 
 ### 2026-09-06（HOME Freeze / Issue #167 Late Game Phase 1完了 / governing plan sync）
 

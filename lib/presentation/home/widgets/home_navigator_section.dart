@@ -51,14 +51,34 @@ class HomeNavigatorMetrics {
   // replace the single square `portraitSize` with a portrait-oriented
   // rounded rectangle instead, so `BoxFit.cover` keeps her shoulders/torso
   // in frame the way the Visual SSOT's own tall photo does. No new asset —
-  // same bundled file, just no longer forced into a circle. Heights
-  // (150/158) are chosen to stay under the text column's own measured
-  // height (171/174pt — see [compactCeiling]'s doc) so this is still free:
-  // the Row's height stays governed by the text column, confirmed by the
-  // section's own before/after measurement.
+  // same bundled file, just no longer forced into a circle.
+  //
+  // SES HOME Visual SSOT Exact Layout Match: `portraitHeight` raised again,
+  // from 150/158 to 160/163 — the approved Visual SSOT draws her as a
+  // clearly large, present figure. This is deliberately short of this
+  // card's own text-column height (171/174pt at 360x800/390x844 — see
+  // [compactCeiling]'s doc): 170/173 (right up against that ceiling) still
+  // fit the ordinary April 360x800/390x844 no-scroll budget on their own,
+  // but overflowed the tighter HOME-COMPACT-1B.4 FIX1 actual-cash-shortage
+  // 360x800 scenario (`public_demo_01_issue_124_screen_verification_test
+  // .dart`) by several pixels — that scenario adds its own card above HOME
+  // and has less spare room to begin with. 160/163 is the largest pair
+  // confirmed to fit every existing 360x800/390x844 no-scroll budget,
+  // including that one.
+  //
+  // `portraitWidth` deliberately stays at 80/94, not widened to match:
+  // measured at 84pt (a mere +4), the narrower text column it leaves pushes
+  // [HomeNavigatorAdvice.message] (never `maxLines`-capped, by design — see
+  // the always-visible `Text` below) onto a second line, which is not free
+  // — it grows the card by the exact same amount and reopens the 360x800
+  // no-scroll overflow this and the Office Stage's own budget together
+  // already spend down to a few spare pixels. Per this phase's own stated
+  // priority order, 360x800 no-scroll outranks matching the Visual SSOT's
+  // portrait width exactly; the height increase alone is still a real,
+  // deliberate step toward it.
   static const HomeNavigatorLayout compact = HomeNavigatorLayout(
     portraitWidth: 80,
-    portraitHeight: 150,
+    portraitHeight: 160,
     nameFontSize: 12,
     roleFontSize: 10,
     messageFontSize: 11.5,
@@ -67,7 +87,7 @@ class HomeNavigatorMetrics {
 
   static const HomeNavigatorLayout normal = HomeNavigatorLayout(
     portraitWidth: 94,
-    portraitHeight: 158,
+    portraitHeight: 163,
     nameFontSize: 13,
     roleFontSize: 10.5,
     messageFontSize: 12,
@@ -312,34 +332,75 @@ class HomeNavigatorSection extends StatelessWidget {
                       ),
                     ),
                     if (advice.ctaLabel case final ctaLabel?) ...[
-                      // PUBLIC-DEMO-HOME-UI-3C: trimmed from 6 — the 48pt
-                      // CTA itself is unchanged (its height comes from
+                      // PUBLIC-DEMO-HOME-UI-3C: trimmed from 6 — the CTA
+                      // itself is unchanged (its height comes from
                       // `minimumSize`, not this gap), so this only removes
                       // slack between it and the message above.
                       // SES HOME Final Density: trimmed again, from 4, then 2.
                       const SizedBox(height: 1),
-                      SizedBox(
-                        width: double.infinity,
-                        child: FilledButton.icon(
-                          key: const Key('home-recommended-action-cta'),
-                          style: theme.filledButtonTheme.style?.copyWith(
-                            minimumSize: const WidgetStatePropertyAll(
-                              Size(0, 48),
-                            ),
-                            padding: const WidgetStatePropertyAll(
-                              EdgeInsets.symmetric(
-                                horizontal: 16,
-                                vertical: 12,
+                      // SES HOME Final Touch: a real device screenshot found
+                      // this button visually dominating the card — full
+                      // card width and a 48pt/vertical-12 minimum — leaving
+                      // the advice bubble below it too little room to stay
+                      // unellipsized (see `_AdviceBubble`'s own doc for the
+                      // exact defect this was causing). The
+                      // `FractionallySizedBox` below narrows the button's
+                      // own footprint instead of stretching it across the
+                      // full card — both without touching what it does or
+                      // where it goes (`advice.onCtaPressed` is untouched).
+                      //
+                      // Codex review (PR #184, P2): the first cut of this
+                      // fix floored the height at 40pt — a real device with
+                      // a short label (e.g. "研修する") would then render
+                      // (and hit-test) at exactly 40pt, under this app's
+                      // own established >=48pt touch-target floor (every
+                      // other CTA this file/repo tests pins that number).
+                      // 44pt is the largest floor that still fits the
+                      // 360x800 no-scroll budget alongside this phase's
+                      // other two fixes (the office photo's own size, and
+                      // the advice bubble's raised line cap) — verified
+                      // against both the normal-April and the tighter
+                      // actual-cash-shortage 360x800 scenarios (see
+                      // `public_demo_01_issue_124_screen_verification_test
+                      // .dart`'s HOME-COMPACT-1B.4 FIX1 group). Still a
+                      // real, deliberate reduction from the original 48
+                      // (Apple's own HIG accessible-minimum is 44pt), not
+                      // the ad-hoc 40pt the first cut used.
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: FractionallySizedBox(
+                          widthFactor: 0.86,
+                          child: FilledButton.icon(
+                            key: const Key('home-recommended-action-cta'),
+                            style: theme.filledButtonTheme.style?.copyWith(
+                              minimumSize: const WidgetStatePropertyAll(
+                                Size(0, 44),
                               ),
+                              padding: const WidgetStatePropertyAll(
+                                EdgeInsets.symmetric(
+                                  horizontal: 14,
+                                  vertical: 10,
+                                ),
+                              ),
+                              // Material buttons otherwise pad their tap
+                              // target up to the platform's accessibility
+                              // floor (48pt) regardless of `minimumSize` —
+                              // `shrinkWrap` is what actually lets the
+                              // button render at the smaller size above
+                              // instead of silently staying 48pt tall.
+                              // `minimumSize` still floors it at a real
+                              // 44pt tap target — see the doc above this
+                              // widget for why 44, not 40 or 48.
+                              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                             ),
-                          ),
-                          onPressed: advice.onCtaPressed,
-                          icon: const Icon(Icons.arrow_forward),
-                          label: Text(
-                            ctaLabel,
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                            textAlign: TextAlign.center,
+                            onPressed: advice.onCtaPressed,
+                            icon: const Icon(Icons.arrow_forward, size: 18),
+                            label: Text(
+                              ctaLabel,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              textAlign: TextAlign.center,
+                            ),
                           ),
                         ),
                       ),
@@ -420,7 +481,7 @@ class HomeNavigatorSection extends StatelessWidget {
 /// could. The message above it (never capped — see the `Text` in [build]
 /// above this class) still states the actual guidance in full; this stays
 /// what it already was, the optional educational "why", just shown at a
-/// size that cannot grow past two lines by default.
+/// size that cannot grow past three lines by default.
 ///
 /// HOME-COMPACT-1B.4 FIX2 (Codex P2): the two-line cap above silently
 /// truncated real copy — several existing explanation strings (43-56
@@ -431,12 +492,22 @@ class HomeNavigatorSection extends StatelessWidget {
 /// toggle was trying to avoid in the other direction. This restores a
 /// one-way reveal — never a collapse-back toggle, so it is not the same
 /// control PUBLIC-DEMO-HOME-UI-3A removed — and only when [explanation]
-/// would genuinely overflow two lines at the bubble's real width: a short
+/// would genuinely overflow the cap at the bubble's real width: a short
 /// explanation that already fits gets no button at all. Expanding costs
 /// exactly the card height the full text needs, the same way an increased
 /// text scale is already allowed to grow this card (see
 /// [HomeNavigatorMetrics.compactCeiling]'s own doc) — never a fixed height
 /// around text.
+///
+/// SES HOME Final Touch: the cap itself raises from two lines to three. A
+/// real device screenshot (real NotoSansJP glyphs, not `flutter test`'s
+/// substituted ones — see this file's own doc a few lines below for why
+/// that gap exists) found April's own explanation above still needing a
+/// "続きを読む" reveal it should not have — the room this phase buys back
+/// from the primary CTA's shrink (see the `home-recommended-action-cta`
+/// button's own doc) goes here, so the same explanation that used to need
+/// a tap now reads in full immediately for anyone whose text fits three
+/// lines.
 class _AdviceBubble extends StatefulWidget {
   const _AdviceBubble({required this.advice});
 
@@ -448,6 +519,9 @@ class _AdviceBubble extends StatefulWidget {
 
 class _AdviceBubbleState extends State<_AdviceBubble> {
   bool _expanded = false;
+
+  /// SES HOME Final Touch: raised from 2 — see the class doc above for why.
+  static const int _collapsedMaxLines = 3;
 
   @override
   Widget build(BuildContext context) {
@@ -506,7 +580,7 @@ class _AdviceBubbleState extends State<_AdviceBubble> {
                 LayoutBuilder(
                   builder: (context, constraints) {
                     // Real overflow check, not a character-count guess: a
-                    // 43-character explanation can fit two lines at 390pt
+                    // 43-character explanation can fit three lines at 390pt
                     // and overflow at 360pt, so whether the reveal control
                     // renders at all is decided against the bubble's own
                     // measured width, in this build's own text direction
@@ -519,7 +593,7 @@ class _AdviceBubbleState extends State<_AdviceBubble> {
                                 text: explanation,
                                 style: explanationStyle,
                               ),
-                              maxLines: 2,
+                              maxLines: _collapsedMaxLines,
                               textDirection: Directionality.of(context),
                               textScaler: MediaQuery.textScalerOf(context),
                             )..layout(maxWidth: constraints.maxWidth))
@@ -532,7 +606,7 @@ class _AdviceBubbleState extends State<_AdviceBubble> {
                           explanation,
                           key: const Key('home-navigator-advice-explanation'),
                           style: explanationStyle,
-                          maxLines: _expanded ? null : 2,
+                          maxLines: _expanded ? null : _collapsedMaxLines,
                           overflow: _expanded
                               ? TextOverflow.visible
                               : TextOverflow.ellipsis,

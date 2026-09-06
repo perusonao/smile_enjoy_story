@@ -142,78 +142,72 @@ void main() {
     for (final size in _targetSizes) {
       final label = '${size.width.toInt()}x${size.height.toInt()}';
 
-      testWidgets(
-        '$label: the ListView has nothing left to scroll to '
-        '(maxScrollExtent == 0)',
-        (tester) async {
-          await _pump(tester, size: size);
+      testWidgets('$label: the ListView has nothing left to scroll to '
+          '(maxScrollExtent == 0)', (tester) async {
+        await _pump(tester, size: size);
 
-          final scrollable = tester.state<ScrollableState>(
-            find.byType(Scrollable).first,
+        final scrollable = tester.state<ScrollableState>(
+          find.byType(Scrollable).first,
+        );
+        expect(
+          scrollable.position.pixels,
+          0,
+          reason: 'the assertions below must describe the unscrolled screen',
+        );
+        expect(
+          scrollable.position.maxScrollExtent,
+          0,
+          reason:
+              'the whole HOME block through 今月の重要タスク must already '
+              'fit inside the unscrolled $label viewport — a positive '
+              'maxScrollExtent means the player must scroll to see the '
+              'bottom of the initial April view',
+        );
+      });
+
+      testWidgets('$label: every HOME section, including 今月の重要タスク\'s own '
+          'bottom edge, is fully painted inside the viewport', (tester) async {
+        await _pump(tester, size: size);
+
+        final viewport = tester.getRect(_homeViewport);
+        for (final key in _sectionKeys) {
+          final rect = tester.getRect(find.byKey(Key(key)));
+          expect(
+            rect.top,
+            greaterThanOrEqualTo(viewport.top),
+            reason: '$key top must be inside the $label viewport',
           );
           expect(
-            scrollable.position.pixels,
-            0,
-            reason: 'the assertions below must describe the unscrolled screen',
-          );
-          expect(
-            scrollable.position.maxScrollExtent,
-            0,
+            rect.bottom,
+            lessThanOrEqualTo(viewport.bottom),
             reason:
-                'the whole HOME block through 今月の重要タスク must already '
-                'fit inside the unscrolled $label viewport — a positive '
-                'maxScrollExtent means the player must scroll to see the '
-                'bottom of the initial April view',
+                '$key bottom must be inside the $label viewport — this '
+                'is the numeric form of "no scroll needed", checked '
+                'against the section that actually ends last',
           );
-        },
-      );
+        }
 
-      testWidgets(
-        '$label: every HOME section, including 今月の重要タスク\'s own '
-        'bottom edge, is fully painted inside the viewport',
-        (tester) async {
-          await _pump(tester, size: size);
+        // The important-tasks title itself, not merely its card's top
+        // edge, must be fully visible — the same guard the Final Polish
+        // suite already applies at 390x844, extended to both targets.
+        final title = tester.getRect(find.text('今月の重要タスク'));
+        expect(title.bottom, lessThanOrEqualTo(viewport.bottom));
 
-          final viewport = tester.getRect(_homeViewport);
-          for (final key in _sectionKeys) {
-            final rect = tester.getRect(find.byKey(Key(key)));
-            expect(
-              rect.top,
-              greaterThanOrEqualTo(viewport.top),
-              reason: '$key top must be inside the $label viewport',
-            );
-            expect(
-              rect.bottom,
-              lessThanOrEqualTo(viewport.bottom),
-              reason:
-                  '$key bottom must be inside the $label viewport — this '
-                  'is the numeric form of "no scroll needed", checked '
-                  'against the section that actually ends last',
-            );
-          }
-
-          // The important-tasks title itself, not merely its card's top
-          // edge, must be fully visible — the same guard the Final Polish
-          // suite already applies at 390x844, extended to both targets.
-          final title = tester.getRect(find.text('今月の重要タスク'));
-          expect(title.bottom, lessThanOrEqualTo(viewport.bottom));
-
-          // Bottom Navigation is a persistent Scaffold.bottomNavigationBar,
-          // never part of the scrollable body, so nothing in the HOME
-          // block may paint below its own top edge either.
-          final bottomNav = tester.getRect(
-            find.byKey(const Key('public-demo-bottom-nav')),
-          );
-          final lastSection = tester.getRect(
-            find.byKey(const Key('public-demo-important-tasks')),
-          );
-          expect(
-            lastSection.bottom,
-            lessThanOrEqualTo(bottomNav.top),
-            reason: '今月の重要タスク must not overlap Bottom Navigation',
-          );
-        },
-      );
+        // Bottom Navigation is a persistent Scaffold.bottomNavigationBar,
+        // never part of the scrollable body, so nothing in the HOME
+        // block may paint below its own top edge either.
+        final bottomNav = tester.getRect(
+          find.byKey(const Key('public-demo-bottom-nav')),
+        );
+        final lastSection = tester.getRect(
+          find.byKey(const Key('public-demo-important-tasks')),
+        );
+        expect(
+          lastSection.bottom,
+          lessThanOrEqualTo(bottomNav.top),
+          reason: '今月の重要タスク must not overlap Bottom Navigation',
+        );
+      });
     }
   });
 
@@ -248,60 +242,62 @@ void main() {
       'past one screen here, never to truncate or clip)', () {
     for (final size in _targetSizes) {
       for (final textScale in [1.3, 2.0]) {
-        testWidgets(
-          '${size.width.toInt()}x${size.height.toInt()} / textScale '
-          '$textScale: HOME renders with no overflow exception and every '
-          'important-task CTA stays a real >=48px target',
-          (tester) async {
-            await _pump(tester, size: size, textScale: textScale);
+        testWidgets('${size.width.toInt()}x${size.height.toInt()} / textScale '
+            '$textScale: HOME renders with no overflow exception and every '
+            'important-task CTA stays a real >=48px target', (tester) async {
+          await _pump(tester, size: size, textScale: textScale);
 
-            expect(
-              tester.takeException(),
-              isNull,
-              reason:
-                  'a RenderFlex/RenderBox overflow at an enlarged '
-                  'TextScaler surfaces as a FlutterError here',
-            );
+          expect(
+            tester.takeException(),
+            isNull,
+            reason:
+                'a RenderFlex/RenderBox overflow at an enlarged '
+                'TextScaler surfaces as a FlutterError here',
+          );
 
-            for (final key in _sectionKeys) {
-              final rect = tester.getRect(find.byKey(Key(key)));
-              expect(rect.left, greaterThanOrEqualTo(0.0));
-              expect(rect.right, lessThanOrEqualTo(size.width));
-            }
+          for (final key in _sectionKeys) {
+            final rect = tester.getRect(find.byKey(Key(key)));
+            expect(rect.left, greaterThanOrEqualTo(0.0));
+            expect(rect.right, lessThanOrEqualTo(size.width));
+          }
 
-            final ctaButtons = find.byWidgetPredicate(
-              (widget) =>
-                  widget is IconButton &&
-                  widget.icon is Icon &&
-                  (widget.icon as Icon).icon ==
-                      Icons.arrow_forward_ios_rounded,
-            );
-            expect(ctaButtons, findsWidgets);
-            for (final element in ctaButtons.evaluate()) {
-              final buttonSize = tester.getSize(find.byWidget(element.widget));
-              expect(buttonSize.height, greaterThanOrEqualTo(48));
-              expect(buttonSize.width, greaterThanOrEqualTo(48));
-            }
+          // SES HOME Final Touch: each important-task tile's own tap
+          // target is the whole tile now (a plain, non-interactive
+          // `Icon` draws the trailing arrow — see
+          // `_ImportantTaskCell`'s own doc in
+          // public_demo_home_presentation_components.dart), so this
+          // looks for the tile's `InkWell` instead of a trailing
+          // `IconButton`.
+          final ctaTiles = find.byWidgetPredicate(
+            (widget) =>
+                widget is InkWell &&
+                widget.key is ValueKey &&
+                (widget.key! as ValueKey).value.toString().startsWith(
+                  'important-task-cta-',
+                ),
+          );
+          expect(ctaTiles, findsWidgets);
+          for (final element in ctaTiles.evaluate()) {
+            final buttonSize = tester.getSize(find.byWidget(element.widget));
+            expect(buttonSize.height, greaterThanOrEqualTo(48));
+            expect(buttonSize.width, greaterThanOrEqualTo(48));
+          }
 
-            // The monthly primary CTA and Hiyori's own CTA both declare a
-            // real minimumSize — assert the painted size honors it rather
-            // than trusting the style alone.
-            final monthlyCta = tester.getRect(
-              find.byKey(const Key('public-demo-monthly-primary-cta')),
-            );
-            expect(monthlyCta.height, greaterThanOrEqualTo(44));
+          // The monthly primary CTA and Hiyori's own CTA both declare a
+          // real minimumSize — assert the painted size honors it rather
+          // than trusting the style alone.
+          final monthlyCta = tester.getRect(
+            find.byKey(const Key('public-demo-monthly-primary-cta')),
+          );
+          expect(monthlyCta.height, greaterThanOrEqualTo(44));
 
-            final hiyoriCta = find.byKey(
-              const Key('home-recommended-action-cta'),
-            );
-            if (hiyoriCta.evaluate().isNotEmpty) {
-              expect(
-                tester.getRect(hiyoriCta).height,
-                greaterThanOrEqualTo(48),
-              );
-            }
-          },
-        );
+          final hiyoriCta = find.byKey(
+            const Key('home-recommended-action-cta'),
+          );
+          if (hiyoriCta.evaluate().isNotEmpty) {
+            expect(tester.getRect(hiyoriCta).height, greaterThanOrEqualTo(48));
+          }
+        });
       }
     }
   });

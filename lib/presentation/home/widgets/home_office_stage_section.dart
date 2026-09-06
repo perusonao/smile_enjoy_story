@@ -12,15 +12,20 @@ import '../models/home_office_stage_display.dart';
 ///
 /// SES HOME Final Visual Match (structural pass): this used to describe a
 /// single wide "scene" (a big office-banner photo with small circular
-/// portraits overlaid on it). The Visual SSOT asks employees to be the
-/// visual subject, not the office backdrop, so the layout is now a row of
-/// real employee cards (portrait, full name, truthful status) with the
-/// office photo shrunk to a small decorative icon beside the title —
-/// present and still bundled/customizable exactly as before, just no
-/// longer the dominant visual element. `compactComponentHeight` /
-/// `normalComponentHeight` / `safetyCeiling` keep the same meaning and the
-/// same names the existing layout-safety tests assert against; only what
-/// they add up to internally has changed.
+/// portraits overlaid on it), then (SES HOME Final Touch) a row of real
+/// employee cards with the office photo shrunk to a small decorative icon
+/// beside the title.
+///
+/// SES HOME Visual SSOT Exact Layout Match: the approved Visual SSOT draws
+/// the office photo as its own real panel — a third column beside the
+/// employee cards, not a title-row glyph. [_OfficePhotoPanel] replaces the
+/// former `_OfficeIcon`; `iconSize` is gone from [HomeOfficeStageLayout]
+/// because the photo no longer lives in the title row at all (see
+/// [HomeOfficeStageSection.build] for exactly when it renders as the
+/// row's trailing column). `compactComponentHeight` / `normalComponentHeight`
+/// / `safetyCeiling` keep the same meaning and the same names the existing
+/// layout-safety tests assert against; only what they add up to internally
+/// has changed.
 class HomeOfficeStageMetrics {
   const HomeOfficeStageMetrics._();
 
@@ -36,7 +41,6 @@ class HomeOfficeStageMetrics {
     nameFontSize: 12,
     statusFontSize: 10,
     horizontalGap: 6,
-    iconSize: 20,
   );
 
   /// 390x844.
@@ -45,12 +49,11 @@ class HomeOfficeStageMetrics {
     nameFontSize: 13,
     statusFontSize: 10.5,
     horizontalGap: 8,
-    iconSize: 22,
   );
 
   /// Height the card spends on everything that is not the employee cards
-  /// row itself: the title row (icon + label + optional headcount chip)
-  /// plus the card's own vertical padding and the gap above the row.
+  /// row itself: the title row (label + optional headcount chip) plus the
+  /// card's own vertical padding and the gap above the row.
   static const double chromeHeight =
       _cardPaddingTop + _titleRowHeight + _titleGap + _cardPaddingBottom;
 
@@ -59,6 +62,12 @@ class HomeOfficeStageMetrics {
   static const double _cardPaddingHorizontal = 12;
   // A *minimum*, not a fixed size — see the title row's own ConstrainedBox
   // in the widget body below for why this must stay a floor, not a cap.
+  //
+  // SES HOME Visual SSOT Exact Layout Match: back down from 28 to 20 — the
+  // office photo moved out of this row entirely into its own column (see
+  // the class doc above), so this row is plain text + the headcount chip
+  // again, the same real minimum every other single-line HOME title row
+  // uses.
   static const double _titleRowHeight = 20;
   static const double _titleGap = 2;
 
@@ -98,18 +107,12 @@ class HomeOfficeStageLayout {
     required this.nameFontSize,
     required this.statusFontSize,
     required this.horizontalGap,
-    required this.iconSize,
   });
 
   final double portraitSize;
   final double nameFontSize;
   final double statusFontSize;
   final double horizontalGap;
-
-  /// The small decorative office-photo icon's side length — see this
-  /// class's own file-level doc for why the office scene is now an icon,
-  /// not a background.
-  final double iconSize;
 
   double get componentHeight =>
       HomeOfficeStageMetrics._cardsRowHeight(this) +
@@ -131,10 +134,12 @@ class HomeOfficeStageLayout {
 /// HOME's single mutation entry point, exactly as HOME-RUNTIME-2C left it.
 ///
 /// It also does not *choose* anything. Which employees appear, in which
-/// order, with which portraits/status, and which office photo icon is
-/// shown are all already decided in [HomeOfficeStageDisplay] by the time
-/// this widget sees them. That split is what makes "the same state always
-/// draws the same scene" testable without pumping a widget at all.
+/// order, with which portraits/status, and whether the office photo panel
+/// has a free column to render in are all already decided (or, for the
+/// office photo, computed here from [HomeOfficeStageDisplay.visibleSlotCount]
+/// alone — see [_showOfficePhoto]'s own doc) by the time this widget draws
+/// them. That split is what makes "the same state always draws the same
+/// scene" testable without pumping a widget at all.
 ///
 /// Deliberately not coupled to the legacy cards below it: nothing here
 /// reads, measures, or positions itself relative to the per-employee
@@ -145,12 +150,36 @@ class HomeOfficeStageSection extends StatelessWidget {
 
   final HomeOfficeStageDisplay display;
 
+  /// Whether the office photo gets its own column in the content row.
+  ///
+  /// SES HOME Visual SSOT Exact Layout Match: the approved Visual SSOT's
+  /// "Employee Scene" is three columns — up to two real employees, plus the
+  /// office photo as a real third panel, not a title-row glyph. Today's
+  /// real April roster (two engineers) is exactly this shape. A real
+  /// employee always wins that slot over the photo, though: once the
+  /// roster genuinely fills every slot [HomeOfficeStageDisplay
+  /// .visibleSlotCount] allows (three people, or two people plus the "+N"
+  /// overflow chip once a fourth exists), the row is already at its
+  /// intended width budget and the photo is dropped rather than forcing a
+  /// fourth/fifth column that would cramp every real person's own name and
+  /// portrait — "employees are the visual subject" (this file's own
+  /// long-standing rule) still wins the slot when the two collide, which is
+  /// only for a roster this section does not draw at 360x800 today (3+
+  /// employees).
+  bool get _showOfficePhoto {
+    final rendered =
+        display.visibleMembers.length +
+        (display.hiddenMemberCount > 0 ? 1 : 0);
+    return rendered < HomeOfficeStageDisplay.visibleSlotCount;
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final layout = HomeOfficeStageMetrics.of(context);
     final visible = display.visibleMembers;
     final hidden = display.hiddenMemberCount;
+    final showOfficePhoto = _showOfficePhoto;
 
     return Card(
       key: const Key('home-office-stage'),
@@ -167,23 +196,17 @@ class HomeOfficeStageSection extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           mainAxisSize: MainAxisSize.min,
           children: [
-            // Title row: a small office-photo icon (see the class doc for
-            // why the office scene shrank from a background to this), the
-            // "社員の様子" label, and — when supplied — the truthful
-            // aggregate headcount chip. A *minimum* height, not a fixed
-            // one, so an increased text scale grows the row instead of
-            // clipping it.
+            // Title row: the "社員の様子" label and — when supplied — the
+            // truthful aggregate headcount chip. A *minimum* height, not a
+            // fixed one, so an increased text scale grows the row instead
+            // of clipping it. No icon here any more — the office photo is
+            // its own column below (see [_showOfficePhoto]'s doc).
             ConstrainedBox(
               constraints: BoxConstraints(
                 minHeight: HomeOfficeStageMetrics._titleRowHeight,
               ),
               child: Row(
                 children: [
-                  _OfficeIcon(
-                    assetPath: display.backgroundAssetPath,
-                    size: layout.iconSize,
-                  ),
-                  const SizedBox(width: 6),
                   Expanded(
                     child: Text(
                       '社員の様子',
@@ -205,28 +228,36 @@ class HomeOfficeStageSection extends StatelessWidget {
               ),
             ),
             const SizedBox(height: HomeOfficeStageMetrics._titleGap),
-            if (visible.isEmpty)
-              const _EmptyOffice()
-            else
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
+            // SES HOME Visual SSOT Exact Layout Match: `IntrinsicHeight` +
+            // `stretch` — the same fix `PublicDemoImportantTasksSection`
+            // already uses for its own two-column row — so the office
+            // photo column (which has no natural height of its own to
+            // negotiate with) always fills exactly the height the real
+            // employee cards need, never forcing the row taller or leaving
+            // it a sliver.
+            IntrinsicHeight(
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  for (var i = 0; i < visible.length; i++) ...[
-                    if (i > 0) SizedBox(width: layout.horizontalGap),
-                    // Loose flex: each card keeps its natural width when it
-                    // fits and shrinks instead of overflowing when it does
-                    // not, which is what keeps a long name from painting
-                    // past the card edge at 360pt.
-                    Expanded(
-                      child: _MemberCard(
-                        key: ValueKey(
-                          'home-office-stage-member-${visible[i].id}',
+                  if (visible.isEmpty)
+                    const Expanded(child: _EmptyOffice())
+                  else
+                    for (var i = 0; i < visible.length; i++) ...[
+                      if (i > 0) SizedBox(width: layout.horizontalGap),
+                      // Loose flex: each card keeps its natural width when
+                      // it fits and shrinks instead of overflowing when it
+                      // does not, which is what keeps a long name from
+                      // painting past the card edge at 360pt.
+                      Expanded(
+                        child: _MemberCard(
+                          key: ValueKey(
+                            'home-office-stage-member-${visible[i].id}',
+                          ),
+                          member: visible[i],
+                          layout: layout,
                         ),
-                        member: visible[i],
-                        layout: layout,
                       ),
-                    ),
-                  ],
+                    ],
                   if (hidden > 0) ...[
                     SizedBox(width: layout.horizontalGap),
                     Expanded(
@@ -236,8 +267,17 @@ class HomeOfficeStageSection extends StatelessWidget {
                       ),
                     ),
                   ],
+                  if (showOfficePhoto) ...[
+                    SizedBox(width: layout.horizontalGap),
+                    Expanded(
+                      child: _OfficePhotoPanel(
+                        assetPath: display.backgroundAssetPath,
+                      ),
+                    ),
+                  ],
                 ],
               ),
+            ),
           ],
         ),
       ),
@@ -245,15 +285,16 @@ class HomeOfficeStageSection extends StatelessWidget {
   }
 }
 
-/// The office scene, shrunk to a small decorative icon — see
-/// [HomeOfficeStageMetrics]'s own file-level doc for why. Falls back to a
-/// plain icon if the bundled image cannot be decoded, so a missing or
-/// corrupt asset degrades instead of throwing during layout.
-class _OfficeIcon extends StatelessWidget {
-  const _OfficeIcon({required this.assetPath, required this.size});
+/// The office, as its own real photo panel — a third column beside the
+/// employee cards (see [HomeOfficeStageSection._showOfficePhoto]'s doc for
+/// when it renders at all), not a title-row glyph and not a full-bleed
+/// background behind the employees. Falls back to a plain icon if the
+/// bundled image cannot be decoded, so a missing or corrupt asset degrades
+/// instead of throwing during layout.
+class _OfficePhotoPanel extends StatelessWidget {
+  const _OfficePhotoPanel({required this.assetPath});
 
   final String assetPath;
-  final double size;
 
   @override
   Widget build(BuildContext context) {
@@ -261,22 +302,26 @@ class _OfficeIcon extends StatelessWidget {
     final fallback = Icon(
       Icons.apartment,
       key: const Key('home-office-stage-background-fallback'),
-      size: size * 0.7,
       color: scheme.onSurfaceVariant,
     );
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(6),
-      child: SizedBox(
-        width: size,
-        height: size,
-        child: Semantics(
-          label: 'オフィスの様子',
-          image: true,
-          child: Image.asset(
-            assetPath,
-            key: const Key('home-office-stage-background'),
-            fit: BoxFit.cover,
-            errorBuilder: (context, error, stackTrace) => fallback,
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: scheme.outlineVariant),
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(9),
+        child: SizedBox.expand(
+          child: Semantics(
+            label: 'オフィスの様子',
+            image: true,
+            child: Image.asset(
+              assetPath,
+              key: const Key('home-office-stage-background'),
+              fit: BoxFit.cover,
+              errorBuilder: (context, error, stackTrace) =>
+                  Center(child: fallback),
+            ),
           ),
         ),
       ),

@@ -251,6 +251,30 @@ void main() {
     });
 
     testWidgets(
+      // SES HOME Final Touch, Codex review (PR #184, P2): the CTA's real
+      // height is `minimumSize`-floored regardless of label length, so a
+      // short recommendation label (e.g. "研修する") must clear the same
+      // real accessible tap target a long one does — see the CTA's own
+      // doc in home_navigator_section.dart for why 44, not 40 or 48.
+      'the CTA stays a real >=44pt tap target even for a short label',
+      (tester) async {
+        await pumpNavigator(
+          tester,
+          advice: HomeNavigatorAdvice(
+            title: 'ひよりからのご案内',
+            message: '既存の案内です。',
+            ctaLabel: '研修する',
+            onCtaPressed: () {},
+          ),
+        );
+        final rect = tester.getRect(
+          find.byKey(const Key('home-recommended-action-cta')),
+        );
+        expect(rect.height, greaterThanOrEqualTo(44));
+      },
+    );
+
+    testWidgets(
       // PUBLIC-DEMO-HOME-UI-3A: the approved visual target shows the
       // "ひよりからのアドバイス" box open at all times, with no "詳しく見る"/
       // "閉じる" tap-to-reveal — matching this is the whole point of this
@@ -402,8 +426,8 @@ void main() {
     }
   });
 
-  group('HOME-COMPACT-1B.4 FIX2 (Codex P2): 続きを読む reveals a truncated '
-      'explanation in full', () {
+  group('HOME-COMPACT-1B.4 FIX2 (Codex P2) / SES HOME Final Touch: 続きを読む '
+      'reveals a truncated explanation in full', () {
     // April's own real スキルシート explanation — the exact string the P2
     // review's screenshot showed ending in "次の…" (SES HOME Final Polish
     // renamed the player-facing "SkillSheet" copy to "スキルシート"; this
@@ -412,8 +436,21 @@ void main() {
     const skillSheetExplanation =
         'スキルシートは、経験やスキルを案件へ伝えるための資料です。内容を確認して次の手続きに備えます。';
 
-    testWidgets('a short explanation that already fits two lines gets no 続きを読む '
-        'control', (tester) async {
+    // SES HOME Final Touch: a real device screenshot found exactly
+    // [skillSheetExplanation] — April's actual production string — still
+    // silently truncated behind 続きを読む under the *former* two-line cap
+    // (test-font metrics alone could not catch this — see this file's own
+    // documented Flutter SDK constraint elsewhere in this repo for why).
+    // This fixture is deliberately longer than [skillSheetExplanation] so
+    // it keeps overflowing even the raised three-line cap, and the reveal
+    // mechanism itself stays covered by a real assertion rather than
+    // becoming dead code the moment every real copy fits.
+    const longOverflowingExplanation =
+        'スキルシートは、経験やスキルを案件へ伝えるための資料です。内容を確認したうえで、次の手続きに'
+        '備えて必要な準備を漏れなく進めておきましょう。';
+
+    testWidgets('a short explanation that already fits three lines gets no '
+        '続きを読む control', (tester) async {
       await pumpNavigator(
         tester,
         size: const Size(390, 844),
@@ -431,8 +468,11 @@ void main() {
 
     for (final size in _sizes) {
       testWidgets(
-        'a long explanation that would overflow two lines shows 続きを読む, '
-        'and tapping it reveals the full text at ${size.width.toInt()}x'
+        // SES HOME Final Touch: this is the exact regression the raised
+        // cap fixes — April's real production explanation used to need a
+        // tap to read in full; now it does not.
+        'April\'s real スキルシート explanation now fits the raised three-line '
+        'cap with no 続きを読む needed at ${size.width.toInt()}x'
         '${size.height.toInt()}',
         (tester) async {
           await pumpNavigator(
@@ -444,6 +484,34 @@ void main() {
               explanation: skillSheetExplanation,
             ),
           );
+          expect(find.text(skillSheetExplanation), findsOneWidget);
+          expect(
+            find.byKey(const Key('home-navigator-advice-expand')),
+            findsNothing,
+            reason:
+                'the exact string a real device screenshot found truncated '
+                'under the former two-line cap must now render in full',
+          );
+          expect(tester.takeException(), isNull);
+        },
+      );
+    }
+
+    for (final size in _sizes) {
+      testWidgets(
+        'a long explanation that would overflow three lines shows 続きを読む, '
+        'and tapping it reveals the full text at ${size.width.toInt()}x'
+        '${size.height.toInt()}',
+        (tester) async {
+          await pumpNavigator(
+            tester,
+            size: size,
+            advice: HomeNavigatorAdvice(
+              title: 'ひよりからのご案内',
+              message: '佐藤 健のスキルシートを確認',
+              explanation: longOverflowingExplanation,
+            ),
+          );
 
           final explanationFinder = find.byKey(
             const Key('home-navigator-advice-explanation'),
@@ -451,7 +519,7 @@ void main() {
           // The full string is always the underlying Text's own data — see
           // "there is no collapse-back toggle" above for why this alone
           // does not prove the text is actually painted in full.
-          expect(find.text(skillSheetExplanation), findsOneWidget);
+          expect(find.text(longOverflowingExplanation), findsOneWidget);
 
           final expandFinder = find.byKey(
             const Key('home-navigator-advice-expand'),
@@ -460,8 +528,9 @@ void main() {
             expandFinder,
             findsOneWidget,
             reason:
-                'this exact string is the one the P2 review found silently '
-                'truncated at $size — the reveal control must render',
+                'a genuinely long explanation must still trigger the '
+                'reveal control at $size even under the raised three-line '
+                'cap',
           );
           expect(find.text('続きを読む'), findsOneWidget);
 
@@ -477,7 +546,8 @@ void main() {
             findsNothing,
           );
           // Genuinely painted in full now, not just present as data: the
-          // revealed Text measures taller than its two-line collapsed form.
+          // revealed Text measures taller than its three-line collapsed
+          // form.
           final expandedHeight = tester.getRect(explanationFinder).height;
           expect(expandedHeight, greaterThan(collapsedHeight));
           expect(tester.takeException(), isNull);
@@ -494,7 +564,7 @@ void main() {
         advice: const HomeNavigatorAdvice(
           title: 'ひよりからのご案内',
           message: '佐藤 健のスキルシートを確認',
-          explanation: skillSheetExplanation,
+          explanation: longOverflowingExplanation,
         ),
       );
       await tester.tap(find.byKey(const Key('home-navigator-advice-expand')));

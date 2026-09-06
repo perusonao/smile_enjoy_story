@@ -196,16 +196,27 @@ void main() {
             expect(rect.right, lessThanOrEqualTo(size.width));
           }
 
-          // Every important-task icon CTA this state renders is a real,
-          // reachable touch target — never shrunk to fit the icon alone.
-          final ctaButtons = find.byWidgetPredicate(
+          // Every important-task tile's own tap target is a real, reachable
+          // touch target — never shrunk to fit its trailing arrow glyph
+          // alone.
+          //
+          // SES HOME Final Touch: the tap target is the whole tile now
+          // (see `_ImportantTaskCell`'s own doc in
+          // public_demo_home_presentation_components.dart) — a plain,
+          // non-interactive `Icon` draws the trailing arrow, so this no
+          // longer finds an `IconButton` there at all. Each tile's key
+          // (`important-task-cta-<title>`) still identifies its own real
+          // tappable region.
+          final ctaTiles = find.byWidgetPredicate(
             (widget) =>
-                widget is IconButton &&
-                widget.icon is Icon &&
-                (widget.icon as Icon).icon == Icons.arrow_forward_ios_rounded,
+                widget is InkWell &&
+                widget.key is ValueKey &&
+                (widget.key! as ValueKey).value.toString().startsWith(
+                  'important-task-cta-',
+                ),
           );
-          expect(ctaButtons, findsWidgets);
-          for (final element in ctaButtons.evaluate()) {
+          expect(ctaTiles, findsWidgets);
+          for (final element in ctaTiles.evaluate()) {
             final size = tester.getSize(find.byWidget(element.widget));
             expect(size.height, greaterThanOrEqualTo(48));
             expect(size.width, greaterThanOrEqualTo(48));
@@ -229,8 +240,13 @@ void main() {
       // still reach an assistive-technology user via Semantics.
       expect(find.text('対応する'), findsNothing);
       expect(find.text('確認する'), findsNothing);
-      expect(find.bySemanticsLabel('対応する'), findsWidgets);
-      expect(find.bySemanticsLabel('確認する'), findsOneWidget);
+      // SES HOME Final Touch: each tile's Semantics node now carries
+      // [ctaLabel] alongside its own title/fact text (the whole tile is
+      // the tap target — see `_ImportantTaskCell`'s own doc), so this
+      // matches it as a substring of the combined label rather than an
+      // exact one.
+      expect(find.bySemanticsLabel(RegExp('対応する')), findsWidgets);
+      expect(find.bySemanticsLabel(RegExp('確認する')), findsOneWidget);
       handle.dispose();
     });
   });

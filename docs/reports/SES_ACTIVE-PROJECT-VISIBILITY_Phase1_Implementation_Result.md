@@ -8,7 +8,8 @@ SSOT: `docs/decisions/SES_DEVELOPMENT-PRIORITY_2026-09-02.md`（本Result Report
 
 - BASE: `origin/main` = `592fd675b7b617f8709bf176247e75cdf88bbe8e`（Year-End Phase 1 merge SHA、= 現時点のorigin/main HEADと一致していることを確認済み）
 - Branch: `claude/ses-active-project-visibility-xkkpn0`（最新mainから作り直した新規作業ブランチ）
-- HEAD: commit予定（本コミット。実際のSHAは最後のGitログを参照）
+- HEAD: `e76e52e2d1e1a2ca98c43d3de438f9ad51d63919`
+- PR: [#188](https://github.com/perusonao/smile_enjoy_story/pull/188)（auto-mergeなし）
 
 ## 目的
 

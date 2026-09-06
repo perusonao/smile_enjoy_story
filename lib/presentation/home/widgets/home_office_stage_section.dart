@@ -41,7 +41,15 @@ class HomeOfficeStageMetrics {
     // registered as a plain, indistinct dot next to the title). See
     // [_OfficeIcon]'s own doc for the same asset shown larger, not a new
     // or different one.
-    iconSize: 30,
+    //
+    // Kept to 26, not 30: the existing HOME-COMPACT-1B.4 FIX1 cash-shortage
+    // scenario (public_demo_01_issue_124_screen_verification_test.dart)
+    // already spends the 360x800 unscrolled budget down to a few spare
+    // pixels with its own extra card above HOME — 30 overflowed that one
+    // real state by ~1pt. 26 is still a real, deliberate increase (+6, was
+    // 20) and stays inside every existing 360x800/390x844 budget this
+    // phase must not regress.
+    iconSize: 26,
   );
 
   /// 390x844.
@@ -51,8 +59,8 @@ class HomeOfficeStageMetrics {
     statusFontSize: 10.5,
     horizontalGap: 8,
     // SES HOME Final Touch: raised from 22 — see [compact.iconSize]'s own
-    // doc above.
-    iconSize: 32,
+    // doc above for why this stops at 28, not 32.
+    iconSize: 28,
   );
 
   /// Height the card spends on everything that is not the employee cards
@@ -67,7 +75,7 @@ class HomeOfficeStageMetrics {
   // A *minimum*, not a fixed size — see the title row's own ConstrainedBox
   // in the widget body below for why this must stay a floor, not a cap.
   //
-  // SES HOME Final Touch: raised from 20 to [normal.iconSize] (32, the
+  // SES HOME Final Touch: raised from 20 to [normal.iconSize] (28, the
   // larger of the two office-icon sizes now that it is a real photo, not a
   // small glyph) — the title row's actual rendered height is governed by
   // whichever child is tallest, and the enlarged icon is now that child at
@@ -75,7 +83,7 @@ class HomeOfficeStageMetrics {
   // [compactComponentHeight]/[normalComponentHeight] a real, conservative
   // prediction of the rendered height at either width, not an estimate the
   // bigger icon has already outgrown.
-  static const double _titleRowHeight = 32;
+  static const double _titleRowHeight = 28;
   static const double _titleGap = 2;
 
   /// What the whole card is designed to measure at each target — the

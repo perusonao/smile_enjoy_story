@@ -35,19 +35,24 @@ Finder actionButton(String text) => find.ancestor(
   matching: find.byWidgetPredicate((widget) => widget is ButtonStyleButton),
 );
 
-/// The CTA button belonging to a specific "今月の重要タスク" row, found by
-/// that row's own title text rather than by its (shared, ambiguous)
-/// "対応する" label — 営業 and 採用 can both render that same label at once.
+/// The CTA belonging to a specific "今月の重要タスク" row, found by that
+/// row's own title — never by its (shared, ambiguous) "対応する" label,
+/// since 営業 and 採用 can both render that same label at once.
 ///
-/// SES HOME Final Density: this CTA is icon-only now (an `IconButton`, not
-/// a `TextButton` printing "対応する"/"確認する") — its real label reaches
-/// assistive technology via `Semantics.label` instead. See
+/// SES HOME Final Density: this CTA used to be icon-only (an `IconButton`,
+/// not a `TextButton` printing "対応する"/"確認する") — its real label
+/// reaches assistive technology via `Semantics.label` instead. See
 /// `public_demo_01_home_final_density_test.dart` for the dedicated
 /// Semantics coverage.
-Finder importantTaskCta(String title) => find.descendant(
-  of: find.ancestor(of: find.text(title), matching: find.byType(Row)).first,
-  matching: find.byType(IconButton),
-);
+///
+/// SES HOME Final Touch: the whole tile is the tap target now (a plain,
+/// non-interactive `Icon` draws the trailing arrow — see
+/// `_ImportantTaskCell`'s own doc in
+/// public_demo_home_presentation_components.dart), keyed
+/// `important-task-cta-<title>` — found directly by that key instead of by
+/// an `IconButton` that no longer exists.
+Finder importantTaskCta(String title) =>
+    find.byKey(Key('important-task-cta-$title'));
 
 /// Advances one month via the real monthly-close CTA and its confirmation
 /// dialog — the same path every other suite in this directory uses (see

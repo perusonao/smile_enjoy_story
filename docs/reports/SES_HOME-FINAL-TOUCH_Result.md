@@ -29,6 +29,7 @@ lib/presentation/home/widgets/home_navigator_section.dart         (modified)
 lib/presentation/home/widgets/home_office_stage_section.dart      (modified)
 lib/ui/public_demo/public_demo_home_presentation_components.dart  (modified)
 test/presentation/home/home_navigator_section_test.dart           (modified)
+test/ui/public_demo/public_demo_01_bottom_nav_tabs_test.dart       (modified)
 test/ui/public_demo/public_demo_01_home_final_density_test.dart   (modified)
 test/ui/public_demo/public_demo_01_home_one_screen_final_fit_test.dart (modified)
 test/ui/public_demo/public_demo_home_presentation_components_test.dart (modified)
@@ -75,18 +76,29 @@ lib 側の変更は3ファイルのみ。いずれも既存の該当セクショ
 **After**:
 - 既存の同一アセット（`display.backgroundAssetPath` /
   `AssetPaths.locationOfficeDayHomeBanner`）はそのまま、サイズのみ
-  20→30pt（360x800）、22→32pt（390x844）に拡大。
+  20→26pt（360x800）、22→28pt（390x844）に拡大。
 - 社員ポートレートと同様の薄い枠線（`Border.all(outlineVariant)`）と角丸
   を追加し、単なるアイコングリフではなく「小さな写真」として認識できる
   枠組みに変更。
 - レイアウト定数 `_titleRowHeight` を実際に描画される最大アイコンサイズ
-  （32）に合わせて更新（`compactComponentHeight`/`safetyCeiling` の予測
+  （28）に合わせて更新（`compactComponentHeight`/`safetyCeiling` の予測
   値が実測値を下回らないようにするため）。
 - 社員2名（佐藤健・鈴木葵）の顔写真・氏名・ステータス（「待機」）表示は
   変更なし。
 - 実在しない3人目の追加、ひよりの社員追加、fake data の追加は一切なし
   （`HomeOfficeStageDisplay.members` は `workflow.engineers` のみを引き
   続き参照）。
+
+**回帰の発見と修正（実装中）**: 当初は 20→30pt / 22→32pt で実装したが、
+その後 `flutter test` フル実行で
+`public_demo_01_issue_124_screen_verification_test.dart`
+（HOME-COMPACT-1B.4 FIX1: 実際の資金不足状態で360x800が unscrolled に収
+まることを検証する既存テスト）が 1.07px の overflow で failing になるこ
+とを発見した。資金不足カードがHOME本体の上に追加で表示される、より予算
+の厳しい既存シナリオで、オフィス画像拡大分がその余白を超えていたため。
+アイコンサイズを 26/28pt に抑えることで、このシナリオも含めた全ての既存
+360x800/390x844 no-scroll テストが green になることを確認した上で最終
+版とした（詳細は後述の「今回追加/更新した test」および tests 節を参照）。
 
 ### 3. 今月の重要タスク（`public_demo_home_presentation_components.dart`）
 
@@ -129,13 +141,17 @@ lib 側の変更は3ファイルのみ。いずれも既存の該当セクショ
 | 360x800 | **0.0** |
 | 390x844 | **0.0**（360x800 より実質的な余白があることも同スイートの別テストで確認） |
 
-参考: 実装中に取得した内訳（`flutter test`、TextScaler 1.0）:
+参考: 最終版での内訳（`flutter test`、`SesTheme.build()`適用、
+TextScaler 1.0）:
 
-- 360x800: `home-navigator` 167px / `home-office-stage` 122px /
-  `public-demo-important-tasks` 108px。ビューポート下端720pxに対し
-  `public-demo-important-tasks` 下端は717px（マージン3px）。
-- 390x844: 同様に `maxScrollExtent = 0`、360x800よりマージンが大きいこと
-  を確認済み。
+- 360x800（viewport: y=56〜720）: `home-navigator` 167px /
+  `home-office-stage` 118px / `public-demo-important-tasks` 108px。
+  `public-demo-important-tasks` 下端は713px（ビューポート下端720pxまで
+  マージン7px）。
+- 390x844（viewport: y=56〜764）: `home-navigator` 170px /
+  `home-office-stage` 127px / `public-demo-important-tasks` 108px。
+  `public-demo-important-tasks` 下端は725px（マージン39px、360x800より
+  余裕があることを既存テストでも確認済み）。
 
 ## tests
 
@@ -154,10 +170,42 @@ lib 側の変更は3ファイルのみ。いずれも既存の該当セクショ
   — 27/27
 - `test/ui/public_demo/public_demo_01_home_consolidation_test.dart`
   （フル実行、既存分すべて green）
+- `test/ui/public_demo/public_demo_01_bottom_nav_tabs_test.dart` — 6/6
+- `test/ui/public_demo/public_demo_01_issue_124_screen_verification_test.dart`
+  — 全green（資金不足シナリオでの360x800/390x844 no-scroll検証を含む）
+- `test/presentation/home/home_recommended_action_test.dart`
+- `test/ui/public_demo/public_demo_01_home_cash_forecast_advice_test.dart`
+- `test/ui/public_demo/public_demo_01_home_navigator_test.dart`
+- `test/ui/public_demo/public_demo_01_home_runtime_read_test.dart`
+- `test/ui/public_demo/public_demo_01_skill_sheet_flow_test.dart`
+- プロジェクト全体の `flutter test`（フル実行、約1560テスト）を1回実行
+  し、影響範囲の洗い出しに使った。本流のHOME以外を含む全テストの中から、
+  今回の変更が直接原因の既存テスト2件（後述）を発見・修正した。
 
 いずれも `flutter test`（本セッションでインストールした Flutter
 3.44.9 stable、CI の `.github/workflows/*.yml` が指定するバージョンに合
 わせた）で実行。
+
+### フル実行で見つけた既存テストへの影響と修正
+
+`git diff --check` / `flutter analyze` の前に、影響範囲を狭く見積もらな
+いためプロジェクト全体の `flutter test` を実行した。以下の2件が、今回の
+widget内部実装変更（旧 `IconButton` の廃止・オフィス画像サイズ変更）が
+原因で実際に落ちていたので修正した（それ以外の既存の失敗は、作業用に一
+時的に追加していた `test/ui/public_demo/zz_debug_*.dart` を実行中に削除
+したことによる読み込みエラーのみで、最終コミットには含まれていない）。
+
+1. **`public_demo_01_bottom_nav_tabs_test.dart`**: 共有ヘルパー
+   `importantTaskCta()` が `find.byType(IconButton)` で重要タスクのCTAを
+   探していたため、`IconButton` を装飾用 `Icon` に置き換えた今回の変更で
+   見つからなくなっていた。`important-task-cta-<title>` キーで直接
+   `InkWell`（＝タイル全体のタップ領域）を探すように更新。
+2. **`public_demo_01_issue_124_screen_verification_test.dart`**
+   （HOME-COMPACT-1B.4 FIX1: 実際の資金不足状態での360x800 no-scroll検
+   証）: オフィス画像アイコンを当初 30/32pt にしたところ、資金不足カー
+   ドがHOME本体の上に追加されるこのシナリオの既存予算を 1.07px だけ超え
+   た。アイコンサイズを 26/28pt に抑えることで解消（本レポート冒頭の
+   「社員の様子」節の「回帰の発見と修正」を参照）。
 
 ### 今回追加/更新した test（タスク必須の6項目に対応）
 

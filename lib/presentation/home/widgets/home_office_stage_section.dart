@@ -36,7 +36,12 @@ class HomeOfficeStageMetrics {
     nameFontSize: 12,
     statusFontSize: 10,
     horizontalGap: 6,
-    iconSize: 20,
+    // SES HOME Final Touch: raised from 20 — a real device screenshot
+    // found this office photo too small to read as a photo at all (it
+    // registered as a plain, indistinct dot next to the title). See
+    // [_OfficeIcon]'s own doc for the same asset shown larger, not a new
+    // or different one.
+    iconSize: 30,
   );
 
   /// 390x844.
@@ -45,7 +50,9 @@ class HomeOfficeStageMetrics {
     nameFontSize: 13,
     statusFontSize: 10.5,
     horizontalGap: 8,
-    iconSize: 22,
+    // SES HOME Final Touch: raised from 22 — see [compact.iconSize]'s own
+    // doc above.
+    iconSize: 32,
   );
 
   /// Height the card spends on everything that is not the employee cards
@@ -59,7 +66,16 @@ class HomeOfficeStageMetrics {
   static const double _cardPaddingHorizontal = 12;
   // A *minimum*, not a fixed size — see the title row's own ConstrainedBox
   // in the widget body below for why this must stay a floor, not a cap.
-  static const double _titleRowHeight = 20;
+  //
+  // SES HOME Final Touch: raised from 20 to [normal.iconSize] (32, the
+  // larger of the two office-icon sizes now that it is a real photo, not a
+  // small glyph) — the title row's actual rendered height is governed by
+  // whichever child is tallest, and the enlarged icon is now that child at
+  // both target widths. Keeping this at the larger of the two keeps
+  // [compactComponentHeight]/[normalComponentHeight] a real, conservative
+  // prediction of the rendered height at either width, not an estimate the
+  // bigger icon has already outgrown.
+  static const double _titleRowHeight = 32;
   static const double _titleGap = 2;
 
   /// What the whole card is designed to measure at each target — the
@@ -264,19 +280,30 @@ class _OfficeIcon extends StatelessWidget {
       size: size * 0.7,
       color: scheme.onSurfaceVariant,
     );
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(6),
-      child: SizedBox(
-        width: size,
-        height: size,
-        child: Semantics(
-          label: 'オフィスの様子',
-          image: true,
-          child: Image.asset(
-            assetPath,
-            key: const Key('home-office-stage-background'),
-            fit: BoxFit.cover,
-            errorBuilder: (context, error, stackTrace) => fallback,
+    // SES HOME Final Touch: a thin frame — the same idea [_MemberCard]'s
+    // own portrait border already uses — around the now-larger photo, so
+    // it reads as a small picture rather than a plain, borderless icon
+    // glyph. Same asset, same position; only the size and this frame are
+    // new.
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: scheme.outlineVariant),
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(7),
+        child: SizedBox(
+          width: size,
+          height: size,
+          child: Semantics(
+            label: 'オフィスの様子',
+            image: true,
+            child: Image.asset(
+              assetPath,
+              key: const Key('home-office-stage-background'),
+              fit: BoxFit.cover,
+              errorBuilder: (context, error, stackTrace) => fallback,
+            ),
           ),
         ),
       ),

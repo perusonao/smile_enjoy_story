@@ -106,13 +106,22 @@ class PublicDemoImportantTasksSection extends StatelessWidget {
         for (var i = 0; i < items.length; i += 2) ...[
           if (i > 0) const SizedBox(height: 6),
           if (i + 1 < items.length)
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(child: _ImportantTaskCell(item: items[i])),
-                const SizedBox(width: 6),
-                Expanded(child: _ImportantTaskCell(item: items[i + 1])),
-              ],
+            // SES HOME Final Touch: `IntrinsicHeight` + `stretch` — a real
+            // device screenshot found the left/right tiles at different
+            // heights whenever one title/fact pair wrapped to more lines
+            // than the other (`start` let each tile keep its own natural,
+            // shorter height instead). Both tiles in a row now share the
+            // taller one's height, tile background included, with no
+            // change to either tile's own content or padding.
+            IntrinsicHeight(
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Expanded(child: _ImportantTaskCell(item: items[i])),
+                  const SizedBox(width: 6),
+                  Expanded(child: _ImportantTaskCell(item: items[i + 1])),
+                ],
+              ),
             )
           else
             SizedBox(
@@ -137,6 +146,17 @@ class PublicDemoImportantTasksSection extends StatelessWidget {
 /// dropped from the data: [_CategoryIcon] still exposes it verbatim via
 /// [Semantics.label] for assistive technology, only sighted users now see
 /// the icon glyph instead of the text.
+///
+/// SES HOME Final Touch: the whole tile is now the tap target, not just the
+/// trailing icon. A real device screenshot found the former icon-only
+/// `IconButton` (48x48, pinned to the tile's trailing edge) a small target
+/// to aim for on a tile this wide — tapping the icon/title/fact text or the
+/// tile's own whitespace now all reach the exact same [item.onPressed],
+/// through the exact same single [InkWell], so there is exactly one
+/// gesture recognizer here and no way for a tap to fire it twice. The
+/// trailing arrow is decorative now (a plain [Icon], not its own button) —
+/// [item.ctaLabel] still reaches assistive technology verbatim, moved from
+/// that former button onto the [Semantics] wrapping the whole tile below.
 class _ImportantTaskCell extends StatelessWidget {
   const _ImportantTaskCell({required this.item});
   final PublicDemoImportantTaskItem item;
@@ -144,102 +164,121 @@ class _ImportantTaskCell extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: theme.colorScheme.surfaceContainerHighest.withValues(
-          alpha: 0.35,
-        ),
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: theme.colorScheme.outlineVariant),
-      ),
-      child: Padding(
-        // PR #182 Codex P2: trimmed vertical from 6/6 to 4/4 — real card
-        // padding, not text/touch-target room — to buy back headroom for
-        // [item.fact] now genuinely needing a 2nd line (see below) without
-        // reopening the 360x800 no-scroll overflow One-Screen Final Fit
-        // (PR #181) closed.
-        padding: const EdgeInsets.fromLTRB(8, 3, 2, 3),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _CategoryIcon(category: item.category),
-            const SizedBox(width: 6),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    item.title,
-                    // A real Chromium screenshot (real NotoSansJP glyphs —
-                    // see item.fact's own doc a few lines below for why
-                    // these differ from `flutter test`'s substituted ones)
-                    // found the ambient default size ellipsizing a real
-                    // title ("資金計画を確認する") at this half-width
-                    // column even at maxLines: 2. An explicit, slightly
-                    // smaller size — still fully legible, still bold —
-                    // gives every real title room to fit both lines.
-                    style: const TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 13,
+    return Semantics(
+      // `container: true` keeps this a single, real button-role node for
+      // assistive technology while still letting the title/fact `Text`
+      // below contribute their own readable content as descendants — see
+      // the class doc above for why [item.ctaLabel] belongs here now.
+      container: true,
+      button: true,
+      label: item.ctaLabel,
+      child: Material(
+        type: MaterialType.transparency,
+        child: InkWell(
+          key: ValueKey('important-task-cta-${item.title}'),
+          borderRadius: BorderRadius.circular(10),
+          onTap: item.onPressed,
+          child: ConstrainedBox(
+            // A real floor, not the platform default: the former
+            // `IconButton` guaranteed >=48px this way; a short single-line
+            // title/fact pair alone would not, now that nothing else in
+            // this Row forces it.
+            constraints: const BoxConstraints(minHeight: 48),
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                color: theme.colorScheme.surfaceContainerHighest.withValues(
+                  alpha: 0.35,
+                ),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: theme.colorScheme.outlineVariant),
+              ),
+              child: Padding(
+                // PR #182 Codex P2: trimmed vertical from 6/6 to 4/4, then
+                // 3/3 — real card padding, not text/touch-target room, to
+                // buy back headroom for [item.fact] now genuinely needing a
+                // 2nd line (see below) without reopening the 360x800
+                // no-scroll overflow One-Screen Final Fit (PR #181) closed.
+                //
+                // SES HOME Final Touch: the right inset only (2 -> 8) — the
+                // trailing element is a small decorative arrow now, not a
+                // 48x48 `IconButton` reserving its own touch-target
+                // padding, so this side no longer needs to stay that
+                // tight. The vertical padding is untouched, so this tile's
+                // own height does not change.
+                padding: const EdgeInsets.fromLTRB(8, 3, 8, 3),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _CategoryIcon(category: item.category),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            item.title,
+                            // A real Chromium screenshot (real NotoSansJP
+                            // glyphs — see item.fact's own doc a few lines
+                            // below for why these differ from `flutter
+                            // test`'s substituted ones) found the ambient
+                            // default size ellipsizing a real title
+                            // ("資金計画を確認する") at this half-width
+                            // column even at maxLines: 2. An explicit,
+                            // slightly smaller size — still fully legible,
+                            // still bold — gives every real title room to
+                            // fit both lines.
+                            style: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 13,
+                            ),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          const SizedBox(height: 2),
+                          // PR #182 Codex P2: this used to be `maxLines: 1`,
+                          // which ellipsized real amounts (e.g.
+                          // "今月の固定費: ¥50,000") at the half-width
+                          // column this grid gives each tile —
+                          // [item.fact] is the task's only supporting
+                          // financial value, so it must stay fully
+                          // readable.
+                          //
+                          // SES HOME Final Visual Match (structural pass):
+                          // raised once more, from 2 to 3. `flutter test`'s
+                          // deterministic test-font glyph substitution (see
+                          // the One-Screen Final Fit suite's own
+                          // file-level doc for the documented Flutter SDK
+                          // constraint) measures every real fact string as
+                          // fitting in 2 lines at this width, but the
+                          // *real* NotoSansJP glyphs a real browser paints
+                          // are wider — a real Chromium screenshot after
+                          // the category icon was added found
+                          // "今月の固定費: ¥50,000" genuinely needing a 3rd
+                          // line to stay unellipsized. `overflow` remains
+                          // the guard for a fact even that cannot rescue.
+                          Text(
+                            item.fact,
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: theme.colorScheme.onSurfaceVariant,
+                            ),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
+                      ),
                     ),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  const SizedBox(height: 2),
-                  // PR #182 Codex P2: this used to be `maxLines: 1`, which
-                  // ellipsized real amounts (e.g. "今月の固定費: ¥50,000")
-                  // at the half-width column this grid gives each tile —
-                  // [item.fact] is the task's only supporting financial
-                  // value, so it must stay fully readable.
-                  //
-                  // SES HOME Final Visual Match (structural pass): raised
-                  // once more, from 2 to 3. `flutter test`'s deterministic
-                  // test-font glyph substitution (see the One-Screen Final
-                  // Fit suite's own file-level doc for the documented
-                  // Flutter SDK constraint) measures every real fact string
-                  // as fitting in 2 lines at this width, but the *real*
-                  // NotoSansJP glyphs a real browser paints are wider — a
-                  // real Chromium screenshot after the category icon was
-                  // added found "今月の固定費: ¥50,000" genuinely needing a
-                  // 3rd line to stay unellipsized. `overflow` remains the
-                  // guard for a fact even that cannot rescue.
-                  Text(
-                    item.fact,
-                    style: theme.textTheme.bodySmall?.copyWith(
+                    const SizedBox(width: 4),
+                    Icon(
+                      Icons.arrow_forward_ios_rounded,
+                      size: 16,
                       color: theme.colorScheme.onSurfaceVariant,
                     ),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
-            // SES HOME Final Density: the CTA used to be a `TextButton`
-            // printing [item.ctaLabel] ("対応する"/"確認する") in full. Every
-            // tile here says the exact same thing — "go to where this fact
-            // lives and act on it" — so the label's width was pure repeated
-            // chrome, not information: shrinking it to a single "proceed"
-            // icon gives the title/fact column real width back without
-            // ever removing the CTA's real meaning. [item.ctaLabel] itself
-            // is never dropped — it still reaches an assistive-technology
-            // user verbatim via this explicit [Semantics.label], never
-            // merely inferred from a generic icon.
-            Semantics(
-              button: true,
-              label: item.ctaLabel,
-              child: IconButton(
-                key: ValueKey('important-task-cta-${item.title}'),
-                // A literal minimum, not the platform default: this keeps
-                // the >=48px touch-target requirement true regardless of
-                // the ambient IconButton theme.
-                constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
-                padding: EdgeInsets.zero,
-                onPressed: item.onPressed,
-                icon: const Icon(Icons.arrow_forward_ios_rounded, size: 16),
-              ),
-            ),
-          ],
+          ),
         ),
       ),
     );

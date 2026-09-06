@@ -116,6 +116,13 @@ void main() {
       // renders as visible text (that would defeat the density win), but it
       // must still reach an assistive-technology user verbatim via
       // Semantics, and it must still be a real, tappable >=48px target.
+      //
+      // SES HOME Final Touch: the tappable region is the whole tile now
+      // (see [_ImportantTaskCell]'s own doc), keyed the same as the former
+      // icon-only button, and its Semantics node's label carries
+      // [ctaLabel] alongside the tile's own title/fact text — a real
+      // device screenshot found the former small icon a fiddly target to
+      // aim for on a tile this wide.
       expect(find.text('対応する'), findsNothing);
       expect(find.text('確認する'), findsNothing);
       final salesCtaKey = const Key('important-task-cta-営業活動を進める');
@@ -130,11 +137,11 @@ void main() {
         );
       }
       expect(
-        find.bySemanticsLabel('対応する'),
+        find.bySemanticsLabel(RegExp('対応する')),
         findsNWidgets(2),
         reason: '営業/採用 CTAs share the same label text',
       );
-      expect(find.bySemanticsLabel('確認する'), findsOneWidget);
+      expect(find.bySemanticsLabel(RegExp('確認する')), findsOneWidget);
 
       await tester.tap(find.byKey(salesCtaKey));
       expect(salesCalls, 1);
@@ -142,6 +149,16 @@ void main() {
       expect(salesCalls, 2);
       await tester.tap(find.byKey(financeCtaKey));
       expect(financeCalls, 1);
+      expect(tester.takeException(), isNull);
+
+      // SES HOME Final Touch: tapping anywhere else in the tile — its
+      // title, its fact, or its own whitespace, not only the trailing
+      // arrow — must reach the exact same single [InkWell], never a
+      // second recognizer that could double-fire the same action.
+      await tester.tap(find.text('営業活動を進める'));
+      expect(salesCalls, 3);
+      await tester.tap(find.text('今月の固定費: ¥85,000'));
+      expect(financeCalls, 2);
       expect(tester.takeException(), isNull);
     },
   );
@@ -204,6 +221,60 @@ void main() {
       // Row 2: 資金 starts a new row below both, on the left column.
       expect(finance.top, greaterThan(sales.bottom));
       expect(finance.left, sales.left);
+    },
+  );
+
+  testWidgets(
+    // SES HOME Final Touch: a real device screenshot found the left/right
+    // tiles at different heights whenever one title/fact pair wrapped to
+    // more lines than the other. Both tiles in a row must share the taller
+    // one's own height — background included — not just line up at the
+    // top.
+    'important tasks: the left and right tiles in a row always share the '
+    'same height, even when one wraps to more lines than the other',
+    (tester) async {
+      await tester.pumpWidget(
+        host(
+          PublicDemoImportantTasksSection(
+            items: [
+              PublicDemoImportantTaskItem(
+                title: '営業活動を進める',
+                fact: '営業残: 4回',
+                category: '営業',
+                ctaLabel: '対応する',
+                onPressed: _noOp,
+              ),
+              // Deliberately much longer than the sibling tile's title/fact
+              // pair, so it wraps to more lines and would — absent the
+              // fix — leave the tile above shorter than this one.
+              PublicDemoImportantTaskItem(
+                title: '資金計画を確認する（今月と来月の両方）',
+                fact: '今月の固定費: ¥1,234,567（給与・家賃・保険料を含む）',
+                category: '資金',
+                ctaLabel: '確認する',
+                onPressed: _noOp,
+              ),
+            ],
+          ),
+        ),
+      );
+      expect(tester.takeException(), isNull);
+
+      final salesTile = tester.getRect(
+        find.byKey(const Key('important-task-cta-営業活動を進める')),
+      );
+      final financeTile = tester.getRect(
+        find.byKey(const Key('important-task-cta-資金計画を確認する（今月と来月の両方）')),
+      );
+      expect(salesTile.top, financeTile.top);
+      expect(
+        salesTile.height,
+        financeTile.height,
+        reason:
+            'the shorter tile ($salesTile) must stretch to match the '
+            'taller one ($financeTile), not keep its own shorter natural '
+            'height',
+      );
     },
   );
 
@@ -288,7 +359,8 @@ void main() {
         expect(
           find.text('今月の固定費: ¥50,000'),
           findsOneWidget,
-          reason: 'the full amount must be readable at width $width, not '
+          reason:
+              'the full amount must be readable at width $width, not '
               'ellipsized (e.g. "今月の固定費: ¥5…")',
         );
       }

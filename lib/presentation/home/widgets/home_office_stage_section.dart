@@ -407,10 +407,24 @@ class _MemberFigure extends StatelessWidget {
   final HomeOfficeStageMember member;
   final HomeOfficeStageLayout layout;
 
+  /// How much wider than the portrait circle the name label is allowed to
+  /// be.
+  ///
+  /// SES HOME Final Visual Match: the label used to share the portrait's
+  /// own width exactly (28-32pt), which left no real room for even a short
+  /// two/three-character Japanese name (e.g. real production's "佐藤 健" /
+  /// "鈴木 葵") — every name on the real screen collapsed to a single
+  /// glyph plus an ellipsis ("佐…"/"鈴…"), a meaningless truncation with no
+  /// affordance to read the rest. The name still ellipsises at `maxLines: 1`
+  /// below for a name genuinely too long even at this width (existing "very
+  /// long name" coverage), but a real short name no longer needs to.
+  static const double _labelWidthFactor = 2.0;
+
   @override
   Widget build(BuildContext context) {
+    final labelWidth = layout.portraitSize * _labelWidthFactor;
     return SizedBox(
-      width: layout.portraitSize,
+      width: labelWidth,
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.center,
@@ -434,7 +448,7 @@ class _MemberFigure extends StatelessWidget {
           const SizedBox(height: 3),
           // The label is a single ellipsised line on a translucent pill: it
           // must never wrap into the portrait above it, and never widen the
-          // figure past the portrait it belongs to.
+          // figure past [labelWidth].
           //
           // SES-ISSUE-124: the scene itself is now sized to the compacted
           // HOME budget, not to the original design's generous 2x-scale

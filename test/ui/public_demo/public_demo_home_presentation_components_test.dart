@@ -172,8 +172,12 @@ void main() {
   });
 
   testWidgets(
-    'important tasks separates rows with a divider and never duplicates '
-    'a category chip as a priority claim across items',
+    // SES HOME Final Visual Match: the former single vertical list
+    // (separated by `Divider`s) is now a 2-column grid — the first two
+    // items share one row, and a third starts a second row instead of
+    // squeezing three columns into 360px.
+    'important tasks lays items out two per row, in order, with no '
+    'priority claim duplicated across items',
     (tester) async {
       await tester.pumpWidget(
         host(
@@ -182,7 +186,41 @@ void main() {
           ),
         ),
       );
-      expect(find.byType(Divider), findsNWidgets(2));
+      expect(tester.takeException(), isNull);
+
+      final sales = tester.getRect(find.text('営業活動を進める'));
+      final recruiting = tester.getRect(find.text('採用・面談に対応する'));
+      final finance = tester.getRect(find.text('資金計画を確認する'));
+
+      // Row 1: 営業/採用 share the same row, 営業 on the left.
+      expect(sales.top, recruiting.top);
+      expect(sales.left, lessThan(recruiting.left));
+      // Row 2: 資金 starts a new row below both, on the left column.
+      expect(finance.top, greaterThan(sales.bottom));
+      expect(finance.left, sales.left);
+    },
+  );
+
+  testWidgets(
+    'important tasks with a single item still renders in the left column, '
+    'with no overflow from the empty right column',
+    (tester) async {
+      await tester.pumpWidget(
+        host(
+          PublicDemoImportantTasksSection(
+            items: [
+              PublicDemoImportantTaskItem(
+                title: '資金計画を確認する',
+                fact: '今月の固定費: ¥85,000',
+                category: '資金',
+                ctaLabel: '確認する',
+                onPressed: _noOp,
+              ),
+            ],
+          ),
+        ),
+      );
+      expect(find.text('資金計画を確認する'), findsOneWidget);
       expect(tester.takeException(), isNull);
     },
   );

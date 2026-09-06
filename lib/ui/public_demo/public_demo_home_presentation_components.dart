@@ -77,6 +77,15 @@ class PublicDemoMonthlyPrimaryCtaModel {
 /// rows are each omitted, not disabled, once nothing eligible backs them;
 /// 資金計画 always renders). No priority/deadline/percentage is invented for
 /// any item that does render.
+///
+/// SES HOME Final Visual Match: lays [items] out as a 2-column grid (the
+/// Visual SSOT's side-by-side task tiles) instead of the former single
+/// vertical list separated by `Divider`s. Items are chunked two per row in
+/// their existing order — never reordered, never re-prioritized — so April's
+/// usual two eligible tasks (営業活動を進める / 資金計画を確認する) sit side
+/// by side exactly as the SSOT shows; a third item (when 採用 is also
+/// eligible) starts a second row rather than forcing a 3-wide row that would
+/// cramp every tile's text at 360px.
 class PublicDemoImportantTasksSection extends StatelessWidget {
   const PublicDemoImportantTasksSection({super.key, required this.items});
 
@@ -89,85 +98,100 @@ class PublicDemoImportantTasksSection extends StatelessWidget {
     accent: true,
     child: Column(
       children: [
-        for (var i = 0; i < items.length; i++) ...[
-          // SES HOME Final Polish: restored from Final Density's 1 — Quick
-          // Access and the Navigator's secondary CTA freed up real height,
-          // and real space between rows is where that height buys back
-          // readability best (§I of the Final Polish brief).
-          if (i > 0) const Divider(height: 1),
-          _ImportantTaskRow(item: items[i]),
+        for (var i = 0; i < items.length; i += 2) ...[
+          if (i > 0) const SizedBox(height: 6),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(child: _ImportantTaskCell(item: items[i])),
+              const SizedBox(width: 6),
+              Expanded(
+                child: i + 1 < items.length
+                    ? _ImportantTaskCell(item: items[i + 1])
+                    : const SizedBox.shrink(),
+              ),
+            ],
+          ),
         ],
       ],
     ),
   );
 }
 
-class _ImportantTaskRow extends StatelessWidget {
-  const _ImportantTaskRow({required this.item});
+/// One task tile in the 2-column grid: category chip, title, the one
+/// truthful supporting fact, and the same icon-only "proceed" CTA the
+/// former vertical row used.
+class _ImportantTaskCell extends StatelessWidget {
+  const _ImportantTaskCell({required this.item});
   final PublicDemoImportantTaskItem item;
 
   @override
   Widget build(BuildContext context) {
-    // SES HOME One-Screen Final Fit: trimmed again, from 6 — real
-    // vertical padding around each row, but the phase's ceiling is a
-    // no-scroll initial view, not this card's own breathing room.
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 1),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Wrap(
-                  crossAxisAlignment: WrapCrossAlignment.center,
-                  spacing: 6,
-                  runSpacing: 2,
-                  children: [
-                    Text(
-                      item.title,
-                      style: const TextStyle(fontWeight: FontWeight.bold),
-                    ),
-                    _StatusChip(label: item.category, compact: true),
-                  ],
-                ),
-                const SizedBox(height: 3),
-                Text(
-                  item.fact,
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+    final theme = Theme.of(context);
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surfaceContainerHighest.withValues(
+          alpha: 0.35,
+        ),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: theme.colorScheme.outlineVariant),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(8, 6, 2, 6),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _StatusChip(label: item.category, compact: true),
+                  const SizedBox(height: 3),
+                  Text(
+                    item.title,
+                    style: const TextStyle(fontWeight: FontWeight.bold),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
                   ),
-                ),
-              ],
+                  const SizedBox(height: 2),
+                  Text(
+                    item.fact,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ),
             ),
-          ),
-          const SizedBox(width: 2),
-          // SES HOME Final Density: the CTA used to be a `TextButton` printing
-          // [item.ctaLabel] ("対応する"/"確認する") in full. Every one of the
-          // (at most three) rows here says the exact same thing — "go to
-          // where this fact lives and act on it" — so the label's width was
-          // pure repeated chrome, not information: shrinking it to a single
-          // "proceed" icon gives the title/fact column real width back
-          // (which is what keeps `title` + its category chip on one Wrap run
-          // more often, at every text scale) without ever removing the CTA's
-          // real meaning. [item.ctaLabel] itself is never dropped — it still
-          // reaches an assistive-technology user verbatim via this explicit
-          // [Semantics.label], never merely inferred from a generic icon.
-          Semantics(
-            button: true,
-            label: item.ctaLabel,
-            child: IconButton(
-              key: ValueKey('important-task-cta-${item.title}'),
-              // A literal minimum, not the platform default: this keeps the
-              // >=48px touch-target requirement true regardless of the
-              // ambient IconButton theme.
-              constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
-              onPressed: item.onPressed,
-              icon: const Icon(Icons.arrow_forward_ios_rounded, size: 16),
+            // SES HOME Final Density: the CTA used to be a `TextButton`
+            // printing [item.ctaLabel] ("対応する"/"確認する") in full. Every
+            // tile here says the exact same thing — "go to where this fact
+            // lives and act on it" — so the label's width was pure repeated
+            // chrome, not information: shrinking it to a single "proceed"
+            // icon gives the title/fact column real width back without
+            // ever removing the CTA's real meaning. [item.ctaLabel] itself
+            // is never dropped — it still reaches an assistive-technology
+            // user verbatim via this explicit [Semantics.label], never
+            // merely inferred from a generic icon.
+            Semantics(
+              button: true,
+              label: item.ctaLabel,
+              child: IconButton(
+                key: ValueKey('important-task-cta-${item.title}'),
+                // A literal minimum, not the platform default: this keeps
+                // the >=48px touch-target requirement true regardless of
+                // the ambient IconButton theme.
+                constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
+                padding: EdgeInsets.zero,
+                onPressed: item.onPressed,
+                icon: const Icon(Icons.arrow_forward_ios_rounded, size: 16),
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

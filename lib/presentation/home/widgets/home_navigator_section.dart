@@ -36,8 +36,15 @@ class HomeNavigatorMetrics {
   // often headline + CTA + advice bubble too) already measures well past
   // either size, so growing the portrait costs no extra card height — see
   // [compactCeiling]'s own doc for the measured total.
+  //
+  // SES HOME Final Visual Match: raised again, from 60/68, to match the
+  // Visual SSOT's "大きなひより画像" — an 88×88pt portrait at 360×800. Still
+  // free in height: the text column stays the taller of the two (see
+  // [compactCeiling]) and this only narrows the column's own width, which
+  // the section's widget test (measured before/after) confirms does not
+  // push its wrapped text past the existing budget.
   static const HomeNavigatorLayout compact = HomeNavigatorLayout(
-    portraitSize: 60,
+    portraitSize: 80,
     nameFontSize: 12,
     roleFontSize: 10,
     messageFontSize: 11.5,
@@ -45,7 +52,7 @@ class HomeNavigatorMetrics {
   );
 
   static const HomeNavigatorLayout normal = HomeNavigatorLayout(
-    portraitSize: 68,
+    portraitSize: 88,
     nameFontSize: 13,
     roleFontSize: 10.5,
     messageFontSize: 12,

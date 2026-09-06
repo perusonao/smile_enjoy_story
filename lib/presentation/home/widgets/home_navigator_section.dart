@@ -51,14 +51,31 @@ class HomeNavigatorMetrics {
   // replace the single square `portraitSize` with a portrait-oriented
   // rounded rectangle instead, so `BoxFit.cover` keeps her shoulders/torso
   // in frame the way the Visual SSOT's own tall photo does. No new asset —
-  // same bundled file, just no longer forced into a circle. Heights
-  // (150/158) are chosen to stay under the text column's own measured
-  // height (171/174pt — see [compactCeiling]'s doc) so this is still free:
-  // the Row's height stays governed by the text column, confirmed by the
-  // section's own before/after measurement.
+  // same bundled file, just no longer forced into a circle.
+  //
+  // SES HOME Visual SSOT Exact Layout Match: `portraitHeight` raised again,
+  // from 150/158 to 170/173 (a real +13%/+9%) — the approved Visual SSOT
+  // draws her as a clearly large, present figure, and the card's own text
+  // column (name/role + eyebrow + headline + message + CTA + advice)
+  // measures 171/174pt tall at 360x800/390x844 regardless of the portrait,
+  // so growing the portrait right up to just under that height is free: the
+  // Row's own height stays governed by the text column, confirmed by this
+  // phase's own before/after measurement — not a new cost this pass has to
+  // find room for elsewhere.
+  //
+  // `portraitWidth` deliberately stays at 80/94, not widened to match:
+  // measured at 84pt (a mere +4), the narrower text column it leaves pushes
+  // [HomeNavigatorAdvice.message] (never `maxLines`-capped, by design — see
+  // the always-visible `Text` below) onto a second line, which is not free
+  // — it grows the card by the exact same amount and reopens the 360x800
+  // no-scroll overflow this and the Office Stage's own budget together
+  // already spend down to a few spare pixels. Per this phase's own stated
+  // priority order, 360x800 no-scroll outranks matching the Visual SSOT's
+  // portrait width exactly; the height increase alone is still a real,
+  // deliberate step toward it.
   static const HomeNavigatorLayout compact = HomeNavigatorLayout(
     portraitWidth: 80,
-    portraitHeight: 150,
+    portraitHeight: 170,
     nameFontSize: 12,
     roleFontSize: 10,
     messageFontSize: 11.5,
@@ -67,7 +84,7 @@ class HomeNavigatorMetrics {
 
   static const HomeNavigatorLayout normal = HomeNavigatorLayout(
     portraitWidth: 94,
-    portraitHeight: 158,
+    portraitHeight: 173,
     nameFontSize: 13,
     roleFontSize: 10.5,
     messageFontSize: 12,

@@ -9,7 +9,7 @@ workflow/CI 変更はなし。
 ## BASE / HEAD
 
 - **BASE SHA**: `123ec61` (`origin/main`, PR #182 マージ後の最新)
-- **FINAL HEAD SHA**: `d1c85c3`
+- **FINAL HEAD SHA**: `5fc678d`
 - ブランチ: `claude/ses-home-final-touch-cbu8lw`
 
 作業前提: セッション開始時のローカル `claude/ses-home-final-touch-cbu8lw`
@@ -224,8 +224,9 @@ lib 側の変更は3ファイルのみ。いずれも既存の該当セクショ
 
 ## PR番号/URL
 
-PR作成後にこのセクションを更新する（本レポートのコミット後、GitHub上で
-PRを1本作成し、番号とURLをここに追記する）。**自動mergeはしない**。
+- **PR #184**: https://github.com/perusonao/smile_enjoy_story/pull/184
+
+**自動mergeはしていない。**
 
 ## remaining visual differences
 

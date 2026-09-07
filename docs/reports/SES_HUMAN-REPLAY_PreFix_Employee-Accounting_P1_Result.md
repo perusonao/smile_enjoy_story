@@ -21,7 +21,9 @@ generators"）を指したまま停止していた。このコミットは
 ## branch / final HEAD
 
 - branch: `claude/ses-human-replay-pre-fix-c3ficx`
-- final HEAD: 本コミット時点（コミット後にPR URLと併せて報告）
+- final HEAD: `101b08bad9fd5de9348eb77640dafb2751fa63b2`（この報告書自体を
+  含むコミット。この後PR作成のみ行うため、PR自体はこのコミットへの追加
+  変更を含まない）
 
 ## 対象AUDIT（参照ドキュメントの不在について）
 

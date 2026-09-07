@@ -37,6 +37,7 @@ import '../asset_paths.dart';
 import '../theme.dart';
 import '../widgets/labels.dart';
 import 'public_demo_event_dialog.dart';
+import 'public_demo_accounting_visual.dart';
 import 'public_demo_cash_shortage_card.dart';
 import 'public_demo_employee_visual.dart';
 import 'public_demo_founder_follow_up_dialog.dart';
@@ -4044,33 +4045,100 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
     ],
   );
 
-  /// Section 1 — 現在の資金状態: a lightweight, always-rendered, read-only
-  /// snapshot of [PublicDemoState.cash]/[financialStatus] — the same two
-  /// authoritative fields [PublicDemoCashShortageCard] and the bankruptcy
-  /// terminal card (both HOME-only) already read, stated plainly here so a
-  /// player who opens 会計 directly sees where the company stands before
-  /// anything else on this tab. No new fact, threshold, or aggregate;
-  /// [_financialStatusLabel] only names the four states
-  /// [PublicDemoFinancialStatus] already recognizes.
-  Widget _accountingFundStatusSection() => Padding(
-    key: const Key('public-demo-accounting-fund-status-section'),
-    padding: const EdgeInsets.only(bottom: 12),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        _sectionHeader('現在の資金状態'),
-        Text(
-          '現在の現預金 ${formatYen(s.cash)}',
-          style: const TextStyle(fontSize: 12),
-        ),
-        const SizedBox(height: 2),
-        Text(
-          '資金状態：${_financialStatusLabel(s.financialStatus)}',
-          style: const TextStyle(fontSize: 12),
-        ),
-      ],
-    ),
-  );
+  /// Section 1 — 現在の資金状態: the tab's Visual Hero. A lightweight,
+  /// always-rendered, read-only snapshot of
+  /// [PublicDemoState.cash]/[financialStatus] — the same two authoritative
+  /// fields [PublicDemoCashShortageCard] and the bankruptcy terminal card
+  /// (both HOME-only) already read, given the large-cash-figure + status
+  /// badge treatment the Canonical Visual Reference's own サマリー screen
+  /// gives 現在の現金 (SES ACCOUNTING VISUAL COMPLETE). No new fact,
+  /// threshold, or aggregate; [_financialStatusLabel]/[_financialStatusTone]
+  /// only name/color the four states [PublicDemoFinancialStatus] already
+  /// recognizes, and the hero keeps rendering the exact
+  /// `'現在の現預金 ${formatYen(s.cash)}'` label the pre-existing regression
+  /// suite (`public_demo_accounting_ui_phase1_test.dart`) already matches
+  /// with `find.textContaining('現在の現預金')` — split across a caption
+  /// `Text` and the large value `Text` rather than one line, but still a
+  /// single `Text` carrying that exact substring.
+  ///
+  /// 前月比 (P1): only shown once a real monthly close exists
+  /// ([PublicDemoState.latestMonthlyCashFlow] non-null) — before the first
+  /// close (April) there is no prior close to compare against, so the delta
+  /// line is omitted entirely rather than showing a fabricated "no change".
+  /// [PublicDemoMonthlyCashFlow.netCashMovement] is an existing getter
+  /// (`closingCash - openingCash`, FINANCE-UX-1) — no new calculation is
+  /// introduced here.
+  ///
+  /// 今月の売上 / 今月の支出 tiles (P0 goal 4): the same [flow.revenue] /
+  /// [flow.totalOutflow] facts [PublicDemoMonthlyCashFlowCard] (Section 2)
+  /// already displays, surfaced again here as an at-a-glance pair — matching
+  /// the Reference's サマリー screen, which shows the same two figures
+  /// prominently above its own 収支詳細 breakdown. Hidden before the first
+  /// close for the same reason the delta line is.
+  Widget _accountingFundStatusSection() {
+    final flow = s.latestMonthlyCashFlow;
+    final tone = _financialStatusTone(s.financialStatus);
+    String? deltaText;
+    bool? deltaPositive;
+    if (flow != null) {
+      final delta = flow.netCashMovement;
+      deltaPositive = delta >= 0;
+      deltaText =
+          '前月比 ${delta >= 0 ? '+' : '-'}${formatYen(delta.abs())}';
+    }
+    return Padding(
+      key: const Key('public-demo-accounting-fund-status-section'),
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _sectionHeader('現在の資金状態', icon: Icons.account_balance_wallet_outlined),
+          PublicDemoAccountingCard(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                PublicDemoAccountingCashHero(
+                  label: '現在の現預金',
+                  cashText: formatYen(s.cash),
+                  deltaText: deltaText,
+                  deltaPositive: deltaPositive,
+                ),
+                const SizedBox(height: 10),
+                PublicDemoAccountingStatusBadge(
+                  label: _financialStatusLabel(s.financialStatus),
+                  tone: tone,
+                ),
+                if (flow != null) ...[
+                  const SizedBox(height: 10),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: PublicDemoAccountingStatTile(
+                          icon: Icons.arrow_upward,
+                          iconColor: const Color(0xFF1B7A3B),
+                          label: '今月の売上',
+                          primaryText: formatYen(flow.revenue),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: PublicDemoAccountingStatTile(
+                          icon: Icons.arrow_downward,
+                          iconColor: const Color(0xFFB3261E),
+                          label: '今月の支出',
+                          primaryText: formatYen(flow.totalOutflow),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 
   String _financialStatusLabel(PublicDemoFinancialStatus status) =>
       switch (status) {
@@ -4079,6 +4147,16 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
         PublicDemoFinancialStatus.bankruptcy => '倒産（第1期終了）',
         PublicDemoFinancialStatus.marchCashShortageFailure => '年度末資金不足（第1期終了）',
       };
+
+  PublicDemoAccountingTone _financialStatusTone(
+    PublicDemoFinancialStatus status,
+  ) => switch (status) {
+    PublicDemoFinancialStatus.normal => PublicDemoAccountingTone.positive,
+    PublicDemoFinancialStatus.cashShortage => PublicDemoAccountingTone.caution,
+    PublicDemoFinancialStatus.bankruptcy => PublicDemoAccountingTone.negative,
+    PublicDemoFinancialStatus.marchCashShortageFailure =>
+      PublicDemoAccountingTone.negative,
+  };
 
   /// Section 2 — 今月の収支: [_monthlyCashFlowSection] (the latest closed
   /// month's full cash-flow breakdown) and [PublicDemoFinanceSummarySection]
@@ -4093,7 +4171,7 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _sectionHeader('今月の収支'),
+        _sectionHeader('今月の収支', icon: Icons.receipt_long_outlined),
         _monthlyCashFlowSection(),
         PublicDemoFinanceSummarySection(summary: _financeSummary),
       ],
@@ -4118,6 +4196,24 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
   /// completed or an already-terminal financial status): there is no
   /// further close ahead to project, matching this tab's existing
   /// "no empty heading" precedent (POST-HOME-FREEZE Small-UX-Fix).
+  ///
+  /// SES ACCOUNTING VISUAL COMPLETE (P1): the plain month-by-month text list
+  /// gains a truthful simple bar visualization
+  /// ([PublicDemoAccountingForecastBar]) alongside — never instead of — the
+  /// exact existing headline/per-month `Text` a pre-existing regression
+  /// suite (`public_demo_accounting_ui_phase1_test.dart`) already matches
+  /// verbatim with `find.textContaining`. Each bar's fraction is a pure
+  /// rendering-scale choice (`closingCash / scaleMax`, [_forecastScaleMax])
+  /// derived only from the same [PublicDemoCashForecastMonth.closingCash]
+  /// figures already shown as text — it introduces no new financial
+  /// calculation or threshold. The headline is also wrapped in
+  /// [PublicDemoAccountingAlertCard] (アラート・アドバイス, Reference goal 5) —
+  /// same tone semantics as [_financialStatusTone] (caution for a forecasted
+  /// shortage, positive when safe) — and 入金予定 ([PublicDemoState
+  /// .pendingRevenue], the exact same authoritative field/label HOME's own
+  /// compact KPI already shows) is surfaced once as a concise fact tile,
+  /// since it directly explains next month's [PublicDemoCashForecastMonth
+  /// .cashReceived].
   Widget _accountingForecastSection() {
     final forecast = PublicDemoCashForecast.forecast(
       state: s,
@@ -4125,43 +4221,95 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
     );
     if (forecast.months.isEmpty) return const SizedBox.shrink();
     final status = PublicDemoCashStatusPresentation.fromForecast(forecast);
+    final isShortage = status.status == PublicDemoCashStatus.shortage;
+    final scaleMax = _forecastScaleMax(forecast);
     return Padding(
       key: const Key('public-demo-accounting-forecast-section'),
       padding: const EdgeInsets.only(bottom: 12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _sectionHeader('将来の資金予測・リスク'),
-          Text(
-            status.status == PublicDemoCashStatus.shortage
-                ? '${publicDemoMonthLabel(status.shortageMonth!)}に資金がマイナスになる見込みです。'
-                : '今後${forecast.months.length}回の決算見込みでは資金不足はありません。',
-            style: TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-              color: status.status == PublicDemoCashStatus.shortage
-                  ? Colors.red.shade700
-                  : null,
+          _sectionHeader('将来の資金予測・リスク', icon: Icons.query_stats_outlined),
+          PublicDemoAccountingCard(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                PublicDemoAccountingAlertCard(
+                  tone: isShortage
+                      ? PublicDemoAccountingTone.caution
+                      : PublicDemoAccountingTone.positive,
+                  icon: isShortage
+                      ? Icons.warning_amber_outlined
+                      : Icons.check_circle_outline,
+                  child: Text(
+                    isShortage
+                        ? '${publicDemoMonthLabel(status.shortageMonth!)}に資金がマイナスになる見込みです。'
+                        : '今後${forecast.months.length}回の決算見込みでは資金不足はありません。',
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                PublicDemoAccountingStatTile(
+                  icon: Icons.schedule_outlined,
+                  label: '入金予定',
+                  primaryText: formatYen(s.pendingRevenue),
+                ),
+                const SizedBox(height: 10),
+                for (final month in forecast.months)
+                  Padding(
+                    key: Key(
+                      'public-demo-accounting-forecast-month-${month.month}',
+                    ),
+                    padding: const EdgeInsets.symmetric(vertical: 4),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          '${publicDemoMonthLabel(month.month)}末 現預金見込み '
+                          '${formatYen(month.closingCash)}',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: month.isNegative
+                                ? Colors.red.shade700
+                                : null,
+                            fontWeight: month.isNegative
+                                ? FontWeight.w600
+                                : null,
+                          ),
+                        ),
+                        const SizedBox(height: 3),
+                        PublicDemoAccountingForecastBar(
+                          fraction: month.isNegative
+                              ? 0
+                              : month.closingCash / scaleMax,
+                          isNegative: month.isNegative,
+                        ),
+                      ],
+                    ),
+                  ),
+              ],
             ),
           ),
-          const SizedBox(height: 6),
-          for (final month in forecast.months)
-            Padding(
-              key: Key('public-demo-accounting-forecast-month-${month.month}'),
-              padding: const EdgeInsets.symmetric(vertical: 2),
-              child: Text(
-                '${publicDemoMonthLabel(month.month)}末 現預金見込み '
-                '${formatYen(month.closingCash)}',
-                style: TextStyle(
-                  fontSize: 12,
-                  color: month.isNegative ? Colors.red.shade700 : null,
-                  fontWeight: month.isNegative ? FontWeight.w600 : null,
-                ),
-              ),
-            ),
         ],
       ),
     );
+  }
+
+  /// Pure rendering-scale helper for [_accountingForecastSection]'s bars: the
+  /// largest non-negative cash figure across the current balance and every
+  /// projected closing cash, so every bar's fraction stays comparable and
+  /// within 0..1. Never less than 1 (avoids a division by zero when every
+  /// figure in view happens to be zero or negative) — this is a display
+  /// scale only, never a financial threshold.
+  int _forecastScaleMax(PublicDemoCashForecastResult forecast) {
+    var maxValue = s.cash > 0 ? s.cash : 0;
+    for (final month in forecast.months) {
+      if (month.closingCash > maxValue) maxValue = month.closingCash;
+    }
+    return maxValue > 0 ? maxValue : 1;
   }
 
   /// Section 4 — 今月必要な経営判断: the July summer-bonus decision card,
@@ -4178,37 +4326,44 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _sectionHeader('今月必要な経営判断'),
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(12),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    '夏季賞与',
-                    style: TextStyle(fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    _summerBonusDecisionRequired
-                        ? '7月終了前に支給内容を選びましょう。'
-                        : '選択済み：${switch (s.summerBonusSelection) {
-                            PublicDemoSummerBonusPlan.none => 'なし',
-                            PublicDemoSummerBonusPlan.half => '0.5か月',
-                            PublicDemoSummerBonusPlan.one => '1か月',
-                          }}',
-                  ),
-                  const SizedBox(height: 8),
-                  FilledButton(
-                    key: const Key('public-demo-summer-bonus-decision'),
-                    onPressed: decideSummerBonus,
-                    child: Text(
-                      _summerBonusDecisionRequired ? '夏季賞与を決める' : '夏季賞与を変更',
+          _sectionHeader('今月必要な経営判断', icon: Icons.fact_check_outlined),
+          PublicDemoAccountingCard(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: const [
+                    Icon(
+                      Icons.card_giftcard_outlined,
+                      size: 16,
+                      color: Color(0xFF8A5A00),
                     ),
+                    SizedBox(width: 6),
+                    Text(
+                      '夏季賞与',
+                      style: TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  _summerBonusDecisionRequired
+                      ? '7月終了前に支給内容を選びましょう。'
+                      : '選択済み：${switch (s.summerBonusSelection) {
+                          PublicDemoSummerBonusPlan.none => 'なし',
+                          PublicDemoSummerBonusPlan.half => '0.5か月',
+                          PublicDemoSummerBonusPlan.one => '1か月',
+                        }}',
+                ),
+                const SizedBox(height: 8),
+                FilledButton(
+                  key: const Key('public-demo-summer-bonus-decision'),
+                  onPressed: decideSummerBonus,
+                  child: Text(
+                    _summerBonusDecisionRequired ? '夏季賞与を決める' : '夏季賞与を変更',
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
           ),
         ],
@@ -4240,19 +4395,25 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _sectionHeader('月次結果 / Year-End'),
-          if (hasAugustResult) ...[
-            Text(
-              '${publicDemoMonthLabel(s.month)}開始結果',
-              style: Theme.of(c).textTheme.titleLarge,
+          _sectionHeader('月次結果 / Year-End', icon: Icons.flag_outlined),
+          if (hasAugustResult)
+            PublicDemoAccountingCard(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '${publicDemoMonthLabel(s.month)}開始結果',
+                    style: Theme.of(c).textTheme.titleLarge,
+                  ),
+                  const Text('7月分の給与を反映しました'),
+                  Text(
+                    s.summerBonusPaidAmount == 0
+                        ? '夏季賞与 なし'
+                        : '夏季賞与 ¥${s.summerBonusPaidAmount}',
+                  ),
+                ],
+              ),
             ),
-            const Text('7月分の給与を反映しました'),
-            Text(
-              s.summerBonusPaidAmount == 0
-                  ? '夏季賞与 なし'
-                  : '夏季賞与 ¥${s.summerBonusPaidAmount}',
-            ),
-          ],
           if (s.fiscalYearCompleted)
             PublicDemoYearEndResultCard(
               data: PublicDemoYearEndDisplayData.fromPublicDemoState(s),

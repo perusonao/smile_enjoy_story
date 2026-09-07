@@ -45,6 +45,7 @@ import 'public_demo_growth_result_card.dart';
 import 'public_demo_home_dashboard_section.dart';
 import 'public_demo_home_presentation_components.dart';
 import 'public_demo_interview_result_dialog.dart';
+import 'public_demo_menu_visual.dart';
 import 'public_demo_month_guard_warning_dialog.dart';
 import 'public_demo_monthly_cash_flow_card.dart';
 import 'public_demo_sales_progress.dart';
@@ -1153,18 +1154,29 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
   /// never sees it unless they deliberately open this section. Nothing
   /// about the control itself — its key, its confirmation dialog, or what
   /// it does — changed; only where it is mounted did.
+  ///
+  /// SES MENU VISUAL COMPLETE: the toggle itself is now
+  /// [PublicDemoMenuListRow] — an icon-led, bordered list-row matching the
+  /// Canonical Visual Reference's list-item treatment instead of a plain
+  /// [TextButton.icon] — but it keeps the exact same key and the exact same
+  /// [onTap] callback, so [_isDevMenuExpanded] and every existing regression
+  /// test that taps `public-demo-dev-menu-toggle` are unaffected.
   Widget _publicDemoDevMenuSection() => Column(
     crossAxisAlignment: CrossAxisAlignment.start,
     children: [
-      const Divider(height: 24),
-      TextButton.icon(
+      _sectionHeader('開発・テスト', icon: Icons.build_outlined),
+      PublicDemoMenuListRow(
         key: const Key('public-demo-dev-menu-toggle'),
-        onPressed: () =>
+        icon: Icons.science_outlined,
+        label: '開発・テストメニュー',
+        expanded: _isDevMenuExpanded,
+        onTap: () =>
             setState(() => _isDevMenuExpanded = !_isDevMenuExpanded),
-        icon: Icon(_isDevMenuExpanded ? Icons.expand_less : Icons.expand_more),
-        label: const Text('開発・テストメニュー'),
       ),
-      if (_isDevMenuExpanded) _publicDemoTestControlsCard(),
+      if (_isDevMenuExpanded) ...[
+        const SizedBox(height: 10),
+        _publicDemoTestControlsCard(),
+      ],
     ],
   );
 
@@ -1178,32 +1190,34 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
   /// deployed Screen Verification needs the deploy SHA without expanding
   /// "開発・テストメニュー" first — so only the destructive restart/test
   /// controls remain collapsed here.
-  Widget _publicDemoTestControlsCard() => Card(
+  ///
+  /// SES MENU VISUAL COMPLETE: re-shelled as [PublicDemoMenuWarningCard] (a
+  /// warning-toned card matching the amber "caution" treatment
+  /// Accounting Visual Complete already established) instead of a plain
+  /// amber [Card] — same key, same text, same restart button/key/handler.
+  Widget _publicDemoTestControlsCard() => PublicDemoMenuWarningCard(
     key: const Key('public-demo-test-controls'),
-    color: Colors.amber.shade50,
-    child: Padding(
-      padding: const EdgeInsets.all(12),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Row(
-            children: [
-              Icon(Icons.science_outlined, size: 20),
-              SizedBox(width: 8),
-              Text('テスト用操作', style: TextStyle(fontWeight: FontWeight.bold)),
-            ],
-          ),
-          const SizedBox(height: 4),
-          const Text('Public Demo 0.1の進行だけを初期状態へ戻します。'),
-          const SizedBox(height: 8),
-          OutlinedButton.icon(
+    icon: Icons.warning_amber_outlined,
+    title: 'テスト用操作',
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text('Public Demo 0.1の進行だけを初期状態へ戻します。'),
+        const SizedBox(height: 10),
+        SizedBox(
+          width: double.infinity,
+          child: OutlinedButton.icon(
             key: const Key('public-demo-restart-april-button'),
             onPressed: _isRestarting ? null : _confirmRestartFromApril,
             icon: const Icon(Icons.restart_alt),
             label: Text(_isRestarting ? '再開準備中…' : '4月からやり直す'),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: const Color(0xFFB3261E),
+              side: const BorderSide(color: Color(0xFFB3261E)),
+            ),
           ),
-        ],
-      ),
+        ),
+      ],
     ),
   );
 
@@ -4426,26 +4440,52 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
   }
 
   /// メニュー (index 4) — secondary/development/test content that does not
-  /// belong on HOME. Reuses [_publicDemoDevMenuSection] verbatim (the same
-  /// collapsed-by-default toggle and test-only restart control
-  /// PUBLIC-DEMO-HOME-UI-3A/3B already built).
+  /// belong on HOME. Reuses [_publicDemoDevMenuSection] verbatim in
+  /// behavior (the same collapsed-by-default toggle and test-only restart
+  /// control PUBLIC-DEMO-HOME-UI-3A/3B already built).
   ///
-  /// QA-MICRO-FIX (post-#173/#174): [BuildInfoLabel] itself now sits here,
+  /// QA-MICRO-FIX (post-#173/#174): [BuildInfoLabel] itself sits here,
   /// always visible near the top of this tab, above the collapsed
   /// "開発・テストメニュー" section — so deployed Screen Verification can read
   /// the running deploy SHA/PR without expanding anything destructive. This
   /// is the label's only mount point; it is not duplicated inside the
   /// collapsed card.
-  Widget _buildMenuTab(BuildContext c) => ListView(
-    key: const PageStorageKey('public-demo-menu-tab'),
-    padding: const EdgeInsets.all(16),
-    children: [
-      BuildInfoLabel(
-        buildInfo: widget.buildInfo ?? BuildInfo.fromEnvironment(),
-      ),
-      _publicDemoDevMenuSection(),
-    ],
-  );
+  ///
+  /// SES MENU VISUAL COMPLETE: adopts the icon-led section-header +
+  /// bordered-card visual language every other NON-HOME tab's Visual
+  /// Complete already established
+  /// (`docs/design/SES_NON-HOME-UI_VISUAL-SSOT.md`), using the new
+  /// メニュータブ-local widgets in `public_demo_menu_visual.dart`. The build
+  /// identity moves into [PublicDemoMenuBuildInfoRow] — a low-emphasis row
+  /// that renders nothing (no empty bordered card) when
+  /// `BuildInfo.isAvailable` is false, matching this tab's own long-standing
+  /// "no empty content" precedent. Only actual production Menu content
+  /// (build identity + the existing dev/test menu) is Visual Complete here —
+  /// every Reference-only feature absent from production (manual save/load,
+  /// difficulty/display/sound settings, tutorial, help/FAQ/contact, About,
+  /// Credits, a Menu-local ひよりのアドバイス card) is intentionally not
+  /// implemented; see
+  /// `docs/reports/SES_NON-HOME-UI_MENU_Visual-Complete_Result.md`.
+  Widget _buildMenuTab(BuildContext c) {
+    final buildInfo = widget.buildInfo ?? BuildInfo.fromEnvironment();
+    return ListView(
+      key: const PageStorageKey('public-demo-menu-tab'),
+      padding: const EdgeInsets.all(16),
+      children: [
+        _sectionHeader('メニュー', icon: Icons.menu_outlined),
+        if (buildInfo.isAvailable) ...[
+          PublicDemoMenuCard(
+            child: PublicDemoMenuBuildInfoRow(
+              isAvailable: buildInfo.isAvailable,
+              buildInfoLabel: BuildInfoLabel(buildInfo: buildInfo),
+            ),
+          ),
+          const SizedBox(height: 16),
+        ],
+        _publicDemoDevMenuSection(),
+      ],
+    );
+  }
 
   @override
   Widget build(BuildContext c) {

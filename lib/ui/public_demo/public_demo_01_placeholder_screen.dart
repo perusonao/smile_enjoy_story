@@ -182,10 +182,20 @@ class PublicDemo01PlaceholderScreen extends StatefulWidget {
     super.key,
     this.buildInfo,
     this.saveService = const PublicDemoSaveService(),
+    this.debugSeed,
   });
 
   final BuildInfo? buildInfo;
   final PublicDemoSaveService saveService;
+
+  /// QA/E2E/test-only [PublicDemoState.runSeed] override for a brand-new
+  /// playthrough (SEEDED-RNG-REUSE-1), mirroring [GameController
+  /// .debugSeed]'s own doc. `null` for every real player, in which case a
+  /// fresh new-game/restart still draws its own random seed exactly as
+  /// before this field existed. Never read by any gameplay/balance logic —
+  /// only threaded into [PublicDemoAggregate.initial]'s `runSeed`
+  /// parameter so a reproducible run can be requested on demand.
+  final int? debugSeed;
   @override
   State<PublicDemo01PlaceholderScreen> createState() => _S();
 }
@@ -230,7 +240,7 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
   /// next value. There is no way for this widget to commit a finance change
   /// without the paired workflow change, or vice versa, for any command
   /// that requires both — see [PublicDemoAggregate]'s own class doc.
-  PublicDemoAggregate _game = PublicDemoAggregate.initial();
+  late PublicDemoAggregate _game;
   Future<void> _persistenceTail = Future<void>.value();
   bool _isRestoring = true;
   bool _isRestarting = false;
@@ -244,6 +254,11 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
   @override
   void initState() {
     super.initState();
+    // Applies widget.debugSeed (QA/E2E/test-only) before _restoreAggregate
+    // can possibly replace this with a save's own persisted runSeed —
+    // matching every other new-game/restart call site's `_game =
+    // PublicDemoAggregate.initial(runSeed: widget.debugSeed)` below.
+    _game = PublicDemoAggregate.initial(runSeed: widget.debugSeed);
     unawaited(_restoreAggregate());
   }
 
@@ -269,7 +284,7 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
     }
     if (!mounted) return;
     setState(() {
-      _game = restored ?? PublicDemoAggregate.initial();
+      _game = restored ?? PublicDemoAggregate.initial(runSeed: widget.debugSeed);
       _isRestoring = false;
     });
   }
@@ -1271,7 +1286,10 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
       return;
     }
     setState(() {
-      _game = PublicDemoAggregate.initial();
+      // A fresh runSeed every time (SEEDED-RNG-REUSE-1): "4月からもう一度"
+      // is a brand-new playthrough, never a replay of the abandoned one's
+      // seed — matches [PublicDemoState.aprilStart]'s own doc.
+      _game = PublicDemoAggregate.initial(runSeed: widget.debugSeed);
       _isRestarting = false;
       // A fresh playthrough starts back on HOME, whether restart was
       // triggered from the bankruptcy terminal card (already on HOME) or

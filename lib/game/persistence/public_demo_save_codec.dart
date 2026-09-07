@@ -6,7 +6,11 @@ import '../public_demo/public_demo_aggregate.dart';
 ///
 /// This deliberately has no dependency on normal [GameState] persistence.
 /// A payload is restored exactly as saved or rejected as a whole; decoding
-/// never invokes gameplay reconciliation or derives replacement values.
+/// never invokes gameplay reconciliation. The sole exception
+/// (SEEDED-RNG-REUSE-1) is `aggregate.state.runSeed`: a save from before
+/// that field existed gets one derived deterministically from its own
+/// content — see [fromJson]'s own doc — every other field is still
+/// required to match exactly or the whole save is rejected.
 class PublicDemoSaveCodec {
   static const schemaVersion = 1;
   static const _experience = 'public-demo-01';
@@ -54,8 +58,16 @@ class PublicDemoSaveCodec {
       // PublicDemoState's legacy decoder intentionally supplies defaults for
       // old normal-game data.  A Public Demo envelope must be stricter: this
       // round-trip comparison rejects missing fields, unknown enums, and any
-      // payload that would otherwise be normalized during restoration.
-      if (_canonicalJson(json) != _canonicalJson(toJson(aggregate))) {
+      // payload that would otherwise be normalized during restoration —
+      // EXCEPT for `runSeed` (SEEDED-RNG-REUSE-1): a save persisted before
+      // that field existed must go on being playable rather than being
+      // discarded as a whole new game, so a missing/invalid `runSeed` is
+      // spliced into the comparison baseline using the exact deterministic
+      // fallback `PublicDemoState.fromJson` already derived for it — every
+      // other field is still required to match exactly, unchanged from
+      // before this field existed.
+      final baseline = _withMigratedRunSeed(json, aggregate.state.runSeed);
+      if (_canonicalJson(baseline) != _canonicalJson(toJson(aggregate))) {
         return null;
       }
       return aggregate;
@@ -199,6 +211,28 @@ class PublicDemoSaveCodec {
     }
 
     return true;
+  }
+
+  /// Splices [resolvedRunSeed] into a copy of [envelope]'s
+  /// `aggregate.state.runSeed` only when it isn't already an int there —
+  /// i.e. only for a save that predates that field (SEEDED-RNG-REUSE-1) or
+  /// carries a corrupted one. Returns [envelope] itself, unchanged,
+  /// otherwise — a save that already has a genuine `runSeed` must still
+  /// match it exactly on the strict round trip like every other field.
+  static Map<String, dynamic> _withMigratedRunSeed(
+    Map<String, dynamic> envelope,
+    int resolvedRunSeed,
+  ) {
+    final aggregate = (envelope['aggregate'] as Map).cast<String, dynamic>();
+    final state = (aggregate['state'] as Map).cast<String, dynamic>();
+    if (state['runSeed'] is int) return envelope;
+    return {
+      ...envelope,
+      'aggregate': {
+        ...aggregate,
+        'state': {...state, 'runSeed': resolvedRunSeed},
+      },
+    };
   }
 
   static String _canonicalJson(Object? value) => jsonEncode(_canonicalize(value));

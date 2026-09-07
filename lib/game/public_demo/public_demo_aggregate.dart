@@ -75,14 +75,28 @@ class PublicDemoAggregate {
   /// Public Demo 0.1's starting aggregate. The ONLY way to obtain a
   /// [PublicDemoAggregate] without already holding one — every other
   /// instance is computed from an existing one via the command methods
-  /// below.
-  factory PublicDemoAggregate.initial() => PublicDemoAggregate._(
-    state: PublicDemoState.aprilStart(),
+  /// below. [runSeed] threads straight through to [PublicDemoState
+  /// .aprilStart] (SEEDED-RNG-REUSE-1): omitted for every real player, in
+  /// which case a fresh seed is drawn there; a test may inject a fixed
+  /// value instead so a reproducible run doesn't depend on wall-clock time.
+  factory PublicDemoAggregate.initial({int? runSeed}) => PublicDemoAggregate._(
+    state: PublicDemoState.aprilStart(runSeed: runSeed),
     workflow: PublicDemoWorkflowState.initial(),
   );
 
   final PublicDemoState state;
   final PublicDemoWorkflowState workflow;
+
+  /// The stable per-playthrough seed (SEEDED-RNG-REUSE-1). Lives on [state]
+  /// (not a third stored field here — this class's own doc above is
+  /// explicit about atomically owning exactly [state] and [workflow], never
+  /// a caller-suppliable third value) because it is itself just another
+  /// already-authoritative, already-persisted fact about the current
+  /// playthrough. Future independently-reproducible content streams
+  /// (recruitment candidates, interviews, project generation) derive their
+  /// own per-stream seed from this via `PublicDemoRng`
+  /// (`public_demo_rng.dart`).
+  int get runSeed => state.runSeed;
 
   /// Complete persistence form for the sole Public Demo authoritative root.
   Map<String, dynamic> toJson() => {
@@ -119,7 +133,8 @@ class PublicDemoAggregate {
         state.engineersWaiting < 0 ||
         state.engineersAssigned + state.engineersWaiting !=
             state.engineerCount ||
-        (state.fiscalYearCompleted && state.month != 15)) {
+        (state.fiscalYearCompleted && state.month != 15) ||
+        state.runSeed < 0) {
       throw const FormatException('Invalid Public Demo state invariants');
     }
 

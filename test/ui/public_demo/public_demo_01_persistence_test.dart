@@ -68,12 +68,29 @@ PublicDemoWorkflowState _screenWorkflow(WidgetTester tester) =>
             .workflow
         as PublicDemoWorkflowState;
 
-Future<void> _mount(WidgetTester tester, PublicDemoSaveService service) async {
+Future<void> _mount(
+  WidgetTester tester,
+  PublicDemoSaveService service, {
+  int? debugSeed,
+}) async {
   await tester.pumpWidget(
-    MaterialApp(home: PublicDemo01PlaceholderScreen(saveService: service)),
+    MaterialApp(
+      home: PublicDemo01PlaceholderScreen(
+        saveService: service,
+        debugSeed: debugSeed,
+      ),
+    ),
   );
   await tester.pump();
 }
+
+/// SEEDED-RNG-REUSE-1: every "fresh aggregate" comparison below now fixes
+/// `debugSeed` on both the mounted screen and the canonical
+/// [PublicDemoAggregate.initial] it compares against, instead of asserting
+/// full JSON equality against two independently-drawn (and therefore no
+/// longer equal) `runSeed` values. Everything other than `runSeed` is still
+/// required to match exactly.
+const _fixedDebugSeed = 20260907;
 
 Future<void> _tapAction(WidgetTester tester, String label) async {
   final finder = find.ancestor(
@@ -121,8 +138,8 @@ Future<void> _openAprilRestart(WidgetTester tester) async {
   await tester.pumpAndSettle();
 }
 
-PublicDemoAggregate _bankruptAggregate() {
-  var aggregate = PublicDemoAggregate.initial()
+PublicDemoAggregate _bankruptAggregate({int? runSeed}) {
+  var aggregate = PublicDemoAggregate.initial(runSeed: runSeed)
       .closeApril(monthlyExpenses: 800000)
       .closeMay(week: 9, monthlyExpenses: 800000);
   aggregate = aggregate
@@ -183,7 +200,12 @@ void main() {
   ) async {
     final service = _RecordingSaveService();
     await tester.pumpWidget(
-      MaterialApp(home: PublicDemo01PlaceholderScreen(saveService: service)),
+      MaterialApp(
+        home: PublicDemo01PlaceholderScreen(
+          saveService: service,
+          debugSeed: _fixedDebugSeed,
+        ),
+      ),
     );
 
     expect(find.byKey(const Key('public-demo-restoring')), findsOneWidget);
@@ -191,7 +213,7 @@ void main() {
 
     expect(
       _screenState(tester).toJson(),
-      PublicDemoAggregate.initial().state.toJson(),
+      PublicDemoAggregate.initial(runSeed: _fixedDebugSeed).state.toJson(),
     );
     expect(service.saved, isEmpty);
   });
@@ -251,12 +273,14 @@ void main() {
     ]) {
       SharedPreferences.setMockInitialValues({PublicDemoSaveService.key: raw});
       await tester.pumpWidget(
-        const MaterialApp(home: PublicDemo01PlaceholderScreen()),
+        const MaterialApp(
+          home: PublicDemo01PlaceholderScreen(debugSeed: _fixedDebugSeed),
+        ),
       );
       await tester.pump();
       expect(
         _screenState(tester).toJson(),
-        PublicDemoAggregate.initial().state.toJson(),
+        PublicDemoAggregate.initial(runSeed: _fixedDebugSeed).state.toJson(),
       );
       await tester.pumpWidget(const SizedBox.shrink());
     }
@@ -308,7 +332,7 @@ void main() {
     'restart clears Public Demo storage before creating a fresh run',
     (tester) async {
       final service = _RecordingSaveService(restored: _bankruptAggregate());
-      await _mount(tester, service);
+      await _mount(tester, service, debugSeed: _fixedDebugSeed);
 
       await tester.tap(find.byKey(const Key('public-demo-restart-button')));
       await tester.pump();
@@ -318,8 +342,31 @@ void main() {
       expect(_screenState(tester).summerBonusDecisionConfirmed, isFalse);
       expect(
         _screenState(tester).toJson(),
-        PublicDemoAggregate.initial().state.toJson(),
+        PublicDemoAggregate.initial(runSeed: _fixedDebugSeed).state.toJson(),
       );
+    },
+  );
+
+  testWidgets(
+    'restart draws a fresh runSeed, never the abandoned playthrough\'s '
+    '(SEEDED-RNG-REUSE-1)',
+    (tester) async {
+      // Two distinct fixed seeds, deterministically: the abandoned save's
+      // own runSeed (111, restored on mount) versus this widget's
+      // debugSeed (222, drawn fresh on restart) — a real player's restart
+      // draws a genuinely fresh wall-clock seed instead of 222, but the
+      // mechanism under test (restart never reuses the abandoned save's
+      // runSeed) is the same either way.
+      final abandoned = _bankruptAggregate(runSeed: 111);
+      final service = _RecordingSaveService(restored: abandoned);
+      await _mount(tester, service, debugSeed: 222);
+      expect(_screenState(tester).runSeed, 111);
+
+      await tester.tap(find.byKey(const Key('public-demo-restart-button')));
+      await tester.pump();
+
+      expect(_screenState(tester).runSeed, 222);
+      expect(_screenState(tester).month, 4);
     },
   );
 
@@ -348,8 +395,8 @@ void main() {
   testWidgets('test restart confirms from July and rebuilds the canonical '
       'April aggregate repeatedly', (tester) async {
     final service = _RecordingSaveService(restored: _freshJulyAggregate());
-    final canonical = PublicDemoAggregate.initial();
-    await _mount(tester, service);
+    final canonical = PublicDemoAggregate.initial(runSeed: _fixedDebugSeed);
+    await _mount(tester, service, debugSeed: _fixedDebugSeed);
 
     for (var attempt = 0; attempt < 2; attempt++) {
       await _openAprilRestart(tester);

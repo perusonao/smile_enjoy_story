@@ -142,12 +142,19 @@ void main() {
         // deliveryPressure, budgetHealth) — never a fifth line for
         // fieldEvaluation, which is always its constructed default (50)
         // today and would misrepresent a constant as a real evaluation.
+        // SES EMPLOYEE-UI-VISUAL-COMPLETE restyled this card
+        // (`_assignmentMetricBar`) to pair each of those same two numeric
+        // facts with its own label Text next to a progress bar, plus a
+        // '参画中' status badge — seven Text widgets total now, still
+        // built from exactly the same four authoritative facts (name,
+        // project, deliveryPressure, budgetHealth) the assertions above
+        // already pin down; fieldEvaluation is still never one of them.
         expect(
           find.descendant(
             of: find.byKey(cardKey),
             matching: find.byType(Text),
           ),
-          findsNWidgets(4),
+          findsNWidgets(7),
         );
       },
     );

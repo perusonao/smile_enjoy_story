@@ -13,6 +13,7 @@ import '../../game/public_demo/public_demo_interview.dart';
 import '../../game/public_demo/public_demo_internal_training_transaction.dart';
 import '../../game/public_demo/public_demo_month_guard.dart';
 import '../../game/public_demo/public_demo_month_label.dart';
+import '../../game/public_demo/public_demo_monthly_growth.dart';
 import '../../game/public_demo/public_demo_recovery.dart';
 import '../../game/public_demo/public_demo_recruitment.dart';
 import '../../game/public_demo/public_demo_recruitment_medium.dart';
@@ -34,8 +35,10 @@ import '../../presentation/build_info.dart';
 import '../../presentation/home/widgets/home_office_stage_section.dart';
 import '../asset_paths.dart';
 import '../theme.dart';
+import '../widgets/labels.dart';
 import 'public_demo_event_dialog.dart';
 import 'public_demo_cash_shortage_card.dart';
+import 'public_demo_employee_visual.dart';
 import 'public_demo_founder_follow_up_dialog.dart';
 import 'public_demo_growth_result_card.dart';
 import 'public_demo_home_dashboard_section.dart';
@@ -61,6 +64,15 @@ typedef _AddCandidate =
       String? subjectName,
       String? targetId,
     });
+
+/// SES EMPLOYEE-UI-VISUAL-COMPLETE: the 社員一覧 filter's three real buckets
+/// — Canonical Visual Reference `01_Employee_LayoutDraft.png`'s 全員/待機中/
+/// 参画中 chips (its 4th chip, 休職, has no authoritative Public Demo status
+/// and is deliberately not reproduced — Visual SSOT "実在statusのみ"). Maps
+/// 1:1 onto the same `_currentlyAssignedEngineerIds` membership the roster's
+/// existing 待機/参画中 summary counts already partition every engineer
+/// into; no new categorization is computed.
+enum _EmployeeStatusFilter { all, waiting, assigned }
 
 // ---------------------------------------------------------------------------
 // PUBLIC-DEMO-HOME-UI-3A P2 fix (PR #150 review): "今月の重要タスク"'s 営業/採用
@@ -195,6 +207,15 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
   static const int _accountingTabIndex = 3;
   static const int _menuTabIndex = 4;
   int _selectedTabIndex = _homeTabIndex;
+
+  /// SES EMPLOYEE-UI-VISUAL-COMPLETE: which real status bucket the 社員一覧
+  /// (`_employeeRosterSection`) shows. Presentation-only — it only ever
+  /// hides/shows existing roster rows built from the same authoritative
+  /// `_currentlyAssignedEngineerIds` fact the roster's own summary line
+  /// already reads; it introduces no new employee status, and does not
+  /// affect Section 2/3/4 or any command/eligibility below it. Defaults to
+  /// showing everyone, matching this section's pre-filter behavior.
+  _EmployeeStatusFilter _employeeStatusFilter = _EmployeeStatusFilter.all;
 
   /// The single authoritative Public Demo 0.1 root (WORKFLOW-STATE-1AB
   /// FIX3): atomically owns both finance/monthly-close facts ([s]) and
@@ -2032,22 +2053,73 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            a.engineerName,
-            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+          Row(
+            children: [
+              Icon(
+                Icons.work_outline,
+                size: 18,
+                color: Theme.of(context).colorScheme.primary,
+              ),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  a.engineerName,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              const SizedBox(width: 8),
+              const PublicDemoEmployeeStatusBadge(
+                label: '参画中',
+                tone: PublicDemoEmployeeStatusTone.assigned,
+              ),
+            ],
           ),
-          const SizedBox(height: 4),
+          const SizedBox(height: 6),
           Text('参画中案件：${a.projectName}', style: const TextStyle(fontSize: 13)),
-          const SizedBox(height: 4),
-          Text(
-            '納期プレッシャー：${a.deliveryPressure}',
-            style: const TextStyle(fontSize: 12),
+          const SizedBox(height: 8),
+          _assignmentMetricBar(
+            label: '納期プレッシャー',
+            value: a.deliveryPressure,
           ),
-          Text('予算健全度：${a.budgetHealth}', style: const TextStyle(fontSize: 12)),
+          const SizedBox(height: 6),
+          _assignmentMetricBar(label: '予算健全度', value: a.budgetHealth),
         ],
       ),
     ),
   );
+
+  /// A compact 0-100 metric bar for [activeProjectStatusCard] —
+  /// [value] is read verbatim from [PublicDemoAssignment]; a fixed 0-100
+  /// rendering scale is not a fabricated number, only a display choice.
+  Widget _assignmentMetricBar({required String label, required int value}) {
+    final scheme = Theme.of(context).colorScheme;
+    final fraction = (value / 100).clamp(0.0, 1.0);
+    return Row(
+      children: [
+        SizedBox(
+          width: 90,
+          child: Text(label, style: const TextStyle(fontSize: 11)),
+        ),
+        Expanded(
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(4),
+            child: LinearProgressIndicator(
+              value: fraction,
+              minHeight: 6,
+              backgroundColor: scheme.surfaceContainerHighest,
+              valueColor: AlwaysStoppedAnimation<Color>(scheme.primary),
+            ),
+          ),
+        ),
+        const SizedBox(width: 6),
+        Text('$value', style: const TextStyle(fontSize: 11)),
+      ],
+    );
+  }
 
   Widget internalTrainingCard({
     required String engineerId,
@@ -3185,38 +3257,193 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
   Widget _employeeRosterSection() {
     final engineers = workflow.engineers;
     if (engineers.isEmpty) return const SizedBox.shrink();
+    final visibleEngineers = engineers.where(_matchesEmployeeStatusFilter);
     return Padding(
       key: const Key('public-demo-employee-roster-section'),
       padding: const EdgeInsets.only(bottom: 12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _sectionHeader('社員一覧・現在状態'),
+          _sectionHeader('社員一覧・現在状態', icon: Icons.groups_outlined),
+          _employeeStatusFilterChips(engineers.length),
+          const SizedBox(height: 6),
           Text(
             '待機 ${s.engineersWaiting}・参画中 ${s.engineersAssigned}'
             '・合計 ${engineers.length}',
             style: const TextStyle(fontSize: 12),
           ),
-          const SizedBox(height: 8),
-          for (final e in engineers)
-            Padding(
-              key: Key('public-demo-employee-roster-row-${e.id}'),
-              padding: const EdgeInsets.symmetric(vertical: 4),
-              child: Wrap(
-                crossAxisAlignment: WrapCrossAlignment.center,
-                spacing: 8,
-                runSpacing: 4,
-                children: [
-                  Text(
-                    e.name,
-                    style: const TextStyle(fontWeight: FontWeight.w600),
-                  ),
-                  badge(_currentEmployeeStatusLabel(e)),
-                ],
-              ),
-            ),
+          const SizedBox(height: 6),
+          for (final e in visibleEngineers) _employeeRosterCard(e),
         ],
       ),
+    );
+  }
+
+  /// Whether [e] belongs in the currently selected [_employeeStatusFilter]
+  /// bucket — reads the same `_currentlyAssignedEngineerIds` membership the
+  /// roster's own 待機/参画中 summary counts already partition every
+  /// engineer by.
+  bool _matchesEmployeeStatusFilter(PublicDemoEngineerSales e) =>
+      switch (_employeeStatusFilter) {
+        _EmployeeStatusFilter.all => true,
+        _EmployeeStatusFilter.assigned => _currentlyAssignedEngineerIds
+            .contains(e.id),
+        _EmployeeStatusFilter.waiting => !_currentlyAssignedEngineerIds
+            .contains(e.id),
+      };
+
+  /// The 全員/待機中/参画中 filter chip row (Canonical Visual Reference
+  /// `01_Employee_LayoutDraft.png`). Purely a client-side display filter on
+  /// [_employeeRosterSection]'s own row list — it does not touch Section
+  /// 2/3/4, any command, or any eligibility check below it.
+  Widget _employeeStatusFilterChips(int total) {
+    final chips = <(_EmployeeStatusFilter, String, int)>[
+      (_EmployeeStatusFilter.all, '全員', total),
+      (_EmployeeStatusFilter.waiting, '待機中', s.engineersWaiting),
+      (_EmployeeStatusFilter.assigned, '参画中', s.engineersAssigned),
+    ];
+    final scheme = Theme.of(context).colorScheme;
+    return Wrap(
+      key: const Key('public-demo-employee-status-filter'),
+      spacing: 8,
+      runSpacing: 6,
+      children: [
+        for (final (filter, label, count) in chips)
+          Material(
+            key: Key('public-demo-employee-status-filter-${filter.name}'),
+            color: _employeeStatusFilter == filter
+                ? scheme.primary
+                : scheme.surfaceContainerHighest,
+            borderRadius: BorderRadius.circular(16),
+            child: InkWell(
+              borderRadius: BorderRadius.circular(16),
+              onTap: () => setState(() => _employeeStatusFilter = filter),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 6,
+                ),
+                child: Text(
+                  '$label $count',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
+                    color: _employeeStatusFilter == filter
+                        ? scheme.onPrimary
+                        : scheme.onSurfaceVariant,
+                  ),
+                ),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
+  /// One Reference-style employee card: portrait, name, a real-status badge
+  /// (colored only — the text is still the exact
+  /// [_currentEmployeeStatusLabel] every existing roster test already
+  /// asserts), and — when a runtime exists — a capability progress bar for
+  /// the employee's confirmed primary skill. All values are read verbatim
+  /// from authoritative Public Demo state; nothing is computed or invented
+  /// here.
+  Widget _employeeRosterCard(PublicDemoEngineerSales e) {
+    final skill = _primarySkillDisplayFor(e.id);
+    return Container(
+      key: Key('public-demo-employee-roster-row-${e.id}'),
+      margin: const EdgeInsets.only(bottom: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          PublicDemoEmployeeAvatar(
+            assetPath: homeOfficeStagePortraitFor(e.id),
+            radius: 20,
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        e.name,
+                        style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 15,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    PublicDemoEmployeeStatusBadge(
+                      label: _currentEmployeeStatusLabel(e),
+                      tone: _employeeStatusTone(e),
+                    ),
+                  ],
+                ),
+                if (skill != null) ...[
+                  const SizedBox(height: 4),
+                  PublicDemoEmployeeSkillBar(
+                    languageLabel: skill.languageLabel,
+                    capability: skill.capability,
+                    beforeCapability: skill.beforeCapability,
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// [PublicDemoEmployeeStatusTone] for [e] — a pure coloring read of the
+  /// same two authoritative facts the roster/badge text already uses:
+  /// current assignment ([_currentlyAssignedEngineerIds]) and this month's
+  /// internal training selection ([PublicDemoState.trainingSelections]).
+  PublicDemoEmployeeStatusTone _employeeStatusTone(
+    PublicDemoEngineerSales e,
+  ) {
+    if (_currentlyAssignedEngineerIds.contains(e.id)) {
+      return PublicDemoEmployeeStatusTone.assigned;
+    }
+    if (s.trainingSelections.containsKey(e.id)) {
+      return PublicDemoEmployeeStatusTone.training;
+    }
+    return PublicDemoEmployeeStatusTone.waiting;
+  }
+
+  /// The confirmed primary-skill display for [engineerId], or `null` when
+  /// there is no runtime to read (should not happen post-join, but never
+  /// assumed). [beforeCapability] is populated only when
+  /// [PublicDemoState.latestGrowthResults] genuinely carries a growth event
+  /// for this engineer this month — never a fabricated "no change" delta.
+  ({String languageLabel, int capability, int? beforeCapability})?
+  _primarySkillDisplayFor(String engineerId) {
+    final runtime = s.runtimeForOrNull(engineerId);
+    if (runtime == null) return null;
+    final languageLabel =
+        languageLabels[runtime.primaryLanguage] ?? runtime.primaryLanguage.name;
+    PublicDemoMonthlyGrowth? growth;
+    for (final result in s.latestGrowthResults) {
+      if (result.engineerId == engineerId) {
+        growth = result;
+        break;
+      }
+    }
+    return (
+      languageLabel: languageLabel,
+      capability: growth?.capabilityAfter ?? runtime.actualCapability,
+      beforeCapability: growth?.capabilityBefore,
     );
   }
 
@@ -3295,7 +3522,10 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
       padding: const EdgeInsets.only(bottom: 12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
-        children: [_sectionHeader('今やるべき社員アクション'), ...cards],
+        children: [
+          _sectionHeader('今やるべき社員アクション', icon: Icons.checklist_outlined),
+          ...cards,
+        ],
       ),
     );
   }
@@ -3320,7 +3550,10 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
       padding: const EdgeInsets.only(bottom: 12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
-        children: [_sectionHeader('参画中案件'), ...cards],
+        children: [
+          _sectionHeader('参画中案件', icon: Icons.work_outline),
+          ...cards,
+        ],
       ),
     );
   }
@@ -3359,7 +3592,7 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _sectionHeader('成長・SkillSheet・研修'),
+          _sectionHeader('成長・SkillSheet・研修', icon: Icons.trending_up),
           if (hasGrowth) _growthResultsSection(),
           if (s.month >= 5)
             for (final runtime in s.engineerRuntimes)
@@ -3372,11 +3605,26 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
     );
   }
 
-  Widget _sectionHeader(String title) => Padding(
+  /// [icon] is purely decorative and optional — every existing call site
+  /// (Sales/Accounting/Year-End) omits it and renders exactly as before;
+  /// only the 社員タブ's own 4 section headers pass one, matching the
+  /// Canonical Visual Reference's iconography.
+  Widget _sectionHeader(String title, {IconData? icon}) => Padding(
     padding: const EdgeInsets.only(bottom: 8),
-    child: Text(
-      title,
-      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+    child: Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (icon != null) ...[
+          Icon(icon, size: 18, color: Theme.of(context).colorScheme.primary),
+          const SizedBox(width: 6),
+        ],
+        Flexible(
+          child: Text(
+            title,
+            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+          ),
+        ),
+      ],
     ),
   );
 

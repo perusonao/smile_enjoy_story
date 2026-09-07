@@ -327,18 +327,18 @@ pre-existingな既知failureである。`lib/presentation/home/` は本タスク
 
 ```
 $ flutter test
-→ 実行中（このセッションの環境ではフルスイート ~1700件の実行に30分以上
-  かかる — 個別ファイル実行では数分で終わる規模のテストが、まとめて
-  実行すると顕著に遅くなる)。進行状況は488件時点まで確認しており、
-  新規failureはゼロ（既知のpre-existing 2件のみ、上記「HOME Freeze関連
-  test」節で個別に確認・原因説明済み）。
+→ 1700/1702 tests passed, 2 failed
 ```
 
-上記のとおりフルスイートは実行に長時間を要するため、本タスクに直接
-関連するテスト（Employee Phase 1 / APV / SkillSheet / founder follow-up /
-HOME Freeze関連、および本タスクの新規テスト）は個別実行で全数確認済み
-（上記の各節、いずれも green）。フルスイートは引き続きバックグラウンドで
-実行し、完了後に本節を更新する。
+失敗した2件は、いずれも「HOME Freeze関連 test」節で個別確認済みの
+pre-existing failure（`test/presentation/home/home_dashboard_data_wiring_test.dart`
+「the month-end CTA stays disabled even with real dashboard data」、
+`test/presentation/home/home_shell_page_test.dart`「Month-end CTA is
+disabled」）と完全に一致する。本タスクに起因する新規failureはゼロ。
+
+（このセッションの環境ではフルスイート実行に約2時間かかった — 個別
+ファイル実行では数分で終わる規模のテストが、まとめて実行すると顕著に
+遅くなる環境依存の挙動であり、本タスクの変更内容とは無関係）
 
 ### git diff --check
 

@@ -56,7 +56,7 @@ Issue番号順に機械的に実装しない。実プレイ結果を根拠に、
 3. ~~**Active Project Visibility Phase 1**~~ — 完了。参画中社員の案件状態を社員タブから可視化。
 4. ~~**Employee UI Phase 1**~~ — 完了。社員タブを「社員一覧・現在状態 → 今やるべき社員アクション → 参画中案件（Active Project Visibility Phase 1を統合） → 成長・SkillSheet・研修」の4段階へ再設計。stale「翌月参画予定」の社員タブ側の残差も解消（会計側の「空の○月開始結果」はPOST-HOME-FREEZE Small-UX-Fixで既に解消済み）。
 5. ~~**Sales UI Phase 1**~~ — 完了。営業タブを「現在の営業・採用状況 → 今やるべき営業アクション → 採用・候補者進捗 → 案件・参画/継続状況」の4段階へ再設計。
-6. **Accounting UI Phase 1** — 会計タブの情報設計（HOMEへの先取り禁止、実装場所は会計タブ側）。
+6. ~~**Accounting UI Phase 1**~~ — 完了。会計タブを「現在の資金状態 → 今月の収支 → 将来の資金予測・リスク → 今月必要な経営判断 → 月次結果/Year-End」の5段階へ再設計。支出サマリー見出しの真実性修正（Fresh Audit相当）も実施。
 7. **April→March human replay** — 上記反映後の年間通しプレイ監査。
 
 **#148の追加production実装は次P0として扱わない。** #183（CI高速化）はdev-efficiency用の別ラインとして記録し、gameplayより前へ出さない。
@@ -68,8 +68,8 @@ Issue番号順に機械的に実装しない。実プレイ結果を根拠に、
 | P0 | Year-End Phase 1 | 実績: 完了（本エントリ） | 年度末の振り返り演出（会計タブ「第1期終了」強化） — 詳細はUpdate history |
 | P0 | ~~Active Project Visibility Phase 1~~ | 実績: 完了 | 参画中社員の案件状態（engineerName/projectName/deliveryPressure/budgetHealth）を社員タブから可視化 — 詳細はUpdate history |
 | P0 | ~~Employee UI Phase 1~~ | 実績: 完了 | 社員タブを4段階の情報階層へ再設計、stale「翌月参画予定」の社員タブ側を解消 — 詳細はUpdate history |
-| P0 | ~~Sales UI Phase 1~~ | 実績: 完了（本エントリ） | 営業タブを「現在の営業・採用状況 → 今やるべき営業アクション → 採用・候補者進捗 → 案件・参画/継続状況」の4段階へ再設計 — 詳細はUpdate history |
-| P0 | Accounting UI Phase 1 | 目安未確定 / 分割検討 | 会計タブの情報設計を整える（HOMEへの先取りは禁止、実装場所は会計タブ側） |
+| P0 | ~~Sales UI Phase 1~~ | 実績: 完了 | 営業タブを「現在の営業・採用状況 → 今やるべき営業アクション → 採用・候補者進捗 → 案件・参画/継続状況」の4段階へ再設計 — 詳細はUpdate history |
+| P0 | ~~Accounting UI Phase 1~~ | 実績: 完了（本エントリ） | 会計タブを「現在の資金状態 → 今月の収支 → 将来の資金予測・リスク → 今月必要な経営判断 → 月次結果/Year-End」の5段階へ再設計、支出サマリー見出しの真実性修正 — 詳細はUpdate history |
 | P0 | 4月→翌3月 First Fun Year通しプレイ（human replay） | 1〜2h | 上記反映後、年間完走可否・退屈な期間・重大問題を実プレイで再特定 |
 | P0 | 年間進行Blocker修正 | 1件0.5〜3h | 月送り不能、二重処理、セーブ破壊等を除去 |
 | P1 | 9月〜2月コンテンツ強化（#167 Phase 1以降の追加分） | 4〜8h / 分割必須 | 年度後半にも判断・イベント・変化がさらに発生 |
@@ -199,6 +199,18 @@ Result Reportは履歴・証拠であり、この文書の代わりにはしな�
 - `docs/reports/` — 実施結果と証拠。計画変更が必要なら結果報告だけで終わらせず、この文書も更新する。
 
 ## Update history
+
+### 2026-09-07（Accounting UI Phase 1完了 / governing plan sync）
+
+- **Accounting UI Phase 1を実装。** 会計タブ（`_buildAccountingTab`、`lib/ui/public_demo/public_demo_01_placeholder_screen.dart`）を、単一`Column`にフラットに並んでいた月次収支カード・支出サマリー・（月により）夏季賞与カード/8月開始結果・（完了時）Year-Endカードから、5段階の情報階層を持つセクション構成へ再設計した: 1) 現在の資金状態（`_accountingFundStatusSection`、新規 — `PublicDemoState.cash`/`financialStatus`の常時表示スナップショット）、2) 今月の収支（`_accountingMonthlyBalanceSection` — 既存の月次収支カード＋支出サマリーをそのまま移動）、3) 将来の資金予測・リスク（`_accountingForecastSection`、新規 — 既存の`PublicDemoCashForecast`/`PublicDemoCashStatusPresentation`をHOMEの`_cashForecastAdvice`と並ぶ第二の呼び出し元として直接読み取り表示）、4) 今月必要な経営判断（`_accountingDecisionSection` — 7月の夏季賞与決定カードをそのまま移動）、5) 月次結果/Year-End（`_accountingMonthlyResultSection` — 8月開始結果ナラティブ＋`PublicDemoYearEndResultCard`をそのまま移動・統合）。
+  - Section 2/4/5は既存のカード・key・月ゲート・eligibility判定を1つも変更せず、そのままセクションメソッドへ移動しただけ。Section 1/3は新規セクションだが、いずれも既存authoritativeフィールド／既存の純粋モデル（`PublicDemoCashForecast.forecast`/`PublicDemoCashStatusPresentation.fromForecast`、共にPR #153/#154由来）の読み取りのみで、新しい計算式・閾値・永続フィールドは一切追加していない。
+  - **IMPORTANT FIX（タスクが参照したFresh Auditが実際にはリポジトリ内に存在せず、本タスクが実測ベースで自ら確認した問題）**: `PublicDemoFinanceSummarySection`の見出し「今月の支出予定」は、5月以降は実際には`PublicDemoState.latestMonthlyCashFlow`（直近確定月の実績）を表示しており、今月の予定ではなく先月実績を偽って表示していた。`PublicDemoFinanceSummaryModel`に`isSettled`（既定`false`）を追加し、決算前（4月）は「今月の支出予定」、決算後（5月〜）は「前回確定の支出（給与・固定費）」へ見出しのみを分岐させた。給与・固定費の金額自体は1円も変更していない。
+  - 付随して、`PublicDemoMonthlyCashFlowCard`の内訳行（`_Row`）がTextScaler 2.0で横overflowする既存の潜在バグを新規テストで発見し、値表示を`Flexible`+`FittedBox(scaleDown)`化して解消した（表示のみの修正、金額・Finance計算は無変更）。
+  - HOME（`lib/presentation/home/`配下）、Employee UI Phase 1、Sales UI Phase 1、Domain（`lib/game/public_demo/`配下）、Save/schema、Finance/Balance、Month transition、Year-End authorityは無変更。
+  - Sales UI Phase 1（PR #191）が作業中にmainへマージされたため、実装・テスト完了後に`git fetch origin main`→`git merge origin/main`でコンフリクトなく再統合し、統合後に全focused testsおよび`test/game/public_demo`+`test/ui/public_demo`（904件）を再実行して緑を確認した。
+  - 詳細・変更ファイル・テスト結果は`docs/reports/SES_NON-HOME-UI_ACCOUNTING_Phase1_Implementation_Result.md`を参照。
+- **次のproduction priorityを以下の順に更新する**（本文書冒頭「Current execution order」および直後のPrioritized backlog tableも同時に更新済み）:
+  1. April→March human replay
 
 ### 2026-09-07（Sales UI Phase 1完了 / governing plan sync）
 

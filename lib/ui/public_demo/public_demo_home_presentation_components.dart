@@ -42,14 +42,31 @@ class PublicDemoImportantTaskItem {
 /// warning already shown above HOME by `PublicDemoCashShortageCard` /
 /// the bankruptcy terminal card. Trimmed to the two figures the KPI does
 /// not carry — this section's remaining, non-duplicate reason to exist.
+///
+/// SES ACCOUNTING-UI-PHASE-1 (Fresh Audit label-truthfulness fix): [payroll]/
+/// [fixedCosts] were always read from `PublicDemoState.latestMonthlyCashFlow`
+/// — the most recently CLOSED month's actual paid amounts, not a forecast
+/// of the in-progress month — falling back to the standing baseline
+/// constants only before the very first close (April). The caller's own
+/// authoritative figures are unchanged by this phase; only [isSettled] is
+/// new, so [PublicDemoFinanceSummarySection] can title this honestly
+/// instead of always claiming "今月の支出予定" for what is, from May onward,
+/// last month's already-paid actual.
 class PublicDemoFinanceSummaryModel {
   const PublicDemoFinanceSummaryModel({
     required this.payroll,
     required this.fixedCosts,
+    this.isSettled = false,
   });
 
   final int payroll;
   final int fixedCosts;
+
+  /// True once a real monthly close has produced these figures
+  /// (`PublicDemoState.latestMonthlyCashFlow != null`) — false only before
+  /// the first close (April), when [payroll]/[fixedCosts] are the standing
+  /// baseline this month is still expected to charge.
+  final bool isSettled;
 }
 
 /// The already-resolved primary action for this month.
@@ -293,7 +310,14 @@ class PublicDemoFinanceSummarySection extends StatelessWidget {
   @override
   Widget build(BuildContext context) => _HomeSectionCard(
     cardKey: const Key('public-demo-finance-summary'),
-    title: '今月の支出予定',
+    // SES ACCOUNTING-UI-PHASE-1 (Fresh Audit label-truthfulness fix): before
+    // the first close, [summary]'s figures are the standing baseline this
+    // month is still expected to charge — "今月の支出予定" is accurate here.
+    // From the first close onward they are [summary.isSettled] — the last
+    // CLOSED month's already-paid actual — so the title now says exactly
+    // that instead of continuing to claim a same-month forecast for what is
+    // already a settled historical fact. No figure below changes.
+    title: summary.isSettled ? '前回確定の支出（給与・固定費）' : '今月の支出予定',
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [

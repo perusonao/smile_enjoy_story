@@ -194,8 +194,11 @@ class PublicDemoAccountingStatTile extends StatelessWidget {
 }
 
 /// The always-visible cash hero (現在の現金) — a large icon, the current
-/// cash figure at a prominent size, and an optional truthful 前月比 delta
-/// line. [cashText]/[deltaText] are rendered verbatim from values the
+/// cash figure at a prominent size, and an optional truthful 先月の資金増減
+/// delta line (SES HUMAN-REPLAY PRE-FIX P1: renamed from 前月比 — see the
+/// call site's own doc for why that label no longer matched what
+/// [netCashMovement] actually describes once mid-month spend follows a
+/// close). [cashText]/[deltaText] are rendered verbatim from values the
 /// caller already computed from authoritative state
 /// ([PublicDemoState.cash] / [PublicDemoMonthlyCashFlow.netCashMovement]) —
 /// this widget never recomputes a cash figure or a delta itself.

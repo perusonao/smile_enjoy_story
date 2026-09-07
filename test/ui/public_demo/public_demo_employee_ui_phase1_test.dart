@@ -257,6 +257,16 @@ void main() {
         final aggregate = PublicDemoAggregate.initial();
         await pumpDemoWith(tester, aggregate);
 
+        // SES HUMAN-REPLAY PRE-FIX P1: the filter-chip 48dp tap-target fix
+        // adds a small amount of height above Section 2, which can push
+        // this button below flutter_test's default 800x600 surface (an
+        // artificially short window no real target uses) — `ensureVisible`
+        // scrolls it back into view first, matching the same
+        // scroll-then-tap stabilization this suite's sibling files already
+        // use (e.g. `public_demo_01_suzuki_sales_reentry_test.dart`'s
+        // `tapFinder`). No eligibility/key/command change.
+        await tester.ensureVisible(find.text('SkillSheet確認'));
+        await tester.pumpAndSettle();
         await tester.tap(find.text('SkillSheet確認'));
         await tester.pumpAndSettle();
         expect(

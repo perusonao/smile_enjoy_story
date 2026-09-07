@@ -11,6 +11,10 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:smile_enjoy_story/game/persistence/public_demo_save_service.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_aggregate.dart';
+import 'package:smile_enjoy_story/game/public_demo/public_demo_fiscal_close_id.dart';
+import 'package:smile_enjoy_story/game/public_demo/public_demo_recruitment_medium.dart';
+import 'package:smile_enjoy_story/game/public_demo/public_demo_sales.dart';
+import 'package:smile_enjoy_story/game/public_demo/public_demo_salary_offer.dart';
 import 'package:smile_enjoy_story/ui/public_demo/public_demo_01_placeholder_screen.dart';
 import 'package:smile_enjoy_story/ui/public_demo/public_demo_employee_visual.dart';
 import 'package:smile_enjoy_story/ui/theme.dart';
@@ -58,6 +62,73 @@ PublicDemoAggregate oneAssignedOneWaitingAtMonth(int month) {
   aggregate = publicDemoAdvanceEngineerToOrdered(aggregate, 'eng-01');
   aggregate = aggregate.recoverAssignment('eng-01');
   return aggregate;
+}
+
+/// SES HUMAN-REPLAY PRE-FIX P1: reaches June (month 6) with a genuine
+/// third employee — a May-recruited applicant whose offer was accepted
+/// (via the real `completeInterview`/`acceptOffer` commands, same as
+/// `public_demo_join_test.dart`) but who was never run through the
+/// sales-pipeline commands that would reach `ordered`. `closeMay` joins
+/// them and mints their `PublicDemoEngineerRuntime` the same way it does
+/// for every real new hire (`PublicDemoAggregate.closeMay`), landing
+/// exactly on `_employeeNextActionsSection`'s June "joined but still
+/// selling" loop — the one branch this fix's `showTrainingCard: false`
+/// change touches, and also a genuine 3-employee roster for the
+/// "multiple employees" list-legibility check.
+PublicDemoAggregate juneWithJoinedStillSellingHire() {
+  const expense = 10000;
+  var game = PublicDemoAggregate.initial().closeApril(
+    monthlyExpenses: expense,
+  );
+  final recruited = game.recruit(PublicDemoRecruitmentMedium.free);
+  expect(
+    recruited.isSuccess,
+    isTrue,
+    reason: 'fixture sanity: April cash must afford the free medium',
+  );
+  game = recruited.aggregate!;
+  final applicant = game.workflow.applicants.firstWhere((a) => !a.hasJoined);
+  final interviewResult = game.completeInterview(applicant.id);
+  expect(
+    interviewResult.isCompleted,
+    isTrue,
+    reason: 'fixture sanity: interview must succeed',
+  );
+  game = interviewResult.aggregate;
+  game = game.acceptOffer(
+    applicantId: applicant.id,
+    offer: PublicDemoSalaryOffer(
+      requestedMonthlySalary: applicant.requestedMonthlySalary,
+      offeredMonthlySalary: applicant.requestedMonthlySalary,
+      acceptanceScore: 100,
+      motivationDelta: 0,
+      trustDelta: 0,
+    ),
+    fiscalCloseId: PublicDemoFiscalCloseId.forMonth(5),
+  );
+  game = game.closeMay(week: 9, monthlyExpenses: expense);
+  expect(game.state.month, 6, reason: 'fixture sanity');
+  expect(
+    game.state.joinedApplicantIds,
+    contains(applicant.id),
+    reason: 'fixture sanity: the offer must have actually joined',
+  );
+  final hired = game.workflow.engineers.firstWhere(
+    (e) => e.id == applicant.id,
+  );
+  expect(
+    hired.stage,
+    isNot(PublicDemoSalesStage.ordered),
+    reason:
+        'fixture sanity: still selling, never run through the order '
+        'pipeline',
+  );
+  expect(
+    game.workflow.assignments.any((a) => a.engineerId == applicant.id),
+    isFalse,
+    reason: 'fixture sanity: never assigned',
+  );
+  return game;
 }
 
 void main() {
@@ -316,5 +387,173 @@ void main() {
         );
       }
     }
+  });
+
+  group('SES HUMAN-REPLAY PRE-FIX P1: filter chip tap target', () {
+    testWidgets(
+      'every 全員/待機中/参画中 chip meets the 48dp minimum touch target '
+      '(measured, not assumed)',
+      (tester) async {
+        final aggregate = oneAssignedOneWaitingAtMonth(8);
+        await pumpDemoWith(tester, aggregate);
+
+        for (final filter in ['all', 'waiting', 'assigned']) {
+          final rect = tester.getRect(
+            find.byKey(Key('public-demo-employee-status-filter-$filter')),
+          );
+          expect(
+            rect.height,
+            greaterThanOrEqualTo(48.0),
+            reason: '$filter chip hit-target height',
+          );
+          expect(
+            rect.width,
+            greaterThanOrEqualTo(48.0),
+            reason: '$filter chip hit-target width',
+          );
+        }
+      },
+    );
+
+    testWidgets(
+      'tapping each chip still filters the roster correctly at the '
+      'enlarged hit target (no eligibility/behavior change)',
+      (tester) async {
+        final aggregate = oneAssignedOneWaitingAtMonth(8);
+        await pumpDemoWith(tester, aggregate);
+
+        await tester.tap(
+          find.byKey(const Key('public-demo-employee-status-filter-waiting')),
+        );
+        await tester.pumpAndSettle();
+        expect(find.byKey(rosterRowKey('eng-01')), findsNothing);
+        expect(find.byKey(rosterRowKey('eng-02')), findsOneWidget);
+
+        await tester.tap(
+          find.byKey(const Key('public-demo-employee-status-filter-all')),
+        );
+        await tester.pumpAndSettle();
+        expect(find.byKey(rosterRowKey('eng-01')), findsOneWidget);
+        expect(find.byKey(rosterRowKey('eng-02')), findsOneWidget);
+      },
+    );
+  });
+
+  group('SES HUMAN-REPLAY PRE-FIX P1: 今やるべき社員アクション duplicate-display fix', () {
+    testWidgets(
+      'June: a joined-but-still-selling new hire\'s internal-training card '
+      'renders exactly once (Section 4\'s standalone card only) instead of '
+      'a second, embedded copy inside their Section 2 action card',
+      (tester) async {
+        final aggregate = juneWithJoinedStillSellingHire();
+        final hiredId = aggregate.workflow.applicants
+            .firstWhere((a) => a.hasJoined)
+            .id;
+
+        await pumpDemoWith(tester, aggregate);
+
+        // The Section 2 action card (`ec(i)`) itself is still reachable —
+        // this fix only removes the training card it used to embed, never
+        // the action card, so the roster row (always rendered) and the
+        // Section 2 card both still carry the employee's name.
+        expect(
+          find.byKey(Key('public-demo-employee-roster-row-$hiredId')),
+          findsOneWidget,
+        );
+
+        // Exactly one training card for this employee — the standalone
+        // Section 4 (成長・SkillSheet・研修) copy — never two.
+        expect(
+          find.byKey(Key('public-demo-internal-training-$hiredId')),
+          findsOneWidget,
+        );
+        // It sits under the Section 4 header, confirming it is the
+        // standalone card and not merely one of two identical copies.
+        expect(
+          find.descendant(
+            of: find.byType(PublicDemo01PlaceholderScreen),
+            matching: find.text('成長・SkillSheet・研修'),
+          ),
+          findsOneWidget,
+        );
+        expect(tester.takeException(), isNull);
+      },
+    );
+  });
+
+  group('SES HUMAN-REPLAY PRE-FIX P1: multiple-employee list legibility', () {
+    testWidgets(
+      'a genuine 3rd employee (May hire) still renders in Section 1\'s '
+      'roster alongside both founding engineers, with the 全員 chip count '
+      'matching, and no horizontal overflow',
+      (tester) async {
+        final aggregate = juneWithJoinedStillSellingHire();
+        final hiredId = aggregate.workflow.applicants
+            .firstWhere((a) => a.hasJoined)
+            .id;
+
+        await pumpDemoWith(tester, aggregate);
+
+        for (final id in ['eng-01', 'eng-02', hiredId]) {
+          expect(
+            find.byKey(rosterRowKey(id)),
+            findsOneWidget,
+            reason: 'roster row for $id',
+          );
+        }
+        expect(find.textContaining('全員 3'), findsOneWidget);
+        expect(tester.takeException(), isNull);
+      },
+    );
+
+    testWidgets(
+      '360x800 / 390x844, TextScaler 1.0/1.3/2.0: the 3-employee roster '
+      'stays within screen bounds with no overflow',
+      (tester) async {
+        for (final size in const [Size(360, 800), Size(390, 844)]) {
+          for (final textScale in [1.0, 1.3, 2.0]) {
+            tester.view.physicalSize = size;
+            tester.view.devicePixelRatio = 1.0;
+            addTearDown(tester.view.reset);
+
+            final aggregate = juneWithJoinedStillSellingHire();
+            final hiredId = aggregate.workflow.applicants
+                .firstWhere((a) => a.hasJoined)
+                .id;
+            await tester.pumpWidget(
+              MaterialApp(
+                theme: SesTheme.build(),
+                home: MediaQuery(
+                  data: MediaQueryData(
+                    size: size,
+                    textScaler: TextScaler.linear(textScale),
+                  ),
+                  child: PublicDemo01PlaceholderScreen(
+                    saveService: _FixedSaveService(aggregate),
+                  ),
+                ),
+              ),
+            );
+            await tester.pumpAndSettle();
+            await switchPublicDemoTab(tester, PublicDemoTab.employees);
+
+            expect(tester.takeException(), isNull, reason: '$size@$textScale');
+            for (final id in ['eng-01', 'eng-02', hiredId]) {
+              final rowRect = tester.getRect(find.byKey(rosterRowKey(id)));
+              expect(
+                rowRect.left,
+                greaterThanOrEqualTo(0.0),
+                reason: '$id at $size@$textScale',
+              );
+              expect(
+                rowRect.right,
+                lessThanOrEqualTo(size.width),
+                reason: '$id at $size@$textScale',
+              );
+            }
+          }
+        }
+      },
+    );
   });
 }

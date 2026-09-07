@@ -3000,8 +3000,12 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
             // runtime (the `s.month >= 6` block further down in build()) —
             // rendering this embedded one too would duplicate the same
             // `public-demo-internal-training-<id>` key on screen at once.
-            // Months 4/6 are unaffected: [showTrainingCard] stays true
-            // there, exactly as before this parameter existed.
+            // Only April is unaffected: [showTrainingCard] stays true there
+            // (the standalone Section 4 block only starts at `s.month >=
+            // 5`), exactly as before this parameter existed. SES
+            // HUMAN-REPLAY PRE-FIX P1: June's own `ec(i)` call site now
+            // also passes `showTrainingCard: false` for the same reason —
+            // see `_employeeNextActionsSection`'s June loop.
             if (showTrainingCard)
               internalTrainingCard(
                 engineerId: e.id,
@@ -3340,6 +3344,17 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
   /// `01_Employee_LayoutDraft.png`). Purely a client-side display filter on
   /// [_employeeRosterSection]'s own row list — it does not touch Section
   /// 2/3/4, any command, or any eligibility check below it.
+  ///
+  /// SES HUMAN-REPLAY PRE-FIX P1: the original pill (12h/6v padding around
+  /// a 12sp label) measured to roughly 26-28dp tall — under the 48dp
+  /// minimum touch target. Each chip is now wrapped in a
+  /// [ConstrainedBox] (`minHeight`/`minWidth: 48`) so the actual tappable
+  /// [InkWell] region meets 48dp, while the visible colored pill itself
+  /// (now a plain [Container], centered inside that box) keeps its
+  /// original compact size/shape — this only enlarges the invisible hit
+  /// area, not the on-screen chip, so it does not reintroduce the
+  /// excessive-scrolling this tab's Visual Complete pass already worked to
+  /// minimize.
   Widget _employeeStatusFilterChips(int total) {
     final chips = <(_EmployeeStatusFilter, String, int)>[
       (_EmployeeStatusFilter.all, '全員', total),
@@ -3353,28 +3368,45 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
       runSpacing: 6,
       children: [
         for (final (filter, label, count) in chips)
-          Material(
+          ConstrainedBox(
             key: Key('public-demo-employee-status-filter-${filter.name}'),
-            color: _employeeStatusFilter == filter
-                ? scheme.primary
-                : scheme.surfaceContainerHighest,
-            borderRadius: BorderRadius.circular(16),
-            child: InkWell(
-              borderRadius: BorderRadius.circular(16),
-              onTap: () => setState(() => _employeeStatusFilter = filter),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 6,
-                ),
-                child: Text(
-                  '$label $count',
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.bold,
-                    color: _employeeStatusFilter == filter
-                        ? scheme.onPrimary
-                        : scheme.onSurfaceVariant,
+            constraints: const BoxConstraints(minHeight: 48, minWidth: 48),
+            child: Material(
+              color: Colors.transparent,
+              child: InkWell(
+                borderRadius: BorderRadius.circular(16),
+                onTap: () => setState(() => _employeeStatusFilter = filter),
+                // `widthFactor`/`heightFactor: 1` force this to shrink-wrap
+                // its child regardless of whether Wrap hands this slot
+                // bounded or unbounded constraints — a bare `Center()`
+                // expands to fill the available width here (Wrap's
+                // per-child constraints are bounded to the row width), which
+                // stretched every chip to a full-width bar instead of
+                // leaving the visible pill compact.
+                child: Center(
+                  widthFactor: 1,
+                  heightFactor: 1,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 6,
+                    ),
+                    decoration: BoxDecoration(
+                      color: _employeeStatusFilter == filter
+                          ? scheme.primary
+                          : scheme.surfaceContainerHighest,
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    child: Text(
+                      '$label $count',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                        color: _employeeStatusFilter == filter
+                            ? scheme.onPrimary
+                            : scheme.onSurfaceVariant,
+                      ),
+                    ),
                   ),
                 ),
               ),
@@ -3508,6 +3540,19 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
           (a) => s.joinedApplicantIds.contains(a.id) && a.hasJoined,
         ))
           employeeConditionCard(a),
+      // SES HUMAN-REPLAY PRE-FIX P1: a newly-joined hire who is still
+      // selling in June already gets an unconditional standalone training
+      // card from `_employeeGrowthSection`'s own `s.month >= 5` block
+      // (their `PublicDemoEngineerRuntime` exists from the moment they
+      // join — see `PublicDemoAggregate.closeMay`) — the exact same
+      // situation RECOVERY-LOOP-1's July-February loop below already
+      // guards against with `showTrainingCard: false`. Without this same
+      // guard here, this one card carried a second, full-height copy of
+      // the identical `public-demo-internal-training-<id>` training card
+      // nested inside it — the large/duplicate Section 2 display this fix
+      // compresses. No action/eligibility/key changes: the same training
+      // action stays reachable, just from Section 4 only, exactly as it
+      // already is for every other month past April.
       if (s.month == 6)
         for (var i = 0; i < workflow.engineers.length; i++)
           if (s.joinedApplicantIds.contains(workflow.engineers[i].id) &&
@@ -3516,7 +3561,7 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
                 (assignment) =>
                     assignment.engineerId == workflow.engineers[i].id,
               ))
-            ec(i),
+            ec(i, showTrainingCard: false),
       // RECOVERY-LOOP-1: from July (7) through February (14) — the same
       // window `PublicDemoRecoveryEligibility` enforces — every
       // economically-waiting engineer's card is rendered here, mirroring
@@ -4061,13 +4106,26 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
   /// `Text` and the large value `Text` rather than one line, but still a
   /// single `Text` carrying that exact substring.
   ///
-  /// 前月比 (P1): only shown once a real monthly close exists
+  /// 先月の資金増減 (P1): only shown once a real monthly close exists
   /// ([PublicDemoState.latestMonthlyCashFlow] non-null) — before the first
   /// close (April) there is no prior close to compare against, so the delta
   /// line is omitted entirely rather than showing a fabricated "no change".
   /// [PublicDemoMonthlyCashFlow.netCashMovement] is an existing getter
   /// (`closingCash - openingCash`, FINANCE-UX-1) — no new calculation is
   /// introduced here.
+  ///
+  /// SES HUMAN-REPLAY PRE-FIX P1 (wording, not a calculation change): this
+  /// line used to say 前月比 ("vs last month"), which — paired with
+  /// [cashText] right above it — reads as "current cash compared to last
+  /// month". [netCashMovement] only ever describes the last *closed*
+  /// month's own opening→closing movement; once training/recruitment media
+  /// is purchased mid-month (both post monthly-close, direct `cash`
+  /// deductions — see `PublicDemoAggregate.selectInternalTraining`/
+  /// `recruit`), `s.cash` moves away from `flow.closingCash` while this
+  /// delta stays frozen at last month's figure, so "前月比" would misstate
+  /// what changed since. 先月の資金増減 ("last month's net cash change")
+  /// names exactly and only what [netCashMovement] computes, truthfully,
+  /// in every case — no recomputation, no new Finance/Balance fact.
   ///
   /// 今月の売上 / 今月の支出 tiles (P0 goal 4): the same [flow.revenue] /
   /// [flow.totalOutflow] facts [PublicDemoMonthlyCashFlowCard] (Section 2)
@@ -4084,7 +4142,7 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
       final delta = flow.netCashMovement;
       deltaPositive = delta >= 0;
       deltaText =
-          '前月比 ${delta >= 0 ? '+' : '-'}${formatYen(delta.abs())}';
+          '先月の資金増減 ${delta >= 0 ? '+' : '-'}${formatYen(delta.abs())}';
     }
     return Padding(
       key: const Key('public-demo-accounting-fund-status-section'),

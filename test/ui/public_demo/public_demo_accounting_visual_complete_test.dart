@@ -1,5 +1,5 @@
 // SES NON-HOME-UI ACCOUNTING Visual Complete: pins the new 会計タブ Visual
-// structure — the 現在の現金 hero (label + large cash figure + 前月比 delta +
+// structure — the 現在の現金 hero (label + large cash figure + 先月の資金増減 delta +
 // financial-status badge), 今月の売上/今月の支出 stat tiles, the forecast
 // section's alert card + per-month bars + 入金予定 tile, and icon-led section
 // headers — while leaving every pre-existing information-hierarchy
@@ -83,7 +83,7 @@ PublicDemoAggregate shortageAtMonth9() =>
 void main() {
   group('現在の現金 hero (Section 1)', () {
     testWidgets('April (before the first close): hero shows cash + 健全 '
-        'badge, no 前月比 delta and no 今月の売上/支出 tiles yet', (tester) async {
+        'badge, no 先月の資金増減 delta and no 今月の売上/支出 tiles yet', (tester) async {
       final game = publicDemoAggregateAtMonth(4);
       await pumpAccountingTab(tester, game);
       final state = currentState(tester);
@@ -98,7 +98,7 @@ void main() {
         ),
         findsOneWidget,
       );
-      expect(find.textContaining('前月比'), findsNothing);
+      expect(find.textContaining('先月の資金増減'), findsNothing);
       // Section 2's PublicDemoFinanceSummarySection still legitimately says
       // '今月の支出予定', and Section 3 always renders its own 入金予定 stat
       // tile even in April — only the Section 1 売上/支出 tiles are under
@@ -114,7 +114,7 @@ void main() {
     });
 
     testWidgets(
-      'May (after the first close): 前月比 delta + 今月の売上/支出 tiles all match '
+      'May (after the first close): 先月の資金増減 delta + 今月の売上/支出 tiles all match '
       'PublicDemoMonthlyCashFlow exactly',
       (tester) async {
         final game = publicDemoAggregateAtMonth(5);
@@ -126,12 +126,61 @@ void main() {
         final delta = flow!.netCashMovement;
         expect(
           find.textContaining(
-            '前月比 ${delta >= 0 ? '+' : '-'}${formatYen(delta.abs())}',
+            '先月の資金増減 ${delta >= 0 ? '+' : '-'}${formatYen(delta.abs())}',
           ),
           findsOneWidget,
         );
         expect(find.text(formatYen(flow.revenue)), findsWidgets);
         expect(find.text(formatYen(flow.totalOutflow)), findsWidgets);
+      },
+    );
+
+    testWidgets(
+      'SES HUMAN-REPLAY PRE-FIX P1: after mid-month internal-training spend '
+      'following a real close, 先月の資金増減 still matches '
+      "PublicDemoMonthlyCashFlow.netCashMovement exactly (last month's own "
+      'movement) while the cash figure above it reflects the new, lower '
+      "current cash — the label no longer claims to be 'vs current cash'",
+      (tester) async {
+        var game = publicDemoAggregateAtMonth(6);
+        final flow = game.state.latestMonthlyCashFlow;
+        expect(flow, isNotNull, reason: 'fixture sanity');
+        expect(
+          game.state.cash,
+          flow!.closingCash,
+          reason: 'fixture sanity: no spend yet, cash still matches the '
+              'close',
+        );
+
+        // eng-02 stays economically waiting/unassigned in this fixture
+        // (publicDemoAggregateAtMonth's own contract) — a real, sanctioned
+        // mid-month cash deduction outside of any monthly close.
+        game = game.selectInternalTraining('eng-02');
+        expect(
+          game.state.cash,
+          lessThan(flow.closingCash),
+          reason: 'fixture sanity: training spend already reduced cash',
+        );
+
+        await pumpAccountingTab(tester, game);
+        final state = currentState(tester);
+
+        // The hero's large cash figure is live — it already reflects the
+        // training spend, not the stale post-close value.
+        expect(find.text(formatYen(state.cash)), findsOneWidget);
+        expect(state.cash, isNot(flow.closingCash));
+
+        // 先月の資金増減 stays exactly last month's own netCashMovement — a
+        // fact about May's close (the latest close in this fixture) that
+        // mid-month June spend cannot change — never recomputed against
+        // the now-lower current cash.
+        final delta = flow.netCashMovement;
+        expect(
+          find.textContaining(
+            '先月の資金増減 ${delta >= 0 ? '+' : '-'}${formatYen(delta.abs())}',
+          ),
+          findsOneWidget,
+        );
       },
     );
 
@@ -416,7 +465,7 @@ void main() {
         );
 
         testWidgets(
-          'May (前月比 + tiles visible) at ${size.width.toInt()}x'
+          'May (先月の資金増減 + tiles visible) at ${size.width.toInt()}x'
           '${size.height.toInt()} / textScale $textScale',
           (tester) async {
             await pumpAccountingTab(

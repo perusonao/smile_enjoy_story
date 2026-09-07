@@ -326,7 +326,7 @@ flutter test test/game/public_demo test/ui/public_demo
 
 ```
 flutter test
-→ 実行中に全件確認（本レポート作成後に最終ログを追記）
+→ 1692/1692 tests passed, 0 failed
 ```
 
 ## flutter analyze

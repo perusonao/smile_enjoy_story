@@ -179,3 +179,69 @@ production code / HOME / gameplay・domain・save・finance・balance・month
 authorityは本Correctionでも無変更。
 
 最終HEAD SHA・PR更新結果はチャット側の報告を参照。
+
+---
+
+## Reintegration（2026-09-07, PR #193 final reintegration gate）
+
+### 背景
+
+`origin/main`がPR #192（Accounting UI Phase 1）マージにより
+`cb448f4587591945dda1bee527a07e6bb3483c03`まで進んだため、PR #193ブランチへ
+最新`origin/main`を取り込んだ。
+
+### 実施内容
+
+1. `git fetch origin` → `origin/main`最新SHA確認。
+2. `git merge origin/main`を実行。
+3. conflictは`docs/decisions/SES_DEVELOPMENT-PRIORITY_2026-09-02.md`の1ファイルのみ
+   （Current execution order / 次順序リスト / Prioritized backlog table /
+   Update history）。origin/main側の「Accounting UI Phase 1完了」記述を
+   採用しつつ、本ブランチ側のVisual Complete計画
+   （NON-HOME Visual Fresh Audit → Employee/Sales/Accounting/Menu Visual
+   Complete → 5-tab Visual Review → April→March Human Replay）をその後に
+   続くよう再構成して解消した。Update historyは両エントリを保持し、
+   reintegration自体の新規エントリを追加した。
+4. `docs/design/`配下（Canonical 7 PNG・README・Visual SSOT）はconflictなし・無変更のまま取り込まれた。
+5. Accounting UI Phase 1のproduction/testファイル（`lib/ui/public_demo/`配下3ファイル、
+   `test/ui/public_demo/public_demo_accounting_ui_phase1_test.dart`、
+   `docs/reports/SES_NON-HOME-UI_ACCOUNTING_Phase1_Implementation_Result.md`）は
+   origin/mainからconflictなくそのまま取り込まれた。`git diff origin/main HEAD --
+   lib/ test/`で差分ゼロを確認し、本セッションで一切編集していないことを確認済み。
+
+### 検証
+
+- **7 PNG**: マージ後も7枚のまま存在（枚数・配置とも変化なし）。
+- **02/03最終名称**: `02_Employee_DetailedLayout.png` /
+  `03_FiveTabs_LayoutOverview.png`を維持（変更なし）。
+- **sha256不変**: マージ前後で7枚全てのsha256が一致することを確認済み。
+- **`git diff --check`**: マージ後のステージ済み変更に対して実行し、
+  warning/errorなし（exit code 0）。
+- **production/HOME/domain**: `git diff origin/main HEAD -- lib/ test/`が空、
+  すなわちAccounting UI Phase 1のコードはorigin/mainの内容とバイト一致。
+  HOME・gameplay・domain・save・finance・balance・month authorityは
+  本reintegrationで一切編集していない。
+
+### 変更ファイル（本Reintegration分・手動解消）
+
+```
+docs/decisions/SES_DEVELOPMENT-PRIORITY_2026-09-02.md   (merge conflict解消)
+```
+
+以下はorigin/mainからconflictなく取り込まれたのみ（本セッションでの編集なし）:
+
+```
+lib/ui/public_demo/public_demo_01_placeholder_screen.dart
+lib/ui/public_demo/public_demo_home_presentation_components.dart
+lib/ui/public_demo/public_demo_monthly_cash_flow_card.dart
+test/ui/public_demo/public_demo_accounting_ui_phase1_test.dart
+docs/reports/SES_NON-HOME-UI_ACCOUNTING_Phase1_Implementation_Result.md
+```
+
+### Merge Readiness
+
+- latest origin/main SHA: `cb448f4587591945dda1bee527a07e6bb3483c03`
+- final branch HEAD SHA: `77705092fb108d551f185e3ae1d9b17c7b115851`
+  （merge commit、親: `a5615c9`（旧PR #193 tip）と`cb448f4`（origin/main））
+- PR #193は`base.sha`が最新`origin/main`と一致（0 commits behind）。
+  AUTO-MERGEは行っていない。

@@ -8,6 +8,7 @@ import 'public_demo_monthly_close.dart';
 import 'public_demo_raise_transaction.dart';
 import 'public_demo_recovery.dart';
 import 'public_demo_recruitment.dart';
+import 'public_demo_recruitment_candidate_generator.dart';
 import 'public_demo_recruitment_medium.dart';
 import 'public_demo_sales.dart';
 import 'public_demo_salary_offer.dart';
@@ -926,9 +927,16 @@ enum PublicDemoRecruitmentTransactionStatus {
 class PublicDemoRecruitmentCalculation {
   const PublicDemoRecruitmentCalculation({
     PublicDemoRecruitmentCandidateGenerator? candidateGenerator,
-  }) : _candidateGenerator = candidateGenerator ?? _generateApplicants;
+  }) : _candidateGenerator = candidateGenerator;
 
-  final PublicDemoRecruitmentCandidateGenerator _candidateGenerator;
+  /// Null means "use the production default" -- resolved inside [execute],
+  /// not at construction time, because the default (CORE-GAMEPLAY Phase 2:
+  /// seeded recruitment) needs [PublicDemoState.runSeed], which is only
+  /// available once a [state] is actually supplied to [execute]. This
+  /// keeps the public [PublicDemoRecruitmentCandidateGenerator] typedef
+  /// itself unchanged (still just `(month, medium, count)`), so every
+  /// existing test/caller that substitutes its own generator is unaffected.
+  final PublicDemoRecruitmentCandidateGenerator? _candidateGenerator;
 
   PublicDemoRecruitmentCalculationResult execute({
     required PublicDemoState state,
@@ -953,7 +961,8 @@ class PublicDemoRecruitmentCalculation {
       );
     }
 
-    final applicants = _candidateGenerator(
+    final generator = _candidateGenerator ?? _defaultGenerator(state.runSeed);
+    final applicants = generator(
       month: state.month,
       medium: medium,
       count: medium.applicantCount,
@@ -981,33 +990,21 @@ class PublicDemoRecruitmentCalculation {
     );
   }
 
-  /// Selects from media-specific lightweight profiles without importing the
-  /// main game's random generator. Keeps the established engineer pool
-  /// separate so adding free-media templates cannot alter its existing
-  /// month results.
-  static List<PublicDemoApplicant> _generateApplicants({
-    required int month,
-    required PublicDemoRecruitmentMedium medium,
-    required int count,
-  }) {
-    final pool = switch (medium) {
-      PublicDemoRecruitmentMedium.engineer => publicDemoMayApplicants,
-      PublicDemoRecruitmentMedium.free => publicDemoFreeApplicants,
-    };
-    return List.generate(count, (index) {
-      final template = pool[(month + medium.index + index) % pool.length];
-      return PublicDemoApplicant(
-        id: 'recruitment-$month-${medium.name}-${index + 1}',
-        name: template.name,
-        resumeSummary: template.resumeSummary,
-        interviewScore: template.interviewScore,
-        acceptanceScore: template.acceptanceScore,
-        salesSkillFit: template.salesSkillFit,
-        experienceMonths: template.experienceMonths,
-        requestedMonthlySalary: template.requestedMonthlySalary,
-      );
-    });
-  }
+  /// Production default (CORE-GAMEPLAY Phase 2): reuses the main engine's
+  /// [ApplicantGenerator] via [PublicDemoSeededRecruitmentGenerator], seeded
+  /// from this playthrough's own [PublicDemoState.runSeed], instead of the
+  /// fixed/cyclic template pool this generator replaced (see
+  /// `docs/reports/SES_CORE-GAMEPLAY_Phase2_Random-Recruitment_Result.md`).
+  static PublicDemoRecruitmentCandidateGenerator _defaultGenerator(
+    int runSeed,
+  ) =>
+      ({required month, required medium, required count}) =>
+          PublicDemoSeededRecruitmentGenerator.generate(
+            runSeed: runSeed,
+            month: month,
+            medium: medium,
+            count: count,
+          );
 }
 
 /// Read-only result of [PublicDemoRecruitmentCalculation.execute] — a pure

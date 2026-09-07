@@ -16,7 +16,7 @@ CANONICAL REFERENCE: `docs/design/references/SES_TAB-UI_REFERENCE_2026-09-05/`
 ## branch / final HEAD
 
 - branch: `claude/ses-sales-visual-complete-9co508`
-- final HEAD: 本コミット時点（PR作成後にHEADを追記）
+- final HEAD: 本コミット時点（コミット後にPRで確認可能）
 
 ## 目的
 

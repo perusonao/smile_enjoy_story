@@ -14,8 +14,8 @@ Employee / Sales / Accounting / Menu の Canonical Visual Reference とする。
 | # | ファイル | 対象タブ | 内容 |
 |---|---|---|---|
 | 1 | `01_Employee_LayoutDraft.png` | 社員 | 改善レイアウト（案） |
-| 2 | `02_FiveTabs_LayoutOverview.png` | 社員/営業/会計/メニュー（+ホーム） | 各タブ改善レイアウトイメージ（完成案）— 5タブ横断の全体像 |
-| 3 | `03_Employee_DetailedLayout.png` | 社員 | 詳細レイアウト（完成イメージ案）— 一覧/詳細モーダル/スキルシート/案件詳細 |
+| 2 | `02_Employee_DetailedLayout.png` | 社員 | 詳細レイアウト（完成イメージ案）— 一覧/詳細モーダル/スキルシート/案件詳細 |
+| 3 | `03_FiveTabs_LayoutOverview.png` | 社員/営業/会計/メニュー（+ホーム） | 各タブ改善レイアウトイメージ（完成案）— 5タブ横断の全体像 |
 | 4 | `04_Sales_DetailedLayout.png` | 営業 | 詳細レイアウト（完成イメージ案）— 案件一覧〜提案確認〜進捗の5画面 |
 | 5 | `05_Sales_ScreenFlow.png` | 営業 | 画面遷移イメージ（完成案） |
 | 6 | `06_Accounting_DetailedLayout.png` | 会計 | 詳細レイアウト（完成イメージ案）— サマリー/収支内訳/入金予定/予測/アラート |
@@ -81,6 +81,17 @@ Employee / Sales / Accounting / Menu の Canonical Visual Reference とする。
   運用実績（本SSOTのHOME Freeze節が参照する既存事例）。
 
 ## Update history
+
+### 2026-09-07（Correction — #2/#3ファイル名修正、PR #193マージ前）
+
+- Fresh Visual Auditで実画像を再確認した結果、`#2`/`#3`のファイル名と
+  実際の画像内容が入れ替わっていたことが判明したため是正した。
+  `02_FiveTabs_LayoutOverview.png` → `02_Employee_DetailedLayout.png`、
+  `03_Employee_DetailedLayout.png` → `03_FiveTabs_LayoutOverview.png`へ
+  `git mv`でリネーム（pixel内容・sha256は無変更）。上記の対応表もあわせて
+  修正済み。詳細は
+  `docs/reports/SES_TAB-UI_REFERENCE_Canonicalization_Result.md`の
+  Correctionセクションを参照。
 
 ### 2026-09-07（Canonicalization）
 

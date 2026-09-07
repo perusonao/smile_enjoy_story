@@ -12,8 +12,8 @@
 | # | 正式ファイル名 | 対象タブ / 内容 | zip内の元ファイル名 | sha256 |
 |---|---|---|---|---|
 | 1 | `01_Employee_LayoutDraft.png` | 社員タブ — 改善レイアウト（案） | `a_clean_infographic_ui_mockup_image_of_a_japanese.png` | `caf537e3fc37a1da6d40c86695b808bb5938a8985d7aa2a99505a64f9938c201` |
-| 2 | `02_FiveTabs_LayoutOverview.png` | 5タブ（ホーム/社員/営業/会計/メニュー）— 各タブ改善レイアウトイメージ（完成案） | `a_clean_ui_design_mockup_infographic_app_screens.png` | `35159f8d075b2322505ada5ecdc5fec4cdcce01fa8e70fd9abe7061ea01146a2` |
-| 3 | `03_Employee_DetailedLayout.png` | 社員タブ — 詳細レイアウト（完成イメージ案） | `a_clean_ui_concept_poster_with_multiple_mobile_app.png` | `3a053ef27fa44f33b8e7a6e48a7ef972ba6a15b585f6fb7eb72694c84d755759` |
+| 2 | `02_Employee_DetailedLayout.png` | 社員タブ — 詳細レイアウト（完成イメージ案）— 一覧/詳細モーダル/スキルシート/案件詳細 | `a_clean_ui_design_mockup_infographic_app_screens.png` | `35159f8d075b2322505ada5ecdc5fec4cdcce01fa8e70fd9abe7061ea01146a2` |
+| 3 | `03_FiveTabs_LayoutOverview.png` | 5タブ（ホーム/社員/営業/会計/メニュー）— 各タブ改善レイアウトイメージ（完成案） | `a_clean_ui_concept_poster_with_multiple_mobile_app.png` | `3a053ef27fa44f33b8e7a6e48a7ef972ba6a15b585f6fb7eb72694c84d755759` |
 | 4 | `04_Sales_DetailedLayout.png` | 営業タブ — 詳細レイアウト（完成イメージ案） | `a_wide_clean_ui_ux_design_mockup_poster_for_a_mob.png` | `70fc4ebf0102d675baa856911d0a004988ab5eb3e5587ca9243e3db2c1c7ad4a` |
 | 5 | `05_Sales_ScreenFlow.png` | 営業タブ — 画面遷移イメージ（完成案） | `a_wide_clean_ui_ux_design_presentation_poster_in.png` | `929de435a82845d3d00a8a3b4c6e3408c73ce07cae0f6900022a1dce151c8748` |
 | 6 | `06_Accounting_DetailedLayout.png` | 会計タブ — 詳細レイアウト（完成イメージ案） | `wide_infographic_style_ui_mockup_image_on_a_light.png` | `96cc7feee4f2c2f7d9e816960064e8a53f64409bc92a8f8caca99b0964997898` |
@@ -31,3 +31,13 @@
 この7枚のPNG（2026-09-05付）が正式なCanonical Visual Referenceであり、
 これ以外の単独の後発JPEG/PNG（例: 個別タスクのpre/post比較用に追加された
 一時的なターゲット画像）をCanonical Referenceとして扱わない。
+
+## Correction（2026-09-07, PR #193マージ前）
+
+Fresh Visual Auditで実画像を再確認した結果、初回コミット時点の
+`#2`/`#3`のファイル名と実際の画像内容が入れ替わっていたことが判明した。
+`02_FiveTabs_LayoutOverview.png` → `02_Employee_DetailedLayout.png`、
+`03_Employee_DetailedLayout.png` → `03_FiveTabs_LayoutOverview.png`へ
+リネームして是正した（`git mv`のみ、pixel内容・sha256は無変更）。詳細は
+`docs/reports/SES_TAB-UI_REFERENCE_Canonicalization_Result.md`の
+Correctionセクションを参照。

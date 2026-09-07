@@ -117,3 +117,65 @@ authority・HOME実装は一切変更していない。docs-onlyの変更。
 docs-onlyの追加・変更のみで、production code / gameplay / domain / save /
 finance / balance / month authorityへの影響なし。AUTO-MERGEは行わない
 （ユーザー指示通り、レビュー後の人手マージを想定）。
+
+---
+
+## Correction（2026-09-07, PR #193マージ前）
+
+### 発見された問題
+
+Fresh Visual Auditで7枚のCanonical PNGを実画像で再確認した結果、初回
+コミット（`705b921`）時点の`#2`/`#3`のファイル名と実際の画像内容が入れ替わって
+いたことが判明した。
+
+- `02_FiveTabs_LayoutOverview.png`（当時の名称）→ 実際の内容は
+  「社員タブ 詳細レイアウト（完成イメージ案）」4パネル画像
+  （一覧/詳細モーダル/スキルシート/案件詳細）だった。
+- `03_Employee_DetailedLayout.png`（当時の名称）→ 実際の内容は
+  「各タブ改善レイアウトイメージ（完成案）」5タブ横断の全体像だった。
+
+原因は、7枚抽出時にzip内の類似名ファイル
+（`a_clean_ui_design_mockup_infographic_app_screens.png`と
+`a_clean_ui_concept_poster_with_multiple_mobile_app.png`）を目視確認せずに
+ファイル名の字面だけで割り当てたこと。他5枚（01, 04-07）は実画像確認済みで
+問題なし。
+
+### 対応内容
+
+1. **PNGのpixel内容・sha256は変更していない。** `git mv`のみでファイル名を
+   実内容に一致させた:
+   - `02_FiveTabs_LayoutOverview.png` → `02_Employee_DetailedLayout.png`
+     （sha256: `35159f8d075b2322505ada5ecdc5fec4cdcce01fa8e70fd9abe7061ea01146a2`、不変）
+   - `03_Employee_DetailedLayout.png` → `03_FiveTabs_LayoutOverview.png`
+     （sha256: `3a053ef27fa44f33b8e7a6e48a7ef972ba6a15b585f6fb7eb72694c84d755759`、不変）
+2. `docs/design/references/SES_TAB-UI_REFERENCE_2026-09-05/README.md`の
+   対応表（#2/#3行）を実内容・新ファイル名に修正し、Correctionセクションを追記。
+3. `docs/design/SES_NON-HOME-UI_VISUAL-SSOT.md`のCanonical Visual Reference
+   一覧表（#2/#3行）を修正し、Update historyにCorrectionエントリを追記。
+4. `docs/decisions/SES_DEVELOPMENT-PRIORITY_2026-09-02.md`を検索したが、
+   個別ファイル名（`02_...`/`03_...`）への参照は存在せず、修正不要と確認した。
+
+### 検証
+
+- **7 PNG構成は不変**: リネームのみで枚数・pixel内容は変わらず7枚のまま。
+- **sha256不変**: リネーム前後で7枚全ての`sha256sum`が完全一致することを確認済み
+  （上記2件の対象ファイルおよび他5枚とも変化なし）。
+- **`git diff --check`**: リネーム＋docs修正をステージした状態で実行し、
+  warning/errorなし（exit code 0）。
+
+### 変更ファイル（本Correction分）
+
+```
+docs/design/references/SES_TAB-UI_REFERENCE_2026-09-05/02_FiveTabs_LayoutOverview.png
+  → docs/design/references/SES_TAB-UI_REFERENCE_2026-09-05/02_Employee_DetailedLayout.png  (renamed, pixel/sha256不変)
+docs/design/references/SES_TAB-UI_REFERENCE_2026-09-05/03_Employee_DetailedLayout.png
+  → docs/design/references/SES_TAB-UI_REFERENCE_2026-09-05/03_FiveTabs_LayoutOverview.png  (renamed, pixel/sha256不変)
+docs/design/references/SES_TAB-UI_REFERENCE_2026-09-05/README.md   (modified — 対応表・Correction節)
+docs/design/SES_NON-HOME-UI_VISUAL-SSOT.md                          (modified — 一覧表・Update history)
+docs/reports/SES_TAB-UI_REFERENCE_Canonicalization_Result.md        (modified — 本Correction節、this file)
+```
+
+production code / HOME / gameplay・domain・save・finance・balance・month
+authorityは本Correctionでも無変更。
+
+最終HEAD SHA・PR更新結果はチャット側の報告を参照。

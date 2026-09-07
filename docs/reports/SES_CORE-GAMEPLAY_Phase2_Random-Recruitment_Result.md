@@ -11,7 +11,9 @@ Status: **Implementation complete, all tests green**
   prior commit was an ancestor of `origin/main` with no open PR (`git log
   HEAD --not origin/main` was empty), so per the merged-branch-reuse rule it
   was reset onto the BASE SHA above at session start.
-- HEAD after this work: see the commit pushed at the end of this session.
+- HEAD after this work: `b855595014d4558fc225566f5192b7704100dbb6`
+  ("SES CORE-GAMEPLAY Phase 2: seeded recruitment candidate generation")
+- PR: https://github.com/perusonao/smile_enjoy_story/pull/202
 
 ## Scope note on the requested input document
 

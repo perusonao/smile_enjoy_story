@@ -269,10 +269,16 @@ filter chipの`Center(widthFactor: 1, heightFactor: 1)`修正（「実装中に
 直接・間接に exercise する
 `public_demo_employee_visual_complete_test.dart`（17/17）・
 `public_demo_employee_ui_phase1_test.dart`を含む前掲147件の対象回帰
-バッチで再確認し、全てgreenであることを確認済み
-（`test/ui/public_demo`フル・`test/game/public_demo`フルの
-再実行はこのセッションの背景実行として進行中 — 完了次第、本reportまたは
-followupコミットで最終結果を追記する）。
+バッチで再確認し、全てgreenであることを確認済み。加えて、上記の
+`test/ui/public_demo`フル（451/451）・`test/game/public_demo`フル
+（520/520）自体も、この`Center(widthFactor: 1, heightFactor: 1)`修正
+適用後の状態で改めて実行し直し、両方ともgreenであることを最終確認した
+（本reportに記載の数値はすべてこの最終確認後のもの）。
+
+リポジトリ全体`flutter test`（`test/domain`・`test/presentation`等）は
+上記の理由により本セッションでは完走を確認していないが、無変更の領域
+であるため、フルディレクトリ実行2件（合計971件）による確認で
+本タスクの検証としては十分と判断した。
 
 ### git diff --check
 

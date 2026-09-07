@@ -47,6 +47,7 @@ import 'public_demo_interview_result_dialog.dart';
 import 'public_demo_month_guard_warning_dialog.dart';
 import 'public_demo_monthly_cash_flow_card.dart';
 import 'public_demo_sales_progress.dart';
+import 'public_demo_sales_visual.dart';
 import 'public_demo_skill_sheet_sheet.dart';
 import 'public_demo_salary_offer_dialog.dart';
 import 'public_demo_raise_dialog.dart';
@@ -1821,6 +1822,16 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
     return '待機（営業が必要）';
   }
 
+  /// SES SALES Visual Complete: the badge color for [julyResult]'s own
+  /// verbatim string — a staffed outcome (継続/切替) reads positive; the
+  /// truthful "not yet staffed" outcome reads caution (never negative — it
+  /// is not a failure, just a still-open action on 社員/営業).
+  PublicDemoSalesStatusTone _julyResultTone(PublicDemoAssignment a) =>
+      a.nextOrderStatus == PublicDemoNextOrderStatus.accepted ||
+          a.replacementStage == PublicDemoReplacementStage.ordered
+      ? PublicDemoSalesStatusTone.positive
+      : PublicDemoSalesStatusTone.caution;
+
   String engineerStatus(PublicDemoEngineerSales e) => switch (e.stage) {
     PublicDemoSalesStage.waiting => '待機',
     PublicDemoSalesStage.skillSheet => '営業準備',
@@ -1879,6 +1890,27 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
     PublicDemoApplicantStage.preEntryClientFailed => '客先面談不合格',
     PublicDemoApplicantStage.juneOrdered => '入社・参画予定',
   };
+
+  /// SES SALES Visual Complete: the badge color for [applicantStatus]'s own
+  /// verbatim label — a closed/won stage (内定承諾, 各面談通過,
+  /// 入社・参画予定) reads positive, a closed/lost stage (不採用, 内定辞退,
+  /// 各面談不合格) reads negative, and everything still moving through the
+  /// pipeline reads inProgress. Reads only [a.stage] — the same fact
+  /// [applicantStatus] itself switches on — so the two can never disagree.
+  PublicDemoSalesStatusTone _applicantStatusTone(PublicDemoApplicant a) =>
+      switch (a.stage) {
+        PublicDemoApplicantStage.rejected ||
+        PublicDemoApplicantStage.offerDeclined ||
+        PublicDemoApplicantStage.preEntryPartnerFailed ||
+        PublicDemoApplicantStage.preEntryClientFailed =>
+          PublicDemoSalesStatusTone.negative,
+        PublicDemoApplicantStage.offerAccepted ||
+        PublicDemoApplicantStage.preEntryPartnerPassed ||
+        PublicDemoApplicantStage.preEntryClientPassed ||
+        PublicDemoApplicantStage.juneOrdered =>
+          PublicDemoSalesStatusTone.positive,
+        _ => PublicDemoSalesStatusTone.inProgress,
+      };
   int applicantStep(PublicDemoApplicant a) => switch (a.stage) {
     PublicDemoApplicantStage.applied ||
     PublicDemoApplicantStage.resumeReviewed ||
@@ -1950,17 +1982,6 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
     return '社員';
   }
 
-  Widget badge(String text) => Container(
-    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-    decoration: BoxDecoration(
-      color: Theme.of(context).colorScheme.secondaryContainer,
-      borderRadius: BorderRadius.circular(20),
-    ),
-    child: Text(
-      text,
-      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
-    ),
-  );
   Widget employeeConditionCard(PublicDemoApplicant a) {
     final morale = a.employeeMorale!, trust = a.employeeCompanyTrust!;
     final reason = a.relationshipHistory.last.reason;
@@ -2081,10 +2102,7 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
           const SizedBox(height: 6),
           Text('参画中案件：${a.projectName}', style: const TextStyle(fontSize: 13)),
           const SizedBox(height: 8),
-          _assignmentMetricBar(
-            label: '納期プレッシャー',
-            value: a.deliveryPressure,
-          ),
+          _assignmentMetricBar(label: '納期プレッシャー', value: a.deliveryPressure),
           const SizedBox(height: 6),
           _assignmentMetricBar(label: '予算健全度', value: a.budgetHealth),
         ],
@@ -2702,84 +2720,100 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
 
   Widget assignmentCard(int i) {
     final a = workflow.assignments[i];
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
+    return PublicDemoSalesCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              PublicDemoSalesAvatar(
+                assetPath: homeOfficeStagePortraitFor(a.engineerId),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
                   a.engineerName,
                   style: const TextStyle(fontWeight: FontWeight.bold),
+                  overflow: TextOverflow.ellipsis,
                 ),
-                badge(
-                  a.nextOrderStatus == PublicDemoNextOrderStatus.accepted
+              ),
+              const SizedBox(width: 8),
+              Flexible(
+                child: PublicDemoSalesStatusBadge(
+                  label: a.nextOrderStatus == PublicDemoNextOrderStatus.accepted
                       ? '継続予定'
                       : '参画中',
+                  tone: PublicDemoSalesStatusTone.positive,
                 ),
-              ],
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Row(
+            children: [
+              Icon(
+                Icons.business_center_outlined,
+                size: 14,
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+              const SizedBox(width: 4),
+              Expanded(child: Text(a.projectName)),
+            ],
+          ),
+          if (a.nextOrderStatus == PublicDemoNextOrderStatus.undecided)
+            FilledButton.tonal(
+              onPressed: () => decideOrder(i),
+              child: const Text('7月分の発注を確認'),
             ),
-            Text(a.projectName),
-            if (a.nextOrderStatus == PublicDemoNextOrderStatus.undecided)
-              FilledButton.tonal(
-                onPressed: () => decideOrder(i),
-                child: const Text('7月分の発注を確認'),
-              ),
-            if (a.nextOrderStatus == PublicDemoNextOrderStatus.offered) ...[
-              const Text('7月分発注あり'),
-              FilledButton(
-                onPressed: () => acceptOrder(i),
-                child: const Text('受注する'),
-              ),
-            ],
-            if (a.nextOrderStatus == PublicDemoNextOrderStatus.accepted)
-              const Text('7月：現案件継続予定'),
-            if (a.nextOrderStatus == PublicDemoNextOrderStatus.notOffered) ...[
-              const Text('7月分発注なし'),
-              if (a.replacementStage == PublicDemoReplacementStage.none)
-                FilledButton(
-                  onPressed: () => ars(i, PublicDemoReplacementStage.selling),
-                  child: const Text('次案件の営業開始'),
-                ),
-              if (a.replacementStage == PublicDemoReplacementStage.selling)
-                FilledButton.tonal(
-                  onPressed: () =>
-                      ars(i, PublicDemoReplacementStage.introduced),
-                  child: const Text('案件紹介'),
-                ),
-              if (a.replacementStage == PublicDemoReplacementStage.introduced)
-                FilledButton(
-                  onPressed: s.salesRemaining > 0
-                      ? () => replacementPartner(i)
-                      : null,
-                  child: const Text('上位会社面談（1枠）'),
-                ),
-              if (a.replacementStage ==
-                  PublicDemoReplacementStage.partnerPassed)
-                FilledButton.tonal(
-                  onPressed: () => replacementClient(i),
-                  child: const Text('客先面談（0枠）'),
-                ),
-              if (a.replacementStage ==
-                      PublicDemoReplacementStage.partnerFailed ||
-                  a.replacementStage == PublicDemoReplacementStage.clientFailed)
-                FilledButton.tonal(
-                  onPressed: () => ars(i, PublicDemoReplacementStage.selling),
-                  child: const Text('別案件へ'),
-                ),
-              if (a.replacementStage == PublicDemoReplacementStage.clientPassed)
-                FilledButton(
-                  onPressed: () => ars(i, PublicDemoReplacementStage.ordered),
-                  child: const Text('7月分を受注'),
-                ),
-              if (a.replacementStage == PublicDemoReplacementStage.ordered)
-                const Text('7月：新案件参画予定'),
-            ],
+          if (a.nextOrderStatus == PublicDemoNextOrderStatus.offered) ...[
+            const Text('7月分発注あり'),
+            FilledButton(
+              onPressed: () => acceptOrder(i),
+              child: const Text('受注する'),
+            ),
           ],
-        ),
+          if (a.nextOrderStatus == PublicDemoNextOrderStatus.accepted)
+            const Text('7月：現案件継続予定'),
+          if (a.nextOrderStatus == PublicDemoNextOrderStatus.notOffered) ...[
+            const Text('7月分発注なし'),
+            if (a.replacementStage == PublicDemoReplacementStage.none)
+              FilledButton(
+                onPressed: () => ars(i, PublicDemoReplacementStage.selling),
+                child: const Text('次案件の営業開始'),
+              ),
+            if (a.replacementStage == PublicDemoReplacementStage.selling)
+              FilledButton.tonal(
+                onPressed: () => ars(i, PublicDemoReplacementStage.introduced),
+                child: const Text('案件紹介'),
+              ),
+            if (a.replacementStage == PublicDemoReplacementStage.introduced)
+              FilledButton(
+                onPressed: s.salesRemaining > 0
+                    ? () => replacementPartner(i)
+                    : null,
+                child: const Text('上位会社面談（1枠）'),
+              ),
+            if (a.replacementStage == PublicDemoReplacementStage.partnerPassed)
+              FilledButton.tonal(
+                onPressed: () => replacementClient(i),
+                child: const Text('客先面談（0枠）'),
+              ),
+            if (a.replacementStage ==
+                    PublicDemoReplacementStage.partnerFailed ||
+                a.replacementStage == PublicDemoReplacementStage.clientFailed)
+              FilledButton.tonal(
+                onPressed: () => ars(i, PublicDemoReplacementStage.selling),
+                child: const Text('別案件へ'),
+              ),
+            if (a.replacementStage == PublicDemoReplacementStage.clientPassed)
+              FilledButton(
+                onPressed: () => ars(i, PublicDemoReplacementStage.ordered),
+                child: const Text('7月分を受注'),
+              ),
+            if (a.replacementStage == PublicDemoReplacementStage.ordered)
+              const Text('7月：新案件参画予定'),
+          ],
+        ],
       ),
     );
   }
@@ -2981,84 +3015,93 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
 
   Widget ac(int i) {
     final a = workflow.applicants[i];
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
+    return PublicDemoSalesCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              PublicDemoSalesAvatar(
+                assetPath: homeOfficeStagePortraitFor(a.id),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
                   a.name,
                   style: const TextStyle(
                     fontWeight: FontWeight.bold,
                     fontSize: 16,
                   ),
+                  overflow: TextOverflow.ellipsis,
                 ),
-                badge(applicantStatus(a)),
-              ],
-            ),
-            const SizedBox(height: 4),
-            Text(a.resumeSummary),
-            if (accepted(a))
-              PublicDemoSalesProgress(
-                currentStep: applicantStep(a),
-                preEntry: true,
               ),
-            const SizedBox(height: 8),
-            if (a.stage == PublicDemoApplicantStage.applied)
-              FilledButton(
-                onPressed: () => _reviewResume(a.id),
-                child: const Text('経歴書確認'),
-              ),
-            if (a.stage == PublicDemoApplicantStage.resumeReviewed)
-              FilledButton(
-                onPressed: s.salesRemaining > 0 ? () => recruit(i) : null,
-                child: const Text('採用面談'),
-              ),
-            if (a.stage == PublicDemoApplicantStage.interviewed) ...[
-              Text('評価 ${a.interviewScore}'),
-              Text('希望給与 ${a.requestedMonthlySalary ~/ 10000}万円'),
-              FilledButton(
-                onPressed: a.interviewScore >= 60 ? () => offer(i) : null,
-                child: const Text('合格・給与提示'),
+              const SizedBox(width: 8),
+              Flexible(
+                child: PublicDemoSalesStatusBadge(
+                  label: applicantStatus(a),
+                  tone: _applicantStatusTone(a),
+                ),
               ),
             ],
-            if (a.stage == PublicDemoApplicantStage.offerAccepted &&
-                a.canEnterPreJoinSales)
-              FilledButton(
-                onPressed: () => _beginPreEntrySkillSheet(a.id),
-                child: const Text('入社前SkillSheet'),
-              ),
-            if (a.stage == PublicDemoApplicantStage.offerAccepted &&
-                !a.canEnterPreJoinSales)
-              const Text('入社後、研修で育成します'),
-            if (a.stage == PublicDemoApplicantStage.preEntrySkillSheet)
-              FilledButton(
-                onPressed: () => _beginPreEntrySelling(a.id),
-                child: const Text('入社前営業'),
-              ),
-            if (a.stage == PublicDemoApplicantStage.preEntrySelling)
-              FilledButton(
-                onPressed: () => _introducePreEntryProject(a.id),
-                child: const Text('案件紹介'),
-              ),
-            if (a.stage == PublicDemoApplicantStage.preEntryIntroduced)
-              FilledButton(
-                onPressed: s.salesRemaining > 0 ? () => pi(i) : null,
-                child: const Text('上位会社面談'),
-              ),
-            if (a.stage == PublicDemoApplicantStage.preEntryPartnerPassed)
-              FilledButton(onPressed: () => ci(i), child: const Text('客先面談')),
-            if (a.stage == PublicDemoApplicantStage.preEntryClientPassed)
-              FilledButton(
-                onPressed: () => _recordApplicantJuneOrder(a),
-                child: const Text('6月受注'),
-              ),
+          ),
+          const SizedBox(height: 4),
+          Text(a.resumeSummary),
+          if (accepted(a))
+            PublicDemoSalesProgress(
+              currentStep: applicantStep(a),
+              preEntry: true,
+            ),
+          const SizedBox(height: 8),
+          if (a.stage == PublicDemoApplicantStage.applied)
+            FilledButton(
+              onPressed: () => _reviewResume(a.id),
+              child: const Text('経歴書確認'),
+            ),
+          if (a.stage == PublicDemoApplicantStage.resumeReviewed)
+            FilledButton(
+              onPressed: s.salesRemaining > 0 ? () => recruit(i) : null,
+              child: const Text('採用面談'),
+            ),
+          if (a.stage == PublicDemoApplicantStage.interviewed) ...[
+            Text('評価 ${a.interviewScore}'),
+            Text('希望給与 ${a.requestedMonthlySalary ~/ 10000}万円'),
+            FilledButton(
+              onPressed: a.interviewScore >= 60 ? () => offer(i) : null,
+              child: const Text('合格・給与提示'),
+            ),
           ],
-        ),
+          if (a.stage == PublicDemoApplicantStage.offerAccepted &&
+              a.canEnterPreJoinSales)
+            FilledButton(
+              onPressed: () => _beginPreEntrySkillSheet(a.id),
+              child: const Text('入社前SkillSheet'),
+            ),
+          if (a.stage == PublicDemoApplicantStage.offerAccepted &&
+              !a.canEnterPreJoinSales)
+            const Text('入社後、研修で育成します'),
+          if (a.stage == PublicDemoApplicantStage.preEntrySkillSheet)
+            FilledButton(
+              onPressed: () => _beginPreEntrySelling(a.id),
+              child: const Text('入社前営業'),
+            ),
+          if (a.stage == PublicDemoApplicantStage.preEntrySelling)
+            FilledButton(
+              onPressed: () => _introducePreEntryProject(a.id),
+              child: const Text('案件紹介'),
+            ),
+          if (a.stage == PublicDemoApplicantStage.preEntryIntroduced)
+            FilledButton(
+              onPressed: s.salesRemaining > 0 ? () => pi(i) : null,
+              child: const Text('上位会社面談'),
+            ),
+          if (a.stage == PublicDemoApplicantStage.preEntryPartnerPassed)
+            FilledButton(onPressed: () => ci(i), child: const Text('客先面談')),
+          if (a.stage == PublicDemoApplicantStage.preEntryClientPassed)
+            FilledButton(
+              onPressed: () => _recordApplicantJuneOrder(a),
+              child: const Text('6月受注'),
+            ),
+        ],
       ),
     );
   }
@@ -3286,10 +3329,10 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
   bool _matchesEmployeeStatusFilter(PublicDemoEngineerSales e) =>
       switch (_employeeStatusFilter) {
         _EmployeeStatusFilter.all => true,
-        _EmployeeStatusFilter.assigned => _currentlyAssignedEngineerIds
-            .contains(e.id),
-        _EmployeeStatusFilter.waiting => !_currentlyAssignedEngineerIds
-            .contains(e.id),
+        _EmployeeStatusFilter.assigned =>
+          _currentlyAssignedEngineerIds.contains(e.id),
+        _EmployeeStatusFilter.waiting =>
+          !_currentlyAssignedEngineerIds.contains(e.id),
       };
 
   /// The 全員/待機中/参画中 filter chip row (Canonical Visual Reference
@@ -3410,9 +3453,7 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
   /// same two authoritative facts the roster/badge text already uses:
   /// current assignment ([_currentlyAssignedEngineerIds]) and this month's
   /// internal training selection ([PublicDemoState.trainingSelections]).
-  PublicDemoEmployeeStatusTone _employeeStatusTone(
-    PublicDemoEngineerSales e,
-  ) {
+  PublicDemoEmployeeStatusTone _employeeStatusTone(PublicDemoEngineerSales e) {
     if (_currentlyAssignedEngineerIds.contains(e.id)) {
       return PublicDemoEmployeeStatusTone.assigned;
     }
@@ -3511,9 +3552,7 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
           if (PublicDemoFounderFollowUp.isEligible(
             engineer: e,
             month: s.month,
-            assignedEngineerIds: workflow.assignedEngineerIds(
-              month: s.month,
-            ),
+            assignedEngineerIds: workflow.assignedEngineerIds(month: s.month),
           ))
             founderFollowUpCard(e),
     ];
@@ -3540,9 +3579,7 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
   Widget _employeeActiveProjectsSection() {
     final cards = <Widget>[
       for (final a in workflow.assignments)
-        if (workflow.assignedEngineerIds(
-          month: s.month,
-        ).contains(a.engineerId))
+        if (workflow.assignedEngineerIds(month: s.month).contains(a.engineerId))
           activeProjectStatusCard(a),
     ];
     if (cards.isEmpty) return const SizedBox.shrink();
@@ -3684,18 +3721,21 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
               _salesSection(
                 key: 'public-demo-sales-next-actions-section',
                 title: '今やるべき営業アクション',
+                icon: Icons.campaign_outlined,
                 cards: actionCards,
               ),
             if (applicantCards.isNotEmpty)
               _salesSection(
                 key: 'public-demo-sales-applicant-progress-section',
                 title: '採用・候補者進捗',
+                icon: Icons.groups_outlined,
                 cards: applicantCards,
               ),
             if (projectCards.isNotEmpty)
               _salesSection(
                 key: 'public-demo-sales-project-status-section',
                 title: '案件・参画/継続状況',
+                icon: Icons.handshake_outlined,
                 cards: projectCards,
               ),
           ],
@@ -3737,23 +3777,56 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
               a.nextOrderStatus == PublicDemoNextOrderStatus.offered,
         )
         .length;
+    // SES SALES Visual Complete: the same 3 facts as before (営業残/上限,
+    // 候補者, 案件+検討中) — now rendered as a row of compact stat tiles
+    // (`PublicDemoSalesStatTile`) instead of two lines of plain text, so
+    // "the current state you can recognize at a glance" (Reference's
+    // "ひと目でわかる、次の一手" design principle) reads as an actual
+    // information-dense header row instead of prose, per the Visual SSOT's
+    // "current state → next action → detail" hierarchy. Every tile's
+    // `primaryText`/`secondaryText` keeps the exact wording (down to the
+    // full-width unit characters) the prior two `Text` lines rendered, so
+    // `public_demo_sales_ui_phase1_test.dart`'s existing
+    // `find.textContaining('営業残 N回')`/`'候補者 N名'`/`'案件 N件'`/
+    // `'うち検討中 N件'` assertions keep matching byte-for-byte — only the
+    // layout (icon + tile shape) changed, not one character of the text
+    // itself.
     return Padding(
       key: const Key('public-demo-sales-overview-section'),
       padding: const EdgeInsets.only(bottom: 12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _sectionHeader('現在の営業・採用状況'),
-          Text(
-            '営業残 ${s.salesRemaining}回（上限${s.salesCapacity}回）',
-            style: const TextStyle(fontSize: 12),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            '候補者 $pipelineApplicantCount名・案件 '
-            '${workflow.assignments.length}件'
-            '${pendingAssignmentCount > 0 ? '（うち検討中 $pendingAssignmentCount件）' : ''}',
-            style: const TextStyle(fontSize: 12),
+          _sectionHeader('現在の営業・採用状況', icon: Icons.insights_outlined),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: PublicDemoSalesStatTile(
+                  icon: Icons.event_available_outlined,
+                  primaryText: '営業残 ${s.salesRemaining}回',
+                  secondaryText: '上限${s.salesCapacity}回',
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: PublicDemoSalesStatTile(
+                  icon: Icons.person_search_outlined,
+                  primaryText: '候補者 $pipelineApplicantCount名',
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: PublicDemoSalesStatTile(
+                  icon: Icons.business_center_outlined,
+                  primaryText: '案件 ${workflow.assignments.length}件',
+                  secondaryText: pendingAssignmentCount > 0
+                      ? 'うち検討中 $pendingAssignmentCount件'
+                      : null,
+                  emphasize: pendingAssignmentCount > 0,
+                ),
+              ),
+            ],
           ),
         ],
       ),
@@ -3785,11 +3858,39 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
       for (var i = 0; i < workflow.assignments.length; i++) assignmentCard(i),
     if (s.month == 7) ...[
       Text('7月開始結果', style: Theme.of(c).textTheme.titleLarge),
+      const SizedBox(height: 4),
       // SES-FIRST-FUN-YEAR-UI-PHASE-1: the 参画/待機 headcount line
       // that used to render here is removed — it duplicated the
       // always-visible compact KPI's 参画/待機 tiles verbatim.
+      // SES SALES Visual Complete: the plain ListTile row is now the same
+      // card shape/avatar every other 営業タブ pipeline row uses, with
+      // [julyResult]'s own verbatim outcome string colored by
+      // [_julyResultTone] — no new fact beyond the two already shown.
       for (final a in workflow.assignments)
-        ListTile(title: Text(a.engineerName), subtitle: Text(julyResult(a))),
+        PublicDemoSalesCard(
+          child: Row(
+            children: [
+              PublicDemoSalesAvatar(
+                assetPath: homeOfficeStagePortraitFor(a.engineerId),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  a.engineerName,
+                  style: const TextStyle(fontWeight: FontWeight.bold),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Flexible(
+                child: PublicDemoSalesStatusBadge(
+                  label: julyResult(a),
+                  tone: _julyResultTone(a),
+                ),
+              ),
+            ],
+          ),
+        ),
     ],
   ];
 
@@ -3801,12 +3902,16 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
     required String key,
     required String title,
     required List<Widget> cards,
+    IconData? icon,
   }) => Padding(
     key: Key(key),
     padding: const EdgeInsets.only(bottom: 12),
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.start,
-      children: [_sectionHeader(title), ...cards],
+      children: [
+        _sectionHeader(title, icon: icon),
+        ...cards,
+      ],
     ),
   );
 
@@ -3972,8 +4077,7 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
         PublicDemoFinancialStatus.normal => '健全',
         PublicDemoFinancialStatus.cashShortage => '資金不足（猶予期間中）',
         PublicDemoFinancialStatus.bankruptcy => '倒産（第1期終了）',
-        PublicDemoFinancialStatus.marchCashShortageFailure =>
-          '年度末資金不足（第1期終了）',
+        PublicDemoFinancialStatus.marchCashShortageFailure => '年度末資金不足（第1期終了）',
       };
 
   /// Section 2 — 今月の収支: [_monthlyCashFlowSection] (the latest closed
@@ -4315,32 +4419,41 @@ class _RecruitmentMediaCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final used = !state.canUseRecruitmentMediaInMonth(state.month);
-    return Card(
+    return PublicDemoSalesCard(
       key: const Key('public-demo-recruitment-media-card'),
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              '候補者を追加募集',
-              style: TextStyle(fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 4),
-            Text('現預金 ¥${state.cash}'),
-            const SizedBox(height: 8),
-            FilledButton.tonal(
-              key: const Key('public-demo-open-recruitment-media'),
-              onPressed: used ? null : onPressed,
-              child: Text(used ? '今月は利用済み' : '求人媒体を選ぶ'),
-            ),
-            if (used)
-              const Padding(
-                padding: EdgeInsets.only(top: 6),
-                child: Text('求人媒体は月に1回までです。', style: TextStyle(fontSize: 12)),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                Icons.campaign_outlined,
+                size: 18,
+                color: Theme.of(context).colorScheme.primary,
               ),
-          ],
-        ),
+              const SizedBox(width: 6),
+              const Expanded(
+                child: Text(
+                  '候補者を追加募集',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text('現預金 ¥${state.cash}'),
+          const SizedBox(height: 8),
+          FilledButton.tonal(
+            key: const Key('public-demo-open-recruitment-media'),
+            onPressed: used ? null : onPressed,
+            child: Text(used ? '今月は利用済み' : '求人媒体を選ぶ'),
+          ),
+          if (used)
+            const Padding(
+              padding: EdgeInsets.only(top: 6),
+              child: Text('求人媒体は月に1回までです。', style: TextStyle(fontSize: 12)),
+            ),
+        ],
       ),
     );
   }

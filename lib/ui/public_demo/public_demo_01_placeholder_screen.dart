@@ -652,6 +652,11 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
       payroll: latest?.salaryPaid ?? PublicDemoSalary.initialTotalMonthlySalary,
       fixedCosts:
           latest?.fixedCostsPaid ?? PublicDemoSalary.otherMonthlyFixedCost,
+      // SES ACCOUNTING-UI-PHASE-1 (Fresh Audit label-truthfulness fix): see
+      // PublicDemoFinanceSummaryModel.isSettled's own doc — this is the same
+      // null-check this getter already made to choose the baseline
+      // fallback, not a new fact.
+      isSettled: latest != null,
     );
   }
 
@@ -3642,6 +3647,33 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
   /// bonus decision, and the monthly/fiscal-year-close narrative. No
   /// finance figure is recomputed here — every value is read from the same
   /// authoritative [s]/[_financeSummary] this screen has always held.
+  ///
+  /// SES ACCOUNTING-UI-PHASE-1: re-organized into five information-
+  /// hierarchy sections, read top-to-bottom the way a player actually needs
+  /// them — 1) 現在の資金状態 ([_accountingFundStatusSection], new — a
+  /// read-only snapshot of [PublicDemoState.cash]/[financialStatus], both
+  /// already-authoritative fields this screen reads elsewhere, e.g.
+  /// [PublicDemoCashShortageCard] on HOME), 2) 今月の収支
+  /// ([_accountingMonthlyBalanceSection] — [_monthlyCashFlowSection] plus
+  /// [PublicDemoFinanceSummarySection], moved verbatim), 3)
+  /// 将来の資金予測・リスク ([_accountingForecastSection], new — the existing
+  /// [PublicDemoCashForecast]/[PublicDemoCashStatusPresentation] pure models
+  /// HOME's own Navigator cash advice, [_cashForecastAdvice], already reuses
+  /// for its own guidance, read here directly as a short table instead of
+  /// only surfacing indirectly once a shortage has already hit), 4)
+  /// 今月必要な経営判断 ([_accountingDecisionSection] — the July summer-bonus
+  /// decision card, moved verbatim), 5) 月次結果 / Year-End
+  /// ([_accountingMonthlyResultSection] — the August start-result narrative
+  /// and [PublicDemoYearEndResultCard], moved verbatim). Every card, key,
+  /// month gate, and figure below is moved from the prior single flat
+  /// `Column` — no new domain rule, save field, or Finance/Balance/Month
+  /// transition/Year-End authority is introduced.
+  ///
+  /// The one presentation fix this phase makes (Fresh Audit): the finance
+  /// summary's title now truthfully distinguishes a pre-close baseline from
+  /// a settled actual instead of always claiming a same-month forecast —
+  /// see [PublicDemoFinanceSummaryModel.isSettled]'s own doc. No
+  /// payroll/fixedCosts figure changes.
   Widget _buildAccountingTab(BuildContext c) => ListView(
     key: const PageStorageKey('public-demo-accounting-tab'),
     padding: const EdgeInsets.all(16),
@@ -3649,50 +3681,215 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
       Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _monthlyCashFlowSection(),
-          PublicDemoFinanceSummarySection(summary: _financeSummary),
-          const SizedBox(height: 8),
-          if (s.month == 7)
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(12),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      '夏季賞与',
-                      style: TextStyle(fontWeight: FontWeight.bold),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      _summerBonusDecisionRequired
-                          ? '7月終了前に支給内容を選びましょう。'
-                          : '選択済み：${switch (s.summerBonusSelection) {
-                              PublicDemoSummerBonusPlan.none => 'なし',
-                              PublicDemoSummerBonusPlan.half => '0.5か月',
-                              PublicDemoSummerBonusPlan.one => '1か月',
-                            }}',
-                    ),
-                    const SizedBox(height: 8),
-                    FilledButton(
-                      key: const Key('public-demo-summer-bonus-decision'),
-                      onPressed: decideSummerBonus,
-                      child: Text(
-                        _summerBonusDecisionRequired ? '夏季賞与を決める' : '夏季賞与を変更',
-                      ),
-                    ),
-                  ],
+          _accountingFundStatusSection(),
+          _accountingMonthlyBalanceSection(),
+          _accountingForecastSection(),
+          _accountingDecisionSection(),
+          _accountingMonthlyResultSection(c),
+        ],
+      ),
+    ],
+  );
+
+  /// Section 1 — 現在の資金状態: a lightweight, always-rendered, read-only
+  /// snapshot of [PublicDemoState.cash]/[financialStatus] — the same two
+  /// authoritative fields [PublicDemoCashShortageCard] and the bankruptcy
+  /// terminal card (both HOME-only) already read, stated plainly here so a
+  /// player who opens 会計 directly sees where the company stands before
+  /// anything else on this tab. No new fact, threshold, or aggregate;
+  /// [_financialStatusLabel] only names the four states
+  /// [PublicDemoFinancialStatus] already recognizes.
+  Widget _accountingFundStatusSection() => Padding(
+    key: const Key('public-demo-accounting-fund-status-section'),
+    padding: const EdgeInsets.only(bottom: 12),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _sectionHeader('現在の資金状態'),
+        Text(
+          '現在の現預金 ${formatYen(s.cash)}',
+          style: const TextStyle(fontSize: 12),
+        ),
+        const SizedBox(height: 2),
+        Text(
+          '資金状態：${_financialStatusLabel(s.financialStatus)}',
+          style: const TextStyle(fontSize: 12),
+        ),
+      ],
+    ),
+  );
+
+  String _financialStatusLabel(PublicDemoFinancialStatus status) =>
+      switch (status) {
+        PublicDemoFinancialStatus.normal => '健全',
+        PublicDemoFinancialStatus.cashShortage => '資金不足（猶予期間中）',
+        PublicDemoFinancialStatus.bankruptcy => '倒産（第1期終了）',
+        PublicDemoFinancialStatus.marchCashShortageFailure =>
+          '年度末資金不足（第1期終了）',
+      };
+
+  /// Section 2 — 今月の収支: [_monthlyCashFlowSection] (the latest closed
+  /// month's full cash-flow breakdown) and [PublicDemoFinanceSummarySection]
+  /// (the payroll/fixed-cost at-a-glance figures), moved verbatim from the
+  /// prior flat body — same widgets, same keys, same [_financeSummary]
+  /// read. Always non-empty: [PublicDemoFinanceSummarySection] itself never
+  /// shrinks to nothing (unlike [_monthlyCashFlowSection], which shows
+  /// nothing before the first close), so this section's own header never
+  /// needs a "no empty heading" guard.
+  Widget _accountingMonthlyBalanceSection() => Padding(
+    padding: const EdgeInsets.only(bottom: 12),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _sectionHeader('今月の収支'),
+        _monthlyCashFlowSection(),
+        PublicDemoFinanceSummarySection(summary: _financeSummary),
+      ],
+    ),
+  );
+
+  /// Section 3 — 将来の資金予測・リスク: [PublicDemoCashForecast.forecast], the
+  /// exact same pure, confirmed-information-only projection
+  /// [_cashForecastAdvice] (HOME's own Navigator cash guidance) already
+  /// reads, rendered here directly as a short table so a player can see the
+  /// company's near-term cash risk without a shortage having actually hit
+  /// yet — [PublicDemoCashShortageCard] (HOME only) still owns the reactive
+  /// warning once [PublicDemoState.financialStatus] actually becomes
+  /// [PublicDemoFinancialStatus.cashShortage]; this section never restates
+  /// that card's own headline/evidence text. [PublicDemoCashStatusPresentation
+  /// .fromForecast] supplies the same three-state safe/shortage/unavailable
+  /// verdict [_cashForecastAdvice] already derives — no new threshold,
+  /// forecast horizon, or recomputation of its own.
+  ///
+  /// Hidden entirely once the forecast window is empty
+  /// ([PublicDemoCashForecastResult.months] — close-blocked: fiscal year
+  /// completed or an already-terminal financial status): there is no
+  /// further close ahead to project, matching this tab's existing
+  /// "no empty heading" precedent (POST-HOME-FREEZE Small-UX-Fix).
+  Widget _accountingForecastSection() {
+    final forecast = PublicDemoCashForecast.forecast(
+      state: s,
+      workflow: workflow,
+    );
+    if (forecast.months.isEmpty) return const SizedBox.shrink();
+    final status = PublicDemoCashStatusPresentation.fromForecast(forecast);
+    return Padding(
+      key: const Key('public-demo-accounting-forecast-section'),
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _sectionHeader('将来の資金予測・リスク'),
+          Text(
+            status.status == PublicDemoCashStatus.shortage
+                ? '${publicDemoMonthLabel(status.shortageMonth!)}に資金がマイナスになる見込みです。'
+                : '今後${forecast.months.length}回の決算見込みでは資金不足はありません。',
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: status.status == PublicDemoCashStatus.shortage
+                  ? Colors.red.shade700
+                  : null,
+            ),
+          ),
+          const SizedBox(height: 6),
+          for (final month in forecast.months)
+            Padding(
+              key: Key('public-demo-accounting-forecast-month-${month.month}'),
+              padding: const EdgeInsets.symmetric(vertical: 2),
+              child: Text(
+                '${publicDemoMonthLabel(month.month)}末 現預金見込み '
+                '${formatYen(month.closingCash)}',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: month.isNegative ? Colors.red.shade700 : null,
+                  fontWeight: month.isNegative ? FontWeight.w600 : null,
                 ),
               ),
             ),
-          // SES POST-HOME-FREEZE Small-UX-Fix (Fresh Audit Option 1): August
-          // is the only month in this range with a body to show (the July
-          // payroll/summer-bonus recap below). Months 9-14, and March before
-          // fiscal-year completion, used to render this heading with nothing
-          // under it — a truthful-looking section that was actually empty.
-          // No new per-month content is added here; the heading now only
-          // renders where a body already exists.
-          if (s.month == 8) ...[
+        ],
+      ),
+    );
+  }
+
+  /// Section 4 — 今月必要な経営判断: the July summer-bonus decision card,
+  /// moved verbatim (same `s.month == 7` gate, same
+  /// [_summerBonusDecisionRequired] check, same [decideSummerBonus] handler,
+  /// same [Key]) from the prior flat body. Suppressed outside July —
+  /// matching this tab's existing "no empty heading" precedent — since no
+  /// other month currently has an active finance decision of its own.
+  Widget _accountingDecisionSection() {
+    if (s.month != 7) return const SizedBox.shrink();
+    return Padding(
+      key: const Key('public-demo-accounting-decision-section'),
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _sectionHeader('今月必要な経営判断'),
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    '夏季賞与',
+                    style: TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    _summerBonusDecisionRequired
+                        ? '7月終了前に支給内容を選びましょう。'
+                        : '選択済み：${switch (s.summerBonusSelection) {
+                            PublicDemoSummerBonusPlan.none => 'なし',
+                            PublicDemoSummerBonusPlan.half => '0.5か月',
+                            PublicDemoSummerBonusPlan.one => '1か月',
+                          }}',
+                  ),
+                  const SizedBox(height: 8),
+                  FilledButton(
+                    key: const Key('public-demo-summer-bonus-decision'),
+                    onPressed: decideSummerBonus,
+                    child: Text(
+                      _summerBonusDecisionRequired ? '夏季賞与を決める' : '夏季賞与を変更',
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Section 5 — 月次結果 / Year-End: the August start-result narrative
+  /// (SES POST-HOME-FREEZE Small-UX-Fix; only August in this range has a
+  /// body — see that fix's own note, carried verbatim) and, once the fiscal
+  /// year completes, [PublicDemoYearEndResultCard] (SES YEAR-END-PHASE-1,
+  /// carried verbatim including its own `public-demo-fiscal-year-complete`
+  /// key and restart wiring — [_confirmRestartFromApril] ->
+  /// [_restartGame], the same canonical restart the dev-menu and bankruptcy
+  /// terminal cards already use). Suppressed entirely when neither applies,
+  /// matching this tab's existing "no empty heading" precedent — the
+  /// pre-existing regression
+  /// (public_demo_01_accounting_tab_empty_heading_test.dart) keeps
+  /// asserting `findsNothing` on months this section also has nothing to
+  /// show for.
+  Widget _accountingMonthlyResultSection(BuildContext c) {
+    final hasAugustResult = s.month == 8;
+    if (!hasAugustResult && !s.fiscalYearCompleted) {
+      return const SizedBox.shrink();
+    }
+    return Padding(
+      key: const Key('public-demo-accounting-monthly-result-section'),
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _sectionHeader('月次結果 / Year-End'),
+          if (hasAugustResult) ...[
             Text(
               '${publicDemoMonthLabel(s.month)}開始結果',
               style: Theme.of(c).textTheme.titleLarge,
@@ -3704,18 +3901,6 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
                   : '夏季賞与 ¥${s.summerBonusPaidAmount}',
             ),
           ],
-          // SES YEAR-END-PHASE-1: this used to show only the final cash
-          // balance. It now shows the full authoritative year-end
-          // projection (PublicDemoYearEndDisplayData) — cash start->end,
-          // headcount, hires, participation/waiting, founder growth, and a
-          // fact-based summary — plus the replay CTA, wired to the exact
-          // same canonical restart confirmation flow the dev-menu and
-          // bankruptcy terminal cards already use
-          // (_confirmRestartFromApril -> _restartGame). The Key stays
-          // `public-demo-fiscal-year-complete` on the outer Card so the
-          // existing pre-completion regression
-          // (public_demo_01_accounting_tab_empty_heading_test.dart) keeps
-          // asserting `findsNothing` unchanged.
           if (s.fiscalYearCompleted)
             PublicDemoYearEndResultCard(
               data: PublicDemoYearEndDisplayData.fromPublicDemoState(s),
@@ -3724,8 +3909,8 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
             ),
         ],
       ),
-    ],
-  );
+    );
+  }
 
   /// メニュー (index 4) — secondary/development/test content that does not
   /// belong on HOME. Reuses [_publicDemoDevMenuSection] verbatim (the same

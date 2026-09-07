@@ -21,6 +21,21 @@ name: Fast CI (S.E.S.)
 #                analyze/test/build (SES-CI-SPEED-3: built with the same
 #                `--base-href` GitHub Pages deploys, so this one build is
 #                reused by both `smoke-e2e` and `build` below).
+#                SES-CI-SPEED (issue #183): on `push` only, an extra
+#                `verify_pr_head_tested` step (see
+#                e2e/scripts/verify-pr-head-tested.mjs) tries to PROVE that
+#                this main-push commit is a plain two-parent GitHub merge of
+#                a same-repo PR whose HEAD (a) has a tree SHA identical to
+#                this merge commit's tree SHA and (b) already has a
+#                completed+success `validate` check run. Only when that
+#                proof succeeds AND the repository variable
+#                `SES_CI_SKIP_MAIN_FLUTTER_TEST` is literally `true` (default
+#                unset = OFF) does the `flutter test` step below skip; every
+#                other outcome (fork PR, tree mismatch, missing/failed check,
+#                API error, non-merge commit, kill switch off, or the verify
+#                step itself failing) runs `flutter test` exactly as before.
+#                PR runs are never affected — the verify step only runs on
+#                `push`.
 #   replay-unit — the locked Replay Viewer unit-test gate. It runs in
 #                parallel with `flutter-validate`; both must pass.
 #   smoke-e2e  — needs: flutter-validate + replay-unit. Playwright's mobile-chromium project only,
@@ -92,6 +107,16 @@ jobs:
     concurrency:
       group: e2e-flutter-validate-${{ github.ref }}
       cancel-in-progress: true
+    # Least privilege, added only for the SES-CI-SPEED (issue #183) verify
+    # step below: `checks: read` to look up the PR HEAD's `validate` check
+    # run, `pull-requests: read` to resolve the merge commit's PR mapping.
+    # `contents: read` is repeated here because a job-level `permissions:`
+    # block fully replaces (not merges with) the workflow-level default
+    # above, and this job still needs it for `actions/checkout`.
+    permissions:
+      contents: read
+      checks: read
+      pull-requests: read
     defaults:
       run:
         working-directory: e2e
@@ -111,9 +136,41 @@ jobs:
         working-directory: .
         run: flutter analyze
 
+      # SES-CI-SPEED (issue #183): push-only, fail-safe proof that this
+      # commit's tree is byte-identical to a PR HEAD whose own `validate`
+      # check already passed `flutter test`. `continue-on-error: true` is a
+      # second, independent safety net on top of the script's own
+      # always-exit-0/never-throw design (see the script's file header): if
+      # this step *itself* somehow fails, `steps.verify_pr_head_tested.outcome`
+      # becomes `failure`, which the next two steps' `if:` conditions treat
+      # exactly like "skip=false" — flutter test still runs normally.
+      - name: Verify PR HEAD already tested (main-push flutter test skip check — kill-switch gated)
+        id: verify_pr_head_tested
+        if: github.event_name == 'push'
+        continue-on-error: true
+        working-directory: .
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_SHA: ${{ github.sha }}
+          SES_CI_SKIP_MAIN_FLUTTER_TEST: ${{ vars.SES_CI_SKIP_MAIN_FLUTTER_TEST }}
+        run: node e2e/scripts/verify-pr-head-tested.mjs >> "$GITHUB_OUTPUT"
+
       - name: flutter test
+        if: |
+          github.event_name != 'push' ||
+          steps.verify_pr_head_tested.outcome != 'success' ||
+          steps.verify_pr_head_tested.outputs.skip != 'true'
         working-directory: .
         run: flutter test
+
+      - name: flutter test — skipped (PR HEAD already verified tested; merge tree matches exactly)
+        if: |
+          github.event_name == 'push' &&
+          steps.verify_pr_head_tested.outcome == 'success' &&
+          steps.verify_pr_head_tested.outputs.skip == 'true'
+        working-directory: .
+        run: echo "::notice::Skipping duplicate flutter test on main push — PR #${{ steps.verify_pr_head_tested.outputs.pr_number }} HEAD was already verified green and this merge's tree matches it exactly."
 
       # SES-CI-SPEED-2: built with the same --base-href GitHub Pages deploys
       # (see `build` job below), so this one artifact can be reused there

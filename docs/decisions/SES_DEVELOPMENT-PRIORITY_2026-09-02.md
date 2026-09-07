@@ -37,7 +37,10 @@ This document is the current single source of truth for **how development is pri
 
 ## Current execution order
 
-**HOME Freeze → #167 Late Game Phase 1 → Year-End Phase 1 → Active Project Visibility Phase 1 → Employee UI Phase 1 → Sales UI Phase 1 → Accounting UI Phase 1 → April→March human replay → 後半強化 → 成長実感 → 月次結果 → 戦略性 → バランス → Public Demo仕上げ**
+**HOME Freeze → #167 Late Game Phase 1 → Year-End Phase 1 → Active Project Visibility Phase 1 → Employee UI Phase 1 → Sales UI Phase 1 → Accounting UI Phase 1 → NON-HOME Visual Fresh Audit → Employee Visual Complete → Sales Visual Complete → Accounting Visual Complete → Menu Visual Complete → 5-tab Visual Review → April→March human replay → 後半強化 → 成長実感 → 月次結果 → 戦略性 → バランス → Public Demo仕上げ**
+
+**Employee UI Phase 1 / Sales UI Phase 1は「information architecture complete」（4段階の情報階層への再設計が完了した状態）であり、「Visual Complete」（配色・カード形状・アイコン・タイポグラフィ等が
+`docs/design/SES_NON-HOME-UI_VISUAL-SSOT.md`のCanonical Visual Referenceに整合した状態）ではない。** Visual Complete化は下記Employee Visual Complete / Sales Visual Completeで別途行う。
 
 Issue番号順に機械的に実装しない。実プレイ結果を根拠に、First Fun Yearを最も改善するものを選ぶ。
 
@@ -54,10 +57,16 @@ Issue番号順に機械的に実装しない。実プレイ結果を根拠に、
 1. ~~**#167 Late Game Phase 1**~~ — 完了。8月〜2月の「創業エンジニアのフォロー判断」実装。
 2. ~~**Year-End Phase 1**~~ — 完了。年度末の振り返り演出。
 3. ~~**Active Project Visibility Phase 1**~~ — 完了。参画中社員の案件状態を社員タブから可視化。
-4. ~~**Employee UI Phase 1**~~ — 完了。社員タブを「社員一覧・現在状態 → 今やるべき社員アクション → 参画中案件（Active Project Visibility Phase 1を統合） → 成長・SkillSheet・研修」の4段階へ再設計。stale「翌月参画予定」の社員タブ側の残差も解消（会計側の「空の○月開始結果」はPOST-HOME-FREEZE Small-UX-Fixで既に解消済み）。
-5. ~~**Sales UI Phase 1**~~ — 完了。営業タブを「現在の営業・採用状況 → 今やるべき営業アクション → 採用・候補者進捗 → 案件・参画/継続状況」の4段階へ再設計。
+4. ~~**Employee UI Phase 1**~~ — 完了（information architecture complete、Visual Completeではない）。社員タブを「社員一覧・現在状態 → 今やるべき社員アクション → 参画中案件（Active Project Visibility Phase 1を統合） → 成長・SkillSheet・研修」の4段階へ再設計。stale「翌月参画予定」の社員タブ側の残差も解消（会計側の「空の○月開始結果」はPOST-HOME-FREEZE Small-UX-Fixで既に解消済み）。
+5. ~~**Sales UI Phase 1**~~ — 完了（information architecture complete、Visual Completeではない）。営業タブを「現在の営業・採用状況 → 今やるべき営業アクション → 採用・候補者進捗 → 案件・参画/継続状況」の4段階へ再設計。
 6. **Accounting UI Phase 1** — 会計タブの情報設計（HOMEへの先取り禁止、実装場所は会計タブ側）。
-7. **April→March human replay** — 上記反映後の年間通しプレイ監査。
+7. **NON-HOME Visual Fresh Audit** — `docs/design/SES_NON-HOME-UI_VISUAL-SSOT.md`のCanonical Visual Reference（7枚）を基準に、Employee/Sales/Accounting/Menuの現行実装とのギャップを棚卸しする監査。
+8. **Employee Visual Complete** — Employee UI Phase 1のIAを維持したまま、Visual SSOTに配色・カード形状・アイコン・タイポグラフィを整合させる。
+9. **Sales Visual Complete** — Sales UI Phase 1のIAを維持したまま、Visual SSOTに整合させる。
+10. **Accounting Visual Complete** — Accounting UI Phase 1のIAを維持したまま、Visual SSOTに整合させる。
+11. **Menu Visual Complete** — メニュータブをVisual SSOTに整合させる。
+12. **5-tab Visual Review** — HOME Freezeを維持したまま、5タブ全体で視覚的一貫性を最終確認する。
+13. **April→March human replay** — 上記反映後の年間通しプレイ監査。
 
 **#148の追加production実装は次P0として扱わない。** #183（CI高速化）はdev-efficiency用の別ラインとして記録し、gameplayより前へ出さない。
 
@@ -67,9 +76,15 @@ Issue番号順に機械的に実装しない。実プレイ結果を根拠に、
 | P0 | #167 Late Game Phase 1 | 実績: 完了 | 8月〜2月の「創業エンジニアのフォロー判断」— 詳細はUpdate history |
 | P0 | Year-End Phase 1 | 実績: 完了（本エントリ） | 年度末の振り返り演出（会計タブ「第1期終了」強化） — 詳細はUpdate history |
 | P0 | ~~Active Project Visibility Phase 1~~ | 実績: 完了 | 参画中社員の案件状態（engineerName/projectName/deliveryPressure/budgetHealth）を社員タブから可視化 — 詳細はUpdate history |
-| P0 | ~~Employee UI Phase 1~~ | 実績: 完了 | 社員タブを4段階の情報階層へ再設計、stale「翌月参画予定」の社員タブ側を解消 — 詳細はUpdate history |
-| P0 | ~~Sales UI Phase 1~~ | 実績: 完了（本エントリ） | 営業タブを「現在の営業・採用状況 → 今やるべき営業アクション → 採用・候補者進捗 → 案件・参画/継続状況」の4段階へ再設計 — 詳細はUpdate history |
+| P0 | ~~Employee UI Phase 1~~ | 実績: 完了 | 社員タブを4段階の情報階層へ再設計、stale「翌月参画予定」の社員タブ側を解消 — **information architecture complete、Visual Completeではない**。詳細はUpdate history |
+| P0 | ~~Sales UI Phase 1~~ | 実績: 完了（本エントリ） | 営業タブを「現在の営業・採用状況 → 今やるべき営業アクション → 採用・候補者進捗 → 案件・参画/継続状況」の4段階へ再設計 — **information architecture complete、Visual Completeではない**。詳細はUpdate history |
 | P0 | Accounting UI Phase 1 | 目安未確定 / 分割検討 | 会計タブの情報設計を整える（HOMEへの先取りは禁止、実装場所は会計タブ側） |
+| P0 | NON-HOME Visual Fresh Audit | 1〜2h | `docs/design/SES_NON-HOME-UI_VISUAL-SSOT.md`のCanonical Visual Reference（7枚）と現行実装のギャップを棚卸し |
+| P0 | Employee Visual Complete | 目安未確定 / 分割検討 | Employee UI Phase 1のIAを維持しVisual SSOTへ整合（HOMEへの先取り禁止） |
+| P0 | Sales Visual Complete | 目安未確定 / 分割検討 | Sales UI Phase 1のIAを維持しVisual SSOTへ整合（HOMEへの先取り禁止） |
+| P0 | Accounting Visual Complete | 目安未確定 / 分割検討 | Accounting UI Phase 1のIAを維持しVisual SSOTへ整合（HOMEへの先取り禁止） |
+| P0 | Menu Visual Complete | 目安未確定 / 分割検討 | メニュータブをVisual SSOTへ整合 |
+| P0 | 5-tab Visual Review | 1〜2h | HOME Freezeを維持したまま5タブ全体の視覚的一貫性を最終確認 |
 | P0 | 4月→翌3月 First Fun Year通しプレイ（human replay） | 1〜2h | 上記反映後、年間完走可否・退屈な期間・重大問題を実プレイで再特定 |
 | P0 | 年間進行Blocker修正 | 1件0.5〜3h | 月送り不能、二重処理、セーブ破壊等を除去 |
 | P1 | 9月〜2月コンテンツ強化（#167 Phase 1以降の追加分） | 4〜8h / 分割必須 | 年度後半にも判断・イベント・変化がさらに発生 |
@@ -196,9 +211,25 @@ Result Reportは履歴・証拠であり、この文書の代わりにはしな�
 - `AGENTS.md` — この文書と `docs/DEVELOPMENT_PLAN.md` を作業前必読として直接参照する。
 - `docs/DEVELOPMENT_PLAN.md` — phase/feature詳細の正本。この文書の優先方針で実行順を判断する。
 - `docs/ai-knowledge/INDEX.md` — 技術的incident/pattern/decisionの索引。現在の開発優先順位の正本ではない。
+- `docs/design/SES_NON-HOME-UI_VISUAL-SSOT.md` — Employee/Sales/Accounting/MenuのVisual（layout/情報階層/visual treatment/navigation target）正本。Canonical Visual Reference（7枚のPNG）の所在と、Reference/authoritative game stateの優先順位を定義する。HOMEはこのSSOTの対象外（Freeze維持）。
 - `docs/reports/` — 実施結果と証拠。計画変更が必要なら結果報告だけで終わらせず、この文書も更新する。
 
 ## Update history
+
+### 2026-09-07（SES TAB UI Visual Reference Canonicalization / governing plan sync）
+
+- **`docs/design/references/SES_UI_Audit_References.zip`（既存, main）に含まれていた7枚のPNG（2026-09-05付）を`docs/design/references/SES_TAB-UI_REFERENCE_2026-09-05/`へ抽出・改名し、Employee / Sales / Accounting / MenuのCanonical Visual Referenceとして正式に指定した。** 新規に`docs/design/SES_NON-HOME-UI_VISUAL-SSOT.md`を作成し、このReferenceの所在・優先順位（1. authoritative game state / 既存specification、2. Visual Reference = layout/情報階層/visual treatment/navigation target）・fake data禁止・360×800/390×844・TextScaler 1.3/2.0でのhorizontal overflow禁止・practical tap target 48px以上・current state→next action→detailの情報階層・excessive scrolling回避を明文化した。HOMEは既存のHOME Visual SSOT運用（`docs/reports/SES_HOME-FINAL-TOUCH_Result.md`）を優先しFreeze維持のまま対象外とした。
+- **次のproduction priorityを以下の順に更新する**（本文書冒頭「Current execution order」および直後のPrioritized backlog tableも同時に更新済み）:
+  1. Accounting UI Phase 1
+  2. NON-HOME Visual Fresh Audit
+  3. Employee Visual Complete
+  4. Sales Visual Complete
+  5. Accounting Visual Complete
+  6. Menu Visual Complete
+  7. 5-tab Visual Review
+  8. April→March Human Replay
+- **Employee UI Phase 1 / Sales UI Phase 1は「information architecture complete」であり「Visual Complete」ではないことを明記。** Visual Complete化（Canonical Visual Referenceへの配色・カード形状・アイコン・タイポグラフィ整合）は上記の別タスクとして今後実施する。
+- 本エントリはdocsのみの変更。Accounting UI Phase 1のproduction codeには触れていない。HOME production code、gameplay/domain/save/finance/balance/month authorityは無変更。詳細・検証結果は`docs/reports/SES_TAB-UI_REFERENCE_Canonicalization_Result.md`を参照。
 
 ### 2026-09-07（Sales UI Phase 1完了 / governing plan sync）
 

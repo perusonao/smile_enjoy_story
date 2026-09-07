@@ -96,12 +96,13 @@ Future<void> pumpDemoAt(
   Size size = const Size(390, 844),
   double textScale = 1.0,
   AssetBundle? assetBundle,
+  int? debugSeed,
 }) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1.0;
   addTearDown(tester.view.reset);
 
-  Widget screen = const PublicDemo01PlaceholderScreen();
+  Widget screen = PublicDemo01PlaceholderScreen(debugSeed: debugSeed);
   if (assetBundle != null) {
     screen = DefaultAssetBundle(bundle: assetBundle, child: screen);
   }
@@ -371,10 +372,15 @@ void main() {
     testWidgets('the state on arrival is the untouched April opening', (
       tester,
     ) async {
-      await pumpDemoAt(tester);
+      // SEEDED-RNG-REUSE-1: fixes debugSeed on both sides so this full-JSON
+      // comparison isn't tripped up by runSeed being freshly (and
+      // independently) drawn on each of the two separate aprilStart calls
+      // below — every other field is still required to match exactly.
+      const seed = 20260907;
+      await pumpDemoAt(tester, debugSeed: seed);
 
       final state = currentState(tester);
-      final opening = PublicDemoState.aprilStart();
+      final opening = PublicDemoState.aprilStart(runSeed: seed);
       expect(
         state.toJson(),
         opening.toJson(),

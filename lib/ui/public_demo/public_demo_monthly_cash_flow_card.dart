@@ -105,12 +105,28 @@ class _Row extends StatelessWidget {
             ),
           ),
         ),
-        Text(
-          value,
-          style: TextStyle(
-            fontSize: emphasis ? 15 : 13.5,
-            fontWeight: emphasis ? FontWeight.bold : FontWeight.w600,
-            color: color,
+        // SES ACCOUNTING-UI-PHASE-1: at a large TextScaler (2.0), the
+        // longest real label/value pairs in this card's own breakdown
+        // (e.g. "売掛金（来月入金予定）" / a 7-digit yen figure) together
+        // exceeded the 360px width even with the label already `Expanded`
+        // — the un-flexible value `Text` kept demanding its full intrinsic
+        // width. `Flexible` + `FittedBox(scaleDown)` mirrors the existing
+        // `_Tile` pattern in `public_demo_cash_shortage_card.dart`: it only
+        // affects painting (scales down to fit), never the underlying text
+        // data, so every existing `find.text(value)` assertion is unaffected.
+        Flexible(
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerRight,
+            child: Text(
+              value,
+              style: TextStyle(
+                fontSize: emphasis ? 15 : 13.5,
+                fontWeight: emphasis ? FontWeight.bold : FontWeight.w600,
+                color: color,
+              ),
+              maxLines: 1,
+            ),
           ),
         ),
       ],

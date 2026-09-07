@@ -1989,15 +1989,22 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
     return Card(
       key: Key('public-demo-employee-condition-${a.id}'),
       child: Padding(
-        padding: const EdgeInsets.all(12),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // SES HUMAN-REPLAY PRE-FIX P1-1/P1-3: same duplicate-name
+            // demotion as `ec(i)` above — this employee's name is already
+            // shown, at full weight, in Section 1's roster row.
             Text(
               a.name,
-              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+              style: TextStyle(
+                fontWeight: FontWeight.w600,
+                fontSize: 12,
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 6),
             const Text(
               '社員コンディション',
               style: TextStyle(fontWeight: FontWeight.bold),
@@ -2033,15 +2040,22 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
   Widget founderFollowUpCard(PublicDemoEngineerSales e) => Card(
     key: Key('public-demo-founder-follow-up-card-${e.id}'),
     child: Padding(
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // SES HUMAN-REPLAY PRE-FIX P1-1/P1-3: same duplicate-name
+          // demotion as `ec(i)` above — this employee's name is already
+          // shown, at full weight, in Section 1's roster row.
           Text(
             e.name,
-            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+            style: TextStyle(
+              fontWeight: FontWeight.w600,
+              fontSize: 12,
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
           ),
-          const SizedBox(height: 4),
+          const SizedBox(height: 2),
           const Text(
             '案件への参画が続いています。しばらくフォローの機会がありません。',
             style: TextStyle(fontSize: 12),
@@ -2841,7 +2855,7 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
         s.month >= PublicDemoRecoveryEligibility.lastEligibleMonth;
     return Card(
       child: Padding(
-        padding: const EdgeInsets.all(12),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -2854,14 +2868,27 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
             // employee's name once and focuses on the action itself; the
             // sales-stage step is still visible via
             // [PublicDemoSalesProgress] below.
+            //
+            // SES HUMAN-REPLAY PRE-FIX P1-1/P1-3: this same name is also
+            // shown, at full weight, in Section 1's roster row directly
+            // above this section — a second full-size bold repeat here
+            // was exactly the "重複" the audit flagged. Kept (never
+            // removed — with 2+ employees, Section 2's cards no longer sit
+            // next to a single unambiguous roster row) but demoted to a
+            // small, muted caption so the action below it, not the name,
+            // reads as this card's primary content.
             Text(
               e.name,
-              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+              style: TextStyle(
+                fontWeight: FontWeight.w600,
+                fontSize: 12,
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
             ),
-            const SizedBox(height: 4),
+            const SizedBox(height: 2),
             Text(e.summary),
             PublicDemoSalesProgress(currentStep: engineerStep(e)),
-            const SizedBox(height: 8),
+            const SizedBox(height: 6),
             if (!readyForFieldSales(e.id) &&
                 (e.stage == PublicDemoSalesStage.waiting ||
                     e.stage == PublicDemoSalesStage.skillSheet))
@@ -3340,6 +3367,13 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
   /// `01_Employee_LayoutDraft.png`). Purely a client-side display filter on
   /// [_employeeRosterSection]'s own row list — it does not touch Section
   /// 2/3/4, any command, or any eligibility check below it.
+  ///
+  /// SES HUMAN-REPLAY PRE-FIX P1: the prior compact pill (12/6 padding
+  /// only) measured under 48dp tall — a widget test now pins the real
+  /// `InkWell` hit-test box at >=48dp on both axes via the
+  /// [BoxConstraints.minHeight]/[BoxConstraints.minWidth] below (the
+  /// standard Material "practical tap target" fix); the tap handler, key,
+  /// and filter logic are unchanged.
   Widget _employeeStatusFilterChips(int total) {
     final chips = <(_EmployeeStatusFilter, String, int)>[
       (_EmployeeStatusFilter.all, '全員', total),
@@ -3362,19 +3396,33 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
             child: InkWell(
               borderRadius: BorderRadius.circular(16),
               onTap: () => setState(() => _employeeStatusFilter = filter),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 6,
-                ),
-                child: Text(
-                  '$label $count',
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.bold,
-                    color: _employeeStatusFilter == filter
-                        ? scheme.onPrimary
-                        : scheme.onSurfaceVariant,
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(minHeight: 48, minWidth: 48),
+                // `widthFactor`/`heightFactor: 1` keep this shrink-wrapped
+                // to the padded text's own size (then clamped up to the
+                // 48dp minimum above) — a bare `Center`/`Align` here would
+                // instead size to the *biggest* size these loose `Wrap`
+                // constraints allow, stretching every chip to the full row
+                // width.
+                child: Align(
+                  alignment: Alignment.center,
+                  widthFactor: 1,
+                  heightFactor: 1,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 6,
+                    ),
+                    child: Text(
+                      '$label $count',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                        color: _employeeStatusFilter == filter
+                            ? scheme.onPrimary
+                            : scheme.onSurfaceVariant,
+                      ),
+                    ),
                   ),
                 ),
               ),
@@ -4061,13 +4109,24 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
   /// `Text` and the large value `Text` rather than one line, but still a
   /// single `Text` carrying that exact substring.
   ///
-  /// 前月比 (P1): only shown once a real monthly close exists
-  /// ([PublicDemoState.latestMonthlyCashFlow] non-null) — before the first
-  /// close (April) there is no prior close to compare against, so the delta
-  /// line is omitted entirely rather than showing a fabricated "no change".
-  /// [PublicDemoMonthlyCashFlow.netCashMovement] is an existing getter
-  /// (`closingCash - openingCash`, FINANCE-UX-1) — no new calculation is
-  /// introduced here.
+  /// 前回決算の収支 (SES HUMAN-REPLAY PRE-FIX P1): only shown once a real
+  /// monthly close exists ([PublicDemoState.latestMonthlyCashFlow]
+  /// non-null) — before the first close (April) there is no prior close to
+  /// show, so the line is omitted entirely rather than showing a fabricated
+  /// "no change". [PublicDemoMonthlyCashFlow.netCashMovement] is an
+  /// existing getter (`closingCash - openingCash`, FINANCE-UX-1) — no new
+  /// calculation is introduced here.
+  ///
+  /// Wording: this value is the *previous settled month's own* net cash
+  /// movement (that month's closingCash minus its openingCash) — it is not
+  /// a comparison between two different months' totals. The prior label
+  /// ("前月比", "vs. previous month") read as a month-over-month comparison
+  /// and was misleading; "前回決算の収支" (the previous settlement's net
+  /// cash flow) states the same authoritative figure without implying a
+  /// comparison that was never computed. This matches the existing
+  /// "最終決算月" ([latestMonthlyCashFlow]'s own month label, used
+  /// elsewhere on this screen) terminology already established for this
+  /// same record.
   ///
   /// 今月の売上 / 今月の支出 tiles (P0 goal 4): the same [flow.revenue] /
   /// [flow.totalOutflow] facts [PublicDemoMonthlyCashFlowCard] (Section 2)
@@ -4084,7 +4143,7 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
       final delta = flow.netCashMovement;
       deltaPositive = delta >= 0;
       deltaText =
-          '前月比 ${delta >= 0 ? '+' : '-'}${formatYen(delta.abs())}';
+          '前回決算の収支 ${delta >= 0 ? '+' : '-'}${formatYen(delta.abs())}';
     }
     return Padding(
       key: const Key('public-demo-accounting-fund-status-section'),

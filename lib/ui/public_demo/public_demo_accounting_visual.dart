@@ -194,15 +194,15 @@ class PublicDemoAccountingStatTile extends StatelessWidget {
 }
 
 /// The always-visible cash hero (現在の現金) — a large icon, the current
-/// cash figure at a prominent size, and an optional truthful 前月比 delta
+/// cash figure at a prominent size, and an optional truthful 前回決算の収支
 /// line. [cashText]/[deltaText] are rendered verbatim from values the
 /// caller already computed from authoritative state
 /// ([PublicDemoState.cash] / [PublicDemoMonthlyCashFlow.netCashMovement]) —
 /// this widget never recomputes a cash figure or a delta itself.
 ///
 /// [deltaText]/[deltaPositive] are both null before the first monthly close
-/// (no prior close to compare against yet) — the caller omits the delta
-/// entirely rather than fabricating a "no change" value.
+/// (no prior settlement to report yet) — the caller omits the line entirely
+/// rather than fabricating a "no change" value.
 class PublicDemoAccountingCashHero extends StatelessWidget {
   const PublicDemoAccountingCashHero({
     super.key,

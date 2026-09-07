@@ -8,8 +8,10 @@
 //    viewport (it used to start entirely below the fold — see the Issue
 //    #173 result report for the measured before/after top position).
 //  * 営業 shows a truthful, non-action empty state — never a fabricated
-//    sales/recruiting action — whenever [_S._salesTabItems] has nothing to
-//    render: before May's recruitment media exists (fresh April, the case
+//    sales/recruiting action — whenever none of [_S._buildSalesTab]'s
+//    section card lists (SES SALES-UI-PHASE-1 split this suite's original
+//    single [_S._salesTabItems] into three) have anything to render: before
+//    May's recruitment media exists (fresh April, the case
 //    the Issue names explicitly) and again from August on, once the
 //    funnel/assignment cards this tab owns have nothing left to show. May,
 //    June, and July (which always have a real card) must never show it.

@@ -3386,32 +3386,153 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
   /// narrative. Reuses every existing widget/method/key verbatim — no new
   /// project/sales authority is invented here.
   ///
+  /// SES SALES-UI-PHASE-1: the flat "one card list, else empty state" body
+  /// is re-organized into the same information-hierarchy pattern Employee UI
+  /// Phase 1 established for 社員 — four sections read top-to-bottom: 1)
+  /// 現在の営業・採用状況 ([_salesOverviewSection], new — a read-only snapshot
+  /// built only from fields this screen already reads elsewhere:
+  /// [PublicDemoState.salesRemaining]/`salesCapacity`, the in-pipeline
+  /// applicant count (`workflow.applicants` not yet [PublicDemoApplicant.
+  /// hasJoined]), and the assignment/case count with how many still await a
+  /// decision this month), 2) 今やるべき営業アクション
+  /// ([_salesNextActionCards] — the recruitment-media card, May's own
+  /// company-level lever to start the funnel), 3) 採用・候補者進捗
+  /// ([_salesApplicantProgressCards] — May's applicant funnel, `ac(i)`), and
+  /// 4) 案件・参画/継続状況 ([_salesProjectStatusCards] — June's assignment
+  /// decision cards and July's closing narrative). Every card, key, month
+  /// gate, and eligibility check below is moved verbatim from the prior
+  /// single flat list — only which section groups it changed. No domain
+  /// rule, save field, or command changes.
+  ///
   /// PUBLIC-DEMO-HOME-UI-3C: before May's recruitment media exists, and from
   /// August on (once the funnel/assignment cards above have nothing left to
   /// show — any further per-employee sales progress renders on 社員, not
   /// here), this tab used to render a fully blank body with no explanation.
   /// [_salesTabEmptyState] replaces that with a truthful, non-interactive
-  /// (beyond real navigation) empty state built only when [_salesTabItems]
-  /// is genuinely empty — never a fabricated sales/recruiting action.
+  /// (beyond real navigation) empty state — unchanged by Phase 1 — built
+  /// only when all three section card lists below are genuinely empty
+  /// (the same condition the prior flat [_salesTabItems] used), never a
+  /// fabricated sales/recruiting action. [_salesOverviewSection] still
+  /// renders above it even on a no-action month, since it is itself never
+  /// empty — see the goal's "4月〜3月を通して意味のある画面構造にする".
   Widget _buildSalesTab(BuildContext c) {
-    final items = _salesTabItems(c);
+    final actionCards = _salesNextActionCards();
+    final applicantCards = _salesApplicantProgressCards();
+    final projectCards = _salesProjectStatusCards(c);
+    final hasAnyContent =
+        actionCards.isNotEmpty ||
+        applicantCards.isNotEmpty ||
+        projectCards.isNotEmpty;
     return ListView(
       key: const PageStorageKey('public-demo-sales-tab'),
       padding: const EdgeInsets.all(16),
       children: [
         Column(
           crossAxisAlignment: CrossAxisAlignment.start,
-          children: items.isEmpty ? [_salesTabEmptyState()] : items,
+          children: [
+            _salesOverviewSection(),
+            if (!hasAnyContent) _salesTabEmptyState(),
+            if (actionCards.isNotEmpty)
+              _salesSection(
+                key: 'public-demo-sales-next-actions-section',
+                title: '今やるべき営業アクション',
+                cards: actionCards,
+              ),
+            if (applicantCards.isNotEmpty)
+              _salesSection(
+                key: 'public-demo-sales-applicant-progress-section',
+                title: '採用・候補者進捗',
+                cards: applicantCards,
+              ),
+            if (projectCards.isNotEmpty)
+              _salesSection(
+                key: 'public-demo-sales-project-status-section',
+                title: '案件・参画/継続状況',
+                cards: projectCards,
+              ),
+          ],
         ),
       ],
     );
   }
 
-  List<Widget> _salesTabItems(BuildContext c) => [
-    if (s.month == 5) ...[
+  /// Section 1 — 現在の営業・採用状況: a lightweight, always-rendered,
+  /// read-only snapshot — mirrors [_employeeRosterSection]'s role on 社員.
+  /// [PublicDemoState.salesRemaining]/`salesCapacity` are the same fields
+  /// HOME's own recommended-action fact ("営業残: N回") already reads; the
+  /// in-pipeline applicant count filters out anyone with
+  /// [PublicDemoApplicant.hasJoined] true so a candidate who joined months
+  /// ago is never miscounted as still "applying"; the assignment/case count
+  /// and its "うち検討中" qualifier read only [PublicDemoAssignment.
+  /// nextOrderStatus] — no new aggregate field is computed or persisted.
+  /// Deliberately omits the 待機/参画中 employee headcount HOME's KPI and
+  /// [_employeeRosterSection] already show verbatim, to avoid the exact
+  /// "不要なカード重複" the phase's own scope calls out to reduce.
+  ///
+  /// The candidate count is gated to `s.month >= 5` even though
+  /// [PublicDemoWorkflowState.initial] already seeds a baseline applicant
+  /// pool from April onward (so `workflow.applicants` is never literally
+  /// empty pre-May): [_salesApplicantProgressCards]'s own funnel — the only
+  /// place a player can actually inspect or act on any applicant — is itself
+  /// gated the same way and renders nothing before May. Counting the
+  /// dormant pre-May pool here would surface a number with no way to reach
+  /// it on this tab, which is exactly the kind of untruthful-in-effect claim
+  /// the goal's "actionがない月は理由と確認先をtruthfulに表示" calls out.
+  Widget _salesOverviewSection() {
+    final pipelineApplicantCount = s.month < 5
+        ? 0
+        : workflow.applicants.where((a) => !a.hasJoined).length;
+    final pendingAssignmentCount = workflow.assignments
+        .where(
+          (a) =>
+              a.nextOrderStatus == PublicDemoNextOrderStatus.undecided ||
+              a.nextOrderStatus == PublicDemoNextOrderStatus.offered,
+        )
+        .length;
+    return Padding(
+      key: const Key('public-demo-sales-overview-section'),
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _sectionHeader('現在の営業・採用状況'),
+          Text(
+            '営業残 ${s.salesRemaining}回（上限${s.salesCapacity}回）',
+            style: const TextStyle(fontSize: 12),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            '候補者 $pipelineApplicantCount名・案件 '
+            '${workflow.assignments.length}件'
+            '${pendingAssignmentCount > 0 ? '（うち検討中 $pendingAssignmentCount件）' : ''}',
+            style: const TextStyle(fontSize: 12),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Section 2 — 今やるべき営業アクション: the recruitment-media card, moved
+  /// verbatim (same widget, same key, same `s.month == 5` gate, same
+  /// [_openRecruitmentMedia] handler) from the prior flat [_salesTabItems].
+  List<Widget> _salesNextActionCards() => [
+    if (s.month == 5)
       _RecruitmentMediaCard(state: s, onPressed: _openRecruitmentMedia),
+  ];
+
+  /// Section 3 — 採用・候補者進捗: the May applicant funnel, moved verbatim
+  /// (same `ac(i)` widget/key/eligibility, same `s.month == 5` gate) from
+  /// the prior flat [_salesTabItems].
+  List<Widget> _salesApplicantProgressCards() => [
+    if (s.month == 5)
       for (var i = 0; i < workflow.applicants.length; i++) ac(i),
-    ],
+  ];
+
+  /// Section 4 — 案件・参画/継続状況: June's assignment decision cards and
+  /// July's closing narrative, moved verbatim (same `assignmentCard(i)`/
+  /// [julyResult] widgets/keys/eligibility, same `s.month == 6`/`== 7`
+  /// gates) from the prior flat [_salesTabItems].
+  List<Widget> _salesProjectStatusCards(BuildContext c) => [
     if (s.month == 6)
       for (var i = 0; i < workflow.assignments.length; i++) assignmentCard(i),
     if (s.month == 7) ...[
@@ -3424,9 +3545,27 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
     ],
   ];
 
+  /// Shared section wrapper for Sections 2-4 above — same suppressed-header-
+  /// when-empty precedent [_employeeNextActionsSection] etc. already
+  /// established (POST-HOME-FREEZE Small-UX-Fix); callers only invoke this
+  /// once their own card list is already known non-empty.
+  Widget _salesSection({
+    required String key,
+    required String title,
+    required List<Widget> cards,
+  }) => Padding(
+    key: Key(key),
+    padding: const EdgeInsets.only(bottom: 12),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [_sectionHeader(title), ...cards],
+    ),
+  );
+
   /// PUBLIC-DEMO-HOME-UI-3C: the truthful non-action empty state for 営業
-  /// when [_salesTabItems] built nothing — structurally correct (there is
-  /// genuinely no recruiting/assignment card to show yet, or any longer),
+  /// when [_buildSalesTab]'s three section card lists built nothing —
+  /// structurally correct (there is genuinely no recruiting/assignment card
+  /// to show yet, or any longer),
   /// but previously a large unexplained blank body, most visibly on a
   /// fresh April playthrough (Issue #173). States only two already-true
   /// facts (no eligible request card exists yet/any more here; a real

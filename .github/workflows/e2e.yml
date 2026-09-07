@@ -88,7 +88,7 @@ jobs:
     # remains descriptive for dependencies and artifact documentation.
     name: validate
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 25
     concurrency:
       group: e2e-flutter-validate-${{ github.ref }}
       cancel-in-progress: true

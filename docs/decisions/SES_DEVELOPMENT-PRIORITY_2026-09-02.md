@@ -49,13 +49,13 @@ Issue番号順に機械的に実装しない。実プレイ結果を根拠に、
 
 処理時間は調査・実装・関連テスト・結果報告作成を含む概算。CI待ち時間は含めない。
 
-次順序（2026-09-06時点、詳細はUpdate history）:
+次順序（2026-09-07時点、詳細はUpdate history）:
 
 1. ~~**#167 Late Game Phase 1**~~ — 完了。8月〜2月の「創業エンジニアのフォロー判断」実装。
 2. ~~**Year-End Phase 1**~~ — 完了。年度末の振り返り演出。
 3. ~~**Active Project Visibility Phase 1**~~ — 完了。参画中社員の案件状態を社員タブから可視化。
 4. ~~**Employee UI Phase 1**~~ — 完了。社員タブを「社員一覧・現在状態 → 今やるべき社員アクション → 参画中案件（Active Project Visibility Phase 1を統合） → 成長・SkillSheet・研修」の4段階へ再設計。stale「翌月参画予定」の社員タブ側の残差も解消（会計側の「空の○月開始結果」はPOST-HOME-FREEZE Small-UX-Fixで既に解消済み）。
-5. **Sales UI Phase 1** — 営業タブの情報設計（HOMEへの先取り禁止、実装場所は営業タブ側）。
+5. ~~**Sales UI Phase 1**~~ — 完了。営業タブを「現在の営業・採用状況 → 今やるべき営業アクション → 採用・候補者進捗 → 案件・参画/継続状況」の4段階へ再設計。
 6. **Accounting UI Phase 1** — 会計タブの情報設計（HOMEへの先取り禁止、実装場所は会計タブ側）。
 7. **April→March human replay** — 上記反映後の年間通しプレイ監査。
 
@@ -67,8 +67,8 @@ Issue番号順に機械的に実装しない。実プレイ結果を根拠に、
 | P0 | #167 Late Game Phase 1 | 実績: 完了 | 8月〜2月の「創業エンジニアのフォロー判断」— 詳細はUpdate history |
 | P0 | Year-End Phase 1 | 実績: 完了（本エントリ） | 年度末の振り返り演出（会計タブ「第1期終了」強化） — 詳細はUpdate history |
 | P0 | ~~Active Project Visibility Phase 1~~ | 実績: 完了 | 参画中社員の案件状態（engineerName/projectName/deliveryPressure/budgetHealth）を社員タブから可視化 — 詳細はUpdate history |
-| P0 | ~~Employee UI Phase 1~~ | 実績: 完了（本エントリ） | 社員タブを4段階の情報階層へ再設計、stale「翌月参画予定」の社員タブ側を解消 — 詳細はUpdate history |
-| P0 | Sales UI Phase 1 | 目安未確定 / 分割検討 | 営業タブの情報設計を整える（HOMEへの先取りは禁止、実装場所は営業タブ側） |
+| P0 | ~~Employee UI Phase 1~~ | 実績: 完了 | 社員タブを4段階の情報階層へ再設計、stale「翌月参画予定」の社員タブ側を解消 — 詳細はUpdate history |
+| P0 | ~~Sales UI Phase 1~~ | 実績: 完了（本エントリ） | 営業タブを「現在の営業・採用状況 → 今やるべき営業アクション → 採用・候補者進捗 → 案件・参画/継続状況」の4段階へ再設計 — 詳細はUpdate history |
 | P0 | Accounting UI Phase 1 | 目安未確定 / 分割検討 | 会計タブの情報設計を整える（HOMEへの先取りは禁止、実装場所は会計タブ側） |
 | P0 | 4月→翌3月 First Fun Year通しプレイ（human replay） | 1〜2h | 上記反映後、年間完走可否・退屈な期間・重大問題を実プレイで再特定 |
 | P0 | 年間進行Blocker修正 | 1件0.5〜3h | 月送り不能、二重処理、セーブ破壊等を除去 |
@@ -199,6 +199,19 @@ Result Reportは履歴・証拠であり、この文書の代わりにはしな�
 - `docs/reports/` — 実施結果と証拠。計画変更が必要なら結果報告だけで終わらせず、この文書も更新する。
 
 ## Update history
+
+### 2026-09-07（Sales UI Phase 1完了 / governing plan sync）
+
+- **Sales UI Phase 1を実装。** 営業タブ（`_buildSalesTab`、`lib/ui/public_demo/public_demo_01_placeholder_screen.dart`）を、月ゲートで中身が変わるだけの平坦なカードリスト（`_salesTabItems`）から、Employee UI Phase 1と同型の4段階の情報階層を持つセクション構成へ再設計した: 1) 現在の営業・採用状況（`_salesOverviewSection`、新規）、2) 今やるべき営業アクション（`_salesNextActionCards` — 求人媒体カード、5月）、3) 採用・候補者進捗（`_salesApplicantProgressCards` — 応募者ファネル、5月）、4) 案件・参画/継続状況（`_salesProjectStatusCards` — 案件決定カード6月＋7月結果ナラティブ）。
+  - Section 2〜4は既存のカード・key・月ゲート・eligibility判定を1つも変更せず、そのまま3つのメソッドへ分割移動しただけ。新しいゲームルールは追加していない。全セクションが空の場合にのみ、既存の真実の空状態（PUBLIC-DEMO-HOME-UI-3C由来、Issue #173／PR #174 Codexレビュー分を含め無変更）を表示する条件は、旧`_salesTabItems.isEmpty`と完全に同一。
+  - Section 1（新規）は、`PublicDemoState.salesRemaining`/`salesCapacity`、`workflow.applicants`（`hasJoined`でフィルタ）、`workflow.assignments`（`nextOrderStatus`でフィルタ）という既存authoritativeフィールドのみから、営業残・候補者数・案件数（うち検討中件数）を常時表示する。待機/参画中の社員頭数はHOME KPI・Employee rosterと重複するため意図的に表示していない。
+  - **事前調査で発見した既存の事実**: `PublicDemoWorkflowState.initial()`は4月時点から既定の候補者プール（`publicDemoMayApplicants`、2名）を保持しているが、応募者ファネル自体（Section 3）は引き続き5月より前には描画されない。Section 1の候補者カウントをこの理由で`s.month < 5`のとき常に0を返すようガードし、画面上どこからも確認・操作できない数字を表示しないようにした（表示上の判断であり、応募者ファネルの既存月ゲートと完全に一致させただけ）。
+  - **将来候補として記録（未着手）**: `canUseRecruitmentMediaInMonth`はドメイン上4〜8月の求人媒体利用を既に許可しているが、営業タブのUIは旧実装から変更せず5月のみ求人媒体カードを描画する。この既存eligibilityとUI描画月の不一致は、Sales gameplay authority/eligibility変更禁止の指示を厳守するため本Phaseでは意図的に手を付けず、Phase 2以降の候補として記録した（詳細: `docs/reports/SES_NON-HOME-UI_SALES_Phase1_Implementation_Result.md`）。
+  - HOME（`lib/presentation/home/`配下）、Employee UI Phase 1（`_buildEmployeesTab`及び4つの`_employee*Section`）、Domain（`lib/game/public_demo/`配下）、Save/schema、Finance/Balance、Month transition、Sales/Employee gameplay authority、Year-Endは無変更。
+  - 詳細・変更ファイル・テスト結果は`docs/reports/SES_NON-HOME-UI_SALES_Phase1_Implementation_Result.md`を参照。
+- **次のproduction priorityを以下の順に更新する**（本文書冒頭「Current execution order」および直後のPrioritized backlog tableも同時に更新済み）:
+  1. Accounting UI Phase 1
+  2. April→March human replay
 
 ### 2026-09-06（Employee UI Phase 1完了 / governing plan sync）
 

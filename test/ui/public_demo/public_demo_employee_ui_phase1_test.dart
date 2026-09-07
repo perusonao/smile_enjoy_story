@@ -257,6 +257,13 @@ void main() {
         final aggregate = PublicDemoAggregate.initial();
         await pumpDemoWith(tester, aggregate);
 
+        // SES HUMAN-REPLAY PRE-FIX P1: the filter-chip tap-target fix
+        // (48dp minimum) grew Section 1's height enough that this button
+        // is no longer guaranteed to sit inside the default unscrolled
+        // test viewport — scroll it into view first, same as every other
+        // tap-driven test in this suite already does.
+        await tester.ensureVisible(find.text('SkillSheet確認'));
+        await tester.pumpAndSettle();
         await tester.tap(find.text('SkillSheet確認'));
         await tester.pumpAndSettle();
         expect(

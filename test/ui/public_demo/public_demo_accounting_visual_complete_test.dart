@@ -1,6 +1,6 @@
 // SES NON-HOME-UI ACCOUNTING Visual Complete: pins the new 会計タブ Visual
-// structure — the 現在の現金 hero (label + large cash figure + 前月比 delta +
-// financial-status badge), 今月の売上/今月の支出 stat tiles, the forecast
+// structure — the 現在の現金 hero (label + large cash figure + 前回決算の収支
+// line + financial-status badge), 今月の売上/今月の支出 stat tiles, the forecast
 // section's alert card + per-month bars + 入金予定 tile, and icon-led section
 // headers — while leaving every pre-existing information-hierarchy
 // assertion (`public_demo_accounting_ui_phase1_test.dart`,
@@ -23,6 +23,7 @@ import 'package:smile_enjoy_story/game/persistence/public_demo_save_service.dart
 import 'package:smile_enjoy_story/game/public_demo/public_demo_aggregate.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_cash_forecast.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_cash_status_presentation.dart';
+import 'package:smile_enjoy_story/game/public_demo/public_demo_recruitment_medium.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_state.dart';
 import 'package:smile_enjoy_story/ui/public_demo/public_demo_01_placeholder_screen.dart';
 import 'package:smile_enjoy_story/ui/public_demo/public_demo_accounting_visual.dart';
@@ -83,7 +84,7 @@ PublicDemoAggregate shortageAtMonth9() =>
 void main() {
   group('現在の現金 hero (Section 1)', () {
     testWidgets('April (before the first close): hero shows cash + 健全 '
-        'badge, no 前月比 delta and no 今月の売上/支出 tiles yet', (tester) async {
+        'badge, no 前回決算の収支 line and no 今月の売上/支出 tiles yet', (tester) async {
       final game = publicDemoAggregateAtMonth(4);
       await pumpAccountingTab(tester, game);
       final state = currentState(tester);
@@ -98,7 +99,7 @@ void main() {
         ),
         findsOneWidget,
       );
-      expect(find.textContaining('前月比'), findsNothing);
+      expect(find.textContaining('前回決算の収支'), findsNothing);
       // Section 2's PublicDemoFinanceSummarySection still legitimately says
       // '今月の支出予定', and Section 3 always renders its own 入金予定 stat
       // tile even in April — only the Section 1 売上/支出 tiles are under
@@ -114,8 +115,8 @@ void main() {
     });
 
     testWidgets(
-      'May (after the first close): 前月比 delta + 今月の売上/支出 tiles all match '
-      'PublicDemoMonthlyCashFlow exactly',
+      'May (after the first close): 前回決算の収支 line + 今月の売上/支出 tiles all '
+      'match PublicDemoMonthlyCashFlow exactly',
       (tester) async {
         final game = publicDemoAggregateAtMonth(5);
         await pumpAccountingTab(tester, game);
@@ -126,7 +127,7 @@ void main() {
         final delta = flow!.netCashMovement;
         expect(
           find.textContaining(
-            '前月比 ${delta >= 0 ? '+' : '-'}${formatYen(delta.abs())}',
+            '前回決算の収支 ${delta >= 0 ? '+' : '-'}${formatYen(delta.abs())}',
           ),
           findsOneWidget,
         );
@@ -160,6 +161,71 @@ void main() {
       },
     );
   });
+
+  group(
+    '前回決算の収支 stays pinned to the prior close (SES HUMAN-REPLAY PRE-FIX '
+    'P1): post-close training/recruitment-media spend must not be mistaken '
+    'for a re-computed comparison',
+    () {
+      testWidgets(
+        'training + recruitment-media spend after May\'s close changes only '
+        '現在の現預金 — 前回決算の収支 keeps showing April\'s already-closed figure',
+        (tester) async {
+          final closed = publicDemoAggregateAtMonth(5);
+          final flow = closed.state.latestMonthlyCashFlow;
+          expect(flow, isNotNull, reason: 'fixture sanity: May has a close');
+          final engineerId = closed.workflow.engineers.first.id;
+
+          final afterTraining = closed.selectInternalTraining(engineerId);
+          expect(
+            afterTraining.state.cash,
+            lessThan(closed.state.cash),
+            reason: 'fixture sanity: training charges cash immediately, '
+                'independent of any monthly close',
+          );
+
+          final recruited = afterTraining.recruit(
+            PublicDemoRecruitmentMedium.engineer,
+          );
+          final spent = recruited.aggregate;
+          expect(
+            spent,
+            isNotNull,
+            reason: 'fixture sanity: recruitment media purchase succeeds',
+          );
+          expect(
+            spent!.state.cash,
+            lessThan(afterTraining.state.cash),
+            reason: 'fixture sanity: recruitment media also charges cash '
+                'immediately',
+          );
+          expect(
+            spent.state.latestMonthlyCashFlow!.month,
+            flow!.month,
+            reason: 'post-close spending must not create or replace a '
+                'monthly close record',
+          );
+          expect(
+            spent.state.latestMonthlyCashFlow!.netCashMovement,
+            flow.netCashMovement,
+            reason: '前回決算の収支 must stay the already-closed month\'s own '
+                'figure, unaffected by spending made after that close',
+          );
+
+          await pumpAccountingTab(tester, spent);
+          final delta = flow.netCashMovement;
+          expect(
+            find.textContaining(
+              '前回決算の収支 ${delta >= 0 ? '+' : '-'}${formatYen(delta.abs())}',
+            ),
+            findsOneWidget,
+          );
+          expect(find.text(formatYen(spent.state.cash)), findsOneWidget);
+          expect(tester.takeException(), isNull);
+        },
+      );
+    },
+  );
 
   group('将来の資金予測・リスク (Section 3): bars, alert tone, and 入金予定', () {
     testWidgets(

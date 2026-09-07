@@ -213,18 +213,17 @@ void main() {
       );
     });
 
-    test('engineer keeps the established experienced 高橋・田中 pool', () {
+    test('engineer medium never generates an inexperienced candidate and is '
+        'distinct from the legacy fixture pool (CORE-GAMEPLAY Phase 2: seeded '
+        'recruitment replaced the fixed 高橋・田中 template cycling — see '
+        'public_demo_seeded_recruitment_generator_test.dart for the seeded-'
+        'generation-specific coverage)', () {
       final result = runFrom(
-        PublicDemoState.aprilStart(),
+        PublicDemoState.aprilStart(runSeed: 4242),
         PublicDemoRecruitmentMedium.engineer,
       );
 
-      expect(
-        result.generatedApplicants.map((applicant) => applicant.name),
-        unorderedEquals(
-          publicDemoMayApplicants.map((applicant) => applicant.name),
-        ),
-      );
+      expect(result.generatedApplicants, hasLength(2));
       expect(
         result.generatedApplicants,
         everyElement(
@@ -235,37 +234,45 @@ void main() {
           ),
         ),
       );
+      expect(
+        result.generatedApplicants.map((applicant) => applicant.name),
+        isNot(
+          unorderedEquals(
+            publicDemoMayApplicants.map((applicant) => applicant.name),
+          ),
+        ),
+      );
     });
 
-    test(
-      'free media deterministically alternates experienced and inexperienced candidates',
-      () {
-        final inexperienced = runFrom(
-          PublicDemoState.aprilStart(),
-          PublicDemoRecruitmentMedium.free,
-        );
-        final experienced = runFrom(
-          PublicDemoState.aprilStart().copyWith(month: 5),
-          PublicDemoRecruitmentMedium.free,
-        );
+    test('free media is seeded and reproducible for a fixed runSeed (CORE-'
+        'GAMEPLAY Phase 2: the old month-parity template alternation was '
+        'replaced by a seeded roll — see '
+        'public_demo_seeded_recruitment_generator_test.dart for full seed-'
+        'variation/reachability coverage)', () {
+      final first = runFrom(
+        PublicDemoState.aprilStart(runSeed: 777),
+        PublicDemoRecruitmentMedium.free,
+      );
+      final repeated = runFrom(
+        PublicDemoState.aprilStart(runSeed: 777),
+        PublicDemoRecruitmentMedium.free,
+      );
 
-        final junior = inexperienced.generatedApplicants.single;
-        expect(junior.isInexperienced, isTrue);
-        expect(junior.experienceMonths, 0);
-        expect(junior.requestedMonthlySalary, 220000);
-        expect(junior.salesSkillFit, inInclusiveRange(20, 30));
-        expect(junior.interviewScore, greaterThanOrEqualTo(60));
-        expect(junior.acceptanceScore, inInclusiveRange(70, 80));
-        expect(experienced.generatedApplicants.single.isInexperienced, isFalse);
+      expect(first.generatedApplicants, hasLength(1));
+      expect(
+        repeated.generatedApplicants.single.toJson(),
+        first.generatedApplicants.single.toJson(),
+      );
 
-        final repeated = runFrom(
-          PublicDemoState.aprilStart(),
-          PublicDemoRecruitmentMedium.free,
-        );
-        expect(repeated.generatedApplicants.single.id, junior.id);
-        expect(repeated.generatedApplicants.single.name, junior.name);
-      },
-    );
+      final differentSeed = runFrom(
+        PublicDemoState.aprilStart(runSeed: 999999),
+        PublicDemoRecruitmentMedium.free,
+      );
+      expect(
+        differentSeed.generatedApplicants.single.toJson(),
+        isNot(first.generatedApplicants.single.toJson()),
+      );
+    });
 
     test('preserves bonus, training, growth state and JSON compatibility', () {
       final before = PublicDemoState.aprilStart()

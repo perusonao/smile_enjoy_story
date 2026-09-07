@@ -1816,6 +1816,27 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
     PublicDemoSalesStage.clientInterviewFailed => 4,
     PublicDemoSalesStage.ordered => 5,
   };
+
+  /// SES EMPLOYEE-UI-PHASE-1: the 社員タブ's own version of the same
+  /// ordered-vs-assigned truthful-status fix [_officeStageStatusFor]
+  /// already applies to HOME's Office Stage (POST-HOME-FREEZE
+  /// Small-UX-Fix) — an `ordered` engineer already counted into
+  /// [_currentlyAssignedEngineerIds] has actually joined their project, so
+  /// [engineerStatus]'s '翌月参画予定' would contradict the truthful
+  /// '参画中' the APV card (`activeProjectStatusCard`) shows for the same
+  /// engineer. Deliberately a separate method from
+  /// [_officeStageStatusFor] — not a shared refactor of it — so HOME's own
+  /// code path stays byte-for-byte untouched by this phase (HOME Freeze);
+  /// both read the exact same authoritative facts (`engineer.stage`,
+  /// [workflow.assignedEngineerIds]) and so can never disagree.
+  String _currentEmployeeStatusLabel(PublicDemoEngineerSales engineer) {
+    if (engineer.stage == PublicDemoSalesStage.ordered &&
+        _currentlyAssignedEngineerIds.contains(engineer.id)) {
+      return '参画中';
+    }
+    return engineerStatus(engineer);
+  }
+
   String applicantStatus(PublicDemoApplicant a) => switch (a.stage) {
     PublicDemoApplicantStage.applied => '応募',
     PublicDemoApplicantStage.resumeReviewed => '書類確認済',
@@ -2712,18 +2733,18 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  e.name,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 16,
-                  ),
-                ),
-                badge(engineerStatus(e)),
-              ],
+            // SES EMPLOYEE-UI-PHASE-1: the name-plus-status badge header
+            // moved to Section 1 (`_employeeRosterSection`), which now
+            // shows every employee's truthful current status in one place
+            // — this card kept its own copy of the same badge would be the
+            // exact "重複情報" the phase's own scope calls out to reduce.
+            // This card (Section 2, 今やるべき社員アクション) states the
+            // employee's name once and focuses on the action itself; the
+            // sales-stage step is still visible via
+            // [PublicDemoSalesProgress] below.
+            Text(
+              e.name,
+              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
             ),
             const SizedBox(height: 4),
             Text(e.summary),
@@ -3118,6 +3139,16 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
   /// the single shared list — only which tab constructs them changed; no
   /// employee authority or state is duplicated (each renders from exactly
   /// the same [workflow]/[s] read this screen has always held).
+  /// SES EMPLOYEE-UI-PHASE-1: the 社員タブ is re-organized into four
+  /// information-hierarchy sections (roster/current-state → next actions →
+  /// active projects → growth/SkillSheet/training) instead of one flat
+  /// stack of cards. Every card, key, month gate, and eligibility check
+  /// below is moved verbatim from the prior single-`Column` build — see
+  /// each section method's own doc for exactly which prior block it
+  /// carries. No domain rule, save field, or command changes; this is a
+  /// pure layout/grouping pass plus one new read-only overview
+  /// (`_employeeRosterSection`) built from the same authoritative fields
+  /// HOME's own KPI already reads.
   Widget _buildEmployeesTab(BuildContext c) => ListView(
     key: const PageStorageKey('public-demo-employees-tab'),
     padding: const EdgeInsets.all(16),
@@ -3125,86 +3156,206 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
       Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _growthResultsSection(),
-          if (s.month == 4)
-            for (var i = 0; i < workflow.engineers.length; i++) ec(i),
-          if (s.month == 6)
-            for (final a in workflow.applicants.where(
-              (a) => s.joinedApplicantIds.contains(a.id) && a.hasJoined,
-            ))
-              employeeConditionCard(a),
-          if (s.month == 6)
-            for (var i = 0; i < workflow.engineers.length; i++)
-              if (s.joinedApplicantIds.contains(workflow.engineers[i].id) &&
-                  workflow.engineers[i].stage != PublicDemoSalesStage.ordered &&
-                  !workflow.assignments.any(
-                    (assignment) =>
-                        assignment.engineerId == workflow.engineers[i].id,
-                  ))
-                ec(i),
-          // RECOVERY-LOOP-1: from July (7) through February (14) — the
-          // same window `PublicDemoRecoveryEligibility` enforces — every
-          // economically-waiting engineer's card is rendered here,
-          // mirroring month 6's own filter (`!assignedEngineerIds
-          // .contains(...)`) so the existing sales-flow buttons (`ec(i)`'s
-          // own `waiting` → `ordered` branches, plus the Recovery button
-          // once `ordered`) are reachable at all past June.
-          // `showTrainingCard: false` because the `s.month >= 5` block
-          // below already renders every engineer runtime's training card
-          // unconditionally — rendering it a second time here would
-          // duplicate that same card's key.
-          if (s.month >= 7 && s.month <= 14)
-            for (var i = 0; i < workflow.engineers.length; i++)
-              if (!workflow
-                  .assignedEngineerIds(month: s.month)
-                  .contains(workflow.engineers[i].id))
-                ec(i, showTrainingCard: false),
-          if (s.month >= 7)
-            for (final a in workflow.applicants.where(
-              (a) => s.joinedApplicantIds.contains(a.id) && a.hasJoined,
-            ))
-              employeeConditionCard(a),
-          // SES ACTIVE-PROJECT-VISIBILITY Phase 1: read-only project status
-          // for every currently-assigned engineer (`assignedEngineerIds`
-          // already differs by month; see that getter's own doc for why).
-          // Unconditional on month so an engineer who is still assigned in
-          // August-March keeps a card here even in the window where the
-          // RECOVERY-LOOP-1 loop above stops rendering `ec(i)` for them.
-          for (final a in workflow.assignments)
-            if (workflow.assignedEngineerIds(
-              month: s.month,
-            ).contains(a.engineerId))
-              activeProjectStatusCard(a),
-          // Issue #167 FIRST-FUN-YEAR-LATE-GAME-1 Phase 1: the only card a
-          // currently-assigned founding engineer gets during August-
-          // February — the RECOVERY-LOOP-1 loop above only renders `ec(i)`
-          // for economically-waiting engineers in this window, so a still-
-          // assigned founding engineer would otherwise have no card at all
-          // here (HOME's recommended-action slot binds this exact same
-          // `founderFollowUp(e)` handler; see `_addFounderFollowUpCandidate`
-          // — no candidate is ever emitted for a button that is not also
-          // rendered here).
-          if (s.month >= publicDemoFounderFollowUpWindowStart &&
-              s.month <= publicDemoFounderFollowUpWindowEnd)
-            for (final e in workflow.engineers)
-              if (PublicDemoFounderFollowUp.isEligible(
-                engineer: e,
-                month: s.month,
-                assignedEngineerIds: workflow.assignedEngineerIds(
-                  month: s.month,
-                ),
+          _employeeRosterSection(),
+          _employeeNextActionsSection(),
+          _employeeActiveProjectsSection(),
+          _employeeGrowthSection(),
+        ],
+      ),
+    ],
+  );
+
+  /// Section 1 — 社員一覧 / 現在状態: a lightweight, read-only overview of
+  /// every current employee (`workflow.engineers` — founding engineers
+  /// plus every joined applicant, the same roster [_officeStageDisplay]'s
+  /// own doc already establishes as "the company's employees") and their
+  /// truthful current status ([_currentEmployeeStatusLabel]), plus the
+  /// same 待機/参画中 counts HOME's KPI already shows
+  /// ([PublicDemoState.engineersWaiting]/[engineersAssigned]) — no new
+  /// aggregate is computed. This did not exist before Phase 1: previously
+  /// the only place to see "who works here and what are they doing right
+  /// now" was to scan every conditionally-rendered action card below.
+  /// Deliberately not a `Card` (unlike the action/status cards below it)
+  /// to keep this overview visually light rather than one more large box.
+  Widget _employeeRosterSection() {
+    final engineers = workflow.engineers;
+    if (engineers.isEmpty) return const SizedBox.shrink();
+    return Padding(
+      key: const Key('public-demo-employee-roster-section'),
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _sectionHeader('社員一覧・現在状態'),
+          Text(
+            '待機 ${s.engineersWaiting}・参画中 ${s.engineersAssigned}'
+            '・合計 ${engineers.length}',
+            style: const TextStyle(fontSize: 12),
+          ),
+          const SizedBox(height: 8),
+          for (final e in engineers)
+            Padding(
+              key: Key('public-demo-employee-roster-row-${e.id}'),
+              padding: const EdgeInsets.symmetric(vertical: 4),
+              child: Wrap(
+                crossAxisAlignment: WrapCrossAlignment.center,
+                spacing: 8,
+                runSpacing: 4,
+                children: [
+                  Text(
+                    e.name,
+                    style: const TextStyle(fontWeight: FontWeight.w600),
+                  ),
+                  badge(_currentEmployeeStatusLabel(e)),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  /// Section 2 — 今やるべき社員アクション: every card that carries (or may
+  /// carry, depending on state) a next action for the player — `ec(i)`'s
+  /// three prior render sites (April, June's still-selling joined
+  /// applicants, and RECOVERY-LOOP-1's July-February window),
+  /// `employeeConditionCard` (June onward, the raise flow), and
+  /// `founderFollowUpCard` (Issue #167's August-February window) — moved
+  /// verbatim, in the same order, under the same predicates as the prior
+  /// single `Column`. The header itself is suppressed when no card is
+  /// eligible this month, matching the existing "no empty heading"
+  /// precedent (POST-HOME-FREEZE Small-UX-Fix).
+  Widget _employeeNextActionsSection() {
+    final cards = <Widget>[
+      if (s.month == 4)
+        for (var i = 0; i < workflow.engineers.length; i++) ec(i),
+      if (s.month == 6)
+        for (final a in workflow.applicants.where(
+          (a) => s.joinedApplicantIds.contains(a.id) && a.hasJoined,
+        ))
+          employeeConditionCard(a),
+      if (s.month == 6)
+        for (var i = 0; i < workflow.engineers.length; i++)
+          if (s.joinedApplicantIds.contains(workflow.engineers[i].id) &&
+              workflow.engineers[i].stage != PublicDemoSalesStage.ordered &&
+              !workflow.assignments.any(
+                (assignment) =>
+                    assignment.engineerId == workflow.engineers[i].id,
               ))
-                founderFollowUpCard(e),
-          // Issue #168 Finding B: May used to be the one gap in the
-          // training loop — April's `ec(i)` embeds its own training card
-          // (`showTrainingCard` defaults true) and this unconditional block
-          // covered June onward, but nothing rendered a training card in
-          // May at all. That silently cost every founding engineer one
-          // month of `PublicDemoGrowthEngine`'s `internalTraining` growth
-          // on the way to `fieldSalesCapabilityRequirement`, with no rule
-          // change needed to fix it — `PublicDemoInternalTrainingTransaction`
-          // was never month-gated to begin with (see its own doc). Starting
-          // the unconditional block in May instead of June closes that gap.
+            ec(i),
+      // RECOVERY-LOOP-1: from July (7) through February (14) — the same
+      // window `PublicDemoRecoveryEligibility` enforces — every
+      // economically-waiting engineer's card is rendered here, mirroring
+      // month 6's own filter (`!assignedEngineerIds.contains(...)`) so the
+      // existing sales-flow buttons (`ec(i)`'s own `waiting` → `ordered`
+      // branches, plus the Recovery button once `ordered`) are reachable
+      // at all past June. `showTrainingCard: false` because
+      // `_employeeGrowthSection`'s `s.month >= 5` block already renders
+      // every engineer runtime's training card unconditionally —
+      // rendering it a second time here would duplicate that same card's
+      // key.
+      if (s.month >= 7 && s.month <= 14)
+        for (var i = 0; i < workflow.engineers.length; i++)
+          if (!workflow
+              .assignedEngineerIds(month: s.month)
+              .contains(workflow.engineers[i].id))
+            ec(i, showTrainingCard: false),
+      if (s.month >= 7)
+        for (final a in workflow.applicants.where(
+          (a) => s.joinedApplicantIds.contains(a.id) && a.hasJoined,
+        ))
+          employeeConditionCard(a),
+      // Issue #167 FIRST-FUN-YEAR-LATE-GAME-1 Phase 1: the only card a
+      // currently-assigned founding engineer gets during August-February —
+      // the RECOVERY-LOOP-1 loop above only renders `ec(i)` for
+      // economically-waiting engineers in this window, so a still-assigned
+      // founding engineer would otherwise have no card at all here (HOME's
+      // recommended-action slot binds this exact same `founderFollowUp(e)`
+      // handler; see `_addFounderFollowUpCandidate` — no candidate is ever
+      // emitted for a button that is not also rendered here).
+      if (s.month >= publicDemoFounderFollowUpWindowStart &&
+          s.month <= publicDemoFounderFollowUpWindowEnd)
+        for (final e in workflow.engineers)
+          if (PublicDemoFounderFollowUp.isEligible(
+            engineer: e,
+            month: s.month,
+            assignedEngineerIds: workflow.assignedEngineerIds(
+              month: s.month,
+            ),
+          ))
+            founderFollowUpCard(e),
+    ];
+    if (cards.isEmpty) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [_sectionHeader('今やるべき社員アクション'), ...cards],
+      ),
+    );
+  }
+
+  /// Section 3 — 参画中案件: SES ACTIVE-PROJECT-VISIBILITY Phase 1's own
+  /// render loop, moved verbatim (same filter, same card, same key) — read-
+  /// only project status for every currently-assigned engineer
+  /// (`assignedEngineerIds` already differs by month; see that getter's
+  /// own doc for why). Unconditional on month so an engineer who is still
+  /// assigned in August-March keeps a card here even in the window where
+  /// Section 2's RECOVERY-LOOP-1 loop stops rendering `ec(i)` for them.
+  Widget _employeeActiveProjectsSection() {
+    final cards = <Widget>[
+      for (final a in workflow.assignments)
+        if (workflow.assignedEngineerIds(
+          month: s.month,
+        ).contains(a.engineerId))
+          activeProjectStatusCard(a),
+    ];
+    if (cards.isEmpty) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [_sectionHeader('参画中案件'), ...cards],
+      ),
+    );
+  }
+
+  /// Section 4 — 成長・SkillSheet・研修: `_growthResultsSection` (今月の成長,
+  /// its own internal sub-heading unchanged) and the internal-training
+  /// loop, moved verbatim. Issue #168 Finding B: May used to be the one gap
+  /// in the training loop — April's `ec(i)` embeds its own training card
+  /// (`showTrainingCard` defaults true) and this unconditional block
+  /// covered June onward, but nothing rendered a training card in May at
+  /// all. That silently cost every founding engineer one month of
+  /// `PublicDemoGrowthEngine`'s `internalTraining` growth on the way to
+  /// `fieldSalesCapabilityRequirement`, with no rule change needed to fix
+  /// it — `PublicDemoInternalTrainingTransaction` was never month-gated to
+  /// begin with (see its own doc). Starting the unconditional block in May
+  /// instead of June closes that gap. SkillSheet has no standalone card in
+  /// this tab — its existing entry point (SkillSheet確認 inside `ec(i)`) is
+  /// already reachable from Section 2, unchanged.
+  ///
+  /// `hasVisibleTrainingCard` mirrors `internalTrainingCard`'s own
+  /// `assigned` guard so the header is suppressed on a month where every
+  /// runtime would render as `SizedBox.shrink()` (currently assigned) —
+  /// matching the existing "no empty heading" precedent (POST-HOME-FREEZE
+  /// Small-UX-Fix) rather than introducing a new rule about who gets a
+  /// training card.
+  Widget _employeeGrowthSection() {
+    final hasGrowth = s.latestGrowthResults.isNotEmpty;
+    final hasVisibleTrainingCard =
+        s.month >= 5 &&
+        s.engineerRuntimes.any(
+          (r) => !_currentlyAssignedEngineerIds.contains(r.engineerId),
+        );
+    if (!hasGrowth && !hasVisibleTrainingCard) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _sectionHeader('成長・SkillSheet・研修'),
+          if (hasGrowth) _growthResultsSection(),
           if (s.month >= 5)
             for (final runtime in s.engineerRuntimes)
               internalTrainingCard(
@@ -3213,7 +3364,15 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
               ),
         ],
       ),
-    ],
+    );
+  }
+
+  Widget _sectionHeader(String title) => Padding(
+    padding: const EdgeInsets.only(bottom: 8),
+    child: Text(
+      title,
+      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+    ),
   );
 
   /// 営業 (index 2) — the existing sales/project/recruiting pipeline: the

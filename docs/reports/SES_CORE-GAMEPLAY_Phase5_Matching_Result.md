@@ -16,9 +16,8 @@ Status: **Implementation complete, full test suite green (1905/1905)**
   before any new work.
 - HEAD after this work: `04e5744a89d9e910bad379c86f63a7ac85c00617`
   ("CORE-GAMEPLAY Phase 5: Matching Decision Gameplay") — the report/PR-URL
-  fill-in commit below does not change any production/test file.
-- PR: **filled in below after `create_pull_request`** (this line is
-  updated by a follow-up commit once the PR exists).
+  fill-in commits do not change any production/test file.
+- PR: https://github.com/perusonao/smile_enjoy_story/pull/212
 
 ## Read first (per Issue #205)
 

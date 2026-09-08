@@ -5,6 +5,7 @@ import 'public_demo_fiscal_close_id.dart';
 import 'public_demo_founder_follow_up.dart';
 import 'public_demo_interview.dart';
 import 'public_demo_join.dart';
+import 'public_demo_matching_proposal.dart';
 import 'public_demo_raise_transaction.dart';
 import 'public_demo_recruitment.dart';
 import 'public_demo_sales.dart';
@@ -47,6 +48,7 @@ class PublicDemoWorkflowState {
     engineers: List.unmodifiable(engineers),
     assignments: const [],
     interviewSessions: const [],
+    matchingProposals: const {},
   );
 
   const PublicDemoWorkflowState._({
@@ -54,6 +56,7 @@ class PublicDemoWorkflowState {
     required this.engineers,
     required this.assignments,
     required this.interviewSessions,
+    required this.matchingProposals,
   });
 
   /// Public Demo 0.1's starting workflow: the founding engineer team
@@ -97,6 +100,15 @@ class PublicDemoWorkflowState {
   /// [fromJson]'s backward-compatible default below.
   final List<RecruitmentInterviewSession> interviewSessions;
 
+  /// CORE-GAMEPLAY Phase 5 (Matching): the player's current proposal
+  /// decision per engineer, keyed by [PublicDemoEngineerSales.id] — see
+  /// [PublicDemoMatchingProposal]'s own doc for exactly what this does and
+  /// does not mean for the existing sales pipeline. At most one entry per
+  /// engineer; a later [proposeMatching] call for the same engineer simply
+  /// overwrites the earlier one (the player changed their mind about which
+  /// project to propose this engineer for).
+  final Map<String, PublicDemoMatchingProposal> matchingProposals;
+
   /// Complete workflow persistence representation.  This is intentionally
   /// separate from the production constructor: an assignment roster is only
   /// restored from a validated aggregate save, never supplied by gameplay
@@ -109,6 +121,9 @@ class PublicDemoWorkflowState {
         .toList(),
     'interviewSessions': interviewSessions
         .map((session) => session.toJson())
+        .toList(),
+    'matchingProposals': matchingProposals.values
+        .map((proposal) => proposal.toJson())
         .toList(),
   };
 
@@ -138,6 +153,16 @@ class PublicDemoWorkflowState {
       throw const FormatException('Invalid workflow interviewSessions');
     }
 
+    // Additive field (CORE-GAMEPLAY Phase 5): a save written before this
+    // change has no 'matchingProposals' key at all. Absent means "no
+    // matching proposal was ever decided" — an empty map, not a rejected/
+    // invalid save — the same backward-compatible convention
+    // 'interviewSessions' above already established for Phase 3.
+    final matchingProposalsRaw = json['matchingProposals'];
+    if (matchingProposalsRaw != null && matchingProposalsRaw is! List) {
+      throw const FormatException('Invalid workflow matchingProposals');
+    }
+
     return PublicDemoWorkflowState._(
       applicants: List.unmodifiable(
         decodeList(requiredList('applicants'), PublicDemoApplicant.fromJson),
@@ -156,6 +181,16 @@ class PublicDemoWorkflowState {
                 RecruitmentInterviewSession.fromJson,
               ),
       ),
+      matchingProposals: Map.unmodifiable({
+        for (final proposal
+            in matchingProposalsRaw == null
+                ? const <PublicDemoMatchingProposal>[]
+                : decodeList(
+                    matchingProposalsRaw,
+                    PublicDemoMatchingProposal.fromJson,
+                  ))
+          proposal.engineerId: proposal,
+      }),
     );
   }
 
@@ -194,12 +229,16 @@ class PublicDemoWorkflowState {
     List<PublicDemoEngineerSales>? engineers,
     List<PublicDemoAssignment>? assignments,
     List<RecruitmentInterviewSession>? interviewSessions,
+    Map<String, PublicDemoMatchingProposal>? matchingProposals,
   }) => PublicDemoWorkflowState._(
     applicants: List.unmodifiable(applicants ?? this.applicants),
     engineers: List.unmodifiable(engineers ?? this.engineers),
     assignments: List.unmodifiable(assignments ?? this.assignments),
     interviewSessions: List.unmodifiable(
       interviewSessions ?? this.interviewSessions,
+    ),
+    matchingProposals: Map.unmodifiable(
+      matchingProposals ?? this.matchingProposals,
     ),
   );
 
@@ -641,6 +680,38 @@ class PublicDemoWorkflowState {
       actualCapability: actualCapability,
     ),
   );
+
+  /// CORE-GAMEPLAY Phase 5 (Matching): records the player's "提案する"
+  /// decision for [engineerId] × [projectId] — see [matchingProposals]'/
+  /// [PublicDemoMatchingProposal]'s own docs for exactly what this is (and
+  /// is not). Purely additive metadata: does not read or change
+  /// [engineerId]'s [PublicDemoEngineerSales.stage], and is not gated on
+  /// one — a player may look up Fit and propose a project for an engineer
+  /// at any sales stage, independent of the separate, unmodified
+  /// `beginSelling`/`introduceProject`/interview pipeline above. A no-op
+  /// for an unknown [engineerId] (mirrors [_withApplicant]/[_withEngineer]'s
+  /// own "already have the record in hand" convention) so a caller can
+  /// never mint a proposal for an engineer that does not exist in this
+  /// workflow.
+  PublicDemoWorkflowState proposeMatching({
+    required String engineerId,
+    required String projectId,
+    required int month,
+  }) {
+    if (engineers.every((engineer) => engineer.id != engineerId)) {
+      return this;
+    }
+    return _copyWith(
+      matchingProposals: {
+        ...matchingProposals,
+        engineerId: PublicDemoMatchingProposal(
+          engineerId: engineerId,
+          projectId: projectId,
+          decidedMonth: month,
+        ),
+      },
+    );
+  }
 
   /// The single sanctioned way to decide a founder follow-up (Issue #167
   /// FIRST-FUN-YEAR-LATE-GAME-1 Phase 1) for [engineerId]. Defense in depth

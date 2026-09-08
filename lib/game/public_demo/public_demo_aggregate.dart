@@ -544,6 +544,22 @@ class PublicDemoAggregate {
   PublicDemoAggregate recordOrder(String engineerId) =>
       _copyWith(workflow: workflow.recordOrder(engineerId));
 
+  /// CORE-GAMEPLAY Phase 5 (Matching): commits the player's "提案する"
+  /// decision for [engineerId] × a real Phase 4 [projectId] (from
+  /// [projectCandidatesForMonth]) at the current [state.month] — see
+  /// [PublicDemoWorkflowState.proposeMatching]/[PublicDemoMatchingProposal]
+  /// for exactly what this does and does not change.
+  PublicDemoAggregate proposeMatching({
+    required String engineerId,
+    required String projectId,
+  }) => _copyWith(
+    workflow: workflow.proposeMatching(
+      engineerId: engineerId,
+      projectId: projectId,
+      month: state.month,
+    ),
+  );
+
   PublicDemoAggregate reviewResume(String applicantId) =>
       _copyWith(workflow: workflow.reviewResume(applicantId));
 

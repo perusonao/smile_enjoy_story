@@ -1,6 +1,9 @@
 import 'dart:async' show unawaited;
 
 import 'package:flutter/material.dart';
+import '../../domain/domain.dart' show Engineer;
+import '../../game/engine/project_comparison_engine.dart';
+import '../../game/models/fit_result.dart';
 import '../../game/public_demo/public_demo_aggregate.dart';
 import '../../game/public_demo/public_demo_assignment.dart';
 import '../../game/public_demo/public_demo_cash_advice_selector.dart';
@@ -11,9 +14,11 @@ import '../../game/public_demo/public_demo_fiscal_close_id.dart';
 import '../../game/public_demo/public_demo_founder_follow_up.dart';
 import '../../game/public_demo/public_demo_interview.dart';
 import '../../game/public_demo/public_demo_internal_training_transaction.dart';
+import '../../game/public_demo/public_demo_matching_profile.dart';
 import '../../game/public_demo/public_demo_month_guard.dart';
 import '../../game/public_demo/public_demo_month_label.dart';
 import '../../game/public_demo/public_demo_monthly_growth.dart';
+import '../../game/public_demo/public_demo_project_generator.dart';
 import '../../game/public_demo/public_demo_recovery.dart';
 import '../../game/public_demo/public_demo_recruitment.dart';
 import '../../game/public_demo/public_demo_recruitment_medium.dart';
@@ -47,6 +52,9 @@ import 'public_demo_growth_result_card.dart';
 import 'public_demo_home_dashboard_section.dart';
 import 'public_demo_home_presentation_components.dart';
 import 'public_demo_interview_result_dialog.dart';
+import 'public_demo_matching_decision_sheet.dart';
+import 'public_demo_matching_engineer_select_sheet.dart';
+import 'public_demo_matching_project_list_sheet.dart';
 import 'public_demo_menu_visual.dart';
 import 'public_demo_month_guard_warning_dialog.dart';
 import 'public_demo_monthly_cash_flow_card.dart';
@@ -970,6 +978,130 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
       if (assignment.engineerId == engineerId) return assignment;
     }
     return null;
+  }
+
+  // ---------------------------------------------------------------------
+  // CORE-GAMEPLAY Phase 5 (Matching Decision Gameplay): 案件を見る → 社員を
+  // 選ぶ → スキルシートを見る → 強み/不足を見る → 提案する/見送る. Every step
+  // below is read-only until [_proposeMatching] commits the one new,
+  // additive [PublicDemoAggregate.proposeMatching] fact — nothing here
+  // touches [_beginSelling]/[_introduceProject]/the interview pipeline
+  // above, Finance, Month transition, or HOME.
+  // ---------------------------------------------------------------------
+
+  /// Engineers Phase 5 lets the player evaluate/propose against a project:
+  /// not currently on an active assignment ([_currentlyAssignedEngineerIds]
+  /// — the same authoritative "busy" signal every other on-screen
+  /// assignment check already reads, no new eligibility rule invented), and
+  /// carrying a real [PublicDemoEngineerRuntime] (always true in practice —
+  /// every engineer in [workflow] gets one at hire; the check is only
+  /// defensive so a malformed/legacy save can never crash this flow).
+  List<PublicDemoEngineerSales> get _availableEngineersForMatching {
+    final assigned = _currentlyAssignedEngineerIds;
+    return workflow.engineers
+        .where(
+          (engineer) =>
+              !assigned.contains(engineer.id) &&
+              s.runtimeForOrNull(engineer.id) != null,
+        )
+        .toList();
+  }
+
+  /// The one call site that builds the domain [Engineer]
+  /// `ProjectComparisonEngine.rowFor`/`MatchingEngine.computeFit` need for
+  /// [engineer], via [PublicDemoMatchingProfile] — see that file's own doc
+  /// for why this cannot be built from [PublicDemoEngineerRuntime] alone.
+  /// `null` only for the defensive, practically-unreachable missing-runtime
+  /// case [_availableEngineersForMatching] already filters out.
+  Engineer? _matchingEngineerFor(PublicDemoEngineerSales engineer) {
+    final runtime = s.runtimeForOrNull(engineer.id);
+    if (runtime == null) return null;
+    return PublicDemoMatchingProfile.engineerForMatching(
+      runSeed: _game.runSeed,
+      runtime: runtime,
+    );
+  }
+
+  /// Step 1 ("案件を見る"): opens this month's real Phase 4 project
+  /// candidates ([PublicDemoAggregate.projectCandidatesForMonth] — purely
+  /// derived, nothing persisted or invented).
+  void _openMatchingProjectList() {
+    final candidates = _game.projectCandidatesForMonth(s.month);
+    PublicDemoMatchingProjectListSheet.show(
+      context,
+      candidates: candidates,
+      onSelect: _openMatchingEngineerSelect,
+    );
+  }
+
+  /// Step 2 ("社員を選ぶ"): lists [_availableEngineersForMatching] for
+  /// [candidate], each with only the bucketed ◎○△× overall Fit — the exact
+  /// same [ProjectComparisonEngine.rowFor] result step 3 below re-displays
+  /// in full, never recomputed differently here.
+  void _openMatchingEngineerSelect(PublicDemoProjectCandidate candidate) {
+    final entries = <PublicDemoMatchingEngineerEntry>[
+      for (final engineer in _availableEngineersForMatching)
+        if (_matchingEngineerFor(engineer) case final domainEngineer?)
+          PublicDemoMatchingEngineerEntry(
+            engineer: engineer,
+            fit: PlayerVisibleFit.fromScore(
+              ProjectComparisonEngine.rowFor(
+                domainEngineer,
+                candidate.project,
+              ).fit.total,
+            ),
+          ),
+    ];
+    PublicDemoMatchingEngineerSelectSheet.show(
+      context,
+      candidate: candidate,
+      entries: entries,
+      onSelect: (engineer) => _openMatchingDecision(candidate, engineer),
+    );
+  }
+
+  /// Steps 3-5 ("スキルシートを見る → 強み/不足を見る → 提案する/見送る"):
+  /// the exact same [FitBreakdown] step 2's badge was bucketed from, now
+  /// shown in full qualitative detail; "スキルシートを見る" reuses
+  /// [_viewEmployeeSkillSheet] verbatim (Phase 4.5 authority, unchanged).
+  Future<void> _openMatchingDecision(
+    PublicDemoProjectCandidate candidate,
+    PublicDemoEngineerSales engineer,
+  ) async {
+    final domainEngineer = _matchingEngineerFor(engineer);
+    if (domainEngineer == null) return;
+    final fit = ProjectComparisonEngine.rowFor(
+      domainEngineer,
+      candidate.project,
+    ).fit;
+    final existingProposal = workflow.matchingProposals[engineer.id];
+    final proposed = await PublicDemoMatchingDecisionSheet.show(
+      context,
+      candidate: candidate,
+      engineer: engineer,
+      fit: fit,
+      alreadyProposedForThisProject: existingProposal?.projectId == candidate.id,
+      onViewSkillSheet: () => _viewEmployeeSkillSheet(engineer),
+    );
+    if (!mounted || proposed != true) return;
+    _proposeMatching(candidate, engineer);
+  }
+
+  /// The single commit point for a matching proposal decision — see
+  /// [PublicDemoAggregate.proposeMatching]/[PublicDemoMatchingProposal] for
+  /// exactly what this does (and does not) change.
+  void _proposeMatching(
+    PublicDemoProjectCandidate candidate,
+    PublicDemoEngineerSales engineer,
+  ) {
+    _commitAggregate(
+      _game.proposeMatching(engineerId: engineer.id, projectId: candidate.id),
+    );
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('${engineer.name}さんを「${candidate.title}」に提案しました。'),
+      ),
+    );
   }
 
   void _beginSelling(String engineerId) =>
@@ -4007,10 +4139,12 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
   /// renders above it even on a no-action month, since it is itself never
   /// empty — see the goal's "4月〜3月を通して意味のある画面構造にする".
   Widget _buildSalesTab(BuildContext c) {
+    final matchingCards = _salesMatchingCards(c);
     final actionCards = _salesNextActionCards();
     final applicantCards = _salesApplicantProgressCards();
     final projectCards = _salesProjectStatusCards(c);
     final hasAnyContent =
+        matchingCards.isNotEmpty ||
         actionCards.isNotEmpty ||
         applicantCards.isNotEmpty ||
         projectCards.isNotEmpty;
@@ -4023,6 +4157,13 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
           children: [
             _salesOverviewSection(),
             if (!hasAnyContent) _salesTabEmptyState(),
+            if (matchingCards.isNotEmpty)
+              _salesSection(
+                key: 'public-demo-sales-matching-section',
+                title: '案件マッチング',
+                icon: Icons.travel_explore_outlined,
+                cards: matchingCards,
+              ),
             if (actionCards.isNotEmpty)
               _salesSection(
                 key: 'public-demo-sales-next-actions-section',
@@ -4162,6 +4303,44 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
   List<Widget> _salesNextActionCards() => [
     if (_recruitmentMediaCardVisible)
       _RecruitmentMediaCard(state: s, onPressed: _openRecruitmentMedia),
+  ];
+
+  /// CORE-GAMEPLAY Phase 5 (Matching Decision Gameplay): the single entry
+  /// point into the "案件を見る → 社員を選ぶ → …" flow — always available
+  /// (real Phase 4 project candidates exist for every month, unlike the
+  /// recruitment-media card's own May-August window above).
+  List<Widget> _salesMatchingCards(BuildContext c) => [
+    PublicDemoSalesCard(
+      key: const Key('public-demo-matching-open-project-list'),
+      child: InkWell(
+        key: const Key('public-demo-matching-open-project-list-tap'),
+        onTap: _openMatchingProjectList,
+        borderRadius: BorderRadius.circular(8),
+        child: Row(
+          children: [
+            Icon(
+              Icons.travel_explore_outlined,
+              color: Theme.of(c).colorScheme.primary,
+            ),
+            const SizedBox(width: 10),
+            const Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('案件を見る', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                  SizedBox(height: 2),
+                  Text(
+                    '今月の案件から社員との適合度を確認し、提案できます。',
+                    style: TextStyle(fontSize: 12, color: Colors.black54),
+                  ),
+                ],
+              ),
+            ),
+            const Icon(Icons.chevron_right, color: Colors.black38),
+          ],
+        ),
+      ),
+    ),
   ];
 
   /// Section 3 — 採用・候補者進捗: the applicant funnel (same `ac(i)`

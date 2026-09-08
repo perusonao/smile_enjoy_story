@@ -173,6 +173,13 @@ class Project {
     );
   }
 
+  /// Canonical minimum IT experience (months) this project expects —
+  /// CORE-GAMEPLAY Phase 4 (Random Projects). Derived from [rank] only via
+  /// [projectRankMinimumExperienceMonths]; never stored separately, so this
+  /// is the single figure both this phase's own balance guard and any
+  /// future matching logic read for "requiredExperience".
+  int get requiredExperienceMonths => rank.minimumExperienceMonths;
+
   @override
   String toString() => 'Project($id, $title, $rank, ¥$monthlyRate/mo)';
 }

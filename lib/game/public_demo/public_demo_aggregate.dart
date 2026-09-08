@@ -6,6 +6,7 @@ import 'public_demo_founder_follow_up.dart';
 import 'public_demo_interview.dart';
 import 'public_demo_internal_training_transaction.dart';
 import 'public_demo_monthly_close.dart';
+import 'public_demo_project_generator.dart';
 import 'public_demo_raise_transaction.dart';
 import 'public_demo_recovery.dart';
 import 'public_demo_recruitment.dart';
@@ -100,6 +101,21 @@ class PublicDemoAggregate {
   /// own per-stream seed from this via `PublicDemoRng`
   /// (`public_demo_rng.dart`).
   int get runSeed => state.runSeed;
+
+  /// CORE-GAMEPLAY Phase 4 (Random Projects): Phase 5 (Matching)'s query
+  /// entry point for seeded project candidates. Purely derived from
+  /// [runSeed]/[month] via [PublicDemoSeededProjectGenerator] — never
+  /// stored, never read by [_validateForPersistence] (nothing here is
+  /// persisted; the same call after a save/reload reproduces the exact same
+  /// candidates).
+  List<PublicDemoProjectCandidate> projectCandidatesForMonth(
+    int month, {
+    int count = PublicDemoSeededProjectGenerator.defaultSlotsPerMonth,
+  }) => PublicDemoSeededProjectGenerator.forMonth(
+    runSeed: runSeed,
+    month: month,
+    count: count,
+  );
 
   /// Complete persistence form for the sole Public Demo authoritative root.
   Map<String, dynamic> toJson() => {

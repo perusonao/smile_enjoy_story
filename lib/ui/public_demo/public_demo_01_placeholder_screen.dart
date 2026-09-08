@@ -2417,10 +2417,24 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
   // merge-blocker fix retired the standing example of this trap —
   // `canUseRecruitmentMediaInMonth(month)` used to be satisfied across
   // months 4-8 while the 求人媒体 card rendered only in month 5 — by
-  // widening the card's own render condition to that same authority
-  // instead (see `_salesNextActionCards`), so the two are simply the same
-  // condition read twice: no month `if` to duplicate, no gap for a
-  // recommendation to outrun its own button.
+  // widening the card's own render condition to `_recruitmentMediaCardVisible`
+  // (see `_salesNextActionCards` and that getter's own doc), a UI-owned
+  // May-August window: a deliberate narrowing of the domain's wider 4-8
+  // window, not a re-derivation of it — April is excluded on purpose to
+  // keep HOME's existing April layout budget untouched (out of scope for
+  // this fix), not because the domain forbids recruiting there.
+  // `_addRecruitmentMediaCandidate`'s own emit gate,
+  // `_recruitmentMediaCandidateEligible`, is a strict subset of
+  // `_recruitmentMediaCardVisible` (visible AND not yet used this month),
+  // so wherever the candidate is legal the card is always already
+  // rendered *and* enabled — a recommendation can never outrun its own
+  // button — while the reverse (card visible, candidate absent because
+  // already used) is exactly "nothing disabled is ever emitted" below, not
+  // a gap in this invariant. A single shared predicate cannot express both
+  // "should the card exist" and "should the CTA be recommended" at once:
+  // collapsing them back to one (as this fix originally did) is what
+  // regressed the card from a visible-but-disabled "今月は利用済み" state
+  // to disappearing outright the instant it was used.
   //
   // Consequences worth stating explicitly:
   //
@@ -2868,15 +2882,50 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
     );
   }
 
-  /// Mirrors `_RecruitmentMediaCard`'s enablement: the card is rendered all
-  /// month, but its button is disabled once the month's single use is
-  /// spent, so only the usable case is a candidate.
+  /// Whether the Sales tab's 求人媒体 card is visible this month at all.
   ///
-  /// Called from the month-5 branch only, where `_RecruitmentMediaCard` and
-  /// `ac(i)` are rendered together. This keeps recruitment's user-visible
-  /// entry point on the only month that renders its applicant pipeline.
+  /// PR #210 merge-blocker follow-up: [PublicDemoState
+  /// .isRecruitmentMediaWindowMonth] is the domain's real recruiting window
+  /// (April-August, [PublicDemoState._normalizedRecruitmentMediaMonth]) —
+  /// but this UI deliberately narrows it to May-August, not April. The
+  /// merge blocker's own ask was "do not keep the entry point artificially
+  /// limited to May if domain authority allows *later* recruitment" — a
+  /// forward extension past the original one-shot May card, not a backward
+  /// one into April. April already has its own truthful "no card yet"
+  /// state (`_salesTabEmptyState`) and, more importantly, HOME's own
+  /// One-Screen Final Fit layout budget for the initial April view was
+  /// authored and verified against April never having a Recommended Action
+  /// card at all; the top-level merge-blocker instructions explicitly rule
+  /// out HOME layout changes in this fix, so this bound is what keeps that
+  /// budget untouched rather than widening into a change nobody asked for.
+  /// Domain authority itself is unchanged (`recruit()` still succeeds in
+  /// April, exactly as it always could) — only this UI's own entry point
+  /// stays narrower than the domain would allow, the same already-accepted
+  /// shape [PublicDemoState._normalizedRecruitmentMediaMonth]'s own doc
+  /// describes for the domain's 8-15 side of this same window.
+  bool get _recruitmentMediaCardVisible =>
+      s.month >= 5 && s.isRecruitmentMediaWindowMonth(s.month);
+
+  /// Whether recruitment media is both visible ([_recruitmentMediaCardVisible])
+  /// and this month's single use is still unspent
+  /// ([PublicDemoState.canUseRecruitmentMediaInMonth]) — the HOME
+  /// Recommended Action candidate's own eligibility, since a candidate must
+  /// never point at a hidden or disabled button (see this file's own
+  /// "Nothing disabled is ever recommended" rule).
+  bool get _recruitmentMediaCandidateEligible =>
+      _recruitmentMediaCardVisible && s.canUseRecruitmentMediaInMonth(s.month);
+
+  /// Mirrors `_RecruitmentMediaCard`'s enablement via
+  /// [_recruitmentMediaCandidateEligible] — the card is rendered for every
+  /// month [_recruitmentMediaCardVisible] allows, but its own button is
+  /// disabled once that month's single use is spent, so only the usable
+  /// case is a candidate.
+  ///
+  /// PR #210 merge-blocker follow-up: called unconditionally (not from a
+  /// month-5 branch) — see the call site's own doc — since the card itself
+  /// is no longer fixed to May alone either.
   void _addRecruitmentMediaCandidate(_AddCandidate add) {
-    if (!s.canUseRecruitmentMediaInMonth(s.month)) return;
+    if (!_recruitmentMediaCandidateEligible) return;
     add(
       HomeRecommendedActionKind.recruitmentMedia,
       () => unawaited(_openRecruitmentMedia()),
@@ -3943,12 +3992,13 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
   /// funnel gates themselves — see their own doc comments). No domain rule,
   /// save field, or command changes.
   ///
-  /// PUBLIC-DEMO-HOME-UI-3C: before any recruitment media exists (April,
-  /// before the player has used it this month) and once there is neither an
-  /// unused recruiting window nor anything left in the funnel/assignment
-  /// cards above to show (any further per-employee sales progress renders
-  /// on 社員, not here), this tab used to render a fully blank body with no
-  /// explanation.
+  /// PUBLIC-DEMO-HOME-UI-3C: before any recruitment media exists (April —
+  /// see `_recruitmentMediaCardVisible`'s own doc for why April stays
+  /// excluded even though the domain's recruiting window starts there) and
+  /// once there is neither an unused recruiting window nor anything left in
+  /// the funnel/assignment cards above to show (any further per-employee
+  /// sales progress renders on 社員, not here), this tab used to render a
+  /// fully blank body with no explanation.
   /// [_salesTabEmptyState] replaces that with a truthful, non-interactive
   /// (beyond real navigation) empty state — unchanged by Phase 1 — built
   /// only when all three section card lists below are genuinely empty
@@ -4096,12 +4146,21 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
   /// for the rest of the run the moment May's single seeded candidate
   /// turned out unhireable (no fallback, no retry) — even though the
   /// domain's own recruiting window, [PublicDemoState
-  /// .canUseRecruitmentMediaInMonth], already spans months 4-8. The gate
-  /// now reads that authority directly, so the card is available in any
-  /// month the domain allows and not yet used in, with no new recruiting
-  /// authority, cost, or generator behavior invented here.
+  /// .isRecruitmentMediaWindowMonth], already spans months 4-8. The gate
+  /// now reads [_recruitmentMediaCardVisible] (see its own doc for exactly
+  /// how that relates to, and deliberately narrows, the domain's window;
+  /// notably it does NOT reuse [PublicDemoState.canUseRecruitmentMediaInMonth]
+  /// directly: that predicate also folds in this month's own usage, and
+  /// gating *visibility* on it made the whole card — including its
+  /// always-informational 現預金 line — disappear the instant the player
+  /// recruited, instead of staying visible with its button disabled
+  /// ["今月は利用済み"] the way the old `month == 5` gate displayed it for
+  /// the rest of May regardless of use; caught by the merge-blocker
+  /// follow-up's own review pass), so the card is available May-August
+  /// (never April — see [_recruitmentMediaCardVisible]), with no new
+  /// recruiting authority, cost, or generator behavior invented here.
   List<Widget> _salesNextActionCards() => [
-    if (s.canUseRecruitmentMediaInMonth(s.month))
+    if (_recruitmentMediaCardVisible)
       _RecruitmentMediaCard(state: s, onPressed: _openRecruitmentMedia),
   ];
 

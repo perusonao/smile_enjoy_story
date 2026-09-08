@@ -332,8 +332,32 @@ void main() {
     );
   });
 
-  group('Aug-Feb no-action / employee-routing state', () {
-    for (final month in [8, 11, 14]) {
+  group('August unused-recruiting-window state', () {
+    testWidgets(
+      'month 8 with recruiting never used: 今やるべき営業アクション still shows '
+      'the recruitment-media card (PR #210 merge-blocker fix: '
+      '_recruitmentMediaCardVisible spans May-August) — no empty state, no '
+      'applicant progress since nothing was ever recruited',
+      (tester) async {
+        final game = emptyPipelineAtMonth(8);
+        await pumpSalesTab(tester, game);
+        expect(currentState(tester).month, 8);
+
+        expect(find.byKey(_overviewKey), findsOneWidget);
+        expect(find.byKey(_nextActionsKey), findsOneWidget);
+        expect(
+          find.byKey(const Key('public-demo-recruitment-media-card')),
+          findsOneWidget,
+        );
+        expect(find.byKey(_emptyStateKey), findsNothing);
+        expect(find.byKey(_applicantProgressKey), findsNothing);
+        expect(find.byKey(_projectStatusKey), findsNothing);
+      },
+    );
+  });
+
+  group('Sep-Feb no-action / employee-routing state', () {
+    for (final month in [11, 14]) {
       testWidgets(
         'month $month with nothing outstanding: the truthful empty state '
         'renders under the always-visible overview, and its CTA still '
@@ -408,13 +432,38 @@ void main() {
         );
 
         testWidgets(
-          'August (overview + empty state) at '
+          'August (overview + recruitment-media card, unused window) at '
           '${size.width.toInt()}x${size.height.toInt()} / textScale '
           '$textScale',
           (tester) async {
             await pumpSalesTab(
               tester,
               emptyPipelineAtMonth(8),
+              size: size,
+              textScale: textScale,
+            );
+
+            expect(tester.takeException(), isNull);
+            for (final key in [_overviewKey, _nextActionsKey]) {
+              final rect = tester.getRect(find.byKey(key));
+              expect(rect.left, greaterThanOrEqualTo(0.0), reason: '$key');
+              expect(
+                rect.right,
+                lessThanOrEqualTo(size.width),
+                reason: '$key',
+              );
+            }
+          },
+        );
+
+        testWidgets(
+          'September (overview + empty state) at '
+          '${size.width.toInt()}x${size.height.toInt()} / textScale '
+          '$textScale',
+          (tester) async {
+            await pumpSalesTab(
+              tester,
+              emptyPipelineAtMonth(9),
               size: size,
               textScale: textScale,
             );

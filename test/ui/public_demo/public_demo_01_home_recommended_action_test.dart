@@ -321,26 +321,25 @@ void main() {
         // longer a candidate at all. April's other founding engineer is not
         // field-sales ready (`readyForFieldSales` is false), so its card
         // renders no button either — the engineer genuinely stops holding
-        // the slot. CORE-GAMEPLAY Phase 4.5's merge-blocker fix means that
-        // is no longer "none of the above": with recruiting no longer fixed
-        // to May, and April's own recruiting window not yet used this
-        // month, 求人媒体 becomes the fallback recommendation instead of a
-        // dead end — the entire point of the fix.
+        // the slot, and nothing else picks it up: CORE-GAMEPLAY Phase 4.5's
+        // merge-blocker fix widened 求人媒体 to May-August
+        // (`_S._recruitmentMediaCardVisible`), deliberately still excluding
+        // April so this exact HOME view keeps the layout budget SES HOME
+        // One-Screen Final Fit already locked in (no Recommended Action
+        // card at all in April) — see that getter's own doc. So this really
+        // is "none of the above" in April, same as before the fix: the slot
+        // falls back to the month goal text, not a recommendation.
         expect(
           currentWorkflow(tester).engineers.first.stage,
           PublicDemoSalesStage.ordered,
         );
         await switchPublicDemoTab(tester, PublicDemoTab.home);
         expect(
-          recommended(tester)!.kind,
-          HomeRecommendedActionKind.recruitmentMedia,
+          recommended(tester),
+          isNull,
+          reason: 'April has no eligible candidate left; falls back to the '
+              'month goal text',
         );
-        expect(
-          recommended(tester)!.targetId,
-          isNot(first),
-          reason: 'the exhausted engineer must not still hold the slot',
-        );
-        expect(ctaFinder, findsOneWidget);
       }
     });
 

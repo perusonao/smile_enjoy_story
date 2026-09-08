@@ -105,8 +105,8 @@ for (const viewport of VIEWPORTS) {
       await captureMilestone(page, testInfo, `${viewport.label}-01-home`);
 
       // ---- HOME -> Sato SkillSheet -----------------------------------
-      await page.getByRole('button', { name: 'SkillSheetを確認', exact: true }).click();
-      await expect(page.getByText('営業用SkillSheet', { exact: false })).toBeVisible({ timeout: 15_000 });
+      await page.getByRole('button', { name: 'スキルシートを確認', exact: true }).click();
+      await expect(page.getByText('営業用スキルシート', { exact: false })).toBeVisible({ timeout: 15_000 });
 
       // ---- content is real domain data, not placeholder text --------
       await expect(page.getByText('Java / SQL・開発経験3年', { exact: true })).toBeVisible();
@@ -142,7 +142,7 @@ for (const viewport of VIEWPORTS) {
 
       await scrollSheetAndClick(page, page.getByText('経験', { exact: true }));
       await expect(page.getByText(/実経験/, { exact: false })).toBeVisible({ timeout: 10_000 });
-      await expect(page.getByText(/SkillSheet記載/, { exact: false })).toBeVisible();
+      await expect(page.getByText(/スキルシート記載/, { exact: false })).toBeVisible();
       expect(await hasNoHorizontalOverflow(page), `expanded 経験 must not overflow at ${viewport.label}`).toBe(true);
       await captureMilestone(page, testInfo, `${viewport.label}-03-accordion-expanded`);
 
@@ -150,15 +150,15 @@ for (const viewport of VIEWPORTS) {
 
       // ---- Back does not advance progress; CTA remains reachable -----
       await page.getByRole('button', { name: '戻る', exact: true }).click();
-      await expect(page.getByRole('button', { name: 'SkillSheetを確認', exact: true })).toBeVisible();
+      await expect(page.getByRole('button', { name: 'スキルシートを確認', exact: true })).toBeVisible();
       await expect(page.getByRole('button', { name: '営業開始', exact: true })).toHaveCount(0);
       expect(await hasNoHorizontalOverflow(page), `HOME after Back must not overflow at ${viewport.label}`).toBe(
         true,
       );
 
       // ---- reopen is possible -----------------------------------------
-      await page.getByRole('button', { name: 'SkillSheetを確認', exact: true }).click();
-      await expect(page.getByText('営業用SkillSheet', { exact: false })).toBeVisible();
+      await page.getByRole('button', { name: 'スキルシートを確認', exact: true }).click();
+      await expect(page.getByText('営業用スキルシート', { exact: false })).toBeVisible();
 
       // ---- explicit confirm is the only thing that advances -----------
       const confirmButton = page.getByRole('button', { name: '内容を確認', exact: true });

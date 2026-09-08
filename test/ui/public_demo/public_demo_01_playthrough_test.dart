@@ -86,7 +86,22 @@ void main() {
     // changes (e.g. Sato/Suzuki-related warnings unrelated to recruiting).
     await dismissMonthGuardIfPresent(tester);
     expect(find.text('1年目 6月'), findsOneWidget);
-    expect(find.textContaining('翌月の発注を確認'), findsOneWidget);
+    // PR #210 merge-blocker follow-up: 求人媒体 is no longer fixed to May
+    // (`canUseRecruitmentMediaInMonth` spans April-August, see
+    // `_salesNextActionCards`/`_addRecruitmentMediaCandidate`), and this
+    // playthrough never used it — so it is still the eligible P3
+    // Recommended Action candidate in June, outranking the plain month-goal
+    // fallback (`翌月の発注を確認...`) that only rendered here before this
+    // fix, when recruiting had no later entry point at all.
+    expect(
+      find.byWidgetPredicate(
+        (w) =>
+            w.key == const Key('home-recommended-action-headline') &&
+            w is Text &&
+            w.data == '求人媒体で候補者を追加',
+      ),
+      findsOneWidget,
+    );
     expect(find.text('6月を終了して7月へ'), findsOneWidget);
 
     // June: no assignments is valid; advance into July waiting state.
@@ -113,16 +128,19 @@ void main() {
       findsOneWidget,
     );
 
-    // Recruitment media is intentionally unavailable in July because this
-    // month has no applicant-processing pipeline. PUBLIC-DEMO-HOME-UI-3B
-    // moved this pipeline to 営業, and the assignment-result narrative with
-    // it — checked there so the absence assertion still means something.
+    // PR #210 merge-blocker follow-up: 求人媒体 is no longer fixed to May —
+    // `canUseRecruitmentMediaInMonth`/`isRecruitmentMediaWindowMonth` both
+    // span April-August, so July is still inside the recruiting window and
+    // this playthrough never used it. The card and its funnel are separate
+    // sections (`_salesNextActionCards` vs `_salesProjectStatusCards`), so
+    // July's own assignment-result narrative ("7月開始結果") still renders
+    // alongside it, not in place of it.
     await switchPublicDemoTab(tester, PublicDemoTab.sales);
     expect(
       find.byKey(const Key('public-demo-recruitment-media-card')),
-      findsNothing,
+      findsOneWidget,
     );
-    expect(find.text('求人媒体を選ぶ'), findsNothing);
+    expect(find.text('求人媒体を選ぶ'), findsOneWidget);
     expect(find.text('7月開始結果'), findsOneWidget);
     // 夏季賞与 is finance detail — moved to 会計.
     await switchPublicDemoTab(tester, PublicDemoTab.accounting);

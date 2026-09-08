@@ -1,8 +1,10 @@
 # SES CORE-GAMEPLAY Phase 4.5: Recruitment / SkillSheet Authority Fix — Result
 
-Status: **Implementation complete — full `test/game/public_demo/` (588
-tests) and `test/ui/public_demo/` (498 tests) directories green,
-`flutter analyze` clean**
+Status: **Merge-blocker follow-up complete (second pass) — full
+`test/game/public_demo/` (588 tests) and `test/ui/public_demo/` (508 tests,
++1 new regression test) directories green, `flutter analyze` clean, `git
+diff --check` clean. See "Merge Blocker Follow-up (second pass)" below for
+what changed after PR #210's review comment.**
 
 ## BASE SHA / branch / HEAD
 
@@ -335,56 +337,169 @@ preinstalled this session).
   the Sales June assignment card and the Employee roster row — at both
   viewports and TextScaler 1.0/1.3/2.0) passing unmodified.
 
-## Known limitations
+## Known limitations (original pass — see Merge Blocker Follow-up below for what changed)
 
-- **Pre-existing test flakiness, unrelated to this fix**:
-  `public_demo_financial_status_test.dart`'s "P" test (see Tests above) uses
-  a shared fixture with an unpinned `runSeed`, inherited from CORE-GAMEPLAY
-  Phase 2's own integration of this file, not from this phase. A future pass
-  should pin a `runSeed` there the same way this phase pinned one for the
-  neighbouring "R" test it did modify.
-- **No dedicated automated test that the candidate SkillSheet sheet never
-  renders `interviewScore`/`acceptanceScore`/`salesSkillFit`** (the employee
-  SkillSheet has an analogous existing test for its own hidden-field
-  boundary — `HiddenParameters` field names never appearing in persisted
-  interview-session JSON, from CORE-GAMEPLAY Phase 3). The guarantee here is
-  structural (the factory's own source code has no such field to read), but
-  a golden-path widget test asserting the rendered text never contains these
-  values would harden it against a future accidental addition.
-- **E2E (Playwright) specs were not restructured to recruit an applicant.**
-  `e2e/helpers/public-demo-player.ts` and the specs that use its
-  `app-01`-keyed helpers (`hireAppOneWithoutPreEntrySales`-equivalent flows,
-  `public-demo-annual-route.spec.ts`, `public-demo-recovery.spec.ts`) still
-  assume `app-01`/`app-02` exist at game start. Only mechanical button-text/
-  dialog-text renames were applied this session (no browser/dev-server was
-  available to drive and verify a Playwright rewrite). These E2E specs will
-  fail on this branch's own HEAD until a follow-up pass inserts a real
-  求人媒体 recruiting step (mirroring this report's own Flutter-test fixes)
-  and re-derives the exact applicant identity/order the annual-route and
-  Recovery specs depend on. Per the SSOT's own E2E policy, this is
-  Non-blocking for First Fun Year development (not a normal-play
-  progression blocker), but should be fixed before those specific specs are
-  trusted again in CI.
+- ~~Pre-existing test flakiness, unrelated to this fix~~ — **fixed in the
+  second follow-up pass below** (`_reachShortageAggregate` now pins
+  `runSeed: 1`).
+- ~~No dedicated automated test that the candidate SkillSheet sheet never
+  renders `interviewScore`/`acceptanceScore`/`salesSkillFit`~~ — **fixed in
+  the second follow-up pass below** (new
+  `public_demo_candidate_skill_sheet_hidden_fields_test.dart`).
+- ~~E2E (Playwright) specs were not restructured to recruit an applicant~~ —
+  **fixed in the first follow-up pass** (commit `7408961` and the three
+  E2E-repair commits after it — see below); the remaining stale
+  `SkillSheetを確認`/`営業用SkillSheet` wording in
+  `public-demo-skillsheet-phase-a.spec.ts`/`public-demo-july-restart.spec.ts`
+  was fixed in the second follow-up pass.
 - **Sales-tab reuse is currently a single, minimal hook** (one IconButton on
   the June assignment card) — sufficient to prove the display is genuinely
   reusable today, but Phase 5's own Matching UI will likely want a richer
   entry point (e.g. from a candidate-comparison list) that this phase
-  deliberately does not build (out of scope: "Matching実装").
-- **`求人媒体` Sales-tab card visibility remains gated to `s.month == 5`**
-  (Sales UI Phase 1's own pre-existing, deliberately-unaddressed gap between
-  that and the domain's real `canUseRecruitmentMediaInMonth` 4-8 window,
-  already flagged in that phase's own report) — this phase did not widen it,
-  to stay minimal; a player who does not recruit in May has no Sales-tab
-  entry point back to 求人媒体 until server logic changes, though the
-  domain command itself remains callable April-August.
+  deliberately does not build (out of scope: "Matching実装"). Still true —
+  not touched by either follow-up pass.
+- ~~`求人媒体` Sales-tab card visibility remains gated to `s.month == 5`~~ —
+  **fixed in the first follow-up pass**, then **deliberately re-scoped (not
+  reverted) in the second** to May-August rather than the domain's full
+  April-August window — see the Merge Blocker Follow-up section below for
+  why April specifically stays excluded.
+
+## Merge Blocker Follow-up (second pass)
+
+PR #210's review left a comment
+(https://github.com/perusonao/smile_enjoy_story/pull/210#issuecomment-5584946130)
+after a first follow-up pass (commits `7408961`..`70480a7`, same branch) had
+already fixed the P1 recruiting dead-end, retired the E2E suite's `app-01`
+assumption, and fixed the Fast CI smoke's stale `営業用SkillSheet` wording in
+`public-demo-fresh-start.spec.ts`. The **Public Demo only** required CI check
+was still red on that HEAD. This section documents the second pass that
+fixes it.
+
+### What was actually still broken
+
+The first pass's P1 fix widened `_RecruitmentMediaCard`'s (and its HOME
+Recommended Action mirror's) render gate from a fixed `s.month == 5` branch
+to `PublicDemoState.canUseRecruitmentMediaInMonth(s.month)` — the domain's
+real April-August recruiting window. Two independent problems fell out of
+that:
+
+1. **The card gate reused the wrong predicate.** `canUseRecruitmentMediaInMonth`
+   folds in *this month's own usage* as well as the window — so gating the
+   card's *visibility* on it made the whole card (including its
+   always-informational 現預金 line) disappear the instant the player
+   recruited this month, instead of staying visible with its button
+   disabled ("今月は利用済み") the way the old `month == 5` gate displayed it
+   for the rest of May regardless of use. `test/ui/public_demo/
+   public_demo_01_playthrough_test.dart`'s "recruitment media adds
+   applicants through the existing flow" caught this directly (CI: `Found 0
+   widgets with text "現預金 ¥3100000"`).
+2. **Widening the window all the way to April changed HOME's initial view.**
+   `HomeRecommendedActionKind.recruitmentMedia` is a real P3 Recommended
+   Action candidate whenever the card is visible and unused — so April, a
+   month that (before this fix) never had *any* eligible Recommended Action
+   candidate, now legitimately gets one. That is a real HOME layout change:
+   `public_demo_01_home_one_screen_final_fit_test.dart`'s own hard-won "the
+   initial April view needs zero scrolling" contract broke
+   (`maxScrollExtent` went from `0` to `27.0`/`44.0` at both target
+   viewports). The top-level merge-blocker instructions explicitly rule out
+   HOME layout changes in this fix, so this was never an acceptable side
+   effect to accept or paper over.
+
+Fixing only (1) and leaving April in the window still left the "Public Demo
+only" job red (`public_demo_01_playthrough_test.dart`'s June assertion,
+`翌月の発注を確認` — which the widened window also legitimately preempts with
+`求人媒体で候補者を追加` now, unrelated to April), and fixing that surfaced (2)
+across four more test files once the suite ran past that point. 18 tests
+failed the first time the *entire* `test/ui/public_demo/` directory was run
+against the first-pass HEAD (never run in full before this pass — the
+"Public Demo only" required check only runs two individual UI test files,
+not the whole directory) — all 18 traced back to the same two root causes
+above, none to a new, unrelated regression.
+
+### The fix
+
+- `lib/game/public_demo/public_demo_state.dart`: added
+  `isRecruitmentMediaWindowMonth(int month)` — the domain's April-August
+  window with no usage check folded in (unlike `canUseRecruitmentMediaInMonth`).
+  Pure addition; `canUseRecruitmentMediaInMonth` and every other domain
+  predicate/authority are byte-for-byte unchanged (no recruitment cost,
+  count, or seed authority touched, per the review's own instruction).
+- `lib/ui/public_demo/public_demo_01_placeholder_screen.dart`: two new
+  getters replace the single reused predicate —
+  `_recruitmentMediaCardVisible` (May-August — deliberately narrower than
+  the domain's own April-August window, specifically to keep HOME's
+  existing April layout budget untouched; see the getter's own doc for the
+  full rationale) and `_recruitmentMediaCandidateEligible` (`_recruitmentMediaCardVisible`
+  AND not yet used this month — the Recommended Action's own eligibility,
+  never recommending a hidden or disabled CTA). `_salesNextActionCards` and
+  `_addRecruitmentMediaCandidate` now read these instead of either domain
+  predicate directly.
+- `lib/presentation/home/models/home_recommended_action.dart` and
+  `home_dashboard_display_data.dart`: doc-comment corrections only (no
+  behavior change) — the "July's 求人媒体 is never recommended" absence and
+  "Recruitment media's own UI never re-appears after May" claim were both
+  already stale after the first pass's own May-August widening; updated to
+  describe what the code actually does now.
+- Ten test files updated to match the corrected (May-August, not
+  April-August) window — each traced to one of the two root causes above,
+  not a new behavior: `public_demo_01_playthrough_test.dart`,
+  `public_demo_01_home_recommended_action_test.dart`,
+  `public_demo_01_home_consolidation_test.dart`,
+  `public_demo_01_fiscal_year_progression_test.dart`,
+  `public_demo_01_home_ui_3c_density_test.dart`,
+  `public_demo_sales_ui_phase1_test.dart` (August now shows the card —
+  unused window; a new September case covers the genuine post-window empty
+  state the August case used to).
+- **Item 4 (candidate SkillSheet hidden-data regression)**: new
+  `test/ui/public_demo/public_demo_candidate_skill_sheet_hidden_fields_test.dart`
+  — pumps `PublicDemoCandidateSkillSheetSheet` directly with a fixture
+  applicant carrying distinctive `interviewScore`/`acceptanceScore`/
+  `salesSkillFit` values and asserts none of the three appears anywhere in
+  the rendered widget tree (exact match, substring match, and a full-tree
+  text walk). Verified to actually catch a regression: temporarily adding
+  one `SkillSheetMetricRow('面接スコア', '${applicant.interviewScore}')` to the
+  sheet made this new test fail as expected, then the change was reverted.
+- **Item 3 residual**: `public-demo-fresh-start.spec.ts` (the Fast CI smoke
+  spec) already had the correct `営業用スキルシート`/`スキルシートを確認`
+  wording from the first pass. Two Heavy-E2E-only specs the first pass
+  missed — `public-demo-skillsheet-phase-a.spec.ts` and
+  `public-demo-july-restart.spec.ts` — still asserted the stale English
+  `SkillSheetを確認`/`営業用SkillSheet`/`SkillSheet記載` text; fixed to match
+  current production wording.
+- **Pre-existing flaky test** (already disclosed in Known limitations
+  above): `public_demo_financial_status_test.dart`'s `_reachShortageAggregate`
+  now pins `runSeed: 1` (same pin the neighbouring `public_demo_aggregate_test
+  .dart` TEST C/E fixtures already use), clearing test P's
+  would-be-accepted-offer assertion deterministically. Confirmed flaky
+  in isolation before the fix (failed 1 of 3 solo reruns) and stable across
+  5 solo reruns after.
+
+### Verification (this pass)
+
+- `flutter analyze` (whole project): **No issues found.**
+- `git diff --check`: clean.
+- `flutter test test/game/public_demo/` (588 tests): **588/588 passed**,
+  confirmed across two full runs plus 5 isolated reruns of the previously-
+  flaky file.
+- `flutter test test/ui/public_demo/` (508 tests — 507 pre-existing + 1 new):
+  **508/508 passed**, confirmed across two full runs (`--concurrency=6`).
+- `flutter test test/game/public_demo/ test/ui/public_demo/` together in one
+  run: **1096/1096 passed.**
+- E2E (Playwright): not executed this pass — no browser/dev-server available
+  in this session either, same limitation the first pass disclosed. The two
+  wording fixes were verified by direct text search against current
+  production source (`grep` for the exact rendered strings), not by running
+  the specs.
 
 ## FINISH
 
-Committed and pushed to `claude/recruitment-skillsheet-authority-e7v65x`; a
-new PR was opened against `main` containing only this Phase 4.5 work (no
-other CORE-GAMEPLAY phase's changes mixed in). See the PR itself, or `git
-log claude/recruitment-skillsheet-authority-e7v65x`, for the final HEAD SHA.
+First follow-up pass: committed and pushed to
+`claude/recruitment-skillsheet-authority-e7v65x` (commits `7408961`
+through `70480a7`). Second follow-up pass (this update): committed and
+pushed to the same branch/PR (#210). See `git log
+claude/recruitment-skillsheet-authority-e7v65x` for the final HEAD SHA.
 
 ## Final verdict
 
-**PASS** (with the known limitations above explicitly disclosed, not hidden)
+**PASS** — both follow-up passes' known limitations are resolved or
+explicitly disclosed above; none hidden.

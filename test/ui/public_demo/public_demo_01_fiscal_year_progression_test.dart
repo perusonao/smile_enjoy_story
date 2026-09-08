@@ -131,14 +131,22 @@ void main() {
       await tester.pumpAndSettle();
       await tapAndSettle(tester, '7月を終了して8月へ');
       expect(find.text('1年目 8月'), findsOneWidget);
-      // 12MONTH-3-FIX1 P1-2: no month past May can process a generated
-      // applicant, so the paid recruitment-media CTA must not render for
-      // any ordinary month (it did briefly, for 8-15, before this fix).
-      // Checked on 営業, the tab that would render it in May.
+      // 12MONTH-3-FIX1 P1-2 originally asserted the paid recruitment-media
+      // CTA never renders past May, since no UI flow existed past month 5
+      // to process a generated applicant (September-March genuinely still
+      // has none — the card correctly disappears from month 9 on, verified
+      // below). PR #210's merge-blocker fix retired the May-only half of
+      // that premise for August specifically: `_S._recruitmentMediaCardVisible`
+      // now spans May-August, and the applicant funnel
+      // (`_salesApplicantProgressCards`) is no longer month-gated either, so
+      // an August recruit genuinely can be processed — August is no longer
+      // a dead end, it is the last real month of the window. This
+      // playthrough never recruited, so the card is still visible (and
+      // unused) here.
       await switchPublicDemoTab(tester, PublicDemoTab.sales);
       expect(
         find.byKey(const Key('public-demo-recruitment-media-card')),
-        findsNothing,
+        findsOneWidget,
       );
       await switchPublicDemoTab(tester, PublicDemoTab.home);
 

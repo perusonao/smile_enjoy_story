@@ -36,15 +36,22 @@ import '../../../game/public_demo/public_demo_state.dart';
 /// (7) through February (14) — no later than that, since March closes the
 /// fiscal year (`PublicDemoState.completeFiscalYear`, month 15).
 ///
-/// Deliberately absent: any mention of recruitment media or of renewing an
-/// assignment. Recruitment media's own UI never re-appears after May, and
-/// `PublicDemoState.engineerCount` is never increased by any transition
-/// past `advanceToJune` (month 5 -> 6) — so telling a July-September
-/// player to "finish hiring" would point at a structurally unreachable
-/// path (the exact thing Issue #125 says not to reopen). Likewise, an
-/// assigned engineer stays on the same project through fiscal year end
+/// Deliberately absent: any mention of renewing an assignment — an assigned
+/// engineer stays on the same project through fiscal year end
 /// (`PublicDemoWorkflowState`'s "一度案件参画が成立した社員は、第1期終了まで同じ案件へ継続参画する"
 /// decision) — Public Demo 0.1 has no per-month renewal choice to point at.
+/// Recruitment media is likewise absent from June onward, but for a
+/// different, weaker reason than it once was: PR #210's merge-blocker
+/// follow-up widened its Sales-tab UI from a one-shot May card to a
+/// May-August window (`_S._recruitmentMediaCardVisible`, deliberately
+/// narrower than the domain's own April-August authority — see that
+/// getter's own doc), so it is no longer structurally unreachable there —
+/// it is simply never this fallback's concern, because whenever it is
+/// genuinely still usable (`HomeRecommendedActionKind.recruitmentMedia`,
+/// P3) that Recommended Action candidate already outranks this switch's
+/// own fallback slot (see this class's own doc above), so this text is
+/// never the thing on screen
+/// while recruiting remains a live option.
 String _monthGoalTextFor(int month) => switch (month) {
   4 => '待機中の技術者を営業し、5月の案件参画を決めましょう',
   5 => '応募者を採用し、入社前から6月の案件獲得を目指しましょう',

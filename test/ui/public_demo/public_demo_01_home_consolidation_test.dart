@@ -385,11 +385,17 @@ void main() {
       expect(homeData(tester).monthGoalText, '応募者を採用し、入社前から6月の案件獲得を目指しましょう');
     });
 
-    testWidgets('14b: with no eligible action the same slot falls back to '
-        'the month goal, in HOME, as text', (tester) async {
+    testWidgets('14b: with no eligible action the same slot recommends '
+        '求人媒体, not the month goal', (tester) async {
       // June on the no-hire route: nothing is assigned, nobody joined, and
-      // no engineer is in a sellable stage — the design table's "none of
-      // the above" row.
+      // no engineer is in a sellable stage — the design table's original
+      // "none of the above" row. PR #210's merge-blocker fix means this is
+      // no longer actually "none of the above": `_S._recruitmentMediaCardVisible`
+      // spans May-August, and this playthrough never recruited, so 求人媒体
+      // is still a live, unused P3 candidate in June and outranks the
+      // fallback slot — see `public_demo_01_placeholder_screen.dart`'s own
+      // `_recruitmentMediaCardVisible` doc for why April alone stays
+      // excluded (unlike June here).
       await pumpDemo(tester);
       await tapAndSettle(tester, '4月を終了して5月へ');
       await dismiss(tester);
@@ -400,12 +406,12 @@ void main() {
       const juneGoal = '翌月の発注を確認し、7月も稼働できる状態を作りましょう';
       expect(
         find.byKey(const Key('home-recommended-action-cta')),
-        findsNothing,
+        findsOneWidget,
       );
-      expect(find.text('今月やること'), findsOneWidget);
-      expect(inHome(find.text('今月やること')), findsOneWidget);
-      expect(find.text(juneGoal), findsOneWidget);
-      expect(inHome(find.text(juneGoal)), findsOneWidget);
+      expect(find.text('次にやること'), findsOneWidget);
+      expect(find.text('求人媒体で候補者を追加'), findsOneWidget);
+      expect(find.text('今月やること'), findsNothing);
+      expect(find.text(juneGoal), findsNothing);
     });
   });
 

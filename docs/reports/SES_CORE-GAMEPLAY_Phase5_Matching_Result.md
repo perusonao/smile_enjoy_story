@@ -21,13 +21,27 @@ Status: **Implementation complete, Codex 2×P1 + 2×P2 review fixes applied, ful
   (Codex P1, PR #212)").
 - HEAD after the Codex P2×2 review fix: `202871c30d9add1bbd87dd19ca61784d7570ddab`
   ("fix(matching): apply Codex P2 findings on PR #212").
-- **Final HEAD after the second Codex P1 review fix (this update):**
-  `da52aa4682e932b0956865dd7a92a05761ab3899`
-  ("fix(save): migrate matchingProposals/totalItExperienceMonths before
-  strict save comparison (Codex P1, PR #212)") — the report/PR-URL fill-in
-  commits between these do not change any production/test file.
-- PR: https://github.com/perusonao/smile_enjoy_story/pull/212 (open, not yet
-  merged; every update pushed to this same PR/branch — no new PR opened).
+- **PR #212 merge race**: PR #212 was merged by the repository owner at
+  `c78b67a1b6a2ccda45256813597e6b4f066b9582` (merge commit
+  `4994301314535186165ee8b45ad031b6a801fca5` on `main`) **before** the
+  second Codex P1 review (submitted immediately after that merge) could be
+  investigated and fixed — the merged code on `main` therefore briefly
+  carried the save-corruption bug the fix below corrects. Per this
+  session's merged-branch-reuse policy, the two commits still pending on
+  `claude/github-issue-205-4zhj9k` at that point (the save-codec fix and
+  its own report update) were rebased onto the newly-merged `main` and
+  opened as a new, separate PR rather than reusing the already-merged #212.
+- Save-codec fix commit (rebased onto `main` post-merge):
+  `ee522e3ccd77223219e3d74509df2d0d4ddf4ce4` ("fix(save): migrate
+  matchingProposals/totalItExperienceMonths before strict save comparison
+  (Codex P1, PR #212)").
+- **Final HEAD**: this report's own rebased commit,
+  `ca7abfb59a6ce1dd6ef839e0349d9c4391b96afa`, plus one further commit
+  finalizing this cross-reference section (docs-only, no production/test
+  change).
+- PR: https://github.com/perusonao/smile_enjoy_story/pull/212 (**merged**
+  at `c78b67a`, before this fix) + this fix's own follow-up PR:
+  https://github.com/perusonao/smile_enjoy_story/pull/213.
 
 ## Codex P1 review fix — "Preserve known total experience in matching"
 
@@ -713,9 +727,18 @@ against the real codec — none dismissed) and fixed with root-cause,
 save-compatible corrections plus dedicated regression tests each time, zero
 regressions across the full 1920-test suite, `flutter analyze` clean,
 `git diff --check` clean. All four review threads replied to and resolved
-on PR #212. A pre-existing, unrelated save-codec gap discovered during the
-second P1's investigation (`interviewSessions`) was disclosed rather than
-silently fixed (scope) or silently left unmentioned (transparency).
+(three on PR #212 before it merged; the fourth — the save-corruption fix —
+raised on #212 immediately after it merged, and landed via its own
+follow-up PR #213, since #212 could no longer be pushed to). A
+pre-existing, unrelated save-codec gap discovered during the second P1's
+investigation (`interviewSessions`) was disclosed rather than silently
+fixed (scope) or silently left unmentioned (transparency).
+
+**IMPORTANT — merge-timing note**: PR #212 merged at `c78b67a` before the
+save-corruption fix (this report's own "Second Codex P1 review fix"
+section) could be pushed to it. `main` briefly carried that bug between
+#212's merge and #213's merge — see "PR #212 merge race" above for the
+exact timeline and commit SHAs.
 
 ## Processing time
 

@@ -14,9 +14,35 @@ Status: **Implementation complete, all tests green**
   unmerged commits (`git log HEAD ^origin/main` was empty), so per the
   merged-branch-reuse rule it was reset onto the BASE SHA above at session
   start.
-- HEAD after this work: `a08eb406d0697b37c7032190dd1f4834439e47cb`
-  ("SES CORE-GAMEPLAY Phase 3: interactive recruitment interview")
+- HEAD after this work: `33dfc942f3c13f4c52da7b0c404704c6c63312e5` — one
+  post-PR CI-lint follow-up commit on top of the original implementation
+  commit `a08eb406d0697b37c7032190dd1f4834439e47cb` ("SES CORE-GAMEPLAY
+  Phase 3: interactive recruitment interview").
 - PR: https://github.com/perusonao/smile_enjoy_story/pull/203
+
+### CI follow-up (post-PR)
+
+`flutter analyze` in PR #203's CI flagged one `curly_braces_in_flow_control_structures`
+lint in `lib/game/public_demo/public_demo_workflow_state.dart:110` (the
+`fromJson` helper's `if (entry is! Map) throw ...;` — no braces). Fixed with
+a brace-only change, no logic change:
+
+```dart
+if (entry is! Map) {
+  throw const FormatException('Invalid workflow entry');
+}
+```
+
+Verified: `dart format` (0 further changes), `flutter analyze` (no issues
+found), `git diff --check` (clean), and focused tests —
+`public_demo_workflow_state_test.dart`,
+`public_demo_recruitment_interview_test.dart`,
+`public_demo_save_codec_test.dart`, `public_demo_aggregate_test.dart` (70
+tests, all passed). The full 1856-test local suite was not re-run for this
+follow-up (per the task's own instruction — GitHub's Fast CI covers the
+whole-repo regression for a change this narrow). Commit:
+`33dfc942f3c13f4c52da7b0c404704c6c63312e5` — "Fix
+curly_braces_in_flow_control_structures lint in workflow state fromJson".
 
 ## Pre-implementation audit (summary)
 

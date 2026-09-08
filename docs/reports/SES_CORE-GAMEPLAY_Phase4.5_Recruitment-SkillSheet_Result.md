@@ -1,6 +1,8 @@
 # SES CORE-GAMEPLAY Phase 4.5: Recruitment / SkillSheet Authority Fix — Result
 
-Status: **Implementation complete, focused tests + analyze green**
+Status: **Implementation complete — full `test/game/public_demo/` (588
+tests) and `test/ui/public_demo/` (498 tests) directories green,
+`flutter analyze` clean**
 
 ## BASE SHA / branch / HEAD
 
@@ -293,7 +295,7 @@ preinstalled this session).
   applicants instead. Fixed by removing the now-obsolete `.skip(2)` (and its
   matching comment/test-description text referencing the founding pair) so
   the assertion operates on the two seeded candidates directly. Re-ran the
-  full `test/ui/public_demo/` directory afterward: all tests pass.
+  full `test/ui/public_demo/` directory afterward: **all 498 tests pass.**
 - New game applicants == 0: verified directly (`public_demo_workflow_state_test.dart`'s
   own "engineers/assignments start from the established pools; applicants
   start empty").

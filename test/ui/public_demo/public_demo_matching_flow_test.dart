@@ -245,11 +245,12 @@ void main() {
             await switchPublicDemoTab(tester, PublicDemoTab.sales);
             expect(tester.takeException(), isNull);
 
-            await tester.tap(
-              find.byKey(
-                const Key('public-demo-matching-open-project-list-tap'),
-              ),
+            final openProjectListFinder = find.byKey(
+              const Key('public-demo-matching-open-project-list-tap'),
             );
+            await tester.ensureVisible(openProjectListFinder);
+            await tester.pumpAndSettle();
+            await tester.tap(openProjectListFinder);
             await tester.pumpAndSettle();
             expect(tester.takeException(), isNull);
 

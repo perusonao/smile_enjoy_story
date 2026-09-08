@@ -4143,8 +4143,16 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
     final actionCards = _salesNextActionCards();
     final applicantCards = _salesApplicantProgressCards();
     final projectCards = _salesProjectStatusCards(c);
+    // CORE-GAMEPLAY Phase 5: [matchingCards] is deliberately NOT part of
+    // this check. Unlike the other three (each "something the player needs
+    // to act on this month"), the "案件を見る" entry point is a permanently
+    // -available browse feature — it is never empty, so folding it in here
+    // would make [hasAnyContent] permanently true and silently delete
+    // [_salesTabEmptyState] (Issue #173's truthful "no current action"
+    // copy) for good. The empty state and the matching entry point are not
+    // mutually exclusive: a month with nothing else to act on can still
+    // truthfully say so while still offering "案件を見る".
     final hasAnyContent =
-        matchingCards.isNotEmpty ||
         actionCards.isNotEmpty ||
         applicantCards.isNotEmpty ||
         projectCards.isNotEmpty;

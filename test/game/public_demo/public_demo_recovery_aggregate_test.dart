@@ -179,6 +179,10 @@ void main() {
         // session list -- unrelated to Recovery, present on every workflow
         // JSON since this phase.
         'interviewSessions',
+        // CORE-GAMEPLAY Phase 5: additive matching-proposal record map --
+        // unrelated to Recovery, present on every workflow JSON since this
+        // phase.
+        'matchingProposals',
       });
 
       final assignmentsJson = workflowJson['assignments'] as List;

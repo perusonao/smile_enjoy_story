@@ -375,11 +375,14 @@ export async function closeMonthlyPrimaryCta(page: Page): Promise<void> {
   });
   await cta.click();
   await waitForStableFrame(page);
-  // A larger budget than `clickButton`'s own default: April's month-close
-  // specifically opens a new-applicant event dialog only after an awaited
-  // image precache (`april()`), and this is called at most once per month
-  // (12 times for a full year), so the worst case here is cheap.
-  await waitAndDismissDialog(page, '確認', 4_000);
+  // A larger budget than `clickButton`'s own default: April's and May's
+  // own month-close event dialogs (`april()`/`may()`) each open only after
+  // an awaited image precache, observed to occasionally take longer than
+  // 4s under load (a heavier scenario with more on-screen content, e.g.
+  // the merge-blocker's own recruited second hire, competing for the same
+  // frame budget) — this is called at most once per month (12 times for a
+  // full year), so a larger worst case here is still cheap.
+  await waitAndDismissDialog(page, '確認', 12_000);
   await dismissMonthGuardIfPresent(page);
 }
 

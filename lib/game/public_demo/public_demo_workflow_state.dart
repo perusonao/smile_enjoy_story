@@ -106,8 +106,9 @@ class PublicDemoWorkflowState {
 
     List<T> decodeList<T>(List raw, T Function(Map<String, dynamic>) decode) =>
         raw.map((entry) {
-          if (entry is! Map)
+          if (entry is! Map) {
             throw const FormatException('Invalid workflow entry');
+          }
           return decode(entry.cast<String, dynamic>());
         }).toList();
 

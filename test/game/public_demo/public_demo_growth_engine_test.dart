@@ -198,4 +198,49 @@ void main() {
     final engineer = runtime(potential: 5, fastLearner: true);
     expect(grow(engineer).after.toJson(), grow(engineer).after.toJson());
   });
+
+  group('Codex P2 fix (PR #212): totalItExperienceMonths advances with '
+      'practical growth', () {
+    test('an assignment month advances totalItExperienceMonths by exactly '
+        'the same delta as the primary language\'s actualExperienceMonths '
+        '(the bug: Matching now reads totalItExperienceMonths directly, so '
+        'it must not stay frozen at hire time)', () {
+      final before = runtime().copyWith(totalItExperienceMonths: 36);
+      final result = grow(before, source: PublicDemoGrowthSource.assignment);
+      expect(result.after.totalItExperienceMonths, 37);
+      expect(
+        result
+            .after
+            .languageSkills[ProgrammingLanguage.java]!
+            .actualExperienceMonths,
+        before.languageSkills[ProgrammingLanguage.java]!.actualExperienceMonths +
+            1,
+      );
+    });
+
+    test('waiting/training growth (no practical experience) leaves '
+        'totalItExperienceMonths unchanged, exactly like the primary '
+        'language\'s actualExperienceMonths', () {
+      final before = runtime().copyWith(totalItExperienceMonths: 36);
+      for (final source in [
+        PublicDemoGrowthSource.waiting,
+        PublicDemoGrowthSource.internalTraining,
+        PublicDemoGrowthSource.externalTraining,
+      ]) {
+        final result = grow(before, source: source);
+        expect(result.after.totalItExperienceMonths, 36);
+      }
+    });
+
+    test('repeated assignment months accumulate exactly, matching '
+        'actualExperienceMonthsDelta each time', () {
+      var engineer = runtime().copyWith(totalItExperienceMonths: 60);
+      for (var month = 0; month < 6; month++) {
+        final result = grow(engineer, source: PublicDemoGrowthSource.assignment);
+        expect(result.actualExperienceMonthsDelta, 1);
+        engineer = result.after;
+      }
+      expect(engineer.totalItExperienceMonths, 66);
+    });
+  });
 }

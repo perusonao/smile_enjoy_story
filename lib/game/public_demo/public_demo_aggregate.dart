@@ -141,10 +141,16 @@ class PublicDemoAggregate {
   /// (see [PublicDemoWorkflowState.withMatchingProposal]'s own doc for what
   /// this does and deliberately does not do). A no-op unless [engineerId]
   /// is currently available (per [availableEngineersForMatching]) and
-  /// [projectId] resolves to a genuine candidate for the current month via
-  /// [PublicDemoSeededProjectGenerator.regenerate] — a caller cannot record
-  /// a proposal for a fabricated project id, or for an engineer already
-  /// staffed elsewhere this month.
+  /// [projectId] actually names one of the candidates currently displayed
+  /// for [PublicDemoState.month] (Codex P2 fix, PR #212: checking only that
+  /// [PublicDemoSeededProjectGenerator.regenerate] returns non-`null` was
+  /// insufficient — `regenerate` happily reconstructs a project for *any*
+  /// syntactically valid `project-<month>-<slot>` id, including one from a
+  /// different month or a slot index never actually offered this month, so
+  /// that alone did not guarantee the id was ever something the player
+  /// could have seen/selected). A caller cannot record a proposal for a
+  /// fabricated project id, a different month's project, an out-of-range
+  /// slot, or for an engineer already staffed elsewhere this month.
   PublicDemoAggregate proposeMatch({
     required String engineerId,
     required String projectId,
@@ -154,11 +160,10 @@ class PublicDemoAggregate {
     if (workflow.engineers.every((engineer) => engineer.id != engineerId)) {
       return this;
     }
-    final candidate = PublicDemoSeededProjectGenerator.regenerate(
-      runSeed: runSeed,
-      projectId: projectId,
-    );
-    if (candidate == null) return this;
+    final currentPoolIds = projectCandidatesForMonth(
+      state.month,
+    ).map((candidate) => candidate.id).toSet();
+    if (!currentPoolIds.contains(projectId)) return this;
     return _copyWith(
       workflow: workflow.withMatchingProposal(
         engineerId: engineerId,

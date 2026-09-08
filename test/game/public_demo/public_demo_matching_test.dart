@@ -389,6 +389,54 @@ void main() {
       expect(next.workflow.matchingProposals, isEmpty);
     });
 
+    test('Codex P2 fix (PR #212): proposeMatch is a no-op for a '
+        'syntactically valid id that regenerate() would happily reconstruct '
+        'but that was never in the current month\'s displayed pool — a '
+        'different month entirely', () {
+      final aggregate = PublicDemoAggregate.initial(); // state.month == 4
+      // Well-formed per PublicDemoSeededProjectGenerator's own id scheme
+      // ('project-<month>-<slot>'), and regenerate() alone would return a
+      // real (if never-offered) candidate for it — exactly the gap Codex
+      // flagged.
+      final next = aggregate.proposeMatch(
+        engineerId: 'eng-01',
+        projectId: 'project-999-999',
+      );
+      expect(next.matchingProposalFor('eng-01'), isNull);
+      expect(next.workflow.matchingProposals, isEmpty);
+    });
+
+    test('Codex P2 fix (PR #212): proposeMatch is a no-op for a '
+        'same-month id whose slot index was never actually offered (beyond '
+        'the current default pool size)', () {
+      final aggregate = PublicDemoAggregate.initial();
+      final offeredIds = aggregate
+          .projectCandidatesForMonth(4)
+          .map((c) => c.id)
+          .toSet();
+      const outOfRangeId = 'project-4-999';
+      expect(offeredIds.contains(outOfRangeId), isFalse); // sanity check
+
+      final next = aggregate.proposeMatch(
+        engineerId: 'eng-01',
+        projectId: outOfRangeId,
+      );
+      expect(next.matchingProposalFor('eng-01'), isNull);
+    });
+
+    test('Codex P2 fix (PR #212): proposeMatch still succeeds for every id '
+        'genuinely in the current month\'s displayed pool (the fix does not '
+        'over-restrict)', () {
+      final aggregate = PublicDemoAggregate.initial();
+      for (final candidate in aggregate.projectCandidatesForMonth(4)) {
+        final next = aggregate.proposeMatch(
+          engineerId: 'eng-01',
+          projectId: candidate.id,
+        );
+        expect(next.matchingProposalFor('eng-01')?.projectId, candidate.id);
+      }
+    });
+
     test('proposeMatch is a no-op for an unknown engineer id', () {
       final aggregate = PublicDemoAggregate.initial();
       final candidate = aggregate.projectCandidatesForMonth(4).first;

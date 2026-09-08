@@ -496,8 +496,7 @@ above, none to a new, unrelated regression.
 First follow-up pass: committed and pushed to
 `claude/recruitment-skillsheet-authority-e7v65x` (commits `7408961`
 through `70480a7`). Second follow-up pass (this update): committed and
-pushed to the same branch/PR (#210). See `git log
-claude/recruitment-skillsheet-authority-e7v65x` for the final HEAD SHA.
+pushed to the same branch/PR (#210) as `e7caccbe6d3fda02da8686271af10dec369ce177`.
 
 ## Final verdict
 

@@ -13,8 +13,10 @@ Status: **Implementation complete. Full suite 1918/1918 green (0 failures) on th
   merged/stale-branch-reuse rule it was reset onto the BASE SHA above
   (`git reset --hard origin/main`) before any new work, mirroring Phase 4's
   own branch-reuse note.
-- Final HEAD SHA: `c0a45957a7cbdc7ff4592b505d0cf865d2753f9f`
-- PR: `<FILLED IN AFTER PR CREATION — see final chat message>`
+- Final HEAD SHA (content-complete, before this PR-URL fill-in commit):
+  `e8a235cd0cae9bdefe391aea19218b366f3501a3`
+- PR: https://github.com/perusonao/smile_enjoy_story/pull/211 (references
+  Issue #205)
 
 ## Scope discipline (Issue #205's own "do not" list)
 

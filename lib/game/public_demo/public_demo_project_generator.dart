@@ -77,7 +77,7 @@ class PublicDemoSeededProjectGenerator {
       final project = index == 0
           ? _guaranteedEligibleProject(runSeed: runSeed, month: month)
           : _generateOne(runSeed: runSeed, month: month, identifier: 'slot:$index');
-      return _projectFor(_withStableId(project, _stableId(month, index)));
+      return _candidateFor(project, _stableId(month, index));
     });
   }
 
@@ -96,7 +96,7 @@ class PublicDemoSeededProjectGenerator {
     final project = index == 0
         ? _guaranteedEligibleProject(runSeed: runSeed, month: month)
         : _generateOne(runSeed: runSeed, month: month, identifier: 'slot:$index');
-    return _projectFor(_withStableId(project, projectId));
+    return _candidateFor(project, projectId);
   }
 
   static String _stableId(int month, int index) => 'project-$month-${index + 1}';
@@ -131,9 +131,8 @@ class PublicDemoSeededProjectGenerator {
   /// month only); this is a stable, deterministic stand-in so
   /// [Project.applicationDeadlineWeek] still carries a coherent value —
   /// unused by any Public Demo authority in this phase, exactly like
-  /// several other [Project] fields (`paymentTermDays`,
-  /// `contractTermMonths`, ...) it already carries without Public Demo
-  /// acting on them yet.
+  /// several other [Project] fields (`contractTermMonths`, ...) it already
+  /// carries without Public Demo acting on them yet.
   static int _baseWeekForMonth(int month) => (month - 4) * 4 + 1;
 
   /// BALANCE GUARD (task requirement): April's initial project pool must
@@ -201,8 +200,19 @@ class PublicDemoSeededProjectGenerator {
     return requirements.every((pair) => pair.$1 <= pair.$2);
   }
 
-  static PublicDemoProjectCandidate _projectFor(Project project) =>
-      PublicDemoProjectCandidate(project: project, client: _clientFor(project.clientId));
+  /// Resolves [generated]'s client, then bundles the two together under a
+  /// stable [id] (see [_withStableId]) — the single place both halves of a
+  /// [PublicDemoProjectCandidate] come together, so the client is resolved
+  /// exactly once and its own real [Client.paymentTermDays] can correct the
+  /// generated [Project]'s copy of the same fact (see [_withStableId]'s own
+  /// doc).
+  static PublicDemoProjectCandidate _candidateFor(Project generated, String id) {
+    final client = _clientFor(generated.clientId);
+    return PublicDemoProjectCandidate(
+      project: _withStableId(generated, id, paymentTermDays: client.paymentTermDays),
+      client: client,
+    );
+  }
 
   static Client _clientFor(String clientId) => sampleClients.firstWhere(
     (client) => client.id == clientId,
@@ -211,14 +221,30 @@ class PublicDemoSeededProjectGenerator {
 
   /// Reconstructs [project] with [id] in place of the generator's own
   /// `project-<seed>-<sequence>` id — every other field passes through
-  /// unchanged. Needed because the stable id scheme below (mirroring
-  /// [PublicDemoSeededRecruitmentGenerator]'s candidate ids) deliberately
-  /// does not depend on `runSeed`, only on `(month, slot)`, so a project's
-  /// identity is stable across an id-only lookup regardless of which
-  /// playthrough produced it — but [ProjectGenerator] itself has no way to
-  /// know that convention, since its own id is a function of the seed it
-  /// was given.
-  static Project _withStableId(Project project, String id) => Project(
+  /// unchanged, EXCEPT [paymentTermDays]. Needed because the stable id
+  /// scheme below (mirroring [PublicDemoSeededRecruitmentGenerator]'s
+  /// candidate ids) deliberately does not depend on `runSeed`, only on
+  /// `(month, slot)`, so a project's identity is stable across an id-only
+  /// lookup regardless of which playthrough produced it — but
+  /// [ProjectGenerator] itself has no way to know that convention, since its
+  /// own id is a function of the seed it was given.
+  ///
+  /// [paymentTermDays] is supplied by the caller (the resolved [Client]'s
+  /// own value — see [_candidateFor]) rather than read from [project]:
+  /// [ProjectGenerator] never populates this field itself (it stays at
+  /// [Project]'s own `30` default regardless of which client was picked —
+  /// see the identical pre-existing gap/workaround documented at
+  /// `lib/ui/engineers/engineer_detail_screen.dart`'s `paymentTermDaysById`
+  /// call sites). Passing the client's real term through here means this
+  /// adapter's own [Project.paymentTermDays] agrees with
+  /// [PublicDemoProjectCandidate.client] instead of silently reproducing
+  /// that same main-engine gap for a client with a 60-day term (Future Web,
+  /// Nova Infra).
+  static Project _withStableId(
+    Project project,
+    String id, {
+    required int paymentTermDays,
+  }) => Project(
     id: id,
     clientId: project.clientId,
     title: project.title,
@@ -248,6 +274,6 @@ class PublicDemoSeededProjectGenerator {
     workCategory: project.workCategory,
     commercialFlow: project.commercialFlow,
     contractTermMonths: project.contractTermMonths,
-    paymentTermDays: project.paymentTermDays,
+    paymentTermDays: paymentTermDays,
   );
 }

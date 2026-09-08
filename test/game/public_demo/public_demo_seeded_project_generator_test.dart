@@ -207,6 +207,29 @@ void main() {
       }
     });
 
+    test('project.paymentTermDays agrees with the resolved client, even for '
+        'a 60-day client (Future Web / Nova Infra) -- ProjectGenerator '
+        'itself never populates this field, so it must not silently stay '
+        'at the class default of 30', () {
+      var sawSixtyDayClient = false;
+      for (var seed = 0; seed < 100; seed++) {
+        final candidates = PublicDemoSeededProjectGenerator.forMonth(
+          runSeed: seed,
+          month: 4,
+          count: 6,
+        );
+        for (final candidate in candidates) {
+          expect(candidate.project.paymentTermDays, candidate.client.paymentTermDays);
+          if (candidate.client.paymentTermDays == 60) sawSixtyDayClient = true;
+        }
+      }
+      expect(
+        sawSixtyDayClient,
+        isTrue,
+        reason: 'test is meaningless if no 60-day client ever appeared',
+      );
+    });
+
     test('requiredExperienceMonths matches the canonical rank mapping', () {
       final candidates = PublicDemoSeededProjectGenerator.forMonth(
         runSeed: 55,

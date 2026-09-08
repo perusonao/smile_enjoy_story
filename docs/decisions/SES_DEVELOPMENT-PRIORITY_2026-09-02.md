@@ -213,8 +213,20 @@ Result Reportは履歴・証拠であり、この文書の代わりにはしな�
 - `docs/ai-knowledge/INDEX.md` — 技術的incident/pattern/decisionの索引。現在の開発優先順位の正本ではない。
 - `docs/design/SES_NON-HOME-UI_VISUAL-SSOT.md` — Employee/Sales/Accounting/MenuのVisual（layout/情報階層/visual treatment/navigation target）正本。Canonical Visual Reference（7枚のPNG）の所在と、Reference/authoritative game stateの優先順位を定義する。HOMEはこのSSOTの対象外（Freeze維持）。
 - `docs/reports/` — 実施結果と証拠。計画変更が必要なら結果報告だけで終わらせず、この文書も更新する。
+- `docs/reports/SES_CORE-GAMEPLAY_Phase*_Result.md` — First Fun Year本体（HOME/Visual/April→March replay）とは別建てで並行進行するCORE-GAMEPLAY（Seeded RNG→Random Recruitment→Recruitment Interview→Random Projects…）施策系列の実施結果と証拠。この系列は各Phase自身のresult reportチェーンのみで追跡され、本文書の「Current execution order」「Prioritized backlog」には含めない（2026-09-08 Update history参照）。
 
 ## Update history
+
+### 2026-09-08（CORE-GAMEPLAY Phase 1-4完了 — governing plan初出記録）
+
+- **CORE-GAMEPLAY Phase 1-4が完了した。** First Fun Year本体（HOME/Visual/April→March replay）とは別建てで並行進行してきた施策系列で、本文書には従来一度も記載していなかった:
+  1. Phase 1 — Seeded RNG基盤（PR #201、`docs/reports/SES_CORE-GAMEPLAY_Phase1_Seeded-RNG_Result.md`）
+  2. Phase 2 — Random Recruitment（PR #202、`docs/reports/SES_CORE-GAMEPLAY_Phase2_Random-Recruitment_Result.md`）
+  3. Phase 3 — Recruitment Interview（PR #203、`docs/reports/SES_CORE-GAMEPLAY_Phase3_Recruitment-Interview_Result.md`）
+  4. Phase 4 — Random Projects（PR #204、`docs/reports/SES_CORE-GAMEPLAY_Phase4_Random-Projects_Result.md`）
+- Phase 1-3はいずれも本文書を一度も更新せず、各Phase自身のresult reportのみで追跡されていた（`git log -- docs/decisions/SES_DEVELOPMENT-PRIORITY_2026-09-02.md`で確認済み — 本エントリが本文書における"CORE-GAMEPLAY"の初出）。Phase 4のPRレビュー（Codex自動レビュー、PR #204）でこの空白を指摘され、著者確認の上、本エントリとして遡及的に記録する。
+- **本エントリはFirst Fun Yearの「Current execution order」「Prioritized backlog」を変更しない。** CORE-GAMEPLAY Phase 1-4はFirst Fun Year本体の実行順とは独立した並行トラックであり、いずれのPhaseもHOME/Employee/Sales/Accounting/Menu Visual作業やApril→March human replayの優先順位・スコープを変更していない。
+- Phase 4のresult reportはPhase 5（Matching）へのhandoffポイント（`PublicDemoAggregate.projectCandidatesForMonth`ほか）を記録済み。次Phaseの着手判断・優先順位付けは本文書のFirst Fun Year方針とは別に行う。
 
 ### 2026-09-07（SES TAB UI Visual Reference Canonicalization — Accounting UI Phase 1完了とのreintegration）
 

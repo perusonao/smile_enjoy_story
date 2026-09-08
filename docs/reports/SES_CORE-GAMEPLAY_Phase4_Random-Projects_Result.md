@@ -364,6 +364,51 @@ from modification by this task). Not fixed here per the task's own "禁止:
 Finance revenue計算変更" instruction; flagged for a future session with
 Finance/salary-offer in scope.
 
+## Post-review fix (Codex automated review, PR #204)
+
+Two automated findings came in after the PR was opened:
+
+1. **P2 — `Project.paymentTermDays` never reflected the resolved client's
+   real payment term** (correctly caught: `ProjectGenerator` itself never
+   populates this field — it stays at `Project`'s own `30` default
+   regardless of which client was picked, a pre-existing main-engine gap
+   already documented/worked around at `lib/ui/engineers/
+   engineer_detail_screen.dart`'s `paymentTermDaysById` call sites — and
+   this adapter's `_withStableId` was reconstructing the project without
+   correcting it). Fixed: `_withStableId` now takes an explicit
+   `paymentTermDays` parameter, and the new `_candidateFor` helper (which
+   replaces the old `_projectFor`) resolves the client exactly once and
+   passes `client.paymentTermDays` through — so `PublicDemoProjectCandidate
+   .project.paymentTermDays` now agrees with `.client.paymentTermDays` for
+   every candidate, including Future Web/Nova Infra's 60-day term. No
+   `ProjectGenerator`/main-engine file was touched; the fix is entirely
+   local to this phase's own adapter. New test: `public_demo_seeded_
+   project_generator_test.dart` › "project.paymentTermDays agrees with the
+   resolved client ..." (100-seed sweep, asserts a 60-day client is
+   actually exercised so the check isn't vacuous). Verified: `flutter
+   analyze` clean, full focused suite green (18/18), full `flutter test`
+   re-run clean.
+2. **P1 — suggests recording this phase's completion in
+   `docs/decisions/SES_DEVELOPMENT-PRIORITY_2026-09-02.md`** (the
+   repo's "First Fun Year" governing-priority document). Investigated
+   first, since it's an editorial/precedent question rather than a code
+   fix: that document's own "Current execution order"/backlog are scoped
+   entirely to the HOME/Visual/"First Fun Year" initiative, and `git log`
+   confirms none of this same CORE-GAMEPLAY initiative's three prior merged
+   phases (Phase 1/2/3, PRs #201/#202/#203) ever touched this document
+   either — no commit in its history mentions "CORE-GAMEPLAY" at all, and
+   no other planning document in the repo (`docs/DEVELOPMENT_PLAN.md`
+   included) references it by name. Put to the PR's author/user rather
+   than decided unilaterally; **the user chose to record it this time.**
+   Applied as a new `## Update history` entry
+   ("2026-09-08（CORE-GAMEPLAY Phase 1-4完了 — governing plan初出記録）")
+   plus one line under `## Relationship to existing documents` pointing at
+   the `SES_CORE-GAMEPLAY_Phase*_Result.md` chain — both additive, and the
+   new entry explicitly states it does **not** change the "Current
+   execution order"/"Prioritized backlog" tables, since CORE-GAMEPLAY
+   remains its own parallel track, not a reprioritization of First Fun
+   Year's own sequence.
+
 ## Known limitations
 
 - **UI deferred** — see "UI" above. A query API exists; nothing renders it

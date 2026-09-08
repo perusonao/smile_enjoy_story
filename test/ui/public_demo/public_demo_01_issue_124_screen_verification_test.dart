@@ -347,7 +347,7 @@ Future<void> _driveToActualCashShortage(WidgetTester tester) async {
     await tester.pumpAndSettle();
     await tester.tap(finder.first);
     await settle();
-    if (text == 'SkillSheet確認') {
+    if (text == 'スキルシート確認') {
       await tester.tap(find.widgetWithText(FilledButton, '内容を確認'));
       await tester.pumpAndSettle();
     }
@@ -361,7 +361,7 @@ Future<void> _driveToActualCashShortage(WidgetTester tester) async {
   // April: advance Sato to receive the May order. The employee
   // sales-progression card is on 社員 now (PUBLIC-DEMO-HOME-UI-3B).
   await switchPublicDemoTab(tester, PublicDemoTab.employees);
-  await tapAndSettle('SkillSheet確認');
+  await tapAndSettle('スキルシート確認');
   await tapAndSettle('営業開始');
   await tapAndSettle('案件紹介');
   await tapAndSettle('上位会社面談');

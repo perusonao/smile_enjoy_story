@@ -1,7 +1,6 @@
 // CORE-GAMEPLAY Phase 2 (seeded recruitment): visual/overflow coverage for
-// the Sales/Recruitment tab now showing genuinely seed-varied candidates
-// (via PublicDemoSeededRecruitmentGenerator) instead of the old fixed
-// 高橋・田中 template pair. Also saves the required
+// the Sales/Recruitment tab showing genuinely seed-varied candidates via
+// PublicDemoSeededRecruitmentGenerator. Also saves the required
 // 360x800/390x844 screenshots to docs/reports/screenshots/ so the Phase 2
 // result report can show real candidate-to-candidate variety.
 import 'dart:io';
@@ -79,13 +78,8 @@ Future<void> _pumpSalesTabWithBoundary(
   );
   await tester.pumpAndSettle();
   await switchPublicDemoTab(tester, PublicDemoTab.sales);
-  // `PublicDemoWorkflowState.initial`'s own fixed founding pair (高橋 翔 /
-  // 田中 美咲) always leads the candidate list ahead of anything this
-  // fixture's own `recruit()` call just generated, so the newly-seeded
-  // candidates this test actually cares about start below the fold on a
-  // phone-sized viewport. Scroll the last seeded candidate into view so the
-  // capture below actually shows seed-dependent content, not just the two
-  // seed-independent founding applicants every fixture starts with.
+  // Scroll the last seeded candidate into view so the capture below
+  // reliably shows it even on a phone-sized viewport.
   await tester.ensureVisible(
     find.text(aggregate.workflow.applicants.last.name),
   );
@@ -168,20 +162,17 @@ void main() {
     }
 
     testWidgets(
-      'sanity: the two newly-*seeded* engineer-medium candidates (not the '
-      'fixed 高橋・田中 founding pair every fixture starts with) are not '
+      'sanity: the two newly-*seeded* engineer-medium candidates are not '
       'textually identical, and differ again for a different runSeed',
       (tester) async {
         final gameA = mayWithSeededEngineerCandidates(2024);
-        final seededA = gameA.workflow.applicants
-            .skip(2) // skip the fixed founding 高橋/田中 pair
-            .toList();
+        final seededA = gameA.workflow.applicants.toList();
         expect(seededA, hasLength(2));
         expect(seededA[0].name, isNot(seededA[1].name));
         expect(seededA[0].resumeSummary, isNot(seededA[1].resumeSummary));
 
         final gameB = mayWithSeededEngineerCandidates(999999);
-        final seededB = gameB.workflow.applicants.skip(2).toList();
+        final seededB = gameB.workflow.applicants.toList();
         expect(
           seededA.map((a) => a.name).toList(),
           isNot(seededB.map((a) => a.name).toList()),

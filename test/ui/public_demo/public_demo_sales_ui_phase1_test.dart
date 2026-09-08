@@ -90,18 +90,18 @@ Future<void> pumpSalesTab(
 PublicDemoAggregate emptyPipelineAtMonth(int month) =>
     publicDemoAggregateAtMonth(month, monthlyExpenses: _expense);
 
-/// Reaches May before the recruitment-media flow has been used this month —
-/// `workflow.applicants` already carries [PublicDemoWorkflowState.initial]'s
-/// own baseline pool (unrelated to this Phase 1 change), so the applicant
-/// funnel is genuinely non-empty without the player having spent anything
-/// yet. Used where the recruitment-media CTA itself must still be enabled.
+/// Reaches May before the recruitment-media flow has been used this month.
+/// CORE-GAMEPLAY Phase 4.5: [PublicDemoWorkflowState.initial] no longer
+/// pre-seeds any applicant, so `workflow.applicants` is genuinely empty here
+/// — this fixture exists purely so the recruitment-media CTA itself is
+/// still enabled/unused.
 PublicDemoAggregate mayBeforeRecruiting() =>
     PublicDemoAggregate.initial().closeApril(monthlyExpenses: _expense);
 
-/// Reaches May with the recruitment-media flow already used once on top of
-/// that baseline (the `free` medium, the same `PublicDemoAggregate.recruit`
-/// command `_openRecruitmentMedia`'s own sheet commits) — at least one more
-/// real applicant on top of the baseline pool.
+/// Reaches May with the recruitment-media flow already used once (the
+/// `free` medium, the same `PublicDemoAggregate.recruit` command
+/// `_openRecruitmentMedia`'s own sheet commits) — the only source of any
+/// applicant here, per CORE-GAMEPLAY Phase 4.5.
 PublicDemoAggregate mayWithApplicants() {
   final game = mayBeforeRecruiting();
   final recruited = game.recruit(PublicDemoRecruitmentMedium.free);
@@ -279,8 +279,8 @@ void main() {
     );
 
     testWidgets(
-      'existing CTA/eligibility unchanged: 経歴書確認 still advances the real '
-      'applicant stage (applied → resumeReviewed) via the unchanged '
+      'existing CTA/eligibility unchanged: スキルシート確認 still advances the '
+      'real applicant stage (applied → resumeReviewed) via the unchanged '
       'reviewResume command',
       (tester) async {
         final game = mayWithApplicants();
@@ -288,7 +288,7 @@ void main() {
         final applicant = currentWorkflow(tester).applicants.first;
         expect(applicant.stage.name, 'applied', reason: 'fixture sanity');
 
-        await tester.tap(find.text('経歴書確認').first);
+        await tester.tap(find.text('スキルシート確認').first);
         await tester.pumpAndSettle();
 
         final updated = currentWorkflow(

@@ -26,6 +26,7 @@ import 'package:smile_enjoy_story/game/persistence/public_demo_save_service.dart
 import 'package:smile_enjoy_story/game/public_demo/public_demo_aggregate.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_financial_status.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_fiscal_close_id.dart';
+import 'package:smile_enjoy_story/game/public_demo/public_demo_recruitment.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_salary.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_salary_offer.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_sales.dart';
@@ -43,6 +44,28 @@ Finder actionButton(String text) => find.ancestor(
   of: find.text(text),
   matching: find.byWidgetPredicate((widget) => widget is ButtonStyleButton),
 );
+
+/// CORE-GAMEPLAY Phase 4.5: [PublicDemoWorkflowState.initial] no longer
+/// pre-seeds [publicDemoMayApplicants] (`app-01`/`app-02`). This fixture's
+/// whole point (the Codex PR #159 regression below) is the *identity* and
+/// *roster order* of these two exact named applicants, so it simulates a
+/// save created before that fix — where they really were persisted — via
+/// the same `PublicDemoAggregate.fromJson` path a real save load uses,
+/// rather than a synthetic replacement pair.
+PublicDemoAggregate _withLegacyFoundingApplicants(
+  PublicDemoAggregate aggregate,
+) {
+  final json = aggregate.toJson();
+  final workflow = Map<String, dynamic>.from(json['workflow'] as Map);
+  final existingApplicants = List<dynamic>.from(
+    workflow['applicants'] as List,
+  );
+  workflow['applicants'] = [
+    for (final applicant in publicDemoMayApplicants) applicant.toJson(),
+    ...existingApplicants,
+  ];
+  return PublicDemoAggregate.fromJson({...json, 'workflow': workflow});
+}
 
 /// Mirrors the existing Public Demo widget suites' own helper: buttons that
 /// open an event dialog first await a real image decode, which this SDK
@@ -68,8 +91,17 @@ Future<void> tapAndSettle(WidgetTester tester, String text) async {
   await tester.pumpAndSettle();
   await tester.tap(finder.first);
   await settle(tester);
-  if (text == 'SkillSheet確認') {
-    await tester.tap(find.widgetWithText(FilledButton, '内容を確認'));
+  // CORE-GAMEPLAY Phase 4.5: dismiss whichever SkillSheet sheet a tap may
+  // have opened — the employee-side sheet (confirm: '内容を確認') or the
+  // candidate-side sheet (close: '閉じる').
+  final confirmSkillSheet = find.widgetWithText(FilledButton, '内容を確認');
+  if (confirmSkillSheet.evaluate().isNotEmpty) {
+    await tester.tap(confirmSkillSheet);
+    await tester.pumpAndSettle();
+  }
+  final closeCandidateSkillSheet = find.widgetWithText(OutlinedButton, '閉じる');
+  if (closeCandidateSkillSheet.evaluate().isNotEmpty) {
+    await tester.tap(closeCandidateSkillSheet);
     await tester.pumpAndSettle();
   }
   final monthGuardProceed = find.byKey(
@@ -105,7 +137,7 @@ Future<void> playApril(WidgetTester tester) async {
   // The employee sales-progression card is on 社員 now
   // (PUBLIC-DEMO-HOME-UI-3B).
   await switchPublicDemoTab(tester, PublicDemoTab.employees);
-  await tapAndSettle(tester, 'SkillSheet確認');
+  await tapAndSettle(tester, 'スキルシート確認');
   await tapAndSettle(tester, '営業開始');
   await tapAndSettle(tester, '案件紹介');
   await tapAndSettle(tester, '上位会社面談');
@@ -248,7 +280,7 @@ PublicDemoAggregate _orderApplicant(
 PublicDemoAggregate _buildJuneJoinMismatchAggregate({
   String? secondApplicantId,
 }) {
-  var aggregate = PublicDemoAggregate.initial();
+  var aggregate = _withLegacyFoundingApplicants(PublicDemoAggregate.initial());
   aggregate = aggregate
       .startSkillSheetReview('eng-01')
       .beginSelling('eng-01')

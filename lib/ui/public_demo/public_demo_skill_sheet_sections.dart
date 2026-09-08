@@ -29,7 +29,7 @@ class PublicDemoSkillSheetBody extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          '${data.name}\n営業用SkillSheet',
+          '${data.name}\n営業用スキルシート',
           style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
         ),
         const SizedBox(height: 6),
@@ -260,7 +260,7 @@ class _ExperienceSection extends StatelessWidget {
               child: Text(
                 '${comparison.languageLabel}：実経験 '
                 '${formatExperience(comparison.actualMonths)} → '
-                'SkillSheet記載 '
+                'スキルシート記載 '
                 '${formatExperience(comparison.displayedMonths)}',
                 softWrap: true,
               ),

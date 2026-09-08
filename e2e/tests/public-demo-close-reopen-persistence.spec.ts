@@ -23,7 +23,7 @@ const SAVE_KEY = 'flutter.ses_public_demo_01_aggregate_v1';
  * `_commitAggregate` in `public_demo_01_placeholder_screen.dart`). Merely
  * opening the sheet does not commit or save anything. */
 async function commitSkillSheetReview(page: Page): Promise<void> {
-  const openBtn = await scrollToButton(page, 'SkillSheet確認');
+  const openBtn = await scrollToButton(page, 'スキルシート確認');
   await openBtn.click();
   const confirmBtn = page.getByRole('button', { name: '内容を確認', exact: true });
   await confirmBtn.waitFor({ state: 'visible', timeout: 10_000 });
@@ -32,16 +32,16 @@ async function commitSkillSheetReview(page: Page): Promise<void> {
 }
 
 /** True once the reviewed engineer's stage-gated button has flipped from
- * "SkillSheet確認"（`PublicDemoSalesStage.waiting`）to "営業開始"
+ * "スキルシート確認"（`PublicDemoSalesStage.waiting`）to "営業開始"
  * （`PublicDemoSalesStage.skillSheet`) — the real stage transition
  * [commitSkillSheetReview] causes. A fresh, never-reviewed aggregate always
- * shows "SkillSheet確認"/"営業準備OK" instead, so — unlike asserting
+ * shows "スキルシート確認"/"営業準備OK" instead, so — unlike asserting
  * `1年目 4月` alone, which a fresh aggregate satisfies too — this is what
  * actually distinguishes "genuinely restored" from "silently started a new
  * game". */
 async function skillSheetReviewIsVisibleInUi(page: Page): Promise<boolean> {
   const snap = await page.locator('body').ariaSnapshot();
-  return snap.includes('営業開始') && !snap.includes('SkillSheet確認');
+  return snap.includes('営業開始') && !snap.includes('スキルシート確認');
 }
 
 test('a Public Demo save survives closing the tab and reopening the same origin', async ({ browser }) => {

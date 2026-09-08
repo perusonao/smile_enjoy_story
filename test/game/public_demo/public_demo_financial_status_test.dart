@@ -471,8 +471,18 @@ void main() {
 
     test('R: a valid pre-shortage BindingOffer remains coherent once '
         'shortage begins — existing obligations are not cancelled', () {
-      // Accept a genuine offer while still NORMAL.
-      var game = PublicDemoAggregate.initial();
+      // Accept a genuine offer while still NORMAL. CORE-GAMEPLAY Phase 4.5:
+      // PublicDemoAggregate.initial() no longer pre-seeds any applicant —
+      // recruit one via the same real, zero-cost `recruit` command
+      // `_reachShortageAggregate` above already uses (the `free` medium):
+      // this test's own subsequent real closes are tuned to land exactly on
+      // `cashShortage`, not `bankruptcy` — the paid `engineer` medium's
+      // ¥100,000 would tip the same trajectory one step further. runSeed
+      // 4's `free`-medium candidate (month 4) is genuinely experienced and
+      // clears the offer-acceptance threshold this test needs.
+      var game = PublicDemoAggregate.initial(runSeed: 4)
+          .recruit(PublicDemoRecruitmentMedium.free)
+          .aggregate!;
       final applicant = game.workflow.applicants.first;
       final completed = game.completeInterview(applicant.id);
       expect(completed.isCompleted, isTrue);

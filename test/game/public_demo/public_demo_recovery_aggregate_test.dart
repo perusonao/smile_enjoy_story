@@ -7,6 +7,7 @@ import 'package:smile_enjoy_story/game/public_demo/public_demo_fiscal_close_id.d
 import 'package:smile_enjoy_story/game/public_demo/public_demo_salary_finance.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_salary_offer.dart';
 
+import 'test_support/public_demo_legacy_applicant_test_helpers.dart';
 import 'test_support/public_demo_recovery_test_helpers.dart';
 
 /// RECOVERY-LOOP-1: [PublicDemoAggregate.recoverAssignment] atomic
@@ -67,8 +68,14 @@ void main() {
       // PublicDemoFiscalCloseId, so the offer must be accepted once May has
       // already started, exactly like every other Public Demo hire test in
       // this suite, e.g. public_demo_balance_regression_test.dart).
-      var aggregate = PublicDemoAggregate.initial().closeApril(
-        monthlyExpenses: 800000,
+      //
+      // CORE-GAMEPLAY Phase 4.5: `PublicDemoWorkflowState.initial()` no
+      // longer pre-seeds `app-01` — this simulates a save created before
+      // that fix, where `app-01` really was persisted (legacy save
+      // compatibility), which is exactly the scenario this test's own id
+      // choice already assumed.
+      var aggregate = withLegacyFoundingApplicants(
+        PublicDemoAggregate.initial().closeApril(monthlyExpenses: 800000),
       );
       final interview = aggregate.completeInterview(applicantId);
       expect(interview.isCompleted, isTrue);

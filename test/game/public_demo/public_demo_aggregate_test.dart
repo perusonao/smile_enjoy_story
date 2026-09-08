@@ -33,7 +33,12 @@ void main() {
     test(
       'a genuine interview succeeds and consumes exactly one sales slot',
       () {
-        final aggregate = PublicDemoAggregate.initial();
+        // CORE-GAMEPLAY Phase 4.5: PublicDemoAggregate.initial() no longer
+        // pre-seeds any applicant — recruit one via the same real `recruit`
+        // command production code uses.
+        final aggregate = PublicDemoAggregate.initial()
+            .recruit(PublicDemoRecruitmentMedium.engineer)
+            .aggregate!;
         final applicantId = aggregate.workflow.applicants.first.id;
         final salesBefore = aggregate.state.salesRemaining;
 
@@ -66,11 +71,24 @@ void main() {
         // requires each engineer to genuinely be at `introduced` first and
         // only consumes one slot per engineer (it does not re-consume once
         // the engineer has moved past that stage). Both real initial
-        // engineers' partner interviews (2 slots) plus both real initial
-        // applicants' completeInterview (2 slots) exhausts the budget of 4
-        // — a freshly recruited third applicant, never interviewed, is the
-        // target below.
+        // engineers' partner interviews (2 slots) plus two of four real
+        // recruited applicants' completeInterview (2 slots) exhausts the
+        // budget of 4 — a still-uninterviewed applicant is the target below.
+        //
+        // CORE-GAMEPLAY Phase 4.5: a single `recruit()` call generates at
+        // most 2 applicants (engineer medium) and 求人媒体 can only be used
+        // once per month — no longer enough on its own for this fixture's
+        // "more applicants than remaining slots" shape. `salesUsed` resets
+        // each month (`closeApril`), so recruiting once in April and again
+        // in May accumulates 4 real applicants against May's own fresh
+        // 4-slot budget — the same numeric shape this fixture always
+        // needed, reached through two genuine monthly recruit() calls
+        // instead of one pre-seeded pool.
         var aggregate = PublicDemoAggregate.initial();
+        aggregate = aggregate
+            .recruit(PublicDemoRecruitmentMedium.engineer)
+            .aggregate!
+            .closeApril(monthlyExpenses: 800000);
         aggregate = aggregate
             .recruit(PublicDemoRecruitmentMedium.engineer)
             .aggregate!;
@@ -124,7 +142,9 @@ void main() {
 
     test('duplicate interview transition is a no-op: a second call neither '
         'consumes another slot nor errors', () {
-      final aggregate = PublicDemoAggregate.initial();
+      final aggregate = PublicDemoAggregate.initial()
+          .recruit(PublicDemoRecruitmentMedium.engineer)
+          .aggregate!;
       final applicantId = aggregate.workflow.applicants.first.id;
 
       final first = aggregate.completeInterview(applicantId);
@@ -184,7 +204,12 @@ void main() {
     );
 
     test('genuine interview then offer acceptance succeeds end-to-end', () {
-      final aggregate = PublicDemoAggregate.initial();
+      // CORE-GAMEPLAY Phase 4.5: a generated applicant's acceptanceScore is
+      // seed-dependent; pin a runSeed known to clear the acceptance
+      // threshold at zero salary delta so this test is deterministic.
+      final aggregate = PublicDemoAggregate.initial(runSeed: 1)
+          .recruit(PublicDemoRecruitmentMedium.engineer)
+          .aggregate!;
       final applicant = aggregate.workflow.applicants.first;
 
       final afterInterview = aggregate
@@ -210,7 +235,9 @@ void main() {
 
     test('offer acceptance before a genuine interview is rejected, even though '
         'the applicant already exists in the authoritative workflow', () {
-      final aggregate = PublicDemoAggregate.initial();
+      final aggregate = PublicDemoAggregate.initial()
+          .recruit(PublicDemoRecruitmentMedium.engineer)
+          .aggregate!;
       final applicant = aggregate.workflow.applicants.first;
       expect(applicant.hasBeenInterviewed, isFalse);
 
@@ -458,7 +485,12 @@ void main() {
         'joinedApplicantIds reflects exactly them — there is no '
         'joinedApplicants/joinedApplicantIds parameter on the aggregate to '
         'omit either one or substitute an arbitrary list', () {
-      var aggregate = PublicDemoAggregate.initial();
+      // CORE-GAMEPLAY Phase 4.5: PublicDemoAggregate.initial() no longer
+      // pre-seeds any applicant — recruit two via the same real `recruit`
+      // command (engineer medium) production code uses.
+      var aggregate = PublicDemoAggregate.initial()
+          .recruit(PublicDemoRecruitmentMedium.engineer)
+          .aggregate!;
       final ids = aggregate.workflow.applicants.map((a) => a.id).toList();
       expect(ids, hasLength(2), reason: 'the fixture needs exactly two');
 
@@ -474,7 +506,9 @@ void main() {
     test('E: joined omission cannot control May close — closeMay(week:, '
         'monthlyExpenses:) has no parameter through which a caller could ask '
         'for fewer than the genuinely-joined applicants', () {
-      var aggregate = PublicDemoAggregate.initial();
+      var aggregate = PublicDemoAggregate.initial()
+          .recruit(PublicDemoRecruitmentMedium.engineer)
+          .aggregate!;
       final ids = aggregate.workflow.applicants.map((a) => a.id).toList();
       aggregate = aggregate.closeApril(monthlyExpenses: 800000);
       // Only ONE of the two pool applicants is hired — the other never
@@ -526,7 +560,9 @@ void main() {
 
     test('salary derives from the authoritative BindingOffer, never a '
         'caller-tampered acceptedMonthlySalary field', () {
-      var aggregate = PublicDemoAggregate.initial();
+      var aggregate = PublicDemoAggregate.initial()
+          .recruit(PublicDemoRecruitmentMedium.engineer)
+          .aggregate!;
       final applicant = aggregate.workflow.applicants.first;
       aggregate = aggregate.closeApril(monthlyExpenses: 800000);
       aggregate = hireApplicant(aggregate, applicant.id);
@@ -604,17 +640,22 @@ void main() {
       test('TEST B: applicant stage spoof — recordJuneOrder without a genuine '
           'offer/pre-entry chain is a no-op, and closeMay creates no assignment '
           'for it', () {
-        final applicantId =
-            PublicDemoAggregate.initial().workflow.applicants.first.id;
+        // CORE-GAMEPLAY Phase 4.5: PublicDemoAggregate.initial() no longer
+        // pre-seeds any applicant — recruit one first, then call
+        // recordJuneOrder on that SAME aggregate (not a second, separately
+        // fresh one — with no pre-seeded pool, a fresh `.initial()` has no
+        // applicant with this id at all any more).
+        final base = PublicDemoAggregate.initial()
+            .recruit(PublicDemoRecruitmentMedium.engineer)
+            .aggregate!;
+        final applicantId = base.workflow.applicants.first.id;
 
         // The former attack: PublicDemoAggregate.withApplicantStage(id,
         // PublicDemoApplicantStage.juneOrdered) on a non-joined, no-
         // BindingOffer applicant. That method no longer exists; calling
         // the real recordJuneOrder command directly must be a no-op —
         // it requires preEntryClientPassed.
-        var aggregate = PublicDemoAggregate.initial().recordJuneOrder(
-          applicantId,
-        );
+        var aggregate = base.recordJuneOrder(applicantId);
         expect(
           aggregate.workflow.applicants
               .firstWhere((a) => a.id == applicantId)
@@ -636,7 +677,12 @@ void main() {
 
       test('TEST C: a genuine juneOrdered applicant whose join fails (stale '
           'fiscal close) never becomes an assignment', () {
-        var aggregate = PublicDemoAggregate.initial();
+        // runSeed 1's first `engineer`-medium candidate at month 4 has
+        // salesSkillFit 73 — genuinely clears both the partner (>=60) and
+        // client (>=65) pre-entry interview thresholds this chain needs.
+        var aggregate = PublicDemoAggregate.initial(runSeed: 1)
+            .recruit(PublicDemoRecruitmentMedium.engineer)
+            .aggregate!;
         final applicantId = aggregate.workflow.applicants.first.id;
         aggregate = aggregate.completeInterview(applicantId).aggregate;
         final applicant = aggregate.workflow.applicants.firstWhere(
@@ -721,9 +767,13 @@ void main() {
       test('TEST E: genuine applicant happy path (interview -> offer -> '
           'BindingOffer -> join -> valid order progression) — an assignment is '
           'created exactly once', () {
-        var aggregate = PublicDemoAggregate.initial().closeApril(
-          monthlyExpenses: 800000,
-        ); // -> May
+        // Same seed/reasoning as TEST C above — a candidate whose
+        // salesSkillFit genuinely clears both pre-entry interview
+        // thresholds this chain needs.
+        var aggregate = PublicDemoAggregate.initial(runSeed: 1)
+            .recruit(PublicDemoRecruitmentMedium.engineer)
+            .aggregate!
+            .closeApril(monthlyExpenses: 800000); // -> May
         final applicantId = aggregate.workflow.applicants.first.id;
         aggregate = aggregate.completeInterview(applicantId).aggregate;
         final applicant = aggregate.workflow.applicants.firstWhere(

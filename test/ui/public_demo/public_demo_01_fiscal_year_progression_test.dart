@@ -36,7 +36,7 @@ PublicDemoState currentState(WidgetTester tester) =>
 // booked from April's single order, not on any later decision.
 // Matches public_demo_01_success_playthrough_test.dart's helper (ancestor
 // button lookup + drag-until-visible + ensureVisible), since this test also
-// taps real interactive stage buttons (SkillSheet確認, 上位会社面談, ...), not
+// taps real interactive stage buttons (スキルシート確認, 上位会社面談, ...), not
 // just the always-present month-close buttons.
 Finder actionButton(String text) => find.ancestor(
   of: find.text(text),
@@ -64,7 +64,7 @@ Future<void> tapAndSettle(WidgetTester tester, String text) async {
   await tester.pumpAndSettle();
   await tester.tap(finder.first);
   await _settleAfterPossiblePrecache(tester);
-  if (text == 'SkillSheet確認') {
+  if (text == 'スキルシート確認') {
     await tester.tap(find.widgetWithText(FilledButton, '内容を確認'));
     await tester.pumpAndSettle();
   }
@@ -104,7 +104,7 @@ void main() {
       // matching public_demo_01_success_playthrough_test.dart's route. The
       // employee sales-progression card is on 社員 now.
       await switchPublicDemoTab(tester, PublicDemoTab.employees);
-      await tapAndSettle(tester, 'SkillSheet確認');
+      await tapAndSettle(tester, 'スキルシート確認');
       await tapAndSettle(tester, '営業開始');
       await tapAndSettle(tester, '案件紹介');
       await tapAndSettle(tester, '上位会社面談');

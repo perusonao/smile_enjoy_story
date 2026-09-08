@@ -105,7 +105,7 @@ for (const viewport of viewports) {
 
       // Issue #168 (FIRST-FUN-YEAR-ONBOARDING-1): April's close now runs
       // the Month Guard before its own new-applicant event dialog — a
-      // fresh playthrough's untouched 佐藤 健 SkillSheet確認 is a genuinely
+      // fresh playthrough's untouched 佐藤 健 スキルシート確認 is a genuinely
       // outstanding recommended-level action, so the guard's warning shows
       // first. Proceed through it exactly as a player choosing "このまま
       // 月末処理を進める" would; this test itself only cares about the May

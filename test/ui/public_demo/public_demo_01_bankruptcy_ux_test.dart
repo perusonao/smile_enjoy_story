@@ -56,7 +56,7 @@ Future<void> _tapAndSettle(WidgetTester tester, String text) async {
   await tester.pumpAndSettle();
   await tester.tap(finder.first);
   await _settle(tester);
-  if (text == 'SkillSheet確認') {
+  if (text == 'スキルシート確認') {
     await tester.tap(find.widgetWithText(FilledButton, '内容を確認'));
     await tester.pumpAndSettle();
   }
@@ -88,7 +88,7 @@ Future<void> _driveToNovemberBankruptcy(WidgetTester tester) async {
   // April: advance Sato to receive the May order. The employee
   // sales-progression card is on 社員 now (PUBLIC-DEMO-HOME-UI-3B).
   await switchPublicDemoTab(tester, PublicDemoTab.employees);
-  await _tapAndSettle(tester, 'SkillSheet確認');
+  await _tapAndSettle(tester, 'スキルシート確認');
   await _tapAndSettle(tester, '営業開始');
   await _tapAndSettle(tester, '案件紹介');
   await _tapAndSettle(tester, '上位会社面談');
@@ -157,7 +157,7 @@ void main() {
       // Drive to just before the November close. The employee
       // sales-progression card is on 社員.
       await switchPublicDemoTab(tester, PublicDemoTab.employees);
-      await _tapAndSettle(tester, 'SkillSheet確認');
+      await _tapAndSettle(tester, 'スキルシート確認');
       await _tapAndSettle(tester, '営業開始');
       await _tapAndSettle(tester, '案件紹介');
       await _tapAndSettle(tester, '上位会社面談');
@@ -270,7 +270,7 @@ void main() {
       // Drive to cashShortage state (after February close → March). The
       // employee sales-progression card is on 社員.
       await switchPublicDemoTab(tester, PublicDemoTab.employees);
-      await _tapAndSettle(tester, 'SkillSheet確認');
+      await _tapAndSettle(tester, 'スキルシート確認');
       await _tapAndSettle(tester, '営業開始');
       await _tapAndSettle(tester, '案件紹介');
       await _tapAndSettle(tester, '上位会社面談');

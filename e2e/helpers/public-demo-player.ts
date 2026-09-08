@@ -157,7 +157,7 @@ export async function scrollToButton(
  * the page (e.g. one specific applicant's own card) instead of the whole
  * page — needed whenever two engineers/applicants can carry the exact same
  * button label at once (e.g. two un-reviewed May applicants both showing
- * `経歴書確認`), which a bare page-wide `getByRole` cannot disambiguate.
+ * `スキルシート確認`), which a bare page-wide `getByRole` cannot disambiguate.
  * Defaults to `page` itself, so every existing caller is unaffected. */
 export async function clickButton(
   page: Page,
@@ -471,10 +471,10 @@ export async function hireAndRunAppOnePreEntryPipeline(page: Page): Promise<void
   // May's applicant pool always has two candidates (`publicDemoMayApplicants`)
   // on screen together, so every one of app-01's own buttons must be scoped
   // to their own card (`ac(i)`'s per-applicant group) — app-02 carries the
-  // exact same `経歴書確認`/`採用面談` labels on their own card at the same
+  // exact same `スキルシート確認`/`採用面談` labels on their own card at the same
   // time, and an unscoped `getByRole('button', ...)` cannot tell them apart.
   const card = appOneCard(page);
-  await clickButton(page, '経歴書確認', true, card);
+  await clickButton(page, 'スキルシート確認', true, card);
   await clickButton(page, '採用面談', true, card);
   await clickButton(page, '合格・給与提示', true, card);
   const dialog = page.getByRole('alertdialog');
@@ -483,7 +483,7 @@ export async function hireAndRunAppOnePreEntryPipeline(page: Page): Promise<void
   // is always one of `PublicDemoSalaryOfferDialog`'s three offered choices.
   await dialog.getByRole('button', { name: '32万円', exact: true }).click();
   await waitForStableFrame(page);
-  await clickButton(page, '入社前SkillSheet', true, card);
+  await clickButton(page, '入社前スキルシートを確認', true, card);
   await clickButton(page, '入社前営業', true, card);
   await clickButton(page, '案件紹介', true, card);
   await clickButton(page, '上位会社面談', true, card);
@@ -510,7 +510,7 @@ export async function confirmSatoJulyContinuationOnly(page: Page): Promise<void>
 
 /** Runs one waiting engineer's post-`waiting` sales pipeline —
  * SkillSheet review through order acceptance — using the raw employee
- * card's own button labels (`ec(i)`'s `SkillSheet確認`/`営業開始`, never
+ * card's own button labels (`ec(i)`'s `スキルシート確認`/`営業開始`, never
  * HOME Recommended Action's differently-worded `SkillSheetを確認`/
  * `営業を開始`, which `sellFoundingEngineerInApril` above targets instead —
  * the two are genuinely different on-screen strings for the same two
@@ -533,11 +533,11 @@ export async function runWaitingEngineerSalesPipelineToOrdered(
   // whenever eng-01 (never Recovery-eligible itself, but ready for field
   // sales and still `waiting` if never sold) is on screen at the same time
   // as the Recovery target, since both would otherwise carry the exact same
-  // `SkillSheet確認` label the instant both are still `waiting` together
+  // `スキルシート確認` label the instant both are still `waiting` together
   // (e.g. the CRITICAL ACCEPTANCE GATE scenario, which deliberately never
   // sells eng-01). `内容を確認` lives inside the SkillSheet dialog itself,
   // not the card, so it is always page-scoped regardless of [root].
-  await clickButton(page, 'SkillSheet確認', true, root);
+  await clickButton(page, 'スキルシート確認', true, root);
   await clickButton(page, '内容を確認', true);
   await clickButton(page, '営業開始', true, root);
   await clickButton(page, '案件紹介', true, root);

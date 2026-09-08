@@ -101,7 +101,7 @@ Future<void> _tapAction(WidgetTester tester, String label) async {
   await tester.pumpAndSettle();
   await tester.tap(finder.first);
   await tester.pump();
-  if (label == 'SkillSheet確認') {
+  if (label == 'スキルシート確認') {
     // SKILLSHEET-UX-2A Phase A: the SkillSheet presentation is now a
     // showModalBottomSheet (slide-in entrance transition) rather than the
     // #117 AlertDialog (scale/fade transition). A single bare `pump()`
@@ -294,7 +294,7 @@ void main() {
 
     // The employee sales-progression card is on 社員 now.
     await switchPublicDemoTab(tester, PublicDemoTab.employees);
-    await _tapAction(tester, 'SkillSheet確認');
+    await _tapAction(tester, 'スキルシート確認');
     await tester.pump();
 
     expect(service.saved, hasLength(1));
@@ -315,7 +315,7 @@ void main() {
 
     // The employee sales-progression card is on 社員 now.
     await switchPublicDemoTab(tester, PublicDemoTab.employees);
-    await _tapAction(tester, 'SkillSheet確認');
+    await _tapAction(tester, 'スキルシート確認');
     await service.firstSaveStarted.future;
     await _tapAction(tester, '営業開始');
     expect(service.saveCalls, 1, reason: 'writes are serialized');

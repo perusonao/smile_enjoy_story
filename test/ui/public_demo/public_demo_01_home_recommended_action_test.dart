@@ -89,8 +89,17 @@ Future<void> tapAndSettle(WidgetTester tester, String text) async {
   await tester.pumpAndSettle();
   await tester.tap(finder.first);
   await settle(tester);
-  if (text == 'SkillSheet確認') {
-    await tester.tap(find.widgetWithText(FilledButton, '内容を確認'));
+  // CORE-GAMEPLAY Phase 4.5: dismiss whichever SkillSheet sheet a tap may
+  // have opened — the employee-side sheet (confirm: '内容を確認') or the
+  // candidate-side sheet (close: '閉じる').
+  final confirmSkillSheet = find.widgetWithText(FilledButton, '内容を確認');
+  if (confirmSkillSheet.evaluate().isNotEmpty) {
+    await tester.tap(confirmSkillSheet);
+    await tester.pumpAndSettle();
+  }
+  final closeCandidateSkillSheet = find.widgetWithText(OutlinedButton, '閉じる');
+  if (closeCandidateSkillSheet.evaluate().isNotEmpty) {
+    await tester.tap(closeCandidateSkillSheet);
     await tester.pumpAndSettle();
   }
   // Issue #119: a month-close tap may now surface the Month Guard's
@@ -121,6 +130,11 @@ Future<void> tapCta(WidgetTester tester) async {
   final confirm = find.widgetWithText(FilledButton, '内容を確認');
   if (confirm.evaluate().isNotEmpty) {
     await tester.tap(confirm);
+    await tester.pumpAndSettle();
+  }
+  final closeCandidateSkillSheet = find.widgetWithText(OutlinedButton, '閉じる');
+  if (closeCandidateSkillSheet.evaluate().isNotEmpty) {
+    await tester.tap(closeCandidateSkillSheet);
     await tester.pumpAndSettle();
   }
 }
@@ -159,7 +173,7 @@ Future<void> playApril(WidgetTester tester) async {
   // callers can keep reading the Recommended Action slot (a HOME-only
   // section) without having to know this detail themselves.
   await switchPublicDemoTab(tester, PublicDemoTab.employees);
-  await tapAndSettle(tester, 'SkillSheet確認');
+  await tapAndSettle(tester, 'スキルシート確認');
   await tapAndSettle(tester, '営業開始');
   await tapAndSettle(tester, '案件紹介');
   await tapAndSettle(tester, '上位会社面談');
@@ -256,7 +270,7 @@ void main() {
         HomeRecommendedActionKind.employeeIntroduceProject,
         HomeRecommendedActionKind.employeePartnerInterview,
       ];
-      const taps = ['SkillSheet確認', '営業開始', '案件紹介'];
+      const taps = ['スキルシート確認', '営業開始', '案件紹介'];
 
       // The employee sales-progression card is on 社員 now
       // (PUBLIC-DEMO-HOME-UI-3B); the Recommended Action slot it feeds is
@@ -283,7 +297,7 @@ void main() {
 
       // The employee sales-progression card is on 社員 now.
       await switchPublicDemoTab(tester, PublicDemoTab.employees);
-      await tapAndSettle(tester, 'SkillSheet確認');
+      await tapAndSettle(tester, 'スキルシート確認');
       await tapAndSettle(tester, '営業開始');
       await tapAndSettle(tester, '案件紹介');
       await tapAndSettle(tester, '上位会社面談');
@@ -353,10 +367,10 @@ void main() {
       for (final e in notReady) {
         expect(recommended(tester)!.targetId, isNot(e.id));
       }
-      // The screen agrees: exactly one SkillSheet確認 button exists — on
+      // The screen agrees: exactly one スキルシート確認 button exists — on
       // 社員, its own tab now.
       await switchPublicDemoTab(tester, PublicDemoTab.employees);
-      expect(actionButton('SkillSheet確認'), findsOneWidget);
+      expect(actionButton('スキルシート確認'), findsOneWidget);
     });
   });
 
@@ -399,14 +413,15 @@ void main() {
         find.byKey(const Key('public-demo-recruitment-media-card')),
         findsOneWidget,
       );
-      // May's applicants are all at `applied`, whose 経歴書確認 outranks the
-      // supporting P3 media action — so 求人媒体 is *eligible* but not the
-      // top pick. Both facts matter, and both are asserted. The
+      // CORE-GAMEPLAY Phase 4.5: a new game starts with zero applicants —
+      // there is no `applied`-stage candidate to outrank 求人媒体 with
+      // anymore until the player actually recruits, so 求人媒体 itself is
+      // the top-ranked recommendation the moment its card exists (May). The
       // Recommended Action slot itself is HOME's own.
       await switchPublicDemoTab(tester, PublicDemoTab.home);
       expect(
         recommended(tester)!.kind,
-        HomeRecommendedActionKind.applicantReviewResume,
+        HomeRecommendedActionKind.recruitmentMedia,
       );
     });
 
@@ -442,7 +457,7 @@ void main() {
       );
 
       // July continues to render no applicant cards.
-      expect(actionButton('経歴書確認'), findsNothing);
+      expect(actionButton('スキルシート確認'), findsNothing);
       expect(actionButton('採用面談'), findsNothing);
 
       // Settle the bonus so nothing else can outrank the media action. The
@@ -521,8 +536,8 @@ void main() {
       await switchPublicDemoTab(tester, PublicDemoTab.sales);
       var guard = 0;
       while (currentState(tester).salesRemaining > 0 && guard++ < 25) {
-        if (actionButton('経歴書確認').evaluate().isNotEmpty) {
-          await tapAndSettle(tester, '経歴書確認');
+        if (actionButton('スキルシート確認').evaluate().isNotEmpty) {
+          await tapAndSettle(tester, 'スキルシート確認');
           continue;
         }
         final interview = actionButton('採用面談');
@@ -541,7 +556,7 @@ void main() {
           await tester.tap(media);
           await tester.pumpAndSettle();
           // The engineer medium yields two applicants (the free one yields
-          // one), which is exactly what May's remaining capacity needs.
+          // one).
           await tester.tap(
             find.byKey(const Key('public-demo-recruitment-medium-engineer')),
           );
@@ -551,21 +566,24 @@ void main() {
         break;
       }
 
+      // CORE-GAMEPLAY Phase 4.5: 求人媒体 can only be used once per month
+      // (`recruitmentMediumUsedMonth`), so at most 2 applicants ever exist
+      // this May — `salesCapacity` (4) can no longer be driven to exactly 0
+      // within a single month through real production actions alone.
+      // eng-01's own sales pipeline (`ec(i)`'s `waiting` branch) is not even
+      // rendered in May — `_employeeNextActionsSection` only renders it in
+      // April or the July-February Recovery window — so it offers no
+      // additional slot-consuming route here either. 2 applicant interviews
+      // spent, 2 remaining, is the genuine floor. What actually matters is
+      // checked below regardless of the exact remaining count: no applicant
+      // is left eligible for 採用面談, so neither the legacy button nor
+      // HOME's own recommendation can offer it.
+      expect(currentState(tester).salesRemaining, 2);
       expect(
-        currentState(tester).salesRemaining,
-        0,
-        reason: 'this test needs the month\'s sales capacity fully spent',
+        actionButton('採用面談'),
+        findsNothing,
+        reason: 'no applicant remains at resumeReviewed to interview',
       );
-
-      // The legacy 採用面談 button is still rendered, and is now disabled...
-      final interview = actionButton('採用面談');
-      if (interview.evaluate().isNotEmpty) {
-        expect(
-          tester.widget<FilledButton>(interview.first).onPressed,
-          isNull,
-          reason: 'the legacy button must be the disabled control here',
-        );
-      }
       // ...and HOME does not offer it. Whatever it offers instead — if
       // anything — is enabled. A disabled CTA is never acceptable. The
       // Recommended Action slot itself is HOME's own.
@@ -603,7 +621,7 @@ void main() {
       // The employee sales-progression card is on 社員 now; checkBuild
       // reads HOME's own Recommended Action slot, so switch back after
       // each tap.
-      for (final tap in ['SkillSheet確認', '営業開始', '案件紹介']) {
+      for (final tap in ['スキルシート確認', '営業開始', '案件紹介']) {
         await switchPublicDemoTab(tester, PublicDemoTab.employees);
         await tapAndSettle(tester, tap);
         await switchPublicDemoTab(tester, PublicDemoTab.home);
@@ -632,7 +650,7 @@ void main() {
       // sales-progression card is on 社員 now.
       await pumpDemo(tester);
       await switchPublicDemoTab(tester, PublicDemoTab.employees);
-      await tapAndSettle(tester, 'SkillSheet確認');
+      await tapAndSettle(tester, 'スキルシート確認');
       await tapAndSettle(tester, '営業開始');
       final controlState = currentState(tester);
       final controlStages = currentWorkflow(

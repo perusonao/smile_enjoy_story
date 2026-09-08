@@ -70,7 +70,7 @@ Future<void> tapAndSettle(WidgetTester tester, String text) async {
   await tester.pumpAndSettle();
   await tester.tap(finder.first);
   await settle(tester);
-  if (text == 'SkillSheet確認') {
+  if (text == 'スキルシート確認') {
     await tester.tap(find.widgetWithText(FilledButton, '内容を確認'));
     await tester.pumpAndSettle();
   }
@@ -102,7 +102,7 @@ Future<void> playApril(WidgetTester tester) async {
   // callers can keep reading the Office Stage (a HOME-only section)
   // without having to know this detail themselves.
   await switchPublicDemoTab(tester, PublicDemoTab.employees);
-  await tapAndSettle(tester, 'SkillSheet確認');
+  await tapAndSettle(tester, 'スキルシート確認');
   await tapAndSettle(tester, '営業開始');
   await tapAndSettle(tester, '案件紹介');
   await tapAndSettle(tester, '上位会社面談');
@@ -157,11 +157,11 @@ void main() {
       // them) still follows it.
       expect(stage.bottom, lessThanOrEqualTo(importantTasks.top));
 
-      // The employee sales-progression card ("SkillSheet確認" etc.) that
+      // The employee sales-progression card ("スキルシート確認" etc.) that
       // used to render below the Office Stage on this same screen is
       // structurally gone from HOME — it is real content on 社員 now, not
       // merely scrolled past.
-      expect(actionButton('SkillSheet確認'), findsNothing);
+      expect(actionButton('スキルシート確認'), findsNothing);
     });
 
     testWidgets('it is a sibling of the HOME projection mount, not a child', (

@@ -51,7 +51,7 @@ Future<void> tapFinder(WidgetTester tester, Finder finder) async {
 
 Future<void> tapAndSettle(WidgetTester tester, String text) async {
   await tapFinder(tester, actionButton(text));
-  if (text == 'SkillSheet確認') {
+  if (text == 'スキルシート確認') {
     await tester.tap(find.widgetWithText(FilledButton, '内容を確認'));
     await tester.pumpAndSettle();
   }
@@ -151,7 +151,7 @@ void main() {
       findsNothing,
     );
     expect(
-      find.descendant(of: lock, matching: find.textContaining('SkillSheet確認')),
+      find.descendant(of: lock, matching: find.textContaining('スキルシート確認')),
       findsNothing,
     );
     expect(
@@ -171,7 +171,7 @@ void main() {
     final satoCapabilityBefore = stateBefore
         .runtimeFor(sato.id)
         .actualCapability;
-    await tapAndSettle(tester, 'SkillSheet確認');
+    await tapAndSettle(tester, 'スキルシート確認');
 
     final stateAfter = currentState(tester);
     final satoAfter = currentWorkflow(
@@ -200,7 +200,7 @@ void main() {
     // Train Suzuki in April only, then drive real production months
     // forward without training her again. One month of +1 growth cannot
     // reach the threshold on its own, so no later month in this fixture
-    // renders a SkillSheet確認 action for her — consistent with the banner's
+    // renders a スキルシート確認 action for her — consistent with the banner's
     // new copy, which never claims a specific month, only that reaching the
     // threshold (which this single training does not do) reopens sales.
     // public_demo_01_suzuki_sales_reentry_test.dart trains her every month
@@ -239,13 +239,13 @@ void main() {
       lessThan(PublicDemoEngineerRuntime.fieldSalesCapabilityRequirement),
       reason: 'one month of training cannot reach the field-sales threshold',
     );
-    // May renders no founding-engineer *sales* card (SkillSheet確認 stays
+    // May renders no founding-engineer *sales* card (スキルシート確認 stays
     // gated to April/June/July-February, unchanged by Finding B) — checked
     // on 社員, the tab that would render it. Finding B does add May's
     // training card (see public_demo_01_suzuki_sales_reentry_test.dart),
     // which this fixture simply does not use again after April.
     await switchPublicDemoTab(tester, PublicDemoTab.employees);
-    expect(actionButton('SkillSheet確認'), findsNothing);
+    expect(actionButton('スキルシート確認'), findsNothing);
     expect(
       find.byKey(const Key('public-demo-internal-training-eng-02')),
       findsOneWidget,
@@ -264,7 +264,7 @@ void main() {
     // she gets no SkillSheet action here either, only the standalone
     // training card the month>=5 loop renders for every runtime.
     await switchPublicDemoTab(tester, PublicDemoTab.employees);
-    expect(actionButton('SkillSheet確認'), findsNothing);
+    expect(actionButton('スキルシート確認'), findsNothing);
     expect(
       find.byKey(const Key('public-demo-internal-training-eng-02')),
       findsOneWidget,
@@ -276,9 +276,9 @@ void main() {
     // Month 7 re-renders Suzuki's sales-flow card (RECOVERY-LOOP-1's own
     // July-February window — see public_demo_01_suzuki_sales_reentry_test
     // .dart), but a single month of April training left her well short of
-    // the threshold, so it still shows the lock banner, not SkillSheet確認.
+    // the threshold, so it still shows the lock banner, not スキルシート確認.
     await switchPublicDemoTab(tester, PublicDemoTab.employees);
-    expect(actionButton('SkillSheet確認'), findsNothing);
+    expect(actionButton('スキルシート確認'), findsNothing);
     expect(
       find.byKey(const Key('public-demo-field-sales-lock-eng-02')),
       findsOneWidget,

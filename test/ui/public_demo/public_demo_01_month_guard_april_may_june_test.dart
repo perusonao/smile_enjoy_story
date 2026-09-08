@@ -169,10 +169,10 @@ void main() {
         expect(
           await _scrollUntilFound(
             tester,
-            find.widgetWithText(FilledButton, 'SkillSheet確認'),
+            find.widgetWithText(FilledButton, 'スキルシート確認'),
           ),
           isTrue,
-          reason: 'SkillSheet確認 must be directly reachable after review',
+          reason: 'スキルシート確認 must be directly reachable after review',
         );
       },
     );

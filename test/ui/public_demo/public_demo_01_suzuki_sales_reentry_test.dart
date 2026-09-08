@@ -67,7 +67,7 @@ Future<void> tapFinder(WidgetTester tester, Finder finder) async {
 
 Future<void> tapAndSettle(WidgetTester tester, String text) async {
   await tapFinder(tester, actionButton(text));
-  if (text == 'SkillSheet確認') {
+  if (text == 'スキルシート確認') {
     await tester.tap(find.widgetWithText(FilledButton, '内容を確認'));
     await tester.pumpAndSettle();
   }
@@ -101,7 +101,7 @@ void main() {
   testWidgets('training Suzuki every month starting with the May training card '
       'Finding B adds eventually crosses the field-sales threshold, and the '
       'existing July-February re-render window (no Suzuki-only branch, no '
-      'changed threshold, no changed growth rate) puts SkillSheet確認 back on '
+      'changed threshold, no changed growth rate) puts スキルシート確認 back on '
       'screen for her', (tester) async {
     await tester.pumpWidget(
       const MaterialApp(home: PublicDemo01PlaceholderScreen()),
@@ -115,9 +115,9 @@ void main() {
     await switchPublicDemoTab(tester, PublicDemoTab.employees);
     expect(currentState(tester).runtimeFor(_suzukiId).actualCapability, 52);
     expect(find.byKey(_lockKey), findsOneWidget);
-    expect(actionButton('SkillSheet確認'), findsOneWidget);
+    expect(actionButton('スキルシート確認'), findsOneWidget);
 
-    await tapAndSettle(tester, 'SkillSheet確認');
+    await tapAndSettle(tester, 'スキルシート確認');
     await tapAndSettle(tester, '営業開始');
     await tapAndSettle(tester, '案件紹介');
     await tapAndSettle(tester, '上位会社面談');
@@ -161,7 +161,7 @@ void main() {
           'other waiting month',
     );
     expect(
-      actionButton('SkillSheet確認'),
+      actionButton('スキルシート確認'),
       findsNothing,
       reason: 'May never renders a founding-engineer sales card at all',
     );
@@ -183,7 +183,7 @@ void main() {
     expect(find.text('7月分発注あり'), findsOneWidget);
     await tapAndSettle(tester, '受注する');
     await switchPublicDemoTab(tester, PublicDemoTab.employees);
-    expect(actionButton('SkillSheet確認'), findsNothing);
+    expect(actionButton('スキルシート確認'), findsNothing);
     await switchPublicDemoTab(tester, PublicDemoTab.home);
     await _trainSuzukiAndCloseMonth(tester, '6月を終了して7月へ');
     expect(find.text('1年目 7月'), findsOneWidget);
@@ -204,14 +204,14 @@ void main() {
     expect(currentState(tester).runtimeFor(_suzukiId).actualCapability, 56);
 
     // ---- August-October: three more ordinary-month trainings. Still
-    // below the threshold, so still no SkillSheet確認 for her yet — the
+    // below the threshold, so still no スキルシート確認 for her yet — the
     // corrected lock banner never claimed a specific month, and this is
     // exactly why: reaching the threshold takes real, repeated play.
     await _trainSuzukiAndCloseMonth(tester, '8月を終了して翌月へ');
     expect(find.text('1年目 9月'), findsOneWidget);
     expect(currentState(tester).runtimeFor(_suzukiId).actualCapability, 57);
     await switchPublicDemoTab(tester, PublicDemoTab.employees);
-    expect(actionButton('SkillSheet確認'), findsNothing);
+    expect(actionButton('スキルシート確認'), findsNothing);
     expect(find.byKey(_lockKey), findsOneWidget);
 
     await switchPublicDemoTab(tester, PublicDemoTab.home);
@@ -242,7 +242,7 @@ void main() {
     // banner is gone and her SkillSheet route is back.
     await switchPublicDemoTab(tester, PublicDemoTab.employees);
     expect(find.byKey(_lockKey), findsNothing);
-    expect(actionButton('SkillSheet確認'), findsOneWidget);
+    expect(actionButton('スキルシート確認'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 }

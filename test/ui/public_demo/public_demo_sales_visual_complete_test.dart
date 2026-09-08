@@ -12,6 +12,7 @@ import 'package:smile_enjoy_story/game/persistence/public_demo_save_service.dart
 import 'package:smile_enjoy_story/game/public_demo/public_demo_aggregate.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_assignment.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_interview.dart';
+import 'package:smile_enjoy_story/game/public_demo/public_demo_recruitment_medium.dart';
 import 'package:smile_enjoy_story/ui/public_demo/public_demo_01_placeholder_screen.dart';
 import 'package:smile_enjoy_story/ui/public_demo/public_demo_sales_visual.dart';
 import 'package:smile_enjoy_story/ui/theme.dart';
@@ -62,11 +63,22 @@ Future<void> pumpSalesTab(
 }
 
 /// Same fixture shape as the Phase 1 suite: May reached before the
-/// recruitment-media flow has been used this month — `workflow.applicants`
-/// already carries `PublicDemoWorkflowState.initial`'s own baseline pool, so
-/// the applicant funnel is genuinely non-empty.
+/// recruitment-media flow has been used this month. CORE-GAMEPLAY Phase
+/// 4.5: `PublicDemoWorkflowState.initial` no longer pre-seeds any
+/// applicant, so `workflow.applicants` is genuinely empty here.
 PublicDemoAggregate mayBeforeRecruiting() =>
     PublicDemoAggregate.initial().closeApril(monthlyExpenses: _expense);
+
+/// Reaches May with the recruitment-media flow already used once (the
+/// `free` medium) — the only source of any applicant here, per
+/// CORE-GAMEPLAY Phase 4.5 — for the visual-structure tests below that need
+/// a real applicant card on screen.
+PublicDemoAggregate mayWithApplicants() {
+  final game = mayBeforeRecruiting();
+  final recruited = game.recruit(PublicDemoRecruitmentMedium.free);
+  assert(recruited.isSuccess, 'fixture sanity: April cash must afford free');
+  return recruited.aggregate!;
+}
 
 /// Sells the first founding engineer through April's real pipeline and
 /// closes it — the same chain `public_demo_sales_ui_phase1_test.dart` uses
@@ -194,12 +206,13 @@ void main() {
   });
 
   group('採用・候補者進捗 applicant card visual structure', () {
-    testWidgets('May baseline applicant (未対応/応募 stage): avatar + status badge '
-        'render, badge label matches the exact authoritative status text and '
-        'tone reads inProgress (still moving through the pipeline)', (
+    testWidgets('May recruited applicant (未対応/応募 stage): avatar + status '
+        'badge render, badge label matches the exact authoritative status '
+        'text and tone reads inProgress (still moving through the '
+        'pipeline)', (
       tester,
     ) async {
-      final game = mayBeforeRecruiting();
+      final game = mayWithApplicants();
       await pumpSalesTab(tester, game);
 
       expect(find.byType(PublicDemoSalesAvatar), findsWidgets);
@@ -212,13 +225,13 @@ void main() {
     });
 
     testWidgets(
-      '経歴書確認 advances the applicant, and the badge on screen updates to '
-      'the new authoritative label while staying inProgress-toned',
+      'スキルシート確認 advances the applicant, and the badge on screen updates '
+      'to the new authoritative label while staying inProgress-toned',
       (tester) async {
-        final game = mayBeforeRecruiting();
+        final game = mayWithApplicants();
         await pumpSalesTab(tester, game);
 
-        await tester.tap(find.text('経歴書確認').first);
+        await tester.tap(find.text('スキルシート確認').first);
         await tester.pumpAndSettle();
 
         final updatedBadge = tester
@@ -310,7 +323,7 @@ void main() {
       'none of the new visual widgets (avatar/badge/stat tile/card) leak '
       'into HOME',
       (tester) async {
-        final game = mayBeforeRecruiting();
+        final game = mayWithApplicants();
         await pumpSalesTab(tester, game);
         expect(find.byType(PublicDemoSalesAvatar), findsWidgets);
 
@@ -335,7 +348,7 @@ void main() {
             (tester) async {
               await pumpSalesTab(
                 tester,
-                mayBeforeRecruiting(),
+                mayWithApplicants(),
                 size: size,
                 textScale: textScale,
               );

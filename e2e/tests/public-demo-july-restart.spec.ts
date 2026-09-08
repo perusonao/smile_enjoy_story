@@ -51,7 +51,7 @@ test.describe('Public Demo July close and April restart', () => {
     await dismissMonthGuardIfPresent(page);
     const applicationDialog = page.getByRole('alertdialog');
     await expect(applicationDialog).toBeVisible();
-    expect(await applicationDialog.ariaSnapshot()).toContain('採用候補者の情報を確認できます');
+    expect(await applicationDialog.ariaSnapshot()).toContain('採用は求人媒体から始まります');
     await applicationDialog.getByRole('button', { name: '確認', exact: true }).click();
     await assertCalendarMonth(page, 5);
 

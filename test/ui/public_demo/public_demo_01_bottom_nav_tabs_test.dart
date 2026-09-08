@@ -105,14 +105,14 @@ void main() {
         // present, and the content that used to live below it on the same
         // screen (the employee sales-progression card) is not.
         expect(find.byType(PublicDemoHomeDashboardSection), findsOneWidget);
-        expect(actionButton('SkillSheet確認'), findsNothing);
+        expect(actionButton('スキルシート確認'), findsNothing);
 
         // 社員: the employee card is real content here, and — the actual
         // proof this is a tab switch, not a scroll — HOME's own dashboard
         // section is gone from the tree entirely, not merely scrolled
         // past.
         await switchPublicDemoTab(tester, PublicDemoTab.employees);
-        expect(actionButton('SkillSheet確認'), findsOneWidget);
+        expect(actionButton('スキルシート確認'), findsOneWidget);
         expect(find.byType(PublicDemoHomeDashboardSection), findsNothing);
 
         // 営業: the recruiting/assignment pipeline's tab. April renders no
@@ -120,7 +120,7 @@ void main() {
         // negative half of the same fact: 社員's content does not leak
         // into 営業 either.
         await switchPublicDemoTab(tester, PublicDemoTab.sales);
-        expect(actionButton('SkillSheet確認'), findsNothing);
+        expect(actionButton('スキルシート確認'), findsNothing);
         expect(find.byType(PublicDemoHomeDashboardSection), findsNothing);
 
         // 会計: the finance summary is real content here.
@@ -143,7 +143,7 @@ void main() {
         // card is gone again.
         await switchPublicDemoTab(tester, PublicDemoTab.home);
         expect(find.byType(PublicDemoHomeDashboardSection), findsOneWidget);
-        expect(actionButton('SkillSheet確認'), findsNothing);
+        expect(actionButton('スキルシート確認'), findsNothing);
       },
     );
 
@@ -227,11 +227,11 @@ void main() {
       'that actually owns the eligible action, not blindly to 営業', () {
     // Fresh April: the starting engineer (佐藤 健) is `waiting`, which is
     // only ever offered as an action on 社員 (`_employeeTabSalesActionKinds`
-    // → `ec(i)`/SkillSheet確認). 営業 renders no card of its own this
+    // → `ec(i)`/スキルシート確認). 営業 renders no card of its own this
     // early — no assignment or applicant has reached a sellable stage yet.
     // Before the fix, every one of these three shared entry points sent
     // the player to that blank 営業 tab anyway; each of the following
-    // proves the destination is now 社員, where SkillSheet確認 actually is.
+    // proves the destination is now 社員, where スキルシート確認 actually is.
     testWidgets(
       'important-task 営業 row: fresh April sends the player to 社員, not '
       'blank 営業',
@@ -254,7 +254,7 @@ void main() {
           1,
           reason: '社員 is index 1 — see PublicDemoTab.employees.navKey',
         );
-        expect(actionButton('SkillSheet確認'), findsOneWidget);
+        expect(actionButton('スキルシート確認'), findsOneWidget);
         expect(find.byType(PublicDemoHomeDashboardSection), findsNothing);
       },
     );

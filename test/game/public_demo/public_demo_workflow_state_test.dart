@@ -18,19 +18,41 @@ import 'test_support/public_demo_sales_test_helpers.dart';
 void main() {
   group('initial state matches the pre-cutover widget defaults', () {
     test(
-      'applicants/engineers/assignments start from the established pools',
+      // CORE-GAMEPLAY Phase 4.5: applicants are no longer part of the
+      // "established pools" a new game starts from — see
+      // PublicDemoWorkflowState.initial's own doc for why.
+      'engineers/assignments start from the established pools; applicants '
+      'start empty',
       () {
         final workflow = PublicDemoWorkflowState.initial();
-        expect(workflow.applicants, publicDemoMayApplicants);
+        expect(workflow.applicants, isEmpty);
         expect(workflow.engineers, publicDemoInitialEngineers);
         expect(workflow.assignments, isEmpty);
       },
     );
   });
 
+  /// CORE-GAMEPLAY Phase 4.5: `PublicDemoWorkflowState.initial()` no longer
+  /// pre-seeds any applicant, so a test that only cares about generic
+  /// per-applicant authority (not about which applicant) needs one added
+  /// explicitly, through the same production `withGeneratedApplicants` seam
+  /// [PublicDemoAggregate.recruit] itself uses.
+  const testApplicant = PublicDemoApplicant(
+    id: 'test-applicant',
+    name: 'Test Applicant',
+    resumeSummary: 'Java 3年',
+    interviewScore: 60,
+    acceptanceScore: 60,
+    salesSkillFit: 60,
+  );
+  PublicDemoWorkflowState initialWithOneApplicant() =>
+      PublicDemoWorkflowState.initial().withGeneratedApplicants([
+        testApplicant,
+      ]);
+
   group('applicant/engineer/assignment authority', () {
     test('reviewResume updates only the targeted applicant', () {
-      final workflow = PublicDemoWorkflowState.initial();
+      final workflow = initialWithOneApplicant();
       final id = workflow.applicants.first.id;
       final next = workflow.reviewResume(id);
 
@@ -61,7 +83,7 @@ void main() {
     test(
       'reviewResume is a no-op on an applicant not currently at applied',
       () {
-        final workflow = PublicDemoWorkflowState.initial();
+        final workflow = initialWithOneApplicant();
         final id = workflow.applicants.first.id;
         final reviewed = workflow.reviewResume(id);
 
@@ -217,7 +239,7 @@ void main() {
     test(
       'withGeneratedApplicants appends without duplicating existing ids',
       () {
-        final workflow = PublicDemoWorkflowState.initial();
+        final workflow = initialWithOneApplicant();
         final existingId = workflow.applicants.first.id;
         const newApplicant = PublicDemoApplicant(
           id: 'new-applicant',

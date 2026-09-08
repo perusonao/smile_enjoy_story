@@ -217,6 +217,16 @@ Result Reportは履歴・証拠であり、この文書の代わりにはしな�
 
 ## Update history
 
+### 2026-09-08（CORE-GAMEPLAY Phase 4.5完了 — Recruitment/SkillSheet authority是正）
+
+- **CORE-GAMEPLAY Phase 4.5を実施。** Phase 5（Matching）着手前の必須是正として、Phase 1-4完了時点で残っていたRecruitment/SkillSheet周りの authority 不整合を修正した（`docs/reports/SES_CORE-GAMEPLAY_Phase4.5_Recruitment-SkillSheet_Result.md`）:
+  1. **新規ゲーム開始時の応募者0人化** — `PublicDemoWorkflowState.initial()`が内部的に保持していたapp-01/app-02の固定ペア（4月存在・5月UI解禁）を初期applicantsから除去し、`recruit()`（Phase 2の`PublicDemoSeededRecruitmentGenerator`）のみを通常プレイの唯一の応募者発生経路とした。app-01/app-02定数自体はlegacy save/testの互換性のためにのみ残置。
+  2. **表記統一** — Employee/Sales等の利用者向け表記を「スキルシート」に統一（内部クラス識別子は無変更）。
+  3. **入社前スキルシート導線の真実性** — 「スキルシート確認」系ボタンの実体表示を候補者の実データに合わせ、面談質問でのみ判明する情報（interviewScore/acceptanceScore/salesSkillFit等）は入社前スキルシートから除外。
+  4. **社員スキルシートの常時参照可能化** — 社員タブの一度きりのゲーティングとは独立に、いつでも当該社員のスキルシートを開けるエントリポイントを追加し、Sales側からも同じ表示構造を再利用可能にした（Phase 5 Matchingでの再利用を想定）。
+- **本エントリはFirst Fun Yearの「Current execution order」「Prioritized backlog」を変更しない。** Phase 4.5はCORE-GAMEPLAYトラックの一部であり、HOME/Employee/Sales/Accounting/Menu Visual作業やApril→March human replayの優先順位・スコープを変更していない。Finance/Month transition authorityも無変更。
+- Phase 4.5のresult reportに、Phase 5（Matching）へのhandoffポイント（`PublicDemoSkillSheetSheet.show(...)`／`PublicDemoCandidateSkillSheetSheet.show(...)`の直接再利用）と既知の制約を記録済み。
+
 ### 2026-09-08（CORE-GAMEPLAY Phase 1-4完了 — governing plan初出記録）
 
 - **CORE-GAMEPLAY Phase 1-4が完了した。** First Fun Year本体（HOME/Visual/April→March replay）とは別建てで並行進行してきた施策系列で、本文書には従来一度も記載していなかった:

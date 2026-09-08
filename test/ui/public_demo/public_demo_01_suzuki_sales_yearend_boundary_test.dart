@@ -18,11 +18,12 @@
 //  - training in February (her 8th selection) still raises her to exactly
 //    60 at month-end, same as every other month (growth rate untouched);
 //  - March genuinely offers no route back — no lock banner, no
-//    SkillSheet確認 — confirming the corrected copy is honest about the
+//    スキルシート確認 — confirming the corrected copy is honest about the
 //    boundary rather than the sales window having been silently extended.
 //
-// Hiring Takahashi (app-01) in May, mirroring
-// public_demo_01_success_playthrough_test.dart's own May block, is not
+// Hiring 斎藤拓也 (seed 9's first `engineer`-medium candidate) in May,
+// mirroring public_demo_01_success_playthrough_test.dart's own May block, is
+// not
 // Finding B behavior — it exists purely so this playthrough carries enough
 // Revenue to stay solvent through February's own training charge. A
 // single-founding-engineer playthrough (public_demo_01_assignment_
@@ -71,8 +72,8 @@ Future<void> _settleAfterPossiblePrecache(WidgetTester tester) async {
 
 /// Taps the first match — this suite's own resume/offer/order flows can
 /// briefly have more than one candidate action with identical text on
-/// screen at once (e.g. two pre-seeded May applicants both showing
-/// `経歴書確認`), exactly like `public_demo_01_success_playthrough_test.dart`'s
+/// screen at once (e.g. two seeded May candidates both showing
+/// `スキルシート確認`), exactly like `public_demo_01_success_playthrough_test.dart`'s
 /// own `tapAndSettle`.
 Future<void> tapFinder(WidgetTester tester, Finder finder) async {
   final list = find.byType(ListView);
@@ -92,8 +93,18 @@ Future<void> tapFinder(WidgetTester tester, Finder finder) async {
 
 Future<void> tapAndSettle(WidgetTester tester, String text) async {
   await tapFinder(tester, actionButton(text));
-  if (text == 'SkillSheet確認') {
-    await tester.tap(find.widgetWithText(FilledButton, '内容を確認'));
+  // CORE-GAMEPLAY Phase 4.5: dismiss whichever SkillSheet sheet a tap may
+  // have opened — the employee-side sheet (confirm: '内容を確認') or the
+  // candidate-side sheet (close: '閉じる') — exactly like
+  // `public_demo_01_success_playthrough_test.dart`'s own `tapAndSettle`.
+  final confirmSkillSheet = find.widgetWithText(FilledButton, '内容を確認');
+  if (confirmSkillSheet.evaluate().isNotEmpty) {
+    await tester.tap(confirmSkillSheet);
+    await tester.pumpAndSettle();
+  }
+  final closeCandidateSkillSheet = find.widgetWithText(OutlinedButton, '閉じる');
+  if (closeCandidateSkillSheet.evaluate().isNotEmpty) {
+    await tester.tap(closeCandidateSkillSheet);
     await tester.pumpAndSettle();
   }
 }
@@ -153,8 +164,11 @@ void main() {
     '60 at month-end, and March genuinely offers no SkillSheet/営業 route '
     'back (no sales-window extension into March)',
     (tester) async {
+      // CORE-GAMEPLAY Phase 4.5: pinned so May's recruit()-generated
+      // candidates (see below) are reproducible — same seed/candidate as
+      // `public_demo_01_success_playthrough_test.dart`'s own May block.
       await tester.pumpWidget(
-        const MaterialApp(home: PublicDemo01PlaceholderScreen()),
+        const MaterialApp(home: PublicDemo01PlaceholderScreen(debugSeed: 9)),
       );
       await tester.pumpAndSettle();
 
@@ -162,7 +176,7 @@ void main() {
       await switchPublicDemoTab(tester, PublicDemoTab.employees);
       expect(currentState(tester).runtimeFor(_suzukiId).actualCapability, 52);
 
-      await tapAndSettle(tester, 'SkillSheet確認');
+      await tapAndSettle(tester, 'スキルシート確認');
       await tapAndSettle(tester, '営業開始');
       await tapAndSettle(tester, '案件紹介');
       await tapAndSettle(tester, '上位会社面談');
@@ -180,21 +194,30 @@ void main() {
       expect(find.text('1年目 5月'), findsOneWidget);
       expect(currentState(tester).runtimeFor(_suzukiId).actualCapability, 53);
 
-      // ---- May: hire and sell Takahashi (app-01), mirroring
+      // ---- May: recruit via 求人媒体, then hire and sell 斎藤拓也 (seed 9's
+      // first `engineer`-medium candidate), mirroring
       // public_demo_01_success_playthrough_test.dart's own May block
       // verbatim — this is solvency setup, not Finding B behavior (see
       // this file's class doc) — then take Suzuki's second training via
       // Finding B's own May training card.
       await switchPublicDemoTab(tester, PublicDemoTab.sales);
-      await tapAndSettle(tester, '経歴書確認');
+      await tester.tap(
+        find.byKey(const Key('public-demo-open-recruitment-media')),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.byKey(const Key('public-demo-recruitment-medium-engineer')),
+      );
+      await tester.pumpAndSettle();
+      await tapAndSettle(tester, 'スキルシート確認');
       await tapAndSettle(tester, '採用面談');
       await driveRecruitmentInterviewToHireDecision(tester);
       await tapAndSettle(tester, '合格・給与提示');
       await tester.tap(
-        find.byKey(const Key('public-demo-salary-offer-320000')),
+        find.byKey(const Key('public-demo-salary-offer-370000')),
       );
       await tester.pumpAndSettle();
-      await tapAndSettle(tester, '入社前SkillSheet');
+      await tapAndSettle(tester, '入社前スキルシートを確認');
       await tapAndSettle(tester, '入社前営業');
       await tapAndSettle(tester, '案件紹介');
       await tapAndSettle(tester, '上位会社面談');
@@ -319,7 +342,7 @@ void main() {
       // threshold — but this build's sales window (RECOVERY-LOOP-1,
       // through February) does not extend here. No lock banner (it only
       // ever renders inside `ec(...)`, which `_buildEmployeesTab` never
-      // calls for month 15) and no SkillSheet確認 button either — the
+      // calls for month 15) and no スキルシート確認 button either — the
       // scoped fix corrects the copy's honesty, it does not add the route
       // Codex's finding said this build cannot actually offer.
       final suzukiInMarch = currentState(tester).runtimeFor(_suzukiId);
@@ -330,7 +353,7 @@ void main() {
       expect(suzukiInMarch.isReadyForFieldSales, isTrue);
       await switchPublicDemoTab(tester, PublicDemoTab.employees);
       expect(find.byKey(_lockKey), findsNothing);
-      expect(actionButton('SkillSheet確認'), findsNothing);
+      expect(actionButton('スキルシート確認'), findsNothing);
       expect(tester.takeException(), isNull);
     },
   );

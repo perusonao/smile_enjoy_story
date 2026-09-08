@@ -12,6 +12,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:smile_enjoy_story/game/persistence/public_demo_save_service.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_aggregate.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_fiscal_close_id.dart';
+import 'package:smile_enjoy_story/game/public_demo/public_demo_recruitment_medium.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_salary_offer.dart';
 import 'package:smile_enjoy_story/ui/public_demo/public_demo_01_placeholder_screen.dart';
 import 'package:smile_enjoy_story/ui/public_demo/public_demo_employee_visual.dart';
@@ -91,14 +92,19 @@ PublicDemoAggregate _hireApplicant(
 }
 
 /// A genuine post-hire multi-employee state: the 2 founding engineers plus
-/// both of [PublicDemoAggregate.initial]'s pool applicants, hired and
-/// joined via the real April->May close chain (matching
+/// 2 recruited applicants (CORE-GAMEPLAY Phase 4.5: [PublicDemoAggregate
+/// .initial] no longer pre-seeds any applicant, so this recruits via the
+/// same real `recruit` command production code uses, engineer medium, count
+/// 2), hired and joined via the real April->May close chain (matching
 /// `public_demo_aggregate_test.dart`'s "D/G" fixture) — 4 employees total
 /// in `workflow.engineers` by month 6.
 PublicDemoAggregate fourEmployeesAtMonth6() {
   var aggregate = PublicDemoAggregate.initial();
-  final poolIds = aggregate.workflow.applicants.map((a) => a.id).toList();
   aggregate = aggregate.closeApril(monthlyExpenses: 800000);
+  final recruited = aggregate.recruit(PublicDemoRecruitmentMedium.engineer);
+  assert(recruited.isSuccess, 'fixture sanity: April cash affords engineer medium');
+  aggregate = recruited.aggregate!;
+  final poolIds = recruited.generatedApplicants.map((a) => a.id).toList();
   for (final id in poolIds) {
     aggregate = _hireApplicant(aggregate, id);
   }

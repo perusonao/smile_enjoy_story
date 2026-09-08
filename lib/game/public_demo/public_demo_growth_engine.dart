@@ -116,6 +116,16 @@ class PublicDemoGrowthEngine {
     final after = runtime.copyWith(
       languageSkills: updatedLanguages,
       industryExperience: updatedIndustries,
+      // Codex P2 fix (PR #212): CORE-GAMEPLAY Phase 5's Matching reads
+      // totalItExperienceMonths directly (never re-derives it from
+      // languageSkills), so it must advance here too, by the exact same
+      // practicalExperience delta already applied to the primary
+      // language's own actualExperienceMonths above — otherwise an
+      // engineer's total IT experience would freeze at hire time even as
+      // they keep gaining real (assignment) experience, and Matching would
+      // never reflect months actually worked.
+      totalItExperienceMonths:
+          runtime.totalItExperienceMonths + practicalExperience,
     );
     final capabilityChange = PublicDemoGrowthChange(
       target: PublicDemoGrowthTarget.primaryLanguage,

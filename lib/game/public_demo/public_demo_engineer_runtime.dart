@@ -26,6 +26,7 @@ class PublicDemoEngineerRuntime {
     this.industryExperience = const {},
     this.careerHistory = const [],
     this.confirmedLanguages = const {},
+    this.totalItExperienceMonths = 0,
   });
 
   final String engineerId;
@@ -36,6 +37,27 @@ class PublicDemoEngineerRuntime {
   final Set<EmployeeAbility> abilities;
   final Map<Industry, int> industryExperience;
   final List<CareerHistoryEntry> careerHistory;
+
+  /// CORE-GAMEPLAY Phase 5 (Codex P1 fix, PR #212): the employee's real,
+  /// authoritative aggregate IT-experience months at hire time —
+  /// [PublicDemoApplicant.experienceMonths] for an experienced hire, `0`
+  /// for a genuinely inexperienced one (both real facts, never invented).
+  ///
+  /// Deliberately independent of [confirmedLanguages]/[languageSkills]:
+  /// those two govern what is safe to present as *language-specific*
+  /// experience (see [confirmedLanguages]'s own doc — an experienced hire's
+  /// résumé total must never be attributed to a specific language it may
+  /// not even belong to), but the applicant's aggregate total IT experience
+  /// is a genuine fact independent of which language it was earned in, and
+  /// must not be discarded merely because no single language is confirmed.
+  /// Before this fix, nothing carried [PublicDemoApplicant.experienceMonths]
+  /// forward at all for an experienced hire — [PublicDemoEngineerRuntime
+  /// .fromApplicant]'s own `languageSkills` entry hard-codes
+  /// `actualExperienceMonths: 0` for that branch — so any reader (Matching,
+  /// this field's first consumer) that derived total experience from
+  /// [languageSkills]/[confirmedLanguages] alone would see a known
+  /// experienced hire as having zero experience.
+  final int totalItExperienceMonths;
 
   /// Languages whose [languageSkills] entry is genuinely confirmed,
   /// language-specific experience — safe for the SkillSheet to present as
@@ -102,6 +124,11 @@ class PublicDemoEngineerRuntime {
           projectInterviewSkill: 3,
           turnoverIntent: 50,
         ),
+        // Codex P1 fix (PR #212): the applicant's real, authoritative
+        // résumé total — carried forward here even though it is not
+        // attributed to any single confirmed language (see
+        // [totalItExperienceMonths]'s own doc).
+        totalItExperienceMonths: applicant.experienceMonths,
       );
     }
 
@@ -130,6 +157,10 @@ class PublicDemoEngineerRuntime {
       // truth, not a placeholder — unchanged pre-existing behavior, so this
       // branch keeps presenting it as confirmed.
       confirmedLanguages: const {ProgrammingLanguage.java},
+      // Codex P1 fix (PR #212): genuinely 0 here (isInexperienced ==
+      // experienceMonths == 0) — stated explicitly rather than relying on
+      // the constructor default, for the same reason as the branch above.
+      totalItExperienceMonths: applicant.experienceMonths,
     );
   }
 
@@ -151,6 +182,7 @@ class PublicDemoEngineerRuntime {
     Map<Industry, int>? industryExperience,
     List<CareerHistoryEntry>? careerHistory,
     Set<ProgrammingLanguage>? confirmedLanguages,
+    int? totalItExperienceMonths,
   }) => PublicDemoEngineerRuntime(
     engineerId: engineerId,
     primaryLanguage: primaryLanguage ?? this.primaryLanguage,
@@ -161,6 +193,8 @@ class PublicDemoEngineerRuntime {
     industryExperience: industryExperience ?? this.industryExperience,
     careerHistory: careerHistory ?? this.careerHistory,
     confirmedLanguages: confirmedLanguages ?? this.confirmedLanguages,
+    totalItExperienceMonths:
+        totalItExperienceMonths ?? this.totalItExperienceMonths,
   );
 
   Map<String, dynamic> toJson() => {
@@ -179,21 +213,37 @@ class PublicDemoEngineerRuntime {
     'confirmedLanguages': confirmedLanguages
         .map((language) => language.jsonValue)
         .toList(),
+    'totalItExperienceMonths': totalItExperienceMonths,
   };
 
   factory PublicDemoEngineerRuntime.fromJson(Map<String, dynamic> json) {
     final primaryLanguage = ProgrammingLanguage.fromJson(
       json['primaryLanguage'] as String,
     );
+    final languageSkills = (json['languageSkills'] as Map<String, dynamic>)
+        .map(
+          (language, skill) => MapEntry(
+            ProgrammingLanguage.fromJson(language),
+            LanguageSkill.fromJson(skill as Map<String, dynamic>),
+          ),
+        );
+    // SKILLSHEET-UX-2A P2 fix: absent on any save written before this
+    // field existed. Defaulting to {primaryLanguage} reproduces exactly
+    // what those saves already displayed (this key is new, not a
+    // behavior change for existing saves); [fromApplicant] is the only
+    // place that now deliberately withholds confirmation for a freshly
+    // created, unconfirmed entry.
+    final confirmedLanguages =
+        (json['confirmedLanguages'] as List?)
+            ?.map(
+              (language) => ProgrammingLanguage.fromJson(language as String),
+            )
+            .toSet() ??
+        {primaryLanguage};
     return PublicDemoEngineerRuntime(
       engineerId: json['engineerId'] as String,
       primaryLanguage: primaryLanguage,
-      languageSkills: (json['languageSkills'] as Map<String, dynamic>).map(
-        (language, skill) => MapEntry(
-          ProgrammingLanguage.fromJson(language),
-          LanguageSkill.fromJson(skill as Map<String, dynamic>),
-        ),
-      ),
+      languageSkills: languageSkills,
       techSkills: TechSkillLevels.fromJson(
         json['techSkills'] as Map<String, dynamic>,
       ),
@@ -212,19 +262,20 @@ class PublicDemoEngineerRuntime {
                 CareerHistoryEntry.fromJson(entry as Map<String, dynamic>),
           )
           .toList(),
-      // SKILLSHEET-UX-2A P2 fix: absent on any save written before this
-      // field existed. Defaulting to {primaryLanguage} reproduces exactly
-      // what those saves already displayed (this key is new, not a
-      // behavior change for existing saves); [fromApplicant] is the only
-      // place that now deliberately withholds confirmation for a freshly
-      // created, unconfirmed entry.
-      confirmedLanguages:
-          (json['confirmedLanguages'] as List?)
-              ?.map(
-                (language) => ProgrammingLanguage.fromJson(language as String),
-              )
-              .toSet() ??
-          {primaryLanguage},
+      confirmedLanguages: confirmedLanguages,
+      // Codex P1 fix (PR #212): absent on any save written before this
+      // field existed. A legacy save never stored the applicant's real
+      // aggregate experience for an unconfirmed-language runtime (it was
+      // discarded at hire time, before this fix existed, and cannot be
+      // recovered now), so the only honest backward-compatible default is
+      // to reproduce exactly what this runtime's own confirmed capability
+      // already implied — the same fallback [_placeholderEngineerFor] used
+      // before this fix, not a fabricated new number.
+      totalItExperienceMonths:
+          json['totalItExperienceMonths'] as int? ??
+          (confirmedLanguages.contains(primaryLanguage)
+              ? languageSkills[primaryLanguage]?.actualExperienceMonths ?? 0
+              : 0),
     );
   }
 }
@@ -264,6 +315,10 @@ const publicDemoInitialEngineerRuntimes = <PublicDemoEngineerRuntime>[
     // These migration defaults are authored ground truth, not derived from
     // an applicant's aggregate experienceMonths — genuinely confirmed.
     confirmedLanguages: {ProgrammingLanguage.java},
+    // Codex P1 fix (PR #212): same authored ground truth as the confirmed
+    // Java experience above — no behavior change from this fix for the
+    // founding engineers (they were never affected by the bug it fixes).
+    totalItExperienceMonths: 36,
   ),
   PublicDemoEngineerRuntime(
     engineerId: 'eng-02',
@@ -293,5 +348,8 @@ const publicDemoInitialEngineerRuntimes = <PublicDemoEngineerRuntime>[
       turnoverIntent: 50,
     ),
     confirmedLanguages: {ProgrammingLanguage.javascript},
+    // Codex P1 fix (PR #212): same authored ground truth as the confirmed
+    // JavaScript experience above.
+    totalItExperienceMonths: 24,
   ),
 ];

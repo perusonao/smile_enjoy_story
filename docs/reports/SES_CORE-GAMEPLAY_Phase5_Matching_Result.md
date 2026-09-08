@@ -1,6 +1,6 @@
 # SES CORE-GAMEPLAY Phase 5: Matching Decision Gameplay — Result
 
-Status: **Implementation complete, Codex P1 review fix applied, full test suite green (1912/1912)**
+Status: **Implementation complete, Codex P1 + 2×P2 review fixes applied, full test suite green (1918/1918)**
 
 ## BASE SHA / branch / HEAD
 
@@ -16,13 +16,15 @@ Status: **Implementation complete, Codex P1 review fix applied, full test suite 
   before any new work.
 - Initial implementation HEAD: `04e5744a89d9e910bad379c86f63a7ac85c00617`
   ("CORE-GAMEPLAY Phase 5: Matching Decision Gameplay").
-- **Final HEAD after the Codex P1 review fix (this update):**
-  `8f7de6100b2a7b262e3a6dcb6f9691cdc034521f`
+- HEAD after the Codex P1 review fix: `8f7de6100b2a7b262e3a6dcb6f9691cdc034521f`
   ("fix(matching): preserve known total experience for experienced hires
-  (Codex P1, PR #212)") — the report/PR-URL fill-in commits between the two
-  do not change any production/test file.
+  (Codex P1, PR #212)").
+- **Final HEAD after the Codex P2×2 review fix (this update):**
+  `202871c30d9add1bbd87dd19ca61784d7570ddab`
+  ("fix(matching): apply Codex P2 findings on PR #212") — the report/PR-URL
+  fill-in commits between these do not change any production/test file.
 - PR: https://github.com/perusonao/smile_enjoy_story/pull/212 (open, not yet
-  merged; this update pushed to the same PR/branch — no new PR opened).
+  merged; every update pushed to this same PR/branch — no new PR opened).
 
 ## Codex P1 review fix — "Preserve known total experience in matching"
 
@@ -196,6 +198,71 @@ Issue's own framing: Phase 5's job is a genuinely new, additive decision
 layer (browse real Phase 4 projects → evaluate a real engineer → record a
 proposal), not a modification of that existing generic pipeline — which
 this Phase leaves completely untouched (see "Do not" compliance below).
+
+## Codex P2 review fixes (second review, after the P1 fix landed)
+
+Both **verified TRUE against actual code, not dismissed**. Both are direct
+side effects of the P1 fix itself (once Matching started reading
+`totalItExperienceMonths` directly, two other places that used to be
+irrelevant to Matching became load-bearing) — Codex's second review, run
+after that fix, correctly caught both.
+
+### P2-1 — "Update total experience during assignment growth"
+
+**Finding:** `PublicDemoGrowthEngine.calculate` increments the primary
+language's `actualExperienceMonths` by 1 for every assignment month
+(`practicalExperience`), but its `after = runtime.copyWith(languageSkills:
+..., industryExperience: ...)` never passed `totalItExperienceMonths` —
+so an engineer's total experience (the field Matching now reads
+exclusively, per the P1 fix) would freeze at hire time forever, even as
+they kept working real assignment months. An engineer could work an entire
+fiscal year and still show the exact same experience `FitDetailItem` tier
+as their first day.
+
+**Fix** (`public_demo_growth_engine.dart`): `after` now also advances
+`totalItExperienceMonths` by the same `practicalExperience` delta already
+computed for the primary language — one shared delta, not a second
+independently-tuned growth rate. `MatchingEngine.computeFit` untouched;
+`languageSkills`/`confirmedLanguages` semantics untouched (the
+language-specific and aggregate-total experience figures remain two
+intentionally distinct trajectories, exactly as documented on
+`totalItExperienceMonths`'s own doc — this fix only keeps both advancing
+together under assignment growth, not merges them).
+
+**Tests (3 new):** an assignment month advances `totalItExperienceMonths`
+by the same delta as the language-specific figure; waiting/training growth
+(no practical experience) leaves it unchanged; repeated assignment months
+accumulate exactly.
+
+### P2-2 — "Restrict proposals to the current displayed project pool"
+
+**Finding:** `PublicDemoAggregate.proposeMatch` validated a caller-supplied
+`projectId` only by checking that
+`PublicDemoSeededProjectGenerator.regenerate()` returned non-`null` — but
+`regenerate()`'s own `_parseId` accepts *any* syntactically valid
+`project-<month>-<slot>` string with no upper bound on month or slot (e.g.
+`project-999-999`), happily reconstructing a real, well-formed project for
+it. This meant `proposeMatch` could record a proposal for a project that
+was never actually offered in the current month's displayed pool — a
+different month entirely, or an in-range month but an out-of-range slot —
+directly contradicting this Phase's own stated guarantee ("a caller cannot
+record a proposal for a fabricated project id") and handing Phase 6 a
+handoff record it could not trust.
+
+**Fix** (`public_demo_aggregate.dart`): `proposeMatch` now checks
+`projectId` against `projectCandidatesForMonth(state.month)`'s actual ids
+— the exact same pool `PublicDemoProjectMatchingScreen` displays to the
+player — instead of merely confirming the id is well-formed and
+regeneratable. No change to `PublicDemoSeededProjectGenerator`/`regenerate`
+itself (still used elsewhere, e.g. by the UI's own project lookup path, and
+still correct for its own documented purpose of recovering a *known-valid*
+id's content); this fix only tightens `proposeMatch`'s own acceptance
+check.
+
+**Tests (3 new):** a different-month id (`project-999-999`) is rejected; a
+same-month id with an out-of-range slot (`project-4-999`) is rejected;
+every id genuinely in the current month's displayed pool still succeeds
+(confirming the fix doesn't over-restrict).
 
 ## New files
 
@@ -473,6 +540,27 @@ Flutter SDK preinstalled).
   commit — confirmed unrelated via `git log`, as in the initial
   implementation).
 
+### Codex P2×2 review fixes — additional test results
+
+- New: 3 tests in `public_demo_growth_engine_test.dart` (its own "Codex P2
+  fix (PR #212)" group) for P2-1; 3 tests appended to
+  `public_demo_matching_test.dart`'s "matching proposal handoff" group for
+  P2-2 — see each fix's own "Tests" note above for what each verifies.
+- `flutter analyze` (whole project, re-run after both fixes): **No issues
+  found.**
+- Focused re-run: `public_demo_matching_test.dart` +
+  `public_demo_growth_engine_test.dart` (43/43, including all 6 new),
+  plus `public_demo_internal_training_transaction_test.dart`,
+  `public_demo_junior_runtime_test.dart`,
+  `public_demo_junior_field_sales_reentry_test.dart` (growth-adjacent —
+  re-verifies no regression in JUNIOR-3/training growth paths),
+  `public_demo_recovery_aggregate_test.dart`, `public_demo_save_codec_test
+  .dart` — **34/34 green**.
+- Full suite re-run after both fixes: `flutter test --concurrency=6` —
+  **1918 passed, 0 failed**.
+- `git diff --check`: clean (same incidental screenshot-PNG regeneration
+  reverted before commit).
+
 ## Known limitations
 
 - **A pre-fix, already-persisted experienced-hire save cannot recover its
@@ -529,17 +617,19 @@ Flutter SDK preinstalled).
 ## Final verdict
 
 **PASS** — implementation complete, every Acceptance Criteria item verified,
-Codex P1 review finding investigated (confirmed true, not dismissed) and
-fixed with a root-cause, save-compatible correction plus dedicated
-regression tests, zero regressions across the full 1912-test suite,
-`flutter analyze` clean, `git diff --check` clean.
+three Codex review findings (1×P1, 2×P2, across two review rounds)
+investigated (all confirmed true, none dismissed) and fixed with root-cause,
+save-compatible corrections plus dedicated regression tests each time, zero
+regressions across the full 1918-test suite, `flutter analyze` clean,
+`git diff --check` clean. All three review threads replied to and resolved
+on PR #212.
 
 ## Processing time
 
 - Initial implementation session: continuous, single session (investigation
   through implementation, tests, commit, PR).
-- This Codex P1 review-fix update: also continuous within one follow-up
-  session; user's own estimate for this update was 15–30 minutes. Based on
+- Codex P1 review-fix update: continuous within one follow-up session;
+  user's own estimate for this update was 15–30 minutes. Based on
   this session's own commit timestamps (PR-URL fill-in commit at 15:47:42
   UTC, this fix's commit at 16:29:19 UTC — a ~41-minute window that also
   includes the idle time before the user's follow-up message arrived, not
@@ -547,3 +637,10 @@ regression tests, zero regressions across the full 1912-test suite,
   update is estimated at roughly **20–30 minutes** — this environment does
   not log a precise wall-clock start/stop for active processing, so this
   is a best-effort estimate rather than an exact figure.
+- Codex P2×2 review-fix update: triggered by a re-review (`@codex review`)
+  after the P1 fix landed; investigated and fixed both findings, re-ran the
+  full suite, and replied to/resolved both threads within the same
+  continuous follow-up session — commit timestamps put this update's own
+  active window at under 15 minutes (P1-fix commit 16:29:19 UTC → this
+  commit; the review itself took a few minutes to arrive, which is not
+  processing time on this session's side).

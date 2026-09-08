@@ -11,6 +11,7 @@ import '../../game/public_demo/public_demo_fiscal_close_id.dart';
 import '../../game/public_demo/public_demo_founder_follow_up.dart';
 import '../../game/public_demo/public_demo_interview.dart';
 import '../../game/public_demo/public_demo_internal_training_transaction.dart';
+import '../../game/public_demo/public_demo_matching_fit.dart';
 import '../../game/public_demo/public_demo_month_guard.dart';
 import '../../game/public_demo/public_demo_month_label.dart';
 import '../../game/public_demo/public_demo_monthly_growth.dart';
@@ -47,6 +48,7 @@ import 'public_demo_growth_result_card.dart';
 import 'public_demo_home_dashboard_section.dart';
 import 'public_demo_home_presentation_components.dart';
 import 'public_demo_interview_result_dialog.dart';
+import 'public_demo_matching_screen.dart';
 import 'public_demo_menu_visual.dart';
 import 'public_demo_month_guard_warning_dialog.dart';
 import 'public_demo_monthly_cash_flow_card.dart';
@@ -958,6 +960,35 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
       statusLabel: engineerStatus(engineer),
       runtime: s.runtimeForOrNull(engineer.id),
       currentAssignment: _assignmentForOrNull(engineer.id),
+    );
+  }
+
+  /// CORE-GAMEPLAY Phase 5 (Matching Decision Gameplay): opens the
+  /// `案件を見る → 社員を選ぶ → スキルシートを見る → 強み/不足を見る →
+  /// 提案する/見送る` flow. Every project/engineer/fit value the pushed
+  /// screens read comes from this screen's own already-authoritative
+  /// sources ([PublicDemoAggregate.projectCandidatesForMonth]/
+  /// [PublicDemoAggregate.availableEngineersForMatching]/
+  /// [PublicDemoEngineerProjectFit.compute]/[_viewEmployeeSkillSheet]) —
+  /// this method only wires them together, it computes nothing itself.
+  void _openProjectMatching() {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => PublicDemoProjectMatchingScreen(
+          candidates: _game.projectCandidatesForMonth(s.month),
+          availableEngineers: _game.availableEngineersForMatching,
+          runtimeFor: (engineerId) => s.runtimeForOrNull(engineerId),
+          proposalFor: (engineerId) => _game.matchingProposalFor(engineerId),
+          fitFor: (runtime, candidate) => PublicDemoEngineerProjectFit.compute(
+            runtime: runtime,
+            project: candidate.project,
+          ),
+          onViewSkillSheet: _viewEmployeeSkillSheet,
+          onPropose: (engineerId, projectId) => _commitAggregate(
+            _game.proposeMatch(engineerId: engineerId, projectId: projectId),
+          ),
+        ),
+      ),
     );
   }
 
@@ -4044,11 +4075,41 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
                 icon: Icons.handshake_outlined,
                 cards: projectCards,
               ),
+            _salesSection(
+              key: 'public-demo-sales-matching-section',
+              title: '案件マッチング',
+              icon: Icons.travel_explore_outlined,
+              cards: [_matchingEntryCard()],
+            ),
           ],
         ),
       ],
     );
   }
+
+  /// CORE-GAMEPLAY Phase 5 (Matching Decision Gameplay): always-available
+  /// entry point into [_openProjectMatching] — unlike the sections above,
+  /// deliberately not month-gated, since Phase 4's seeded project pool
+  /// ([PublicDemoAggregate.projectCandidatesForMonth]) exists for every
+  /// month from April onward.
+  Widget _matchingEntryCard() => PublicDemoSalesCard(
+    key: const Key('public-demo-open-project-matching-card'),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          '実在する案件を見て、社員のFitを確認できます。',
+          style: TextStyle(fontSize: 12.5, color: Colors.black54),
+        ),
+        const SizedBox(height: 8),
+        FilledButton.tonal(
+          key: const Key('public-demo-open-project-matching'),
+          onPressed: _openProjectMatching,
+          child: const Text('案件を見る'),
+        ),
+      ],
+    ),
+  );
 
   /// Section 1 — 現在の営業・採用状況: a lightweight, always-rendered,
   /// read-only snapshot — mirrors [_employeeRosterSection]'s role on 社員.

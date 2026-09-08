@@ -5,6 +5,7 @@ import 'public_demo_fiscal_close_id.dart';
 import 'public_demo_founder_follow_up.dart';
 import 'public_demo_interview.dart';
 import 'public_demo_internal_training_transaction.dart';
+import 'public_demo_matching_proposal.dart';
 import 'public_demo_monthly_close.dart';
 import 'public_demo_project_generator.dart';
 import 'public_demo_raise_transaction.dart';
@@ -116,6 +117,56 @@ class PublicDemoAggregate {
     month: month,
     count: count,
   );
+
+  /// CORE-GAMEPLAY Phase 5 (Matching Decision Gameplay): every engineer
+  /// currently eligible for the matching decision flow — every engineer
+  /// this workflow knows about, minus whoever [PublicDemoWorkflowState
+  /// .assignedEngineerIds] already reports as actively staffed this month.
+  /// Reuses that exact same SSOT set rather than a second "is this engineer
+  /// busy" definition.
+  List<PublicDemoEngineerSales> get availableEngineersForMatching {
+    final assignedIds = workflow.assignedEngineerIds(month: state.month);
+    return [
+      for (final engineer in workflow.engineers)
+        if (!assignedIds.contains(engineer.id)) engineer,
+    ];
+  }
+
+  /// The current proposal for [engineerId] (see
+  /// [PublicDemoWorkflowState.matchingProposalFor]), or `null`.
+  PublicDemoMatchingProposal? matchingProposalFor(String engineerId) =>
+      workflow.matchingProposalFor(engineerId);
+
+  /// Records the player's "提案する" decision for Phase 6 to pick up later
+  /// (see [PublicDemoWorkflowState.withMatchingProposal]'s own doc for what
+  /// this does and deliberately does not do). A no-op unless [engineerId]
+  /// is currently available (per [availableEngineersForMatching]) and
+  /// [projectId] resolves to a genuine candidate for the current month via
+  /// [PublicDemoSeededProjectGenerator.regenerate] — a caller cannot record
+  /// a proposal for a fabricated project id, or for an engineer already
+  /// staffed elsewhere this month.
+  PublicDemoAggregate proposeMatch({
+    required String engineerId,
+    required String projectId,
+  }) {
+    final assignedIds = workflow.assignedEngineerIds(month: state.month);
+    if (assignedIds.contains(engineerId)) return this;
+    if (workflow.engineers.every((engineer) => engineer.id != engineerId)) {
+      return this;
+    }
+    final candidate = PublicDemoSeededProjectGenerator.regenerate(
+      runSeed: runSeed,
+      projectId: projectId,
+    );
+    if (candidate == null) return this;
+    return _copyWith(
+      workflow: workflow.withMatchingProposal(
+        engineerId: engineerId,
+        projectId: projectId,
+        month: state.month,
+      ),
+    );
+  }
 
   /// Complete persistence form for the sole Public Demo authoritative root.
   Map<String, dynamic> toJson() => {

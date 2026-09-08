@@ -16,7 +16,7 @@ Status: **Implementation complete, tests green (one pre-existing, unrelated flak
 - HEAD after this work: `af521f6dacd7877262b85f7399ac84edfabb8abb` ("SES
   CORE-GAMEPLAY Phase 4: seeded project generation") — this report's own
   commit follows it.
-- PR: (filled in after `create_pull_request` — see bottom of this report)
+- PR: https://github.com/perusonao/smile_enjoy_story/pull/204
 
 ## Scope note on the requested audit documents
 

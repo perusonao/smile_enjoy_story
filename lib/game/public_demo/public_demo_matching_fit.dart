@@ -25,10 +25,18 @@ import 'public_demo_engineer_runtime.dart';
 ///    is real" rule in public_demo_skill_sheet_display_projection.dart — an
 ///    unconfirmed seeded capability entry is never presented as real
 ///    language experience here either), [PublicDemoEngineerRuntime
-///    .techSkills] verbatim, and the same confirmed primary language's
-///    `actualExperienceMonths` as `totalItExperienceMonths` (the identical
-///    "実経験" figure the SkillSheet itself already shows — not a second,
-///    independently-invented experience total).
+///    .techSkills] verbatim, and — as of the Codex P1 fix on PR #212 —
+///    [PublicDemoEngineerRuntime.totalItExperienceMonths] as
+///    `totalItExperienceMonths`. This is **not** derived from
+///    [PublicDemoEngineerRuntime.confirmedLanguages]/`languageSkills`: an
+///    experienced hire's résumé total IT experience is a real fact
+///    independent of which language it was earned in, and
+///    [PublicDemoEngineerRuntime.fromApplicant] carries it through
+///    separately from the (deliberately unconfirmed) per-language capability
+///    entry precisely so this adapter never has to choose between
+///    fabricating language-specific experience and discarding a known
+///    total. See [PublicDemoEngineerRuntime.totalItExperienceMonths]'s own
+///    doc for the full before/after.
 ///  - a fixed, documented, never-varying, never-displayed placeholder for
 ///    every field only the personality/condition dimensions
 ///    ([FitDimension.communication]/[FitDimension.japanese]) or unrelated
@@ -80,10 +88,6 @@ class PublicDemoEngineerProjectFit {
   );
 
   static Engineer _placeholderEngineerFor(PublicDemoEngineerRuntime runtime) {
-    final confirmedSkill =
-        runtime.confirmedLanguages.contains(runtime.primaryLanguage)
-        ? runtime.languageSkills[runtime.primaryLanguage]
-        : null;
     final confirmedLanguageSkills = <ProgrammingLanguage, LanguageSkill>{
       for (final skill in runtime.languageSkills.values)
         if (runtime.confirmedLanguages.contains(skill.language))
@@ -99,10 +103,10 @@ class PublicDemoEngineerProjectFit {
       nationality: 'JP',
       education: Education.university,
       major: Major.informationTechnology,
-      // The one genuinely authoritative Public Demo experience figure —
-      // the same "実経験" months the SkillSheet already shows for this
-      // employee's confirmed primary language.
-      totalItExperienceMonths: confirmedSkill?.actualExperienceMonths ?? 0,
+      // Codex P1 fix (PR #212): the employee's real aggregate IT experience
+      // — independent of confirmedLanguages/languageSkills, see this file's
+      // own class doc and PublicDemoEngineerRuntime.totalItExperienceMonths.
+      totalItExperienceMonths: runtime.totalItExperienceMonths,
       jobChangeCount: 0,
       desiredMonthlySalary: 0,
       // Placeholder: only feeds FitDimension.japanese (condition), which

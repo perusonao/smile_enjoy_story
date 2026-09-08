@@ -5,6 +5,7 @@ import 'package:smile_enjoy_story/game/public_demo/public_demo_aggregate.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_engineer_runtime.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_matching_fit.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_project_generator.dart';
+import 'package:smile_enjoy_story/game/public_demo/public_demo_recruitment.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_workflow_state.dart';
 
 import 'test_support/public_demo_recovery_test_helpers.dart';
@@ -144,6 +145,131 @@ void main() {
       if (languageDetail.isNotEmpty) {
         expect(languageDetail.single.rating, PlayerVisibleFit.poor);
       }
+    });
+  });
+
+  group('Codex P1 fix (PR #212): preserve known total experience in '
+      'matching', () {
+    PublicDemoApplicant experiencedApplicant({required int experienceMonths}) =>
+        PublicDemoApplicant(
+          id: 'app-experienced',
+          name: 'テスト応募者',
+          resumeSummary: 'テスト用の経験者応募者',
+          interviewScore: 80,
+          acceptanceScore: 80,
+          salesSkillFit: 70,
+          experienceMonths: experienceMonths,
+        );
+
+    test('an experienced generated applicant, run through fromApplicant, '
+        'carries their real aggregate IT experience into '
+        'totalItExperienceMonths — never 0 merely because no language is '
+        'confirmed', () {
+      final runtime = PublicDemoEngineerRuntime.fromApplicant(
+        experiencedApplicant(experienceMonths: 60),
+      );
+      expect(runtime.confirmedLanguages, isEmpty); // unchanged pre-existing fact
+      expect(runtime.totalItExperienceMonths, 60);
+    });
+
+    test('a genuinely inexperienced generated applicant still shows 0 '
+        'total IT experience — the fix never invents experience', () {
+      final runtime = PublicDemoEngineerRuntime.fromApplicant(
+        const PublicDemoApplicant(
+          id: 'app-inexperienced',
+          name: 'テスト未経験応募者',
+          resumeSummary: 'テスト用の未経験応募者',
+          interviewScore: 50,
+          acceptanceScore: 50,
+          salesSkillFit: 30,
+          experienceMonths: 0,
+        ),
+      );
+      expect(runtime.totalItExperienceMonths, 0);
+    });
+
+    test('an experienced hire\'s known total IT experience now reaches a '
+        'realistic prospect instead of being forced to poor/low for every '
+        'project (the bug Codex P1 caught)', () {
+      final runtime = PublicDemoEngineerRuntime.fromApplicant(
+        // 96 months comfortably exceeds even ProjectRank.lead's canonical
+        // requirement (84 months, projectRankMinimumExperienceMonths) — so
+        // this holds regardless of which rank the seeded project turns out
+        // to be.
+        experiencedApplicant(experienceMonths: 96),
+      );
+      for (final candidate in PublicDemoSeededProjectGenerator.forMonth(
+        runSeed: 11,
+        month: 4,
+        count: 4,
+      )) {
+        final fit = PublicDemoEngineerProjectFit.compute(
+          runtime: runtime,
+          project: candidate.project,
+        );
+        final experienceDetail = fit.visibleDetails.singleWhere(
+          (d) => d.dimension == FitDimension.experience,
+        );
+        expect(experienceDetail.rating, isNot(PlayerVisibleFit.poor));
+      }
+    });
+
+    test('an unconfirmed language is still never treated as real language '
+        'experience even though total IT experience is now preserved — '
+        'the two facts are independent', () {
+      final runtime = PublicDemoEngineerRuntime.fromApplicant(
+        experiencedApplicant(experienceMonths: 60),
+      );
+      final project = PublicDemoSeededProjectGenerator.forMonth(
+        runSeed: 5,
+        month: 4,
+      ).first.project;
+
+      final fit = PublicDemoEngineerProjectFit.compute(
+        runtime: runtime,
+        project: project,
+      );
+      final languageDetail = fit.visibleDetails
+          .where((d) => d.dimension == FitDimension.language)
+          .toList();
+      if (languageDetail.isNotEmpty) {
+        // Java is seeded but never confirmed for an experienced hire —
+        // still shown as unmatched, exactly as before this fix.
+        expect(languageDetail.single.rating, PlayerVisibleFit.poor);
+      }
+    });
+
+    test('founding-engineer (legacy authority) Matching output is byte-'
+        'identical to before this fix', () {
+      for (final runtime in publicDemoInitialEngineerRuntimes) {
+        // Ground-truth authored value, unaffected by the fix.
+        expect(
+          runtime.totalItExperienceMonths,
+          runtime.languageSkills[runtime.primaryLanguage]!.actualExperienceMonths,
+        );
+      }
+    });
+
+    test('a legacy save with no totalItExperienceMonths key reproduces the '
+        'exact pre-fix figure for a confirmed-language runtime (founding '
+        'engineer shape) — never a fabricated new number', () {
+      final legacyJson = publicDemoInitialEngineerRuntimes.first.toJson()
+        ..remove('totalItExperienceMonths');
+      final restored = PublicDemoEngineerRuntime.fromJson(legacyJson);
+      expect(restored.totalItExperienceMonths, 36);
+    });
+
+    test('a legacy save with no totalItExperienceMonths key for an '
+        'unconfirmed-language runtime (the pre-fix experienced-hire shape) '
+        'defaults to 0 — the exact pre-fix behavior, not a retroactive fix '
+        'of data that was never stored', () {
+      final preFixRuntime = PublicDemoEngineerRuntime.fromApplicant(
+        experiencedApplicant(experienceMonths: 60),
+      );
+      final legacyJson = preFixRuntime.toJson()
+        ..remove('totalItExperienceMonths');
+      final restored = PublicDemoEngineerRuntime.fromJson(legacyJson);
+      expect(restored.totalItExperienceMonths, 0);
     });
   });
 

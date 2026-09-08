@@ -637,9 +637,32 @@ export async function recruitAndRunSecondHirePreEntryPipeline(
  * July as one that was never made at all. */
 export async function confirmSatoJulyContinuationOnly(page: Page): Promise<void> {
   await switchToTab(page, '営業');
-  const satoCard = page.getByRole('group', { name: /^佐藤 健/ });
-  await clickButton(page, '7月分の発注を確認', true, satoCard);
-  await clickButton(page, '受注する', true, satoCard);
+  // `assignmentCard(i)`'s own wrapper (`PublicDemoSalesCard`) is a plain
+  // `Container`, not a widget that gets its own isolated accessible group —
+  // unlike `ac(i)`/`ec(i)`, a `getByRole('group', {name: /^佐藤 健/})` scope
+  // does not reliably isolate one assignment card once a second one exists
+  // on screen (both collapse into the same enclosing accessible group), and
+  // the shared `scrollToButton`/`clickButton` helpers hit Playwright's
+  // strict-mode violation on the unscoped locator once two such buttons
+  // coexist. eng-01 is a founding engineer, already in `workflow.engineers`
+  // from game start, whereas any other June hire only joins it at join
+  // time — `assignOrderedForMay`'s own roster-rebuild processes founding
+  // engineers first, so eng-01's assignment card is reliably first in DOM
+  // order; `.first()` on the (already-disambiguated-by-position) locator
+  // itself, scrolled directly via Playwright's own `scrollIntoViewIfNeeded`,
+  // avoids ever evaluating the ambiguous unscoped locator.
+  const satoButton = page
+    .getByRole('button', { name: '7月分の発注を確認', exact: true })
+    .first();
+  await satoButton.scrollIntoViewIfNeeded();
+  await dismissDialogIfPresent(page);
+  await expect(satoButton, 'button "7月分の発注を確認" must be reachable').toBeVisible({
+    timeout: 15_000,
+  });
+  await satoButton.click();
+  await waitForStableFrame(page);
+  await waitAndDismissDialog(page);
+  await clickButton(page, '受注する', true);
 }
 
 /** Runs one waiting engineer's post-`waiting` sales pipeline —

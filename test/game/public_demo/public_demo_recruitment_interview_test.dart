@@ -10,6 +10,8 @@ import 'package:smile_enjoy_story/game/public_demo/public_demo_recruitment_inter
 import 'package:smile_enjoy_story/game/public_demo/public_demo_recruitment_medium.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_salary_offer.dart';
 
+import 'test_support/public_demo_legacy_applicant_test_helpers.dart';
+
 /// CORE-GAMEPLAY Phase 3 (Recruitment Interview) test coverage, exercised
 /// entirely against [PublicDemoAggregate] -- the same authoritative entry
 /// points the UI dialog itself calls
@@ -342,12 +344,16 @@ void main() {
 
     test('legacy fixture applicant: interview still works via the '
         'id-only fallback, deterministically', () {
-      final game = PublicDemoAggregate.initial(
-        runSeed: 1,
-      ).closeApril(monthlyExpenses: 800000);
-      // `app-01` is one of the hand-authored founding-pool fixtures
-      // (`publicDemoMayApplicants`), never produced by
-      // PublicDemoSeededRecruitmentGenerator.
+      // CORE-GAMEPLAY Phase 4.5: `app-01` is one of the hand-authored
+      // founding-pool fixtures (`publicDemoMayApplicants`), never produced
+      // by PublicDemoSeededRecruitmentGenerator, and no longer pre-seeded by
+      // `PublicDemoWorkflowState.initial()` either — this simulates a save
+      // created before that fix, where `app-01` really was persisted.
+      final game = withLegacyFoundingApplicants(
+        PublicDemoAggregate.initial(
+          runSeed: 1,
+        ).closeApril(monthlyExpenses: 800000),
+      );
       final legacyApplicant = game.workflow.applicants.firstWhere(
         (candidate) => candidate.id == 'app-01',
       );
@@ -384,9 +390,11 @@ void main() {
       // asking the same question from two independently-constructed
       // aggregates that share both runSeed and month reproduces the exact
       // same session.
-      final sameSeedGame = PublicDemoAggregate.initial(
-        runSeed: 1,
-      ).closeApril(monthlyExpenses: 800000);
+      final sameSeedGame = withLegacyFoundingApplicants(
+        PublicDemoAggregate.initial(
+          runSeed: 1,
+        ).closeApril(monthlyExpenses: 800000),
+      );
       final sameSeedStarted = sameSeedGame
           .completeInterview(legacyApplicant.id)
           .aggregate

@@ -21,7 +21,7 @@
 //  * The April empty-state copy is derived from the same authoritative
 //    workflow stage `ec(i)` already reads
 //    ([PublicDemoSalesStage.waiting]), never from the month alone — once
-//    every engineer has cleared SkillSheet確認, the card must stop
+//    every engineer has cleared スキルシート確認, the card must stop
 //    claiming that confirmation is the still-outstanding blocker, even
 //    while still in April.
 //  * The card's heading wraps instead of overflowing horizontally at
@@ -176,7 +176,7 @@ void main() {
 
         expect(find.byKey(_emptyStateKey), findsOneWidget);
         expect(
-          find.textContaining('SkillSheet確認'),
+          find.textContaining('スキルシート確認'),
           findsWidgets,
           reason: 'the truthful April reason (SkillSheet confirmation first) '
               'must be stated',
@@ -198,14 +198,14 @@ void main() {
           find.byKey(const Key('public-demo-bottom-nav')),
         );
         expect(nav.selectedIndex, 1, reason: '社員 is tab index 1');
-        expect(actionButton('SkillSheet確認'), findsOneWidget);
+        expect(actionButton('スキルシート確認'), findsOneWidget);
       },
     );
 
     testWidgets(
-      'April, after SkillSheet確認 is complete for every engineer: the '
+      'April, after スキルシート確認 is complete for every engineer: the '
       'neutral "no current action" copy renders — the stale "starts after '
-      'SkillSheet確認" claim must not, even though the month is still 4',
+      'スキルシート確認" claim must not, even though the month is still 4',
       (tester) async {
         var game = PublicDemoAggregate.initial();
         for (final engineer in game.workflow.engineers) {
@@ -219,16 +219,16 @@ void main() {
           ),
           isFalse,
           reason: 'sanity: every engineer must have genuinely cleared '
-              'SkillSheet確認 before this assertion means anything',
+              'スキルシート確認 before this assertion means anything',
         );
 
         await switchPublicDemoTab(tester, PublicDemoTab.sales);
 
         expect(find.byKey(_emptyStateKey), findsOneWidget);
         expect(
-          find.textContaining('SkillSheet確認が完了してから'),
+          find.textContaining('スキルシート確認が完了してから'),
           findsNothing,
-          reason: 'SkillSheet確認 is already done for every engineer — the '
+          reason: 'スキルシート確認 is already done for every engineer — the '
               'card must not keep claiming it is the outstanding blocker',
         );
         expect(
@@ -242,12 +242,32 @@ void main() {
     );
 
     testWidgets(
-      'August, with nothing outstanding: the after-funnel empty state '
-      'renders (a genuinely different, still-truthful message) and its CTA '
-      'switches to 社員',
+      'August, recruiting never used: 求人媒体 still renders (PR #210 '
+      'merge-blocker fix widened its window to May-August) — no empty '
+      'state here anymore',
       (tester) async {
         await _pump(tester, _reachAugustClean());
         expect(_currentState(tester).month, 8);
+
+        await switchPublicDemoTab(tester, PublicDemoTab.sales);
+
+        expect(
+          find.byKey(const Key('public-demo-recruitment-media-card')),
+          findsOneWidget,
+        );
+        expect(find.byKey(_emptyStateKey), findsNothing);
+      },
+    );
+
+    testWidgets(
+      'September, with nothing outstanding: the after-funnel empty state '
+      'renders (a genuinely different, still-truthful message) and its CTA '
+      'switches to 社員',
+      (tester) async {
+        var game = _reachAugustClean();
+        game = game.closeOrdinaryMonth(monthlyExpenses: _expense);
+        await _pump(tester, game);
+        expect(_currentState(tester).month, 9);
 
         await switchPublicDemoTab(tester, PublicDemoTab.sales);
 
@@ -258,7 +278,8 @@ void main() {
           reason: 'the after-funnel copy must point at where real '
               'per-employee status actually lives',
         );
-        // No fabricated recruiting/assignment card either.
+        // No fabricated recruiting/assignment card either — September is
+        // past the recruiting window entirely.
         expect(find.byKey(const Key('public-demo-recruitment-media-card')),
             findsNothing);
 

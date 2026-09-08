@@ -85,7 +85,7 @@ Future<void> tapAndSettle(WidgetTester tester, String text) async {
   await tester.pumpAndSettle();
   await tester.tap(finder.first);
   await settle(tester);
-  if (text == 'SkillSheet確認') {
+  if (text == 'スキルシート確認') {
     await tester.tap(find.widgetWithText(FilledButton, '内容を確認'));
     await tester.pumpAndSettle();
   }
@@ -235,7 +235,7 @@ void main() {
       // sales-progression card is on 社員 now (PUBLIC-DEMO-HOME-UI-3B); the
       // navigator itself is checked back on HOME after each tap.
       await switchPublicDemoTab(tester, PublicDemoTab.employees);
-      await tapAndSettle(tester, 'SkillSheet確認');
+      await tapAndSettle(tester, 'スキルシート確認');
       await switchPublicDemoTab(tester, PublicDemoTab.home);
       expect(
         find.byType(HomeNavigatorSection),
@@ -459,7 +459,7 @@ void main() {
       final before = workflowSnapshot(tester);
       // The employee sales-progression card is on 社員 now.
       await switchPublicDemoTab(tester, PublicDemoTab.employees);
-      await tapAndSettle(tester, 'SkillSheet確認');
+      await tapAndSettle(tester, 'スキルシート確認');
       expect(workflowSnapshot(tester), isNot(before));
     });
 
@@ -473,7 +473,7 @@ void main() {
       // The employee sales-progression card is on 社員 now; switch back to
       // HOME afterward to check the navigator's own fixed identity.
       await switchPublicDemoTab(tester, PublicDemoTab.employees);
-      await tapAndSettle(tester, 'SkillSheet確認');
+      await tapAndSettle(tester, 'スキルシート確認');
       await tapAndSettle(tester, '営業開始');
       await switchPublicDemoTab(tester, PublicDemoTab.home);
 
@@ -624,7 +624,7 @@ void main() {
       expect(ctaLabel.data, isNotEmpty);
 
       // 4. Actually tap it — no mocking of the HOME action path, no
-      // stand-in handler. This is the same `SkillSheet確認` production
+      // stand-in handler. This is the same `スキルシート確認` production
       // button the existing playthrough suites open with.
       final workflowBefore = workflowSnapshot(tester);
       expect(
@@ -635,13 +635,13 @@ void main() {
             'state — 佐藤健 still waiting',
       );
 
-      // This "SkillSheet確認" is the exact-text legacy employee card's own
+      // This "スキルシート確認" is the exact-text legacy employee card's own
       // button — distinct from the Navigator's own CTA above (labeled
       // "SkillSheetを確認", checked but not tapped by name), and now real
       // content on 社員 (PUBLIC-DEMO-HOME-UI-3B). Switch there to reach it,
       // then back to HOME to re-check the navigator itself.
       await switchPublicDemoTab(tester, PublicDemoTab.employees);
-      await tapAndSettle(tester, 'SkillSheet確認');
+      await tapAndSettle(tester, 'スキルシート確認');
       await switchPublicDemoTab(tester, PublicDemoTab.home);
 
       // 5. The expected existing destination/action actually occurred: the
@@ -660,7 +660,7 @@ void main() {
       expect(
         currentWorkflow(tester).engineers.first.stage,
         PublicDemoSalesStage.skillSheet,
-        reason: 'SkillSheet確認 must have run its real effect',
+        reason: 'スキルシート確認 must have run its real effect',
       );
 
       // The navigator itself is unmoved by the state change that just

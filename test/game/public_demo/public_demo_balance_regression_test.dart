@@ -3,6 +3,7 @@ import 'package:smile_enjoy_story/game/public_demo/public_demo_aggregate.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_financial_status.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_fiscal_close_id.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_interview.dart';
+import 'package:smile_enjoy_story/game/public_demo/public_demo_recruitment_medium.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_salary.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_salary_finance.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_salary_offer.dart';
@@ -24,13 +25,24 @@ void main() {
     });
 
     test('normal one-hire route reaches fiscal completion with a positive '
-        '¥700,000 March cash buffer', () {
+        '¥600,000 March cash buffer', () {
       // This is the reasonable PLAYTEST-BALANCE-1A route, not a
       // survival-optimized scenario: one founder wins an initial order,
       // one May applicant is hired at the requested salary and also wins an
       // order, and both assignments continue through March. It deliberately
       // includes no extra hires, training, recruitment spend, or bonus.
-      var aggregate = PublicDemoAggregate.initial()
+      // CORE-GAMEPLAY Phase 4.5: PublicDemoAggregate.initial() no longer
+      // pre-seeds any applicant — recruit via the same real `recruit`
+      // command production code uses. runSeed 46's first `engineer`-medium
+      // candidate (month 4) has requestedMonthlySalary 320,000 — the same
+      // figure this fixture's own exact monthly-expense/cash-checkpoint
+      // assertions below were already built around — and clears the offer-
+      // acceptance (acceptanceScore >= 60) and pre-entry interview
+      // (salesSkillFit >= 60/65) thresholds this chain needs, so no
+      // downstream balance figure changes.
+      var aggregate = PublicDemoAggregate.initial(runSeed: 46)
+          .recruit(PublicDemoRecruitmentMedium.engineer)
+          .aggregate!
           .startSkillSheetReview('eng-01')
           .beginSelling('eng-01')
           .introduceProject('eng-01')
@@ -83,8 +95,14 @@ void main() {
       );
       expect(monthlyExpenses, 1120000);
 
+      // CORE-GAMEPLAY Phase 4.5: recruiting the May hire above now costs the
+      // real engineer-medium fee (¥100,000, `PublicDemoRecruitmentMedium
+      // .engineer.cost`) — before this fix, the pre-seeded May applicant
+      // pool was free. Every cash checkpoint below is offset by that exact,
+      // one-time ¥100,000 relative to this fixture's own pre-Phase-4.5
+      // figures; no Finance formula changed.
       final monthlyCashCheckpoints = <String, int>{
-        'April': 3200000,
+        'April': 3100000,
         'May': aggregate.state.cash,
       };
       aggregate = aggregate.closeJune(
@@ -111,25 +129,25 @@ void main() {
       }
 
       expect(monthlyCashCheckpoints, {
-        'April': 3200000,
-        'May': 2400000,
-        'June': 1780000,
-        'July': 1660000,
-        'August': 1540000,
-        'September': 1420000,
-        'October': 1300000,
-        'November': 1180000,
-        'December': 1060000,
-        'January': 940000,
-        'February': 820000,
-        'March': 700000,
+        'April': 3100000,
+        'May': 2300000,
+        'June': 1680000,
+        'July': 1560000,
+        'August': 1440000,
+        'September': 1320000,
+        'October': 1200000,
+        'November': 1080000,
+        'December': 960000,
+        'January': 840000,
+        'February': 720000,
+        'March': 600000,
       });
       final minimumCashBuffer = monthlyCashCheckpoints.values.reduce(
         (lowest, cash) => cash < lowest ? cash : lowest,
       );
-      expect(minimumCashBuffer, 700000);
+      expect(minimumCashBuffer, 600000);
       expect(aggregate.state.cash, greaterThan(0));
-      expect(aggregate.state.cash, 700000);
+      expect(aggregate.state.cash, 600000);
       expect(aggregate.state.fiscalYearCompleted, isTrue);
       expect(aggregate.state.financialStatus, PublicDemoFinancialStatus.normal);
     });

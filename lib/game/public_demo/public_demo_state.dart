@@ -336,6 +336,22 @@ class PublicDemoState {
       _normalizedRecruitmentMediaMonth(month) != null &&
       recruitmentMediumUsedMonth != month;
 
+  /// Whether [month] is inside the recruiting window at all — unlike
+  /// [canUseRecruitmentMediaInMonth], this ignores this month's own usage.
+  ///
+  /// PR #210 merge-blocker follow-up: the Sales tab's 求人媒体 card used to
+  /// be gated on [canUseRecruitmentMediaInMonth] directly, which meant the
+  /// entire card (including its own always-informational "現預金" line)
+  /// vanished the instant the player used it, rather than staying visible
+  /// with its button disabled ("今月は利用済み") the way the old fixed
+  /// `month == 5` gate always displayed it for all of May regardless of
+  /// use. A UI *visibility* gate must only ask "are we inside the window",
+  /// never "is it still usable this instant" — the latter question belongs
+  /// to the button's own `used` state, computed separately (see
+  /// `_RecruitmentMediaCard`), exactly as it already was before this fix.
+  bool isRecruitmentMediaWindowMonth(int month) =>
+      _normalizedRecruitmentMediaMonth(month) != null;
+
   /// Records only the company-wide monthly usage guard. It deliberately does
   /// not select a medium, charge cash, or generate applicants.
   PublicDemoState markRecruitmentMediaUsed(int month) {

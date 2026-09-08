@@ -46,7 +46,7 @@ void main() {
           find.byKey(Key('public-demo-skill-sheet-${engineer.id}')),
           findsOneWidget,
         );
-        expect(find.textContaining('営業用SkillSheet'), findsOneWidget);
+        expect(find.textContaining('営業用スキルシート'), findsOneWidget);
         expect(find.text('経歴・スキル要約'), findsOneWidget);
         expect(find.text(engineer.summary), findsWidgets);
         expect(find.text('営業・面談プロフィール'), findsOneWidget);
@@ -117,7 +117,7 @@ void main() {
         await switchPublicDemoTab(tester, PublicDemoTab.employees);
         final skillSheetButton = find.widgetWithText(
           FilledButton,
-          'SkillSheet確認',
+          'スキルシート確認',
         );
         await tapVisible(tester, skillSheetButton);
         expect(

@@ -2,7 +2,7 @@
 // information-hierarchy sections — 1) 社員一覧・現在状態 (`_employeeRosterSection`,
 // new), 2) 今やるべき社員アクション (`_employeeNextActionsSection`), 3) 参画中案件
 // (`_employeeActiveProjectsSection`, the existing SES ACTIVE-PROJECT-VISIBILITY
-// Phase 1 card), 4) 成長・SkillSheet・研修 (`_employeeGrowthSection`) — instead of
+// Phase 1 card), 4) 成長・スキルシート・研修 (`_employeeGrowthSection`) — instead of
 // one flat stack of cards. Every card/key/eligibility check moved verbatim
 // from the prior single-`Column` build (see
 // `public_demo_active_project_visibility_test.dart` for the APV card's own
@@ -235,7 +235,7 @@ void main() {
   group('Section 2 (今やるべき社員アクション): next actionable employee state', () {
     testWidgets(
       'April: the ready engineer (capability >= 60) gets 営業準備OK and a '
-      'SkillSheet確認 action; the not-yet-ready one gets the truthful lock '
+      'スキルシート確認 action; the not-yet-ready one gets the truthful lock '
       'banner instead — both under the Section 2 header',
       (tester) async {
         final aggregate = PublicDemoAggregate.initial();
@@ -243,15 +243,15 @@ void main() {
 
         expect(find.text('今やるべき社員アクション'), findsOneWidget);
         expect(find.text('営業準備OK'), findsOneWidget);
-        expect(find.text('SkillSheet確認'), findsOneWidget);
+        expect(find.text('スキルシート確認'), findsOneWidget);
         expect(find.byKey(const Key('public-demo-field-sales-lock-eng-02')), findsOneWidget);
       },
     );
   });
 
-  group('Section 4 (成長・SkillSheet・研修): existing routes stay reachable', () {
+  group('Section 4 (成長・スキルシート・研修): existing routes stay reachable', () {
     testWidgets(
-      'April: SkillSheet確認 still opens the real PublicDemoSkillSheetSheet '
+      'April: スキルシート確認 still opens the real PublicDemoSkillSheetSheet '
       'for the ready engineer',
       (tester) async {
         final aggregate = PublicDemoAggregate.initial();
@@ -262,9 +262,9 @@ void main() {
         // is no longer guaranteed to sit inside the default unscrolled
         // test viewport — scroll it into view first, same as every other
         // tap-driven test in this suite already does.
-        await tester.ensureVisible(find.text('SkillSheet確認'));
+        await tester.ensureVisible(find.text('スキルシート確認'));
         await tester.pumpAndSettle();
-        await tester.tap(find.text('SkillSheet確認'));
+        await tester.tap(find.text('スキルシート確認'));
         await tester.pumpAndSettle();
         expect(
           find.byKey(const Key('public-demo-skill-sheet-eng-01')),
@@ -284,7 +284,7 @@ void main() {
         final aggregate = publicDemoAggregateAtMonth(6);
         await pumpDemoWith(tester, aggregate);
 
-        expect(find.text('成長・SkillSheet・研修'), findsOneWidget);
+        expect(find.text('成長・スキルシート・研修'), findsOneWidget);
         expect(
           find.byKey(const Key('public-demo-internal-training-eng-01')),
           findsOneWidget,
@@ -336,7 +336,7 @@ void main() {
         expect(find.text('社員一覧・現在状態'), findsNothing);
         expect(find.text('今やるべき社員アクション'), findsNothing);
         expect(find.text('参画中案件'), findsNothing);
-        expect(find.text('成長・SkillSheet・研修'), findsNothing);
+        expect(find.text('成長・スキルシート・研修'), findsNothing);
         expect(
           find.byKey(const Key('public-demo-active-project-status-eng-01')),
           findsNothing,

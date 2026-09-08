@@ -48,6 +48,20 @@ export async function snapshot(page: Page): Promise<string> {
   return page.locator('body').ariaSnapshot();
 }
 
+/** Switches the bottom tab bar to [name] (`ホーム`/`社員`/`営業`/`会計`/
+ * `メニュー`) — `PublicDemo01PlaceholderScreen._buildBody`'s own
+ * `switch (_selectedTabIndex)` builds only the active tab's widget subtree,
+ * so a raw per-tab card label (`ac(i)`/`ec(i)`/`assignmentCard(i)`'s own
+ * button text, as opposed to a HOME Recommended Action CTA's differently-
+ * worded mirror) is reachable only once this has actually switched there. */
+export async function switchToTab(
+  page: Page,
+  name: 'ホーム' | '社員' | '営業' | '会計' | 'メニュー',
+): Promise<void> {
+  await page.getByRole('tab', { name, exact: true }).click();
+  await waitForStableFrame(page);
+}
+
 /** Fresh-start invariants any Public Demo test can assert after
  * `openPublicDemo` and before taking any action — a non-mutating read, safe
  * to call from any lane. Does not itself assert April; call
@@ -157,7 +171,7 @@ export async function scrollToButton(
  * the page (e.g. one specific applicant's own card) instead of the whole
  * page — needed whenever two engineers/applicants can carry the exact same
  * button label at once (e.g. two un-reviewed May applicants both showing
- * `経歴書確認`), which a bare page-wide `getByRole` cannot disambiguate.
+ * `スキルシート確認`), which a bare page-wide `getByRole` cannot disambiguate.
  * Defaults to `page` itself, so every existing caller is unaffected. */
 export async function clickButton(
   page: Page,
@@ -282,6 +296,11 @@ export async function scrollToTop(page: Page): Promise<void> {
  * top-scroll — a second attempt, giving Flutter one more full paint cycle,
  * reliably finds it. This re-does real navigation, not a bare timeout. */
 export async function findMonthlyPrimaryCta(page: Page): Promise<Locator> {
+  // The monthly close CTA is HOME-tab-only (`_buildHomeTab`'s own
+  // `_monthlyPrimaryAction` mount) — a caller that just used a raw per-tab
+  // card action (社員/営業/会計) must be switched back before this can ever
+  // find it.
+  await switchToTab(page, 'ホーム');
   let cta: Locator | undefined;
   await expect(async () => {
     await scrollToTop(page);
@@ -356,11 +375,14 @@ export async function closeMonthlyPrimaryCta(page: Page): Promise<void> {
   });
   await cta.click();
   await waitForStableFrame(page);
-  // A larger budget than `clickButton`'s own default: April's month-close
-  // specifically opens a new-applicant event dialog only after an awaited
-  // image precache (`april()`), and this is called at most once per month
-  // (12 times for a full year), so the worst case here is cheap.
-  await waitAndDismissDialog(page, '確認', 4_000);
+  // A larger budget than `clickButton`'s own default: April's and May's
+  // own month-close event dialogs (`april()`/`may()`) each open only after
+  // an awaited image precache, observed to occasionally take longer than
+  // 4s under load (a heavier scenario with more on-screen content, e.g.
+  // the merge-blocker's own recruited second hire, competing for the same
+  // frame budget) — this is called at most once per month (12 times for a
+  // full year), so a larger worst case here is still cheap.
+  await waitAndDismissDialog(page, '確認', 12_000);
   await dismissMonthGuardIfPresent(page);
 }
 
@@ -409,86 +431,200 @@ export async function restartFromApril(page: Page): Promise<void> {
  * action cards); a wording change here is a real product change this
  * helper should surface as a failing assertion, not silently paper over. */
 export async function sellFoundingEngineerInApril(page: Page): Promise<void> {
-  await clickButton(page, 'SkillSheetを確認', true);
+  await clickButton(page, 'スキルシートを確認', true);
   await clickButton(page, '内容を確認', true);
   await clickButton(page, '営業を開始', true);
-  await clickButton(page, '案件紹介', true);
-  await clickButton(page, '上位会社面談', true);
-  await clickButton(page, '客先面談', true);
-  await clickButton(page, '受注', true);
+  await clickButton(page, '案件を紹介', true);
+  await clickButton(page, '上位会社面談へ', true);
+  await clickButton(page, '客先面談へ', true);
+  await clickButton(page, '案件を受注', true);
 }
 
-/** Interviews and offers app-01 (高橋 翔, the only May applicant whose
- * `interviewScore` (74) clears recruitment's own >=60 gate — app-02, 田中
- * 美咲, scores 58 and can never be offered at all) but deliberately stops
- * right after the offer — no pre-entry SkillSheet/selling/interview/order.
- * `closeMay`'s own join-eligibility set already includes `offerAccepted`
- * (`public_demo_workflow_state.dart`), so app-01 still joins in May's
- * close on the accepted offer alone, then enters June/July as a genuinely
- * economically-waiting engineer rather than one whose pre-entry sales
- * progress silently carried them straight to an assignment — see
- * RECOVERY-LOOP-1's E2E design ("canonical target: app-01 / 高橋 翔"). */
-/** Locator for app-01's own card — whichever one is currently on screen
- * (the May applicant card, `ac(i)`, or the post-join engineer card,
- * `ec(i)`) — anchored at the start of its accessible name only (`^高橋 翔`)
- * since the rest (status badge, resume summary, sales-stage progress)
- * changes after every action. Exported so any caller can scope its own
- * card-level clicks to app-01 specifically whenever another engineer could
- * otherwise carry the exact same button label at the same time (May's
- * second applicant, app-02; eng-01 if left unsold and still `waiting`). */
-export function appOneCard(page: Page): Locator {
-  return page.getByRole('group', { name: /^高橋 翔/ });
+/** Escapes [text] for safe use inside a `RegExp` — a generated applicant's
+ * name is real Japanese-name-shaped text, never containing regex
+ * metacharacters in practice, but this is cheap insurance against any of
+ * the generator's own name pool ever including one. */
+function escapeRegExp(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-/** Interviews, offers, and runs app-01 (高橋 翔) through the FULL pre-entry
- * sales pipeline (SkillSheet through the June order) — the same May shape
- * `public_demo_01_success_playthrough_test.dart` already exercises. app-01
- * reaches `juneOrdered` and is picked up by `assignOrderedForMay` at May's
- * close, same as any other June hire.
+/** Locator for [name]'s own card — whichever one is currently on screen
+ * (the applicant card, `ac(i)`, or the post-join engineer card, `ec(i)`) —
+ * anchored at the start of its accessible name only, since the rest
+ * (status badge, resume summary, sales-stage progress) changes after every
+ * action. Exported so any caller can scope its own card-level clicks to
+ * this specific hire whenever another engineer/applicant could otherwise
+ * carry the exact same button label at the same time. Replaces the old
+ * `appOneCard` (CORE-GAMEPLAY Phase 4.5 retired the fixed app-01/app-02
+ * founding applicant pair this suite used to target by name). */
+export function namedPersonCard(page: Page, name: string): Locator {
+  return page.getByRole('group', { name: new RegExp(`^${escapeRegExp(name)}`) });
+}
+
+/** Runs one already-recruited, still-`applied` candidate through the
+ * interactive recruitment interview (CORE-GAMEPLAY Phase 3) via HOME's own
+ * Recommended Action CTA chain (`経歴書を確認` -> `採用面談へ` -> `面談へ`),
+ * asking any 3 of the 6 question categories and answering the reverse
+ * question with any choice — neither choice affects the hiring gates this
+ * helper cares about (`interviewScore`/`acceptanceScore`/`salesSkillFit`,
+ * all fixed at generation time, never by interview content) — then always
+ * decides "採用候補として進める". No tab switch and no card-scoping is
+ * needed: at most one applicant is ever mid-pipeline at a time in these
+ * tests, so HOME's single Recommended Action slot always names the right
+ * one, exactly like `sellFoundingEngineerInApril` above.
  *
- * This is deliberately NOT "join on the accepted offer alone, skip
- * pre-entry sales" (an earlier version of this helper did exactly that,
- * matching `closeMay`'s own join-eligibility set, which also includes
- * `offerAccepted`) — that construction was found, empirically, to leave
- * Flutter Web's accessibility semantics tree in a state Playwright/CDP
- * stops exposing new content into from the very next month onward (the
- * month-close CTA and everything below it silently vanish from every
- * locator and `ariaSnapshot()` alike, though the underlying Dart state —
- * confirmed via an equivalent `PublicDemoAggregate`-level and
- * `WidgetTester`-level reproduction — stays completely correct throughout,
- * and no console/page error is ever raised). That reproduces on Chromium
- * regardless of scroll position, wait duration, or an explicit resize
- * event, so it reads as a Flutter-Web-CanvasKit-semantics ↔
- * Playwright/CDP interaction quirk specific to that one applicant-stage
- * shape, not a Recovery defect — see the E2E result report's KNOWN ISSUES.
- * Running app-01 through the ordinary pre-entry pipeline instead sidesteps
- * it entirely while still reaching the same eventual "waiting entering
- * July" fact this suite needs (see [leaveJulyContinuationUndecidedFor]),
- * and additionally exercises `recoverLateYearAssignment`'s UPSERT path
- * (into app-01's own May-era assignment entry) rather than only its APPEND
- * path. */
-export async function hireAndRunAppOnePreEntryPipeline(page: Page): Promise<void> {
-  // May's applicant pool always has two candidates (`publicDemoMayApplicants`)
-  // on screen together, so every one of app-01's own buttons must be scoped
-  // to their own card (`ac(i)`'s per-applicant group) — app-02 carries the
-  // exact same `経歴書確認`/`採用面談` labels on their own card at the same
-  // time, and an unscoped `getByRole('button', ...)` cannot tell them apart.
-  const card = appOneCard(page);
-  await clickButton(page, '経歴書確認', true, card);
-  await clickButton(page, '採用面談', true, card);
-  await clickButton(page, '合格・給与提示', true, card);
-  const dialog = page.getByRole('alertdialog');
-  await expect(dialog).toBeVisible({ timeout: 15_000 });
-  // app-01's own requested salary (¥320,000 — `public_demo_recruitment.dart`)
-  // is always one of `PublicDemoSalaryOfferDialog`'s three offered choices.
-  await dialog.getByRole('button', { name: '32万円', exact: true }).click();
+ * Returns the candidate's name if `給与提示へ` becomes available afterwards
+ * (`interviewScore >= 60` — recruitment's own genuine, non-seeded-for-E2E
+ * quality gate), or `null` if this candidate is a structural dead end
+ * (`applicantSalaryOffer` is never emitted at all for a decided-but-under-
+ * threshold candidate — `public_demo_01_placeholder_screen.dart`'s
+ * `_addApplicantStageCandidate`) — HOME's slot has already moved on to
+ * whichever candidate (or nothing) comes next by the time this returns. */
+async function runOneApplicantThroughInterview(page: Page): Promise<string | null> {
+  const snap = await snapshot(page);
+  const match = snap.match(/([^\s"]+ [^\s"]+)の経歴書を確認/);
+  const name = match ? match[1] : null;
+
+  await clickButton(page, '経歴書を確認', true);
+  const closeCandidateSkillSheet = page.getByRole('button', { name: '閉じる', exact: true });
+  if ((await closeCandidateSkillSheet.count()) > 0) {
+    await closeCandidateSkillSheet.click();
+    await waitForStableFrame(page);
+  }
+
+  await clickButton(page, '採用面談へ', true);
+  await clickButton(page, '面談へ', true);
+
+  const dialog = page.getByRole('dialog');
+  for (const label of ['技術経験', '役割・経歴', '転職理由']) {
+    await dialog.getByRole('button', { name: new RegExp(`^${label}`) }).click();
+    await waitForStableFrame(page);
+  }
+  // The reverse question's own answer choices are the only buttons left in
+  // the dialog body once all 3 questions are asked (the header's own
+  // `中断して閉じる` close icon is the first button in the dialog, always
+  // ahead of them) — any choice is fine, it does not affect hiring gates.
+  await dialog.getByRole('button').last().click();
   await waitForStableFrame(page);
-  await clickButton(page, '入社前SkillSheet', true, card);
-  await clickButton(page, '入社前営業', true, card);
-  await clickButton(page, '案件紹介', true, card);
-  await clickButton(page, '上位会社面談', true, card);
-  await clickButton(page, '客先面談', true, card);
-  await clickButton(page, '6月受注', true, card);
+
+  await dialog
+    .getByRole('button', { name: '採用候補として進める', exact: true })
+    .click();
+  await waitForStableFrame(page);
+
+  const offerCta = page.getByRole('button', { name: '給与提示へ', exact: true });
+  return (await offerCta.count()) > 0 ? name : null;
+}
+
+/** Sends a salary offer to whichever candidate HOME currently recommends
+ * for one (`給与提示へ`) — always the highest of the dialog's offered
+ * choices (`PublicDemoSalaryOfferDialog`'s own ascending-sorted list,
+ * `requestedMonthlySalary` +/- 40,000), to maximize (never guarantee —
+ * `PublicDemoSalaryOfferEvaluator` also weighs the candidate's own
+ * `acceptanceScore`) the odds of acceptance. Then runs the full pre-entry
+ * sales pipeline (入社前スキルシートへ -> 入社前営業を開始 -> 案件を紹介 ->
+ * 上位会社面談へ -> 客先面談へ -> 6月分を受注), the same shape
+ * `public_demo_01_success_playthrough_test.dart` already exercises for the
+ * generated-applicant route. Returns `true` only once `6月分を受注` was
+ * actually reached; `false` at the first genuine dead end (offer declined,
+ * or `salesSkillFit` failing the partner/client interview's own >=60/>=65
+ * gate) — `public_demo_01_placeholder_screen.dart`'s
+ * `_addApplicantStageCandidate` emits no candidate at all for any of those
+ * terminal stages, so each gate is checked here as "did the next expected
+ * CTA appear", never a fabricated pass/fail re-derivation. */
+async function offerAndRunPreEntryPipeline(page: Page): Promise<boolean> {
+  await clickButton(page, '給与提示へ', true);
+  const offerDialog = page.getByRole('alertdialog');
+  await expect(offerDialog).toBeVisible({ timeout: 15_000 });
+  await offerDialog.getByRole('button', { name: /万円$/ }).last().click();
+  await waitForStableFrame(page);
+
+  const preEntrySkillSheetCta = page.getByRole('button', {
+    name: '入社前スキルシートへ',
+    exact: true,
+  });
+  if ((await preEntrySkillSheetCta.count()) === 0) return false; // offer declined
+
+  await preEntrySkillSheetCta.click();
+  await waitForStableFrame(page);
+  const closeCandidateSkillSheet = page.getByRole('button', { name: '閉じる', exact: true });
+  if ((await closeCandidateSkillSheet.count()) > 0) {
+    await closeCandidateSkillSheet.click();
+    await waitForStableFrame(page);
+  }
+
+  await clickButton(page, '入社前営業を開始', true);
+  await clickButton(page, '案件を紹介', true);
+
+  await clickButton(page, '上位会社面談へ', true);
+  const clientInterviewCta = page.getByRole('button', { name: '客先面談へ', exact: true });
+  if ((await clientInterviewCta.count()) === 0) return false; // salesSkillFit < 60
+
+  await clickButton(page, '客先面談へ', true);
+  const juneOrderCta = page.getByRole('button', { name: '6月分を受注', exact: true });
+  if ((await juneOrderCta.count()) === 0) return false; // salesSkillFit < 65
+
+  await clickButton(page, '6月分を受注', true);
+  return true;
+}
+
+/** Recruits via the paid エンジニア求人 medium (2 candidates generated per
+ * call — CORE-GAMEPLAY Phase 2's own "over-generate, pick strongest"
+ * bias — `PublicDemoRecruitmentMedium.engineer.applicantCount`) and runs
+ * one of them through the FULL current normal-play hiring route — 求人媒体
+ * -> the interactive recruitment interview (CORE-GAMEPLAY Phase 3) ->
+ * offer -> the pre-entry sales pipeline -> `juneOrdered` — replacing this
+ * suite's old fixed app-01 (高橋 翔) assumption. CORE-GAMEPLAY Phase 4.5
+ * retired that fixture as a game-start seed
+ * (`PublicDemoWorkflowState.initial()` no longer pre-seeds any applicant),
+ * so a genuine second hire now has to be recruited, exactly as a real
+ * player would, before any of this suite's Recovery-loop scenarios can
+ * exist at all.
+ *
+ * Reached via HOME's own Recommended Action CTA chain throughout — no tab
+ * switch, no card scoping — every step below is driven the same way
+ * `sellFoundingEngineerInApril` drives eng-01's own April pipeline.
+ *
+ * Every generated candidate's `interviewScore`/`acceptanceScore`/
+ * `salesSkillFit` — recruitment's own genuine quality gates, already
+ * enforced by production for every applicant, seeded or not — can
+ * independently fail the pipeline's own real >=60/evaluator/>=60/>=65
+ * thresholds; Public Demo's route has no seed override (unlike
+ * `founding-first-assignment.spec.ts`'s own `SES_E2E_SEEDS`), so this
+ * cannot be pinned to a guaranteed-successful roll the way the retired
+ * app-01 fixture (interviewScore 74, chosen specifically to always clear
+ * every gate) was. Trying both of the engineer medium's own generated
+ * candidates in turn, and always offering the highest salary choice,
+ * measurably reduces — it does not eliminate — the chance neither clears
+ * every gate; see the CORE-GAMEPLAY Phase 4.5 merge-blocker result
+ * report's Known Limitations for the accepted residual flake rate this
+ * documents, the same kind of bounded, disclosed randomness this suite
+ * already accepts elsewhere. Returns the name of whichever candidate
+ * reaches `juneOrdered`, for card-scoped follow-up steps (e.g.
+ * `runWaitingEngineerSalesPipelineToOrdered(page, namedPersonCard(page, name))`). */
+export async function recruitAndRunSecondHirePreEntryPipeline(
+  page: Page,
+): Promise<string> {
+  await switchToTab(page, 'ホーム');
+  await clickButton(page, '求人媒体を開く', true);
+  const engineerOption = page.getByRole('group', { name: /^エンジニア求人/ });
+  await engineerOption
+    .getByRole('button', { name: 'この方法で募集する', exact: true })
+    .click();
+  await waitForStableFrame(page);
+
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const name = await runOneApplicantThroughInterview(page);
+    if (name === null) continue;
+    if (await offerAndRunPreEntryPipeline(page)) return name;
+  }
+  throw new Error(
+    'recruitAndRunSecondHirePreEntryPipeline: neither of the two ' +
+      'engineer-medium candidates cleared every hiring gate ' +
+      '(interviewScore / offer acceptance / salesSkillFit) this run — a ' +
+      'documented, bounded residual flake (see the Phase 4.5 merge-blocker ' +
+      'result report). Re-running draws two entirely new candidates.',
+  );
 }
 
 /** Decides eng-01's own July continuation (`confirmJulyContinuation`'s own
@@ -503,15 +639,39 @@ export async function hireAndRunAppOnePreEntryPipeline(page: Page): Promise<void
  * undecided May-era assignment is exactly as economically-waiting entering
  * July as one that was never made at all. */
 export async function confirmSatoJulyContinuationOnly(page: Page): Promise<void> {
-  const satoCard = page.getByRole('group', { name: /^佐藤 健/ });
-  await clickButton(page, '7月分の発注を確認', true, satoCard);
-  await clickButton(page, '受注する', true, satoCard);
+  await switchToTab(page, '営業');
+  // `assignmentCard(i)`'s own wrapper (`PublicDemoSalesCard`) is a plain
+  // `Container`, not a widget that gets its own isolated accessible group —
+  // unlike `ac(i)`/`ec(i)`, a `getByRole('group', {name: /^佐藤 健/})` scope
+  // does not reliably isolate one assignment card once a second one exists
+  // on screen (both collapse into the same enclosing accessible group), and
+  // the shared `scrollToButton`/`clickButton` helpers hit Playwright's
+  // strict-mode violation on the unscoped locator once two such buttons
+  // coexist. eng-01 is a founding engineer, already in `workflow.engineers`
+  // from game start, whereas any other June hire only joins it at join
+  // time — `assignOrderedForMay`'s own roster-rebuild processes founding
+  // engineers first, so eng-01's assignment card is reliably first in DOM
+  // order; `.first()` on the (already-disambiguated-by-position) locator
+  // itself, scrolled directly via Playwright's own `scrollIntoViewIfNeeded`,
+  // avoids ever evaluating the ambiguous unscoped locator.
+  const satoButton = page
+    .getByRole('button', { name: '7月分の発注を確認', exact: true })
+    .first();
+  await satoButton.scrollIntoViewIfNeeded();
+  await dismissDialogIfPresent(page);
+  await expect(satoButton, 'button "7月分の発注を確認" must be reachable').toBeVisible({
+    timeout: 15_000,
+  });
+  await satoButton.click();
+  await waitForStableFrame(page);
+  await waitAndDismissDialog(page);
+  await clickButton(page, '受注する', true);
 }
 
 /** Runs one waiting engineer's post-`waiting` sales pipeline —
  * SkillSheet review through order acceptance — using the raw employee
- * card's own button labels (`ec(i)`'s `SkillSheet確認`/`営業開始`, never
- * HOME Recommended Action's differently-worded `SkillSheetを確認`/
+ * card's own button labels (`ec(i)`'s `スキルシート確認`/`営業開始`, never
+ * HOME Recommended Action's differently-worded `スキルシートを確認`/
  * `営業を開始`, which `sellFoundingEngineerInApril` above targets instead —
  * the two are genuinely different on-screen strings for the same two
  * underlying commands, not a typo). RECOVERY-LOOP-1 originally did not wire
@@ -533,11 +693,12 @@ export async function runWaitingEngineerSalesPipelineToOrdered(
   // whenever eng-01 (never Recovery-eligible itself, but ready for field
   // sales and still `waiting` if never sold) is on screen at the same time
   // as the Recovery target, since both would otherwise carry the exact same
-  // `SkillSheet確認` label the instant both are still `waiting` together
+  // `スキルシート確認` label the instant both are still `waiting` together
   // (e.g. the CRITICAL ACCEPTANCE GATE scenario, which deliberately never
   // sells eng-01). `内容を確認` lives inside the SkillSheet dialog itself,
   // not the card, so it is always page-scoped regardless of [root].
-  await clickButton(page, 'SkillSheet確認', true, root);
+  await switchToTab(page, '社員');
+  await clickButton(page, 'スキルシート確認', true, root);
   await clickButton(page, '内容を確認', true);
   await clickButton(page, '営業開始', true, root);
   await clickButton(page, '案件紹介', true, root);
@@ -552,6 +713,7 @@ export async function runWaitingEngineerSalesPipelineToOrdered(
  * `PublicDemoRecoveryEligibility.isEligible` already holds
  * (`public_demo_01_placeholder_screen.dart`'s `ec(i)`). */
 export async function recoverAssignment(page: Page): Promise<void> {
+  await switchToTab(page, '社員');
   await clickButton(page, '案件へ復帰', true);
 }
 
@@ -564,6 +726,7 @@ export async function recoverAssignment(page: Page): Promise<void> {
  * calls this so the smallest currently-solvent-as-possible baseline is the
  * one recorded. */
 export async function confirmJulyContinuation(page: Page): Promise<void> {
+  await switchToTab(page, '営業');
   await clickButton(page, '7月分の発注を確認', true);
   await clickButton(page, '受注する', true);
 }
@@ -572,6 +735,7 @@ export async function confirmJulyContinuation(page: Page): Promise<void> {
  * `public-demo-july-restart.spec.ts` already exercises — and leaves the
  * month ready to close. Does not click the monthly CTA itself. */
 export async function decideNoSummerBonus(page: Page): Promise<void> {
+  await switchToTab(page, '会計');
   await clickButton(page, '夏季賞与を決める', true);
   const dialog = page.getByRole('alertdialog');
   await expect(dialog).toBeVisible({ timeout: 15_000 });
@@ -586,6 +750,8 @@ export async function decideNoSummerBonus(page: Page): Promise<void> {
  * either way — callers decide what a terminal state should mean for their
  * own scenario. */
 export async function isFinanciallyTerminal(page: Page): Promise<boolean> {
+  // The terminal card (`_bankruptcyTerminalCard`) is HOME-tab-only content.
+  await switchToTab(page, 'ホーム');
   const snap = await snapshot(page);
   return snap.includes('このプレイスルーは終了しました。');
 }
@@ -609,6 +775,8 @@ export async function isFinanciallyTerminal(page: Page): Promise<boolean> {
  * waiting engineer's own card further down) can leave the page scrolled
  * well past it. */
 export async function isCashShortage(page: Page): Promise<boolean> {
+  // `PublicDemoCashShortageCard` is HOME-tab-only content.
+  await switchToTab(page, 'ホーム');
   await scrollToTop(page);
   const snap = await snapshot(page);
   return snap.includes('資金不足：次回決算が期限です');
@@ -683,6 +851,9 @@ export async function readCompactKpiValue(page: Page, label: string): Promise<st
   // land mid-layout with several Recovery-eligible engineers' cards on
   // screen; one more full paint cycle reliably resolves it.
   await expect(async () => {
+    // The compact KPI row is HOME-tab-only content (`_buildHomeTab`'s own
+    // `PublicDemoHomeDashboardSection`).
+    await switchToTab(page, 'ホーム');
     await scrollToTop(page);
     const snap = await snapshot(page);
     value = snap.match(pattern)?.[1];

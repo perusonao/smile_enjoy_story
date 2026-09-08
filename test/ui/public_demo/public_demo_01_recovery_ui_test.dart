@@ -10,19 +10,25 @@
 // no duplicate, and it never appears when month/terminal/training-selected
 // blocks it.
 //
-// app-01 (高橋 翔) is the only Public Demo 0.1 hire that can ever reach this
-// state: app-02 (田中 美咲, interviewScore 58) fails the recruitment
-// interview's own >=60 gate and can never be offered at all, and eng-02
-// (鈴木 葵, capability 52) starts below the field-sales threshold and stays
-// locked out for as long as this suite's own fixtures leave her untrained
-// (see public_demo_01_suzuki_sales_lock_test.dart) — repeated training can
-// cross the threshold and reopen her SkillSheet route through this same
-// month 7-14 window (Issue #168 Finding B; see
+// CORE-GAMEPLAY Phase 4.5: a new game starts with zero applicants — this
+// suite recruits via 求人媒体 with a pinned `debugSeed` (9) and hires its
+// first `engineer`-medium candidate (斎藤拓也, interviewScore 80,
+// requestedMonthlySalary 370000 — genuinely clears the recruitment
+// interview's own >=60 offer-eligibility gate), the only Public Demo 0.1
+// hire that can ever reach this state: eng-02 (鈴木 葵, capability 52) starts
+// below the field-sales threshold and stays locked out for as long as this
+// suite's own fixtures leave her untrained (see
+// public_demo_01_suzuki_sales_lock_test.dart) — repeated training can cross
+// the threshold and reopen her SkillSheet route through this same month
+// 7-14 window (Issue #168 Finding B; see
 // public_demo_01_suzuki_sales_reentry_test.dart), but this suite's own
-// fixtures never train her at all. Every scenario below therefore hires
-// app-01 in May, deliberately leaves them unrecovered through June (skip
+// fixtures never train her at all. Every scenario below therefore hires this
+// candidate in May, deliberately leaves them unrecovered through June (skip
 // their post-join sales pipeline), and drives the SAME real production UI
-// used everywhere else in this suite.
+// used everywhere else in this suite. The candidate's id
+// (`recruitment-5-engineer-1`) is a stable format independent of
+// `debugSeed` — only the person behind it varies by seed (see
+// `PublicDemoSeededRecruitmentGenerator`'s own doc).
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_assignment.dart';
@@ -33,7 +39,7 @@ import 'package:smile_enjoy_story/ui/public_demo/public_demo_01_placeholder_scre
 import 'public_demo_interview_test_helpers.dart';
 import 'public_demo_tab_test_helpers.dart';
 
-const _appId = 'app-01';
+const _appId = 'recruitment-5-engineer-1';
 
 PublicDemoState _currentState(WidgetTester tester) =>
     (tester.state(find.byType(PublicDemo01PlaceholderScreen)) as dynamic).s
@@ -70,8 +76,17 @@ Future<void> _tapAndSettle(WidgetTester tester, String text) async {
   await tester.pumpAndSettle();
   await tester.tap(finder.first);
   await _settle(tester);
-  if (text == 'SkillSheet確認') {
-    await tester.tap(find.widgetWithText(FilledButton, '内容を確認'));
+  // CORE-GAMEPLAY Phase 4.5: dismiss whichever SkillSheet sheet a tap may
+  // have opened — the employee-side sheet (confirm: '内容を確認') or the
+  // candidate-side sheet (close: '閉じる').
+  final confirmSkillSheet = find.widgetWithText(FilledButton, '内容を確認');
+  if (confirmSkillSheet.evaluate().isNotEmpty) {
+    await tester.tap(confirmSkillSheet);
+    await tester.pumpAndSettle();
+  }
+  final closeCandidateSkillSheet = find.widgetWithText(OutlinedButton, '閉じる');
+  if (closeCandidateSkillSheet.evaluate().isNotEmpty) {
+    await tester.tap(closeCandidateSkillSheet);
     await tester.pumpAndSettle();
   }
   // Issue #119: a month-close tap now truthfully names app-01's own
@@ -123,7 +138,7 @@ Future<void> _sellFoundingEngineerAndCloseApril(WidgetTester tester) async {
   // The employee sales-progression card is on 社員 now
   // (PUBLIC-DEMO-HOME-UI-3B).
   await switchPublicDemoTab(tester, PublicDemoTab.employees);
-  await _tapAndSettle(tester, 'SkillSheet確認');
+  await _tapAndSettle(tester, 'スキルシート確認');
   await _tapAndSettle(tester, '営業開始');
   await _tapAndSettle(tester, '案件紹介');
   await _tapAndSettle(tester, '上位会社面談');
@@ -138,22 +153,31 @@ Future<void> _sellFoundingEngineerAndCloseApril(WidgetTester tester) async {
   await _dismiss(tester);
 }
 
-/// May: interviews and offers app-01 (高橋 翔) but deliberately stops right
-/// after the offer — no pre-entry SkillSheet/selling/interview/order — so
-/// app-01 joins in May's close purely on the accepted offer
-/// (`closeMay`'s own `accepted()` set already includes `offerAccepted`) and
-/// enters June/July as a genuinely economically-waiting engineer, not one
-/// whose pre-entry sales progress silently carried them straight to
-/// `ordered`.
+/// May: recruits via 求人媒体, interviews and offers 斎藤拓也 (seed 9's first
+/// `engineer`-medium candidate, id `recruitment-5-engineer-1`) but
+/// deliberately stops right after the offer — no pre-entry
+/// SkillSheet/selling/interview/order — so they join in May's close purely
+/// on the accepted offer (`closeMay`'s own `accepted()` set already includes
+/// `offerAccepted`) and enter June/July as a genuinely economically-waiting
+/// engineer, not one whose pre-entry sales progress silently carried them
+/// straight to `ordered`.
 Future<void> _hireAppOneWithoutPreEntrySales(WidgetTester tester) async {
   // The recruiting/applicant pipeline is on 営業 now.
   await switchPublicDemoTab(tester, PublicDemoTab.sales);
-  await _tapAndSettle(tester, '経歴書確認');
+  await tester.tap(
+    find.byKey(const Key('public-demo-open-recruitment-media')),
+  );
+  await tester.pumpAndSettle();
+  await tester.tap(
+    find.byKey(const Key('public-demo-recruitment-medium-engineer')),
+  );
+  await tester.pumpAndSettle();
+  await _tapAndSettle(tester, 'スキルシート確認');
   await _tapAndSettle(tester, '採用面談');
-  expect(find.textContaining('評価 74'), findsOneWidget);
+  expect(find.textContaining('評価 80'), findsOneWidget);
   await driveRecruitmentInterviewToHireDecision(tester);
   await _tapAndSettle(tester, '合格・給与提示');
-  await tester.tap(find.byKey(const Key('public-demo-salary-offer-320000')));
+  await tester.tap(find.byKey(const Key('public-demo-salary-offer-370000')));
   await tester.pumpAndSettle();
 }
 
@@ -165,7 +189,7 @@ Future<void> _hireAppOneWithoutPreEntrySales(WidgetTester tester) async {
 Future<void> _runAppOneSalesPipelineToOrdered(WidgetTester tester) async {
   // The employee sales-progression card (and 案件へ復帰) is on 社員 now.
   await switchPublicDemoTab(tester, PublicDemoTab.employees);
-  await _tapAndSettle(tester, 'SkillSheet確認');
+  await _tapAndSettle(tester, 'スキルシート確認');
   await _tapAndSettle(tester, '営業開始');
   await _tapAndSettle(tester, '案件紹介');
   await _tapAndSettle(tester, '上位会社面談');
@@ -183,7 +207,7 @@ void main() {
     'waiting -> assigned exactly once (no duplicate assignment)',
     (tester) async {
       await tester.pumpWidget(
-        const MaterialApp(home: PublicDemo01PlaceholderScreen()),
+        const MaterialApp(home: PublicDemo01PlaceholderScreen(debugSeed: 9)),
       );
 
       await _sellFoundingEngineerAndCloseApril(tester);
@@ -291,7 +315,7 @@ void main() {
     'for the same never-recovered engineer',
     (tester) async {
       await tester.pumpWidget(
-        const MaterialApp(home: PublicDemo01PlaceholderScreen()),
+        const MaterialApp(home: PublicDemo01PlaceholderScreen(debugSeed: 9)),
       );
 
       await _sellFoundingEngineerAndCloseApril(tester);

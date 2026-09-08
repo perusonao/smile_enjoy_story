@@ -67,7 +67,7 @@ import 'package:flutter/foundation.dart' show VoidCallback, immutable;
 /// an action across a design band boundary, and nothing here makes an
 /// action eligible that was not already eligible.
 ///
-/// Four deliberate absences:
+/// Three deliberate absences:
 ///
 ///  * **Month close is never recommended.** MONTH END CTA PLAN keeps it at
 ///    the bottom of the scroll on purpose ("finish this month's work
@@ -80,17 +80,22 @@ import 'package:flutter/foundation.dart' show VoidCallback, immutable;
 ///    mentions into "the next thing to do" would be a balance nudge, i.e.
 ///    a game decision this layer has no authority to make. It stays a
 ///    secondary action on the employee's own card, exactly as 2A left it.
-///  * **July's 求人媒体 is never recommended**, though its card is rendered
-///    and enabled there. May renders the recruitment card and the applicant
-///    pipeline together; July renders the card alone, and no month after it
-///    renders the pipeline at all, so a July hire can never be advanced.
-///    Design row P3 assumes the action leads somewhere; where it does not,
-///    recommending it would spend the player's cash on structurally
-///    unusable candidates. The owner's emit site carries the reasoning.
 ///  * **Nothing disabled is ever recommended.** A candidate is emitted only
 ///    where the production button is both rendered *and* enabled, so the
-///    slot never offers a dead CTA. Being *enabled* is necessary, not
-///    sufficient: the July case above is enabled and still excluded.
+///    slot never offers a dead CTA.
+///
+/// PR #210 merge-blocker follow-up retired a fourth absence that used to be
+/// listed here — "July's 求人媒体 is never recommended" — along with the
+/// month-fixed pipeline it depended on. Before this fix, only May rendered
+/// the applicant funnel ([employeeAcceptOrder] and friends), so a July hire
+/// could never be advanced and recommending July's card would have spent
+/// the player's cash on a structurally unusable candidate. The whole point
+/// of the fix was the opposite: a July (or June/August) recruit now gets
+/// the same funnel May always had (`_salesApplicantProgressCards` reads
+/// `workflow.applicants` directly, not a month), so a July hire genuinely
+/// does lead somewhere, and [recruitmentMedia] is recommended there under
+/// the same P3 rule as every other month in the window — no month-specific
+/// exclusion remains in `_addRecruitmentMediaCandidate`.
 enum HomeRecommendedActionKind {
   // ---- P(-1): the one deliberate exception to "P0 outranks everything"--
   /// RECOVERY-LOOP-1 + Issue #119: a genuine, mutating Recovery step

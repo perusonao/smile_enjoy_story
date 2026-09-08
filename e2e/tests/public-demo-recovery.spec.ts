@@ -3,19 +3,24 @@
 // annual baseline (public-demo-annual-route.spec.ts). This drives the real
 // production UI end to end — no Dart domain state is ever mutated directly
 // — through `e2e/helpers/public-demo-player.ts`'s own extended helpers
-// (`hireAndRunAppOnePreEntryPipeline`, `runWaitingEngineerSalesPipelineToOrdered`,
-// `recoverAssignment`, `isCashShortage`), reusing every existing #138
-// navigation/actionable helper (`openPublicDemo`, `closeMonthlyPrimaryCta`,
-// `assertCalendarMonth`, `clickButton`'s dialog handling, ...) rather than a
-// second, separate automation layer.
+// (`recruitAndRunSecondHirePreEntryPipeline`,
+// `runWaitingEngineerSalesPipelineToOrdered`, `recoverAssignment`,
+// `isCashShortage`), reusing every existing #138 navigation/actionable
+// helper (`openPublicDemo`, `closeMonthlyPrimaryCta`, `assertCalendarMonth`,
+// `clickButton`'s dialog handling, ...) rather than a second, separate
+// automation layer.
 //
-// app-01 (高橋 翔) is this suite's canonical Recovery target (RECOVERY-LOOP-1
-// E2E design): app-02 (田中 美咲, interviewScore 58) fails recruitment's own
-// >=60 interview gate and can never be offered, and eng-02 (鈴木 葵,
-// capability 52) is permanently locked out of field sales for the whole
-// fiscal year (public_demo_01_suzuki_sales_lock_test.dart) — app-01 is the
-// only hire that can ever reach the `waiting` + `ordered` + Recovery-eligible
-// state this loop exists for.
+// CORE-GAMEPLAY Phase 4.5 retired the fixed app-01 (高橋 翔)/app-02 (田中
+// 美咲) founding-applicant pair this suite used to hire by name as its
+// canonical Recovery target (`PublicDemoWorkflowState.initial()` no longer
+// pre-seeds any applicant — recruiting is now a real player action on every
+// playthrough). This suite's Recovery target is now whichever second hire
+// `recruitAndRunSecondHirePreEntryPipeline` successfully recruits and runs
+// through the full pre-entry pipeline; eng-02 (鈴木 葵, capability 52)
+// remains permanently locked out of field sales for the whole fiscal year
+// regardless (public_demo_01_suzuki_sales_lock_test.dart), so the generated
+// second hire is still the only OTHER engineer that can ever reach the
+// `waiting` + `ordered` + Recovery-eligible state this loop exists for.
 import { test, expect } from '@playwright/test';
 import { watchForErrors } from '../helpers/artifacts';
 import {
@@ -24,17 +29,18 @@ import {
   assertCalendarMonth,
   snapshot,
   sellFoundingEngineerInApril,
-  hireAndRunAppOnePreEntryPipeline,
+  recruitAndRunSecondHirePreEntryPipeline,
   confirmSatoJulyContinuationOnly,
   runWaitingEngineerSalesPipelineToOrdered,
   recoverAssignment,
-  appOneCard,
+  namedPersonCard,
   decideNoSummerBonus,
   closeMonthlyPrimaryCta,
   isCashShortage,
   isFinanciallyTerminal,
   readCompactKpiValue,
   scrollToText,
+  switchToTab,
 } from '../helpers/public-demo-player';
 
 const VIEWPORTS = [
@@ -46,11 +52,12 @@ for (const viewport of VIEWPORTS) {
   test.describe(`Public Demo Recovery loop at ${viewport.label}`, () => {
     test.use({ viewport: { width: viewport.width, height: viewport.height } });
 
-    test(`app-01 walks waiting -> SkillSheet -> 営業開始 -> 案件紹介 -> interviews -> ordered -> 案件へ復帰 -> assigned, and revenue/AR/collection follow the normal causal chain (${viewport.label})`, async ({
+    test(`a generated second hire walks waiting -> SkillSheet -> 営業開始 -> 案件紹介 -> interviews -> ordered -> 案件へ復帰 -> assigned, and revenue/AR/collection follow the normal causal chain (${viewport.label})`, async ({
       page,
     }) => {
       test.setTimeout(180_000);
       const errors = watchForErrors(page);
+      let secondHireName = '';
 
       await test.step('April: sell eng-01 (healthy baseline revenue)', async () => {
         await openPublicDemo(page);
@@ -61,25 +68,28 @@ for (const viewport of VIEWPORTS) {
         await assertCalendarMonth(page, 5);
       });
 
-      await test.step('May: hire app-01 through the full pre-entry sales pipeline (they join and are picked up by assignOrderedForMay, same as any other June hire)', async () => {
-        await hireAndRunAppOnePreEntryPipeline(page);
+      await test.step('May: recruit and hire a second, generated engineer through the full pre-entry sales pipeline (they join and are picked up by assignOrderedForMay, same as any other June hire)', async () => {
+        secondHireName = await recruitAndRunSecondHirePreEntryPipeline(page);
         await closeMonthlyPrimaryCta(page); // May -> June
         await assertCalendarMonth(page, 6);
       });
 
-      await test.step('June: accept eng-01\'s July continuation; leave app-01\'s own May-era assignment undecided, so they are NOT counted assigned entering July (economically waiting)', async () => {
+      await test.step('June: accept eng-01\'s July continuation; leave the second hire\'s own May-era assignment undecided, so they are NOT counted assigned entering July (economically waiting)', async () => {
         await confirmSatoJulyContinuationOnly(page);
         await closeMonthlyPrimaryCta(page); // June -> July
         await assertCalendarMonth(page, 7);
       });
 
-      await test.step('July: app-01 (still waiting) redoes the SkillSheet -> 営業開始 -> 案件紹介 -> interviews -> 受注 pipeline', async () => {
+      await test.step('July: the second hire (still waiting) redoes the SkillSheet -> 営業開始 -> 案件紹介 -> interviews -> 受注 pipeline', async () => {
         const snapBefore = await snapshot(page);
         expect(
           snapBefore,
-          '案件へ復帰 must not render before app-01 reaches `ordered`',
+          '案件へ復帰 must not render before the second hire reaches `ordered`',
         ).not.toContain('案件へ復帰');
-        await runWaitingEngineerSalesPipelineToOrdered(page, appOneCard(page));
+        await runWaitingEngineerSalesPipelineToOrdered(
+          page,
+          namedPersonCard(page, secondHireName),
+        );
       });
 
       const cashBeforeRecovery = await readCompactKpiValue(page, '現金');
@@ -88,13 +98,17 @@ for (const viewport of VIEWPORTS) {
         // `scrollToText` (not a bare `snapshot()`): the order-result dialog
         // `受注` just closed can leave the accessibility tree only built
         // near wherever that dialog was, not necessarily still covering
-        // this exact card the instant it reappears.
+        // this exact card the instant it reappears. `案件へ復帰` is 社員-tab
+        // (`ec(i)`) content — the preceding `readCompactKpiValue` call left
+        // the page on ホーム.
+        await switchToTab(page, '社員');
         await scrollToText(page, '案件へ復帰');
         await recoverAssignment(page);
         const snapAfter = await snapshot(page);
-        expect(snapAfter, '案件へ復帰 must disappear once app-01 is assigned').not.toContain(
-          '案件へ復帰',
-        );
+        expect(
+          snapAfter,
+          '案件へ復帰 must disappear once the second hire is assigned',
+        ).not.toContain('案件へ復帰');
         expect(
           await readCompactKpiValue(page, '現金'),
           'recoverAssignment touches no Finance field — cash must be unchanged the instant it commits',
@@ -103,8 +117,9 @@ for (const viewport of VIEWPORTS) {
         // before any month close.
         // eng-02 (permanently field-sales-locked — see
         // public_demo_01_suzuki_sales_lock_test.dart) always remains
-        // waiting regardless of app-01's own outcome, so 参画=2/待機=1 here
-        // (eng-01 + app-01 assigned, eng-02 alone still waiting), not 0名.
+        // waiting regardless of the second hire's own outcome, so 参画=2/
+        // 待機=1 here (eng-01 + the second hire assigned, eng-02 alone
+        // still waiting), not 0名.
         expect(await readCompactKpiValue(page, '参画'), 'ASSIGNMENT RESULT').toBe('2名');
         expect(await readCompactKpiValue(page, '待機'), 'ASSIGNMENT RESULT').toBe('1名');
       });
@@ -122,7 +137,9 @@ for (const viewport of VIEWPORTS) {
         // virtualized `ListView` does not keep this card built once enough
         // content (Recovery's own per-engineer cards included) exists
         // above it on the page. Both engineers' combined ¥500,000/each
-        // revenue this close.
+        // revenue this close. `PublicDemoMonthlyCashFlowCard` is 会計-tab
+        // content.
+        await switchToTab(page, '会計');
         await scrollToText(page, '売上 ¥1,000,000');
         // The same amount is booked as AR, awaiting next month's
         // collection — not cash.
@@ -136,6 +153,7 @@ for (const viewport of VIEWPORTS) {
         // actually receiving July's ¥1,000,000 AR in cash — the collection
         // leg of the causal chain, read from production's own accounting
         // record rather than a hand-derived final-cash figure.
+        await switchToTab(page, '会計');
         await scrollToText(page, '入金 +¥1,000,000');
       });
 
@@ -149,30 +167,32 @@ for (const viewport of VIEWPORTS) {
     }) => {
       test.setTimeout(300_000);
       const errors = watchForErrors(page);
+      let secondHireName = '';
 
       // eng-01 IS sold here (unlike an earlier version of this scenario) —
       // once their own July continuation is confirmed they collapse into a
       // compact "継続予定" text line rather than staying a full multi-button
       // waiting-engineer card for the rest of the fiscal year (see
-      // `hireAndRunAppOnePreEntryPipeline`'s own doc for why a full card
-      // that never changes for many consecutive months is avoided here).
-      // app-01 (hired but never Recovered) is the sole deficit source: one
-      // idle salaried hire's cost against eng-01's lone ¥500,000/month
-      // revenue is still a genuine, deterministic structural deficit (no
-      // RNG anywhere in Public Demo's finance) — reaching real cashShortage
-      // from real production economics, not an artificially forced one.
-      await test.step('drive to a real, non-terminal cashShortage with app-01 the only unproductive hire', async () => {
+      // `recruitAndRunSecondHirePreEntryPipeline`'s own doc for why a full
+      // card that never changes for many consecutive months is avoided
+      // here). The second hire (recruited but never Recovered) is the sole
+      // deficit source: one idle salaried hire's cost against eng-01's lone
+      // ¥500,000/month revenue is still a genuine, deterministic structural
+      // deficit (no RNG anywhere in Public Demo's finance) — reaching real
+      // cashShortage from real production economics, not an artificially
+      // forced one.
+      await test.step('drive to a real, non-terminal cashShortage with the second hire the only unproductive one', async () => {
         await openPublicDemo(page);
         await assertFreshStartInvariants(page);
         await assertCalendarMonth(page, 4);
         await sellFoundingEngineerInApril(page);
         await closeMonthlyPrimaryCta(page); // April -> May
         await assertCalendarMonth(page, 5);
-        await hireAndRunAppOnePreEntryPipeline(page);
+        secondHireName = await recruitAndRunSecondHirePreEntryPipeline(page);
         await closeMonthlyPrimaryCta(page); // May -> June
         await assertCalendarMonth(page, 6);
-        // Confirm eng-01's own July continuation only; app-01's own
-        // May-era assignment (from assignOrderedForMay) is deliberately
+        // Confirm eng-01's own July continuation only; the second hire's
+        // own May-era assignment (from assignOrderedForMay) is deliberately
         // left undecided, so they alone stay economically waiting.
         await confirmSatoJulyContinuationOnly(page);
         await closeMonthlyPrimaryCta(page); // June -> July
@@ -203,21 +223,28 @@ for (const viewport of VIEWPORTS) {
       });
 
       // eng-02 (permanently field-sales-locked) remains genuinely `待機`
-      // for the rest of this test regardless of app-01's own outcome, so
-      // the ASSIGNMENT RESULT proof below is a delta against this captured
-      // baseline, not a claim that nobody at all remains waiting.
+      // for the rest of this test regardless of the second hire's own
+      // outcome, so the ASSIGNMENT RESULT proof below is a delta against
+      // this captured baseline, not a claim that nobody at all remains
+      // waiting.
       const assignedBefore = await readCompactKpiValue(page, '参画');
       const waitingBefore = await readCompactKpiValue(page, '待機');
-      expect(waitingBefore, 'app-01 must still be economically waiting').not.toBe('0名');
+      expect(waitingBefore, 'the second hire must still be economically waiting').not.toBe('0名');
 
       await test.step('the entire sales pipeline runs to completion while cashShortage holds', async () => {
         expect(await isCashShortage(page)).toBe(true);
-        await runWaitingEngineerSalesPipelineToOrdered(page, appOneCard(page));
+        await runWaitingEngineerSalesPipelineToOrdered(
+          page,
+          namedPersonCard(page, secondHireName),
+        );
         expect(
           await isCashShortage(page),
           'still restricted — this proves the pipeline above ran under ' +
             'the restriction, not before/after it',
         ).toBe(true);
+        // `案件へ復帰` is 社員-tab content — the preceding `isCashShortage`
+        // call left the page on ホーム.
+        await switchToTab(page, '社員');
         await scrollToText(page, '案件へ復帰');
       });
 

@@ -33,11 +33,11 @@ import {
   assertCalendarMonth,
   snapshot,
   sellFoundingEngineerInApril,
-  hireAndRunAppOnePreEntryPipeline,
+  recruitAndRunSecondHirePreEntryPipeline,
   confirmSatoJulyContinuationOnly,
   runWaitingEngineerSalesPipelineToOrdered,
   recoverAssignment,
-  appOneCard,
+  namedPersonCard,
   confirmJulyContinuation,
   decideNoSummerBonus,
   closeMonthlyPrimaryCta,
@@ -46,6 +46,7 @@ import {
   scrollToText,
   readCompactKpiValue,
   clickButton,
+  switchToTab,
 } from '../helpers/public-demo-player';
 
 const VIEWPORTS = [
@@ -72,9 +73,16 @@ for (const viewport of VIEWPORTS) {
       expect(snap, '佐藤 健 must reach the ordered sales stage in April').toContain(
         '翌月参画予定',
       );
-      expect(snap, 'the still-locked founding engineer must stay waiting').toContain(
-        '営業開始には実力 60 以上が必要です（現在 52）。',
-      );
+      // The still-locked engineer's own detail line (`ec(i)`'s own card) is
+      // 社員-tab content — `sellFoundingEngineerInApril` stays on ホーム
+      // throughout, driving every step via HOME's own Recommended Action
+      // CTA chain.
+      await switchToTab(page, '社員');
+      const employeesSnap = await snapshot(page);
+      expect(
+        employeesSnap,
+        'the still-locked founding engineer must stay waiting',
+      ).toContain('営業開始には実力 60 以上が必要です（現在 52）。');
 
       expect(errors.pageErrors, 'uncaught page errors').toEqual([]);
       expect(errors.crashed, 'Public Demo page crashed').toBe(false);
@@ -98,6 +106,9 @@ for (const viewport of VIEWPORTS) {
 
       await confirmJulyContinuation(page);
 
+      // `PublicDemoMonthlyCashFlowCard`'s own `売上` row (exact yen) is
+      // 会計-tab content.
+      await switchToTab(page, '会計');
       const snap = await snapshot(page);
       expect(snap, 'May close must recognize eng-01 assignment revenue').toContain('売上 ¥500,000');
 
@@ -205,21 +216,25 @@ for (const viewport of VIEWPORTS) {
     // BANKRUPTCY at March's close. Route B below starts from that exact same
     // early poor outcome (eng-02 permanently field-sales-locked — see
     // public_demo_01_suzuki_sales_lock_test.dart) and proves the Late-Year
-    // Recovery Loop, once used, changes the fiscal year's outcome: hiring
-    // app-01 in May but deliberately leaving them economically waiting
-    // through June (an early setback — the July continuation this playthrough
-    // is missing a second billable engineer to spread costs over is real, not
-    // staged), then Recovering them in July, survives every ordinary month
-    // through March WITHOUT bankruptcy — the same fiscal year that, without
-    // that one Recovery decision, is Route A's bankruptcy above. Training is
-    // deliberately never touched in this route (RECOVERY-LOOP-1's own
-    // instruction: "TrainingをRoute Bに混ぜない") — every month's action here
-    // is either a sales-pipeline step or a monthly close, nothing else.
-    test(`Route B — Gameplay Complete: an early poor outcome (only eng-01 sellable) is turned into a solvent fiscal-year completion by Recovering app-01 in July (${viewport.label})`, async ({
+    // Recovery Loop, once used, changes the fiscal year's outcome: hiring a
+    // second, generated hire in May (CORE-GAMEPLAY Phase 4.5 retired the
+    // fixed app-01 fixture this route used to hire by name — see
+    // `recruitAndRunSecondHirePreEntryPipeline`'s own doc) but deliberately
+    // leaving them economically waiting through June (an early setback — the
+    // July continuation this playthrough is missing a second billable
+    // engineer to spread costs over is real, not staged), then Recovering
+    // them in July, survives every ordinary month through March WITHOUT
+    // bankruptcy — the same fiscal year that, without that one Recovery
+    // decision, is Route A's bankruptcy above. Training is deliberately
+    // never touched in this route (RECOVERY-LOOP-1's own instruction:
+    // "TrainingをRoute Bに混ぜない") — every month's action here is either a
+    // sales-pipeline step or a monthly close, nothing else.
+    test(`Route B — Gameplay Complete: an early poor outcome (only eng-01 sellable) is turned into a solvent fiscal-year completion by Recovering a second, generated hire in July (${viewport.label})`, async ({
       page,
     }) => {
       test.setTimeout(240_000);
       const errors = watchForErrors(page);
+      let secondHireName = '';
 
       await test.step('April: the same early poor outcome as Route A — only eng-01 is sellable', async () => {
         await openPublicDemo(page);
@@ -233,8 +248,8 @@ for (const viewport of VIEWPORTS) {
         await assertCalendarMonth(page, 5);
       });
 
-      await test.step('May: hire app-01 through the full pre-entry sales pipeline — not yet a fix, just this fiscal year\'s second hire', async () => {
-        await hireAndRunAppOnePreEntryPipeline(page);
+      await test.step('May: recruit and hire a second, generated engineer through the full pre-entry sales pipeline — not yet a fix, just this fiscal year\'s second hire', async () => {
+        secondHireName = await recruitAndRunSecondHirePreEntryPipeline(page);
       });
 
       await test.step('May -> June', async () => {
@@ -242,7 +257,7 @@ for (const viewport of VIEWPORTS) {
         await assertCalendarMonth(page, 6);
       });
 
-      await test.step('June: confirm eng-01\'s July continuation; leave app-01\'s own May-era assignment undecided, so they stay economically waiting entering July', async () => {
+      await test.step('June: confirm eng-01\'s July continuation; leave the second hire\'s own May-era assignment undecided, so they stay economically waiting entering July', async () => {
         await confirmSatoJulyContinuationOnly(page);
       });
 
@@ -251,18 +266,22 @@ for (const viewport of VIEWPORTS) {
         await assertCalendarMonth(page, 7);
       });
 
-      await test.step('July: the Recovery decision — app-01 redoes the sales pipeline and is Recovered into an assignment', async () => {
+      await test.step('July: the Recovery decision — the second hire redoes the sales pipeline and is Recovered into an assignment', async () => {
         const snap = await snapshot(page);
-        expect(snap, 'app-01 must still be waiting entering July').toContain('待機');
-        await runWaitingEngineerSalesPipelineToOrdered(page, appOneCard(page));
+        expect(snap, 'the second hire must still be waiting entering July').toContain('待機');
+        await runWaitingEngineerSalesPipelineToOrdered(
+          page,
+          namedPersonCard(page, secondHireName),
+        );
         await recoverAssignment(page);
         // SES-FIRST-FUN-YEAR-UI-PHASE-1 removed July recap's own duplicate
         // 参画/待機 headcount line — read the always-visible compact KPI
         // tile (the surviving authoritative source) instead of a snapshot
         // substring match against the now-removed text.
-        expect(await readCompactKpiValue(page, '参画'), 'both eng-01 and app-01 are now assigned').toBe(
-          '2名',
-        );
+        expect(
+          await readCompactKpiValue(page, '参画'),
+          'both eng-01 and the second hire are now assigned',
+        ).toBe('2名');
       });
 
       await test.step('July: decide no summer bonus', async () => {
@@ -307,7 +326,9 @@ for (const viewport of VIEWPORTS) {
       // card can render below whatever Flutter Web's accessibility tree
       // currently has built right after a close — the same reachability
       // fact `findMonthlyPrimaryCta`/`readCompactKpiValue` already account
-      // for, not a sign the card is actually missing.
+      // for, not a sign the card is actually missing. `PublicDemoYearEndResultCard`
+      // is 会計-tab content.
+      await switchToTab(page, '会計');
       const finalSnap = await scrollToText(page, '第1期終了');
       expect(finalSnap, 'no bankruptcy card once Recovery has been used').not.toContain(
         '倒産',

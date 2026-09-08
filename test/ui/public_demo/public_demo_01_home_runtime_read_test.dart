@@ -108,8 +108,17 @@ Future<void> tapAndSettle(WidgetTester tester, String text) async {
   await tester.pumpAndSettle();
   await tester.tap(finder.first);
   await settle(tester);
-  if (text == 'SkillSheet確認') {
-    await tester.tap(find.widgetWithText(FilledButton, '内容を確認'));
+  // CORE-GAMEPLAY Phase 4.5: dismiss whichever SkillSheet sheet a tap may
+  // have opened — the employee-side sheet (confirm: '内容を確認') or the
+  // candidate-side sheet (close: '閉じる').
+  final confirmSkillSheet = find.widgetWithText(FilledButton, '内容を確認');
+  if (confirmSkillSheet.evaluate().isNotEmpty) {
+    await tester.tap(confirmSkillSheet);
+    await tester.pumpAndSettle();
+  }
+  final closeCandidateSkillSheet = find.widgetWithText(OutlinedButton, '閉じる');
+  if (closeCandidateSkillSheet.evaluate().isNotEmpty) {
+    await tester.tap(closeCandidateSkillSheet);
     await tester.pumpAndSettle();
   }
   // Issue #119: proceed through the Month Guard's `recommended`-level
@@ -135,8 +144,11 @@ Future<void> dismiss(WidgetTester tester) async {
 }
 
 Future<void> pumpDemo(WidgetTester tester) async {
+  // CORE-GAMEPLAY Phase 4.5: pinned so May's recruit()-generated candidates
+  // (see below) are reproducible — same seed/candidate as
+  // public_demo_01_success_playthrough_test.dart's own May block.
   await tester.pumpWidget(
-    const MaterialApp(home: PublicDemo01PlaceholderScreen()),
+    const MaterialApp(home: PublicDemo01PlaceholderScreen(debugSeed: 9)),
   );
   await tester.pumpAndSettle();
 }
@@ -150,7 +162,7 @@ Future<void> playApril(WidgetTester tester) async {
   // callers can keep reading the runtime HOME projection (a HOME-only
   // section) without having to know this detail themselves.
   await switchPublicDemoTab(tester, PublicDemoTab.employees);
-  await tapAndSettle(tester, 'SkillSheet確認');
+  await tapAndSettle(tester, 'スキルシート確認');
   await tapAndSettle(tester, '営業開始');
   await tapAndSettle(tester, '案件紹介');
   await tapAndSettle(tester, '上位会社面談');
@@ -310,15 +322,24 @@ void main() {
       expect(home.revenue, greaterThan(april.revenue));
       expectHomeMatchesAuthority(tester, at: 'May');
 
-      // 11. Hire Takahashi in May so a real employee joins at the close.
-      // The recruiting/applicant pipeline is on 営業 now.
+      // 11. Recruit via 求人媒体, then hire 斎藤拓也 (seed 9's first
+      // `engineer`-medium candidate) in May so a real employee joins at the
+      // close. The recruiting/applicant pipeline is on 営業 now.
       await switchPublicDemoTab(tester, PublicDemoTab.sales);
-      await tapAndSettle(tester, '経歴書確認');
+      await tester.tap(
+        find.byKey(const Key('public-demo-open-recruitment-media')),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.byKey(const Key('public-demo-recruitment-medium-engineer')),
+      );
+      await tester.pumpAndSettle();
+      await tapAndSettle(tester, 'スキルシート確認');
       await tapAndSettle(tester, '採用面談');
       await driveRecruitmentInterviewToHireDecision(tester);
       await tapAndSettle(tester, '合格・給与提示');
       await tester.tap(
-        find.byKey(const Key('public-demo-salary-offer-320000')),
+        find.byKey(const Key('public-demo-salary-offer-370000')),
       );
       await tester.pumpAndSettle();
       await switchPublicDemoTab(tester, PublicDemoTab.home);
@@ -445,7 +466,7 @@ void main() {
 
       // Behavioural: the CTA is bound to an existing PublicDemoAggregate
       // command — pressing it moves the authoritative workflow exactly the
-      // way April's own SkillSheet確認 button does, and nothing else.
+      // way April's own スキルシート確認 button does, and nothing else.
       final before = currentState(tester);
       final stageBefore = currentWorkflow(tester).engineers.first.stage;
       expect(stageBefore, PublicDemoSalesStage.waiting);

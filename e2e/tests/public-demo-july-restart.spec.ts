@@ -51,7 +51,7 @@ test.describe('Public Demo July close and April restart', () => {
     await dismissMonthGuardIfPresent(page);
     const applicationDialog = page.getByRole('alertdialog');
     await expect(applicationDialog).toBeVisible();
-    expect(await applicationDialog.ariaSnapshot()).toContain('採用候補者の情報を確認できます');
+    expect(await applicationDialog.ariaSnapshot()).toContain('採用は求人媒体から始まります');
     await applicationDialog.getByRole('button', { name: '確認', exact: true }).click();
     await assertCalendarMonth(page, 5);
 
@@ -104,7 +104,7 @@ test.describe('Public Demo July close and April restart', () => {
 
     await assertCalendarMonth(page, 4);
     expect(await page.locator('body').ariaSnapshot()).toContain('佐藤 健');
-    await expect(page.getByRole('button', { name: 'SkillSheetを確認', exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'スキルシートを確認', exact: true })).toBeVisible();
 
     expect(errors.pageErrors, 'uncaught page errors').toEqual([]);
     expect(errors.crashed, 'Public Demo page crashed').toBe(false);

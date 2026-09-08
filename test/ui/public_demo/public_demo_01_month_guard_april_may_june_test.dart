@@ -23,8 +23,10 @@ import 'package:smile_enjoy_story/game/persistence/public_demo_save_service.dart
 import 'package:smile_enjoy_story/game/public_demo/public_demo_aggregate.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_assignment.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_interview.dart';
+import 'package:smile_enjoy_story/game/public_demo/public_demo_recruitment_medium.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_salary.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_state.dart';
+import 'package:smile_enjoy_story/game/public_demo/public_demo_workflow_state.dart';
 import 'package:smile_enjoy_story/ui/public_demo/public_demo_01_placeholder_screen.dart';
 
 import 'public_demo_tab_test_helpers.dart';
@@ -81,6 +83,11 @@ Future<void> _pump(WidgetTester tester, PublicDemoAggregate aggregate) async {
 PublicDemoState _currentState(WidgetTester tester) =>
     (tester.state(find.byType(PublicDemo01PlaceholderScreen)) as dynamic).s
         as PublicDemoState;
+
+PublicDemoWorkflowState _currentWorkflow(WidgetTester tester) =>
+    (tester.state(find.byType(PublicDemo01PlaceholderScreen)) as dynamic)
+            .workflow
+        as PublicDemoWorkflowState;
 
 const _closeCtaKey = Key('public-demo-monthly-primary-cta');
 const _dialogKey = Key('public-demo-month-guard-warning-dialog');
@@ -169,10 +176,10 @@ void main() {
         expect(
           await _scrollUntilFound(
             tester,
-            find.widgetWithText(FilledButton, 'SkillSheet確認'),
+            find.widgetWithText(FilledButton, 'スキルシート確認'),
           ),
           isTrue,
-          reason: 'SkillSheet確認 must be directly reachable after review',
+          reason: 'スキルシート確認 must be directly reachable after review',
         );
       },
     );
@@ -223,14 +230,42 @@ void main() {
 
   group('Month Guard recommended level at May close (Issue #168)', () {
     testWidgets(
-      'fresh May: both pre-seeded applicants unreviewed and recruitment '
-      'media unused produce a truthful warning, and May does not close yet',
+      'fresh May with nothing recruited yet closes immediately, no warning '
+      'at all — CORE-GAMEPLAY Phase 4.5 removed the pre-seeded May '
+      'applicant pool this test used to rely on, and its own merge-blocker '
+      'follow-up excludes recruitmentMedia from the guard (the same '
+      '"does not need to be a forced modal every month" principle as '
+      'founderFollowUp): recruiting is a discretionary, costed choice, not '
+      'an outstanding decision the month guard should nag about',
       (tester) async {
         final april = _sellFirstEngineerWithoutClosing().closeApril(
           monthlyExpenses: _expense,
         );
         await _pump(tester, april);
         expect(_currentState(tester).month, 5);
+        expect(_currentWorkflow(tester).applicants, isEmpty);
+
+        await switchPublicDemoTab(tester, PublicDemoTab.home);
+        await _tapKeyAndSettle(tester, _closeCtaKey);
+        await _settleAfterPossiblePrecache(tester);
+
+        expect(find.byKey(_dialogKey), findsNothing);
+        expect(_currentState(tester).month, 6);
+      },
+    );
+
+    testWidgets(
+      'a genuinely outstanding applicant (recruited this same May) still '
+      'produces a truthful warning — the guard exclusion above is scoped to '
+      'recruitmentMedia only, never to a real in-progress applicant',
+      (tester) async {
+        final april = _sellFirstEngineerWithoutClosing().closeApril(
+          monthlyExpenses: _expense,
+        );
+        final may = april.recruit(PublicDemoRecruitmentMedium.free).aggregate!;
+        await _pump(tester, may);
+        expect(_currentState(tester).month, 5);
+        expect(_currentWorkflow(tester).applicants, isNotEmpty);
 
         await switchPublicDemoTab(tester, PublicDemoTab.home);
         await _tapKeyAndSettle(tester, _closeCtaKey);

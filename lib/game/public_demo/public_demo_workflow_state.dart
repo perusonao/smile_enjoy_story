@@ -56,12 +56,27 @@ class PublicDemoWorkflowState {
     required this.interviewSessions,
   });
 
-  /// Public Demo 0.1's starting workflow, matching the founding team and
-  /// established applicant pool that predate this class (exactly the values
-  /// [PublicDemo01PlaceholderScreen]'s own `State` fields used to default
-  /// to).
+  /// Public Demo 0.1's starting workflow: the founding engineer team
+  /// (unchanged), and **no** pre-seeded applicants.
+  ///
+  /// CORE-GAMEPLAY Phase 4.5: before this fix, a new game started with
+  /// [publicDemoMayApplicants] (`app-01`/`app-02`) already present from
+  /// month 4 — an applicant pool the player never generated, merely hidden
+  /// from the Sales-tab pipeline UI until `s.month >= 5` (a UI-only gate,
+  /// not a generation event). A player who had genuinely not used any
+  /// recruitment medium would still see two ready-to-interview candidates
+  /// appear the moment May began, with no action of their own behind it.
+  /// Recruitment now has exactly one production source of applicants:
+  /// [PublicDemoAggregate.recruit] (CORE-GAMEPLAY Phase 2's
+  /// [PublicDemoSeededRecruitmentGenerator]) — "使う求人媒体 → 応募者生成" is
+  /// the sole normal-play route, and a bare month transition alone can never
+  /// add an applicant. [publicDemoMayApplicants]/[publicDemoFreeApplicants]
+  /// remain in `public_demo_recruitment.dart`, but only for legacy-save
+  /// `fromJson` round-tripping of a save created before this fix, and for
+  /// [PublicDemoRecruitmentInterview]'s pre-existing id-only fallback for
+  /// those legacy ids — never as a game-start seed.
   factory PublicDemoWorkflowState.initial() => PublicDemoWorkflowState(
-    applicants: publicDemoMayApplicants,
+    applicants: const [],
     engineers: publicDemoInitialEngineers,
   );
 

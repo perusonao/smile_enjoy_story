@@ -3,7 +3,7 @@
 // The phase is deliberately subtractive: the runtime screen used to render
 // the month twice, cash three ways, and 参画/待機/社員 in two competing
 // vocabularies, which pushed April's most important action (佐藤 健's
-// SkillSheet確認) roughly a full screen below the fold. This suite pins both
+// スキルシート確認) roughly a full screen below the fold. This suite pins both
 // halves of the fix — that each fact now has exactly one place on screen,
 // and that the space this reclaimed actually lands the action inside the
 // initial viewport — plus the boundaries the cleanup was not allowed to
@@ -31,7 +31,7 @@
 //
 // HOME-RUNTIME-2B then added the Office Stage between the Recommended
 // Action and the legacy content, which pushes the legacy per-employee
-// `SkillSheet確認` button below the browser-chrome budget. Group 16-17's
+// `スキルシート確認` button below the browser-chrome budget. Group 16-17's
 // first-view assertion is therefore re-aimed at the Recommended Action CTA
 // — the element that actually carries "the month's top action" after 2C,
 // and which sits at roughly half the depth the legacy button ever did — and
@@ -120,7 +120,7 @@ Future<void> tapAndSettle(WidgetTester tester, String text) async {
   await tester.pumpAndSettle();
   await tester.tap(finder.first);
   await settle(tester);
-  if (text == 'SkillSheet確認') {
+  if (text == 'スキルシート確認') {
     await tester.tap(find.widgetWithText(FilledButton, '内容を確認'));
     await tester.pumpAndSettle();
   }
@@ -168,7 +168,7 @@ Future<void> playApril(WidgetTester tester) async {
   // callers can keep reading HOME's own projection without having to know
   // this detail themselves.
   await switchPublicDemoTab(tester, PublicDemoTab.employees);
-  await tapAndSettle(tester, 'SkillSheet確認');
+  await tapAndSettle(tester, 'スキルシート確認');
   await tapAndSettle(tester, '営業開始');
   await tapAndSettle(tester, '案件紹介');
   await tapAndSettle(tester, '上位会社面談');
@@ -385,11 +385,17 @@ void main() {
       expect(homeData(tester).monthGoalText, '応募者を採用し、入社前から6月の案件獲得を目指しましょう');
     });
 
-    testWidgets('14b: with no eligible action the same slot falls back to '
-        'the month goal, in HOME, as text', (tester) async {
+    testWidgets('14b: with no eligible action the same slot recommends '
+        '求人媒体, not the month goal', (tester) async {
       // June on the no-hire route: nothing is assigned, nobody joined, and
-      // no engineer is in a sellable stage — the design table's "none of
-      // the above" row.
+      // no engineer is in a sellable stage — the design table's original
+      // "none of the above" row. PR #210's merge-blocker fix means this is
+      // no longer actually "none of the above": `_S._recruitmentMediaCardVisible`
+      // spans May-August, and this playthrough never recruited, so 求人媒体
+      // is still a live, unused P3 candidate in June and outranks the
+      // fallback slot — see `public_demo_01_placeholder_screen.dart`'s own
+      // `_recruitmentMediaCardVisible` doc for why April alone stays
+      // excluded (unlike June here).
       await pumpDemo(tester);
       await tapAndSettle(tester, '4月を終了して5月へ');
       await dismiss(tester);
@@ -400,12 +406,12 @@ void main() {
       const juneGoal = '翌月の発注を確認し、7月も稼働できる状態を作りましょう';
       expect(
         find.byKey(const Key('home-recommended-action-cta')),
-        findsNothing,
+        findsOneWidget,
       );
-      expect(find.text('今月やること'), findsOneWidget);
-      expect(inHome(find.text('今月やること')), findsOneWidget);
-      expect(find.text(juneGoal), findsOneWidget);
-      expect(inHome(find.text(juneGoal)), findsOneWidget);
+      expect(find.text('次にやること'), findsOneWidget);
+      expect(find.text('求人媒体で候補者を追加'), findsOneWidget);
+      expect(find.text('今月やること'), findsNothing);
+      expect(find.text(juneGoal), findsNothing);
     });
   });
 
@@ -592,7 +598,7 @@ void main() {
 
         // HOME-RUNTIME-2B changed WHICH widget this assertion is made
         // about, deliberately and once. It used to name the legacy
-        // per-employee `SkillSheet確認` button, because before
+        // per-employee `スキルシート確認` button, because before
         // HOME-RUNTIME-2C that button *was* the only way to take April's
         // top action, and landing it above the fold was the whole point of
         // 2A. 2C then put the same action behind the Recommended Action
@@ -733,7 +739,7 @@ void main() {
           // the per-employee button it shortcuts to is not on this screen
           // at all any more — it is real content on 社員, not merely
           // scrolled past.
-          expect(actionButton('SkillSheet確認'), findsNothing);
+          expect(actionButton('スキルシート確認'), findsNothing);
 
           // A 48pt tap target was not sacrificed to fit.
           expect(cta.height, greaterThanOrEqualTo(44.0));
@@ -818,7 +824,7 @@ void main() {
     );
 
     testWidgets(
-      '2B: the legacy SkillSheet確認 button still exists, is not on HOME '
+      '2B: the legacy スキルシート確認 button still exists, is not on HOME '
       'any more (PUBLIC-DEMO-HOME-UI-3B moved it to its own 社員 tab, real '
       'content rather than merely scrolled past), and still works there',
       (tester) async {
@@ -828,15 +834,15 @@ void main() {
         // (see group 16-17); PUBLIC-DEMO-HOME-UI-3B moves it off HOME
         // entirely. Neither removed it, disabled it, or changed what it
         // does — this pins the difference between "relocated" and "lost".
-        expect(actionButton('SkillSheet確認'), findsNothing);
+        expect(actionButton('スキルシート確認'), findsNothing);
 
         await switchPublicDemoTab(tester, PublicDemoTab.employees);
-        final button = actionButton('SkillSheet確認');
+        final button = actionButton('スキルシート確認');
         expect(button, findsOneWidget);
         expect(tester.widget<ButtonStyleButton>(button).onPressed, isNotNull);
 
         // Reachable and functional by ordinary scrolling, on its own tab.
-        await tapAndSettle(tester, 'SkillSheet確認');
+        await tapAndSettle(tester, 'スキルシート確認');
         expect(actionButton('営業開始'), findsWidgets);
       },
     );

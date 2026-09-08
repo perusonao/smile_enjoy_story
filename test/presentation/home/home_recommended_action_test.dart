@@ -347,17 +347,16 @@ void main() {
       // The HOME shortcut and the control it leads to are on screen
       // together; a player must be able to tell them apart.
       const legacy = {
-        'SkillSheet確認',
+        'スキルシート確認',
         '営業開始',
         '案件紹介',
         '上位会社面談',
         '客先面談',
         '受注',
         '再営業',
-        '経歴書確認',
         '採用面談',
         '合格・給与提示',
-        '入社前SkillSheet',
+        '入社前スキルシートを確認',
         '入社前営業',
         '6月受注',
         '7月分の発注を確認',

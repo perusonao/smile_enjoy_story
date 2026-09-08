@@ -59,7 +59,7 @@ Future<void> tapAndSettle(WidgetTester tester, String text) async {
   await tester.pumpAndSettle();
   await tester.tap(finder.first);
   await settle(tester);
-  if (text == 'SkillSheet確認') {
+  if (text == 'スキルシート確認') {
     await tester.tap(find.widgetWithText(FilledButton, '内容を確認'));
     await tester.pumpAndSettle();
   }
@@ -92,7 +92,7 @@ void main() {
     // so its internal-training card stays reachable in every later month.
     // The employee sales-progression card is on 社員 now.
     await switchPublicDemoTab(tester, PublicDemoTab.employees);
-    await tapAndSettle(tester, 'SkillSheet確認');
+    await tapAndSettle(tester, 'スキルシート確認');
     await tapAndSettle(tester, '営業開始');
     await tapAndSettle(tester, '案件紹介');
     await tapAndSettle(tester, '上位会社面談');

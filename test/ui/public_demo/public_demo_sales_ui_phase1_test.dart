@@ -90,18 +90,18 @@ Future<void> pumpSalesTab(
 PublicDemoAggregate emptyPipelineAtMonth(int month) =>
     publicDemoAggregateAtMonth(month, monthlyExpenses: _expense);
 
-/// Reaches May before the recruitment-media flow has been used this month —
-/// `workflow.applicants` already carries [PublicDemoWorkflowState.initial]'s
-/// own baseline pool (unrelated to this Phase 1 change), so the applicant
-/// funnel is genuinely non-empty without the player having spent anything
-/// yet. Used where the recruitment-media CTA itself must still be enabled.
+/// Reaches May before the recruitment-media flow has been used this month.
+/// CORE-GAMEPLAY Phase 4.5: [PublicDemoWorkflowState.initial] no longer
+/// pre-seeds any applicant, so `workflow.applicants` is genuinely empty here
+/// — this fixture exists purely so the recruitment-media CTA itself is
+/// still enabled/unused.
 PublicDemoAggregate mayBeforeRecruiting() =>
     PublicDemoAggregate.initial().closeApril(monthlyExpenses: _expense);
 
-/// Reaches May with the recruitment-media flow already used once on top of
-/// that baseline (the `free` medium, the same `PublicDemoAggregate.recruit`
-/// command `_openRecruitmentMedia`'s own sheet commits) — at least one more
-/// real applicant on top of the baseline pool.
+/// Reaches May with the recruitment-media flow already used once (the
+/// `free` medium, the same `PublicDemoAggregate.recruit` command
+/// `_openRecruitmentMedia`'s own sheet commits) — the only source of any
+/// applicant here, per CORE-GAMEPLAY Phase 4.5.
 PublicDemoAggregate mayWithApplicants() {
   final game = mayBeforeRecruiting();
   final recruited = game.recruit(PublicDemoRecruitmentMedium.free);
@@ -279,8 +279,8 @@ void main() {
     );
 
     testWidgets(
-      'existing CTA/eligibility unchanged: 経歴書確認 still advances the real '
-      'applicant stage (applied → resumeReviewed) via the unchanged '
+      'existing CTA/eligibility unchanged: スキルシート確認 still advances the '
+      'real applicant stage (applied → resumeReviewed) via the unchanged '
       'reviewResume command',
       (tester) async {
         final game = mayWithApplicants();
@@ -288,7 +288,7 @@ void main() {
         final applicant = currentWorkflow(tester).applicants.first;
         expect(applicant.stage.name, 'applied', reason: 'fixture sanity');
 
-        await tester.tap(find.text('経歴書確認').first);
+        await tester.tap(find.text('スキルシート確認').first);
         await tester.pumpAndSettle();
 
         final updated = currentWorkflow(
@@ -332,8 +332,32 @@ void main() {
     );
   });
 
-  group('Aug-Feb no-action / employee-routing state', () {
-    for (final month in [8, 11, 14]) {
+  group('August unused-recruiting-window state', () {
+    testWidgets(
+      'month 8 with recruiting never used: 今やるべき営業アクション still shows '
+      'the recruitment-media card (PR #210 merge-blocker fix: '
+      '_recruitmentMediaCardVisible spans May-August) — no empty state, no '
+      'applicant progress since nothing was ever recruited',
+      (tester) async {
+        final game = emptyPipelineAtMonth(8);
+        await pumpSalesTab(tester, game);
+        expect(currentState(tester).month, 8);
+
+        expect(find.byKey(_overviewKey), findsOneWidget);
+        expect(find.byKey(_nextActionsKey), findsOneWidget);
+        expect(
+          find.byKey(const Key('public-demo-recruitment-media-card')),
+          findsOneWidget,
+        );
+        expect(find.byKey(_emptyStateKey), findsNothing);
+        expect(find.byKey(_applicantProgressKey), findsNothing);
+        expect(find.byKey(_projectStatusKey), findsNothing);
+      },
+    );
+  });
+
+  group('Sep-Feb no-action / employee-routing state', () {
+    for (final month in [11, 14]) {
       testWidgets(
         'month $month with nothing outstanding: the truthful empty state '
         'renders under the always-visible overview, and its CTA still '
@@ -408,13 +432,38 @@ void main() {
         );
 
         testWidgets(
-          'August (overview + empty state) at '
+          'August (overview + recruitment-media card, unused window) at '
           '${size.width.toInt()}x${size.height.toInt()} / textScale '
           '$textScale',
           (tester) async {
             await pumpSalesTab(
               tester,
               emptyPipelineAtMonth(8),
+              size: size,
+              textScale: textScale,
+            );
+
+            expect(tester.takeException(), isNull);
+            for (final key in [_overviewKey, _nextActionsKey]) {
+              final rect = tester.getRect(find.byKey(key));
+              expect(rect.left, greaterThanOrEqualTo(0.0), reason: '$key');
+              expect(
+                rect.right,
+                lessThanOrEqualTo(size.width),
+                reason: '$key',
+              );
+            }
+          },
+        );
+
+        testWidgets(
+          'September (overview + empty state) at '
+          '${size.width.toInt()}x${size.height.toInt()} / textScale '
+          '$textScale',
+          (tester) async {
+            await pumpSalesTab(
+              tester,
+              emptyPipelineAtMonth(9),
               size: size,
               textScale: textScale,
             );

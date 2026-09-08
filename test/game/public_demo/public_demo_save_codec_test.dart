@@ -6,6 +6,8 @@ import 'package:smile_enjoy_story/game/public_demo/public_demo_interview.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_salary_offer.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_summer_bonus_plan.dart';
 
+import 'test_support/public_demo_legacy_applicant_test_helpers.dart';
+
 void main() {
   const codec = PublicDemoSaveCodec();
 
@@ -35,8 +37,13 @@ void main() {
   );
 
   test('preserves an applicant decline before May roster pruning', () {
-    var aggregate = PublicDemoAggregate.initial().closeApril(
-      monthlyExpenses: 0,
+    // CORE-GAMEPLAY Phase 4.5: `PublicDemoWorkflowState.initial()` no
+    // longer pre-seeds `app-01`/`app-02` — this simulates a save created
+    // before that fix, where both really were persisted (legacy save
+    // compatibility), matching this test's own hardcoded `app-02` /
+    // `applicants[1]` indexing.
+    var aggregate = withLegacyFoundingApplicants(
+      PublicDemoAggregate.initial().closeApril(monthlyExpenses: 0),
     );
     final interviewed = aggregate.completeInterview('app-02');
     aggregate = interviewed.aggregate.acceptOffer(
@@ -106,7 +113,11 @@ void main() {
 }
 
 PublicDemoAggregate _advancedAggregate() {
-  var aggregate = PublicDemoAggregate.initial()
+  // CORE-GAMEPLAY Phase 4.5: `PublicDemoWorkflowState.initial()` no longer
+  // pre-seeds `app-01` — this simulates a save created before that fix,
+  // where it really was persisted (legacy save compatibility), matching
+  // this helper's own hardcoded `app-01` id below.
+  var aggregate = withLegacyFoundingApplicants(PublicDemoAggregate.initial())
       .startSkillSheetReview('eng-01')
       .beginSelling('eng-01')
       .introduceProject('eng-01')

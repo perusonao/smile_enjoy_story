@@ -46,6 +46,7 @@ import {
   scrollToText,
   readCompactKpiValue,
   clickButton,
+  switchToTab,
 } from '../helpers/public-demo-player';
 
 const VIEWPORTS = [
@@ -72,9 +73,16 @@ for (const viewport of VIEWPORTS) {
       expect(snap, '佐藤 健 must reach the ordered sales stage in April').toContain(
         '翌月参画予定',
       );
-      expect(snap, 'the still-locked founding engineer must stay waiting').toContain(
-        '営業開始には実力 60 以上が必要です（現在 52）。',
-      );
+      // The still-locked engineer's own detail line (`ec(i)`'s own card) is
+      // 社員-tab content — `sellFoundingEngineerInApril` stays on ホーム
+      // throughout, driving every step via HOME's own Recommended Action
+      // CTA chain.
+      await switchToTab(page, '社員');
+      const employeesSnap = await snapshot(page);
+      expect(
+        employeesSnap,
+        'the still-locked founding engineer must stay waiting',
+      ).toContain('営業開始には実力 60 以上が必要です（現在 52）。');
 
       expect(errors.pageErrors, 'uncaught page errors').toEqual([]);
       expect(errors.crashed, 'Public Demo page crashed').toBe(false);
@@ -98,6 +106,9 @@ for (const viewport of VIEWPORTS) {
 
       await confirmJulyContinuation(page);
 
+      // `PublicDemoMonthlyCashFlowCard`'s own `売上` row (exact yen) is
+      // 会計-tab content.
+      await switchToTab(page, '会計');
       const snap = await snapshot(page);
       expect(snap, 'May close must recognize eng-01 assignment revenue').toContain('売上 ¥500,000');
 
@@ -315,7 +326,9 @@ for (const viewport of VIEWPORTS) {
       // card can render below whatever Flutter Web's accessibility tree
       // currently has built right after a close — the same reachability
       // fact `findMonthlyPrimaryCta`/`readCompactKpiValue` already account
-      // for, not a sign the card is actually missing.
+      // for, not a sign the card is actually missing. `PublicDemoYearEndResultCard`
+      // is 会計-tab content.
+      await switchToTab(page, '会計');
       const finalSnap = await scrollToText(page, '第1期終了');
       expect(finalSnap, 'no bankruptcy card once Recovery has been used').not.toContain(
         '倒産',

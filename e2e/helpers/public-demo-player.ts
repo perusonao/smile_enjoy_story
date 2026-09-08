@@ -48,6 +48,20 @@ export async function snapshot(page: Page): Promise<string> {
   return page.locator('body').ariaSnapshot();
 }
 
+/** Switches the bottom tab bar to [name] (`ホーム`/`社員`/`営業`/`会計`/
+ * `メニュー`) — `PublicDemo01PlaceholderScreen._buildBody`'s own
+ * `switch (_selectedTabIndex)` builds only the active tab's widget subtree,
+ * so a raw per-tab card label (`ac(i)`/`ec(i)`/`assignmentCard(i)`'s own
+ * button text, as opposed to a HOME Recommended Action CTA's differently-
+ * worded mirror) is reachable only once this has actually switched there. */
+export async function switchToTab(
+  page: Page,
+  name: 'ホーム' | '社員' | '営業' | '会計' | 'メニュー',
+): Promise<void> {
+  await page.getByRole('tab', { name, exact: true }).click();
+  await waitForStableFrame(page);
+}
+
 /** Fresh-start invariants any Public Demo test can assert after
  * `openPublicDemo` and before taking any action — a non-mutating read, safe
  * to call from any lane. Does not itself assert April; call
@@ -282,6 +296,11 @@ export async function scrollToTop(page: Page): Promise<void> {
  * top-scroll — a second attempt, giving Flutter one more full paint cycle,
  * reliably finds it. This re-does real navigation, not a bare timeout. */
 export async function findMonthlyPrimaryCta(page: Page): Promise<Locator> {
+  // The monthly close CTA is HOME-tab-only (`_buildHomeTab`'s own
+  // `_monthlyPrimaryAction` mount) — a caller that just used a raw per-tab
+  // card action (社員/営業/会計) must be switched back before this can ever
+  // find it.
+  await switchToTab(page, 'ホーム');
   let cta: Locator | undefined;
   await expect(async () => {
     await scrollToTop(page);
@@ -583,6 +602,7 @@ async function offerAndRunPreEntryPipeline(page: Page): Promise<boolean> {
 export async function recruitAndRunSecondHirePreEntryPipeline(
   page: Page,
 ): Promise<string> {
+  await switchToTab(page, 'ホーム');
   await clickButton(page, '求人媒体を開く', true);
   const engineerOption = page.getByRole('group', { name: /^エンジニア求人/ });
   await engineerOption
@@ -616,6 +636,7 @@ export async function recruitAndRunSecondHirePreEntryPipeline(
  * undecided May-era assignment is exactly as economically-waiting entering
  * July as one that was never made at all. */
 export async function confirmSatoJulyContinuationOnly(page: Page): Promise<void> {
+  await switchToTab(page, '営業');
   const satoCard = page.getByRole('group', { name: /^佐藤 健/ });
   await clickButton(page, '7月分の発注を確認', true, satoCard);
   await clickButton(page, '受注する', true, satoCard);
@@ -650,6 +671,7 @@ export async function runWaitingEngineerSalesPipelineToOrdered(
   // (e.g. the CRITICAL ACCEPTANCE GATE scenario, which deliberately never
   // sells eng-01). `内容を確認` lives inside the SkillSheet dialog itself,
   // not the card, so it is always page-scoped regardless of [root].
+  await switchToTab(page, '社員');
   await clickButton(page, 'スキルシート確認', true, root);
   await clickButton(page, '内容を確認', true);
   await clickButton(page, '営業開始', true, root);
@@ -665,6 +687,7 @@ export async function runWaitingEngineerSalesPipelineToOrdered(
  * `PublicDemoRecoveryEligibility.isEligible` already holds
  * (`public_demo_01_placeholder_screen.dart`'s `ec(i)`). */
 export async function recoverAssignment(page: Page): Promise<void> {
+  await switchToTab(page, '社員');
   await clickButton(page, '案件へ復帰', true);
 }
 
@@ -677,6 +700,7 @@ export async function recoverAssignment(page: Page): Promise<void> {
  * calls this so the smallest currently-solvent-as-possible baseline is the
  * one recorded. */
 export async function confirmJulyContinuation(page: Page): Promise<void> {
+  await switchToTab(page, '営業');
   await clickButton(page, '7月分の発注を確認', true);
   await clickButton(page, '受注する', true);
 }
@@ -685,6 +709,7 @@ export async function confirmJulyContinuation(page: Page): Promise<void> {
  * `public-demo-july-restart.spec.ts` already exercises — and leaves the
  * month ready to close. Does not click the monthly CTA itself. */
 export async function decideNoSummerBonus(page: Page): Promise<void> {
+  await switchToTab(page, '会計');
   await clickButton(page, '夏季賞与を決める', true);
   const dialog = page.getByRole('alertdialog');
   await expect(dialog).toBeVisible({ timeout: 15_000 });
@@ -699,6 +724,8 @@ export async function decideNoSummerBonus(page: Page): Promise<void> {
  * either way — callers decide what a terminal state should mean for their
  * own scenario. */
 export async function isFinanciallyTerminal(page: Page): Promise<boolean> {
+  // The terminal card (`_bankruptcyTerminalCard`) is HOME-tab-only content.
+  await switchToTab(page, 'ホーム');
   const snap = await snapshot(page);
   return snap.includes('このプレイスルーは終了しました。');
 }
@@ -722,6 +749,8 @@ export async function isFinanciallyTerminal(page: Page): Promise<boolean> {
  * waiting engineer's own card further down) can leave the page scrolled
  * well past it. */
 export async function isCashShortage(page: Page): Promise<boolean> {
+  // `PublicDemoCashShortageCard` is HOME-tab-only content.
+  await switchToTab(page, 'ホーム');
   await scrollToTop(page);
   const snap = await snapshot(page);
   return snap.includes('資金不足：次回決算が期限です');
@@ -796,6 +825,9 @@ export async function readCompactKpiValue(page: Page, label: string): Promise<st
   // land mid-layout with several Recovery-eligible engineers' cards on
   // screen; one more full paint cycle reliably resolves it.
   await expect(async () => {
+    // The compact KPI row is HOME-tab-only content (`_buildHomeTab`'s own
+    // `PublicDemoHomeDashboardSection`).
+    await switchToTab(page, 'ホーム');
     await scrollToTop(page);
     const snap = await snapshot(page);
     value = snap.match(pattern)?.[1];

@@ -40,6 +40,7 @@ import {
   isFinanciallyTerminal,
   readCompactKpiValue,
   scrollToText,
+  switchToTab,
 } from '../helpers/public-demo-player';
 
 const VIEWPORTS = [
@@ -97,7 +98,10 @@ for (const viewport of VIEWPORTS) {
         // `scrollToText` (not a bare `snapshot()`): the order-result dialog
         // `受注` just closed can leave the accessibility tree only built
         // near wherever that dialog was, not necessarily still covering
-        // this exact card the instant it reappears.
+        // this exact card the instant it reappears. `案件へ復帰` is 社員-tab
+        // (`ec(i)`) content — the preceding `readCompactKpiValue` call left
+        // the page on ホーム.
+        await switchToTab(page, '社員');
         await scrollToText(page, '案件へ復帰');
         await recoverAssignment(page);
         const snapAfter = await snapshot(page);
@@ -133,7 +137,9 @@ for (const viewport of VIEWPORTS) {
         // virtualized `ListView` does not keep this card built once enough
         // content (Recovery's own per-engineer cards included) exists
         // above it on the page. Both engineers' combined ¥500,000/each
-        // revenue this close.
+        // revenue this close. `PublicDemoMonthlyCashFlowCard` is 会計-tab
+        // content.
+        await switchToTab(page, '会計');
         await scrollToText(page, '売上 ¥1,000,000');
         // The same amount is booked as AR, awaiting next month's
         // collection — not cash.
@@ -147,6 +153,7 @@ for (const viewport of VIEWPORTS) {
         // actually receiving July's ¥1,000,000 AR in cash — the collection
         // leg of the causal chain, read from production's own accounting
         // record rather than a hand-derived final-cash figure.
+        await switchToTab(page, '会計');
         await scrollToText(page, '入金 +¥1,000,000');
       });
 
@@ -235,6 +242,9 @@ for (const viewport of VIEWPORTS) {
           'still restricted — this proves the pipeline above ran under ' +
             'the restriction, not before/after it',
         ).toBe(true);
+        // `案件へ復帰` is 社員-tab content — the preceding `isCashShortage`
+        // call left the page on ホーム.
+        await switchToTab(page, '社員');
         await scrollToText(page, '案件へ復帰');
       });
 

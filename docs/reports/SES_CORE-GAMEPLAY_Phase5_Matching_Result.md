@@ -1,6 +1,6 @@
 # SES CORE-GAMEPLAY Phase 5: Matching Decision Gameplay — Result
 
-Status: **Implementation complete, focused tests green, full suite green, `flutter analyze` clean, `git diff --check` clean.**
+Status: **Implementation complete. Full suite 1918/1918 green (0 failures) on the final HEAD SHA. `flutter analyze` clean. `git diff --check` clean. One blocker found by the full-suite run and fixed — see "Blocker found and fixed" below.**
 
 ## BASE SHA / branch / HEAD
 
@@ -13,8 +13,8 @@ Status: **Implementation complete, focused tests green, full suite green, `flutt
   merged/stale-branch-reuse rule it was reset onto the BASE SHA above
   (`git reset --hard origin/main`) before any new work, mirroring Phase 4's
   own branch-reuse note.
-- Final HEAD SHA: `<FILLED IN AFTER COMMIT — see final chat message>`
-- PR: `<FILLED IN AFTER PUSH — see final chat message>`
+- Final HEAD SHA: `c0a45957a7cbdc7ff4592b505d0cf865d2753f9f`
+- PR: `<FILLED IN AFTER PR CREATION — see final chat message>`
 
 ## Scope discipline (Issue #205's own "do not" list)
 
@@ -33,30 +33,34 @@ Status: **Implementation complete, focused tests green, full suite green, `flutt
 - No project/engineer value invented — every fact Phase 5 displays is read
   from an existing authoritative source (see "Reused authority/classes").
 - No hidden/raw parameter exposed — see "Hidden information protection".
-- This PR is Phase 5 only: 13 files changed, all under
-  `lib/game/public_demo/`, `lib/ui/public_demo/`, or `test/`; two of the
-  four production files are edits, only to add new, additive methods (no
-  existing method body changed).
+- This PR is Phase 5 only: 15 files changed (14 new + this report, plus 4
+  production/test edits — see below), all under `docs/reports/`,
+  `lib/game/public_demo/`, `lib/ui/public_demo/`, or `test/`; every edited
+  production file only gained new, additive methods/fields (no existing
+  method body changed).
 
 ## Changed files
 
 ```
-lib/game/public_demo/public_demo_aggregate.dart            (+16, edit — new proposeMatching delegation)
-lib/game/public_demo/public_demo_matching_profile.dart      (new)
-lib/game/public_demo/public_demo_matching_proposal.dart     (new)
-lib/game/public_demo/public_demo_workflow_state.dart        (+71, edit — new matchingProposals field/command)
-lib/ui/public_demo/public_demo_01_placeholder_screen.dart   (+179, edit — Sales-tab entry point + handlers)
-lib/ui/public_demo/public_demo_matching_decision_sheet.dart (new)
+docs/reports/SES_CORE-GAMEPLAY_Phase5_Matching_Result.md         (new, this file)
+lib/game/public_demo/public_demo_aggregate.dart                  (+16, edit — new proposeMatching delegation)
+lib/game/public_demo/public_demo_matching_profile.dart            (new)
+lib/game/public_demo/public_demo_matching_proposal.dart           (new)
+lib/game/public_demo/public_demo_workflow_state.dart              (+71, edit — new matchingProposals field/command)
+lib/ui/public_demo/public_demo_01_placeholder_screen.dart         (+187, edit — Sales-tab entry point + handlers; see "Known constraints" for the hasAnyContent fix)
+lib/ui/public_demo/public_demo_matching_decision_sheet.dart       (new)
 lib/ui/public_demo/public_demo_matching_engineer_select_sheet.dart (new)
-lib/ui/public_demo/public_demo_matching_project_card.dart   (new)
-lib/ui/public_demo/public_demo_matching_project_list_sheet.dart (new)
-test/game/public_demo/public_demo_matching_profile_test.dart (new)
+lib/ui/public_demo/public_demo_matching_project_card.dart         (new)
+lib/ui/public_demo/public_demo_matching_project_list_sheet.dart   (new)
+test/game/public_demo/public_demo_matching_profile_test.dart      (new)
 test/game/public_demo/public_demo_matching_proposal_workflow_test.dart (new)
+test/game/public_demo/public_demo_recovery_aggregate_test.dart    (+4, edit — additive matchingProposals key added to an exact-schema assertion; see "Blocker found and fixed")
 test/ui/public_demo/public_demo_matching_decision_sheet_test.dart (new)
-test/ui/public_demo/public_demo_matching_flow_test.dart (new)
+test/ui/public_demo/public_demo_matching_flow_test.dart           (new)
 ```
 
-13 files changed, 1903 insertions(+), 0 deletions(-).
+15 files changed, 2230 insertions(+), 0 deletions(-) (`git diff --stat`
+against BASE SHA).
 
 ## Reused authority / classes
 
@@ -249,18 +253,63 @@ New suites (34 tests, all green):
   deterministic reopen, and the same 6-case viewport/TextScaler matrix
   driven through the real Sales-tab entry point.
 
-Focused-suite result: `flutter test <the 4 files above>` — **34/34 passed**.
+Focused-suite result: `flutter test <the 4 files above>` — **34/34 passed**
+(re-confirmed on the final HEAD SHA above, after the fixes in "Blocker
+found and fixed" below).
 
-Full-suite result: `flutter test` (all 198 files) — run in progress at the
-time of this commit; will be updated with the final pass/fail count in a
-follow-up commit on this same branch/PR before the PR is considered ready,
-per this Issue's "Existing recruitment/Finance/Month/assignment
-regressions remain green" acceptance criterion.
+Full-suite result: `flutter test` (all 198 files, 1918 individual tests)
+on the final HEAD SHA — **1918/1918 passed, 0 failures**, exit code 0.
+Existing recruitment/Finance/Month/assignment/HOME regressions are green.
+
+## Blocker found and fixed (reported per Issue #205's own request)
+
+The **first** full-suite run (on commit `81c6b48`, before the fix below)
+reported **16 failing tests** — genuinely caused by this Phase 5 diff, not
+pre-existing flakiness. Both root causes were identified, fixed, and
+re-verified before any commit was described as "ready":
+
+1. **Sales-tab empty state silently deleted (≈15 failures).**
+   `_buildSalesTab`'s `hasAnyContent` check originally included the new
+   `matchingCards` (`案件を見る`) list. Since that list is *always*
+   non-empty (real project candidates exist for every month), this made
+   `hasAnyContent` permanently `true`, so Issue #173's truthful "no current
+   action" empty-state card could never render again — breaking
+   `public_demo_01_home_ui_3c_density_test.dart`,
+   `public_demo_sales_ui_phase1_test.dart`, and `sales_overview_screen_test.dart`
+   assertions that depend on it. **Fix:** `matchingCards` was removed from
+   `hasAnyContent`'s computation (with a doc comment explaining why): the
+   permanently-available "案件を見る" entry point and the truthful "nothing
+   else to do this month" message are not mutually exclusive and now both
+   render when applicable.
+2. **Exact-schema-key test broken by an intentional additive field (1
+   failure).** `public_demo_recovery_aggregate_test.dart` asserted the
+   workflow JSON's key set exactly — before this phase's own
+   `matchingProposals` key existed. **Fix:** the expected key set was
+   updated to include `'matchingProposals'`, mirroring the same test's own
+   precedent comment for Phase 3's `interviewSessions` addition (both are
+   "additive, unrelated to Recovery, present on every workflow JSON since
+   that phase").
+3. **A test-only side effect of fix #1:** the new
+   `public_demo_matching_flow_test.dart`'s 360×800/textScale 2.0 viewport
+   case started failing to tap the (now correctly-coexisting) empty-state
+   + matching card at that combination, because the tap point had shifted
+   off-screen and the test did not scroll first. **Fix:** added
+   `tester.ensureVisible(...)` before the tap, matching the convention
+   `public_demo_01_skill_sheet_flow_test.dart`'s `tapVisible` helper
+   already established elsewhere in this suite.
+
+All three fixes are isolated to `public_demo_01_placeholder_screen.dart`
+(the `hasAnyContent` computation only), the one pre-existing test's
+expected-key-set literal, and this phase's own new test file — nothing
+about `MatchingEngine`, Finance, Month transition, or HOME was touched by
+the fix. Re-verified: the specific previously-failing test files, then the
+full 1918-test suite, both green on the final HEAD SHA (see above).
 
 ## `flutter analyze`
 
-**No issues found.** (Ran twice — after the production diff and again
-after the test diff — both clean.)
+**No issues found.** (Run repeatedly across the session — after the
+production diff, after the test diff, and again on the final HEAD SHA
+after the blocker fix — clean every time.)
 
 ## `git diff --check`
 

@@ -1,3 +1,4 @@
+import '../models/recruitment_interview.dart';
 import 'public_demo_assignment.dart';
 import 'public_demo_engineer_runtime.dart';
 import 'public_demo_fiscal_close_id.dart';
@@ -9,6 +10,7 @@ import 'public_demo_raise_transaction.dart';
 import 'public_demo_recovery.dart';
 import 'public_demo_recruitment.dart';
 import 'public_demo_recruitment_candidate_generator.dart';
+import 'public_demo_recruitment_interview.dart';
 import 'public_demo_recruitment_medium.dart';
 import 'public_demo_sales.dart';
 import 'public_demo_salary_offer.dart';
@@ -151,10 +153,14 @@ class PublicDemoAggregate {
     final assignmentIds = workflow.assignments
         .map((assignment) => assignment.engineerId)
         .toList();
+    final interviewSessionApplicantIds = workflow.interviewSessions
+        .map((session) => session.applicantId)
+        .toList();
     if (!_areUnique(engineerIds) ||
         !_areUnique(applicantIds) ||
         !_areUnique(runtimeIds) ||
         !_areUnique(assignmentIds) ||
+        !_areUnique(interviewSessionApplicantIds) ||
         state.engineerCount != engineerIds.length ||
         runtimeIds.toSet().length != engineerIds.length ||
         !runtimeIds.toSet().containsAll(engineerIds) ||
@@ -253,6 +259,128 @@ class PublicDemoAggregate {
     return PublicDemoInterviewCompletionResult._(
       aggregate: _copyWith(state: slotResult.state, workflow: nextWorkflow),
       status: PublicDemoInterviewCompletionStatus.completed,
+    );
+  }
+
+  // ---------------------------------------------------------------------
+  // CORE-GAMEPLAY Phase 3: interactive recruitment-interview session
+  //
+  // These commands run entirely AFTER [completeInterview] has already
+  // consumed the real sales slot and minted the applicant's genuine
+  // [PublicDemoInterviewRecord] above — they never consume another slot and
+  // never re-decide `hasBeenInterviewed`. This is the interactive
+  // question/answer step a player experiences before deciding whether to
+  // actually extend an offer (existing [acceptOffer]/[PublicDemoSalaryOffer]
+  // authority, untouched) or decline the candidate outright ([rejectApplicant]
+  // wiring the same-named [PublicDemoApplicantStage.rejected] value below).
+  // Every draw is reused verbatim from the main game's own
+  // [RecruitmentInterviewEngine] via [PublicDemoRecruitmentInterview] —
+  // see that file's own doc for the candidate-identity/legacy-fixture and
+  // RNG-derivation contracts.
+  // ---------------------------------------------------------------------
+
+  /// Starts (or, if one already exists, leaves untouched) the interactive
+  /// interview session for [applicantId]. A no-op unless the applicant
+  /// genuinely completed the [completeInterview] paperwork step already
+  /// (`hasBeenInterviewed`) — there is no way to reach the interactive
+  /// question step without first paying its sales-slot cost.
+  PublicDemoAggregate startInterviewSession(String applicantId) {
+    final applicant = workflow.applicants
+        .where((candidate) => candidate.id == applicantId)
+        .firstOrNull;
+    if (applicant == null || !applicant.hasBeenInterviewed) return this;
+    if (workflow.interviewSessions.any(
+      (session) => session.applicantId == applicantId,
+    )) {
+      return this;
+    }
+    final domainApplicant = PublicDemoRecruitmentInterview.domainApplicantFor(
+      runSeed: runSeed,
+      applicant: applicant,
+    );
+    final session = PublicDemoRecruitmentInterview.start(
+      state: state,
+      applicant: domainApplicant,
+      companySize: workflow.engineers.length,
+    );
+    return _copyWith(workflow: workflow.startInterviewSession(session));
+  }
+
+  /// Asks [category] of [applicantId]'s active interview session — a no-op
+  /// if that category was already asked, if the 3-question budget is
+  /// already spent, or if no active session exists at all (mirrors
+  /// [RecruitmentInterviewEngine.ask]'s own guards, applied by
+  /// [PublicDemoWorkflowState.updateInterviewSession]'s "no active session"
+  /// no-op).
+  PublicDemoAggregate askInterviewQuestion(
+    String applicantId,
+    InterviewQuestionCategory category,
+  ) {
+    final applicant = workflow.applicants
+        .where((candidate) => candidate.id == applicantId)
+        .firstOrNull;
+    if (applicant == null) return this;
+    final domainApplicant = PublicDemoRecruitmentInterview.domainApplicantFor(
+      runSeed: runSeed,
+      applicant: applicant,
+    );
+    return _copyWith(
+      workflow: workflow.updateInterviewSession(
+        applicantId,
+        (session) => PublicDemoRecruitmentInterview.ask(
+          state: state,
+          session: session,
+          applicant: domainApplicant,
+          category: category,
+        ),
+      ),
+    );
+  }
+
+  /// Answers the applicant's own reverse question once all 3 forward
+  /// questions have been asked — a no-op otherwise (mirrors
+  /// [RecruitmentInterviewEngine.answerReverse]'s own guards).
+  PublicDemoAggregate answerInterviewReverseQuestion(
+    String applicantId,
+    int choiceIndex,
+  ) => _copyWith(
+    workflow: workflow.updateInterviewSession(
+      applicantId,
+      (session) =>
+          PublicDemoRecruitmentInterview.answerReverse(session, choiceIndex),
+    ),
+  );
+
+  /// Concludes [applicantId]'s interview session with the player's own
+  /// hire/reject read on the conversation — a no-op unless the session is
+  /// genuinely conversation-complete (3 questions asked and the reverse
+  /// question answered), mirroring the main game's own
+  /// `GameEngine.completeRecruitmentInterview` guard.
+  ///
+  /// [InterviewOutcome.hired] only marks the session decided; the actual
+  /// hire is still the existing, untouched [acceptOffer] flow — this phase
+  /// does not add a second hiring calculation. [InterviewOutcome.rejected]
+  /// additionally moves the applicant to [PublicDemoApplicantStage.rejected]
+  /// via [PublicDemoWorkflowState.rejectApplicant], since a rejected
+  /// candidate has no further pipeline step to reach on their own.
+  PublicDemoAggregate concludeInterviewSession(
+    String applicantId,
+    InterviewOutcome outcome,
+  ) {
+    final index = workflow.interviewSessions.indexWhere(
+      (session) => session.applicantId == applicantId && !session.completed,
+    );
+    if (index < 0 || !workflow.interviewSessions[index].conversationComplete) {
+      return this;
+    }
+    final decided = workflow.updateInterviewSession(
+      applicantId,
+      (session) => session.copyWith(completed: true, outcome: outcome),
+    );
+    return _copyWith(
+      workflow: outcome == InterviewOutcome.rejected
+          ? decided.rejectApplicant(applicantId)
+          : decided,
     );
   }
 

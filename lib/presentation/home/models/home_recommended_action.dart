@@ -270,13 +270,24 @@ enum HomeRecommendedActionKind {
     ctaLabel: '給与提示へ',
     headline: '{name}に給与を提示',
   ),
-  applicantInterview(
+
+  /// CORE-GAMEPLAY Phase 3: the interactive interview session at the
+  /// `interviewed` stage, before the player has decided 採用候補として
+  /// 進める/見送る — sits between [applicantSalaryOffer] (available once
+  /// that decision is "進める") and [applicantInterview] (the earlier
+  /// `resumeReviewed` paperwork/slot step, before this session even starts).
+  applicantContinueInterview(
     presentationPriority: 47,
+    ctaLabel: '面談へ',
+    headline: '{name}と面談',
+  ),
+  applicantInterview(
+    presentationPriority: 48,
     ctaLabel: '採用面談へ',
     headline: '{name}の採用面談',
   ),
   applicantReviewResume(
-    presentationPriority: 48,
+    presentationPriority: 49,
     ctaLabel: '経歴書を確認',
     headline: '{name}の経歴書を確認',
   ),

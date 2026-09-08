@@ -157,6 +157,7 @@ void main() {
         HomeRecommendedActionKind.applicantBeginPreEntrySelling,
         HomeRecommendedActionKind.applicantBeginPreEntrySkillSheet,
         HomeRecommendedActionKind.applicantSalaryOffer,
+        HomeRecommendedActionKind.applicantContinueInterview,
         HomeRecommendedActionKind.applicantInterview,
         HomeRecommendedActionKind.applicantReviewResume,
       ];

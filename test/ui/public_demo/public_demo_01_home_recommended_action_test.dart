@@ -320,18 +320,27 @@ void main() {
         // `ordered` renders no button on the card, so the engineer is no
         // longer a candidate at all. April's other founding engineer is not
         // field-sales ready (`readyForFieldSales` is false), so its card
-        // renders no button either — which means the correct outcome here
-        // is the design table's "none of the above" row, not a fabricated
-        // action for someone who has none.
+        // renders no button either — the engineer genuinely stops holding
+        // the slot. CORE-GAMEPLAY Phase 4.5's merge-blocker fix means that
+        // is no longer "none of the above": with recruiting no longer fixed
+        // to May, and April's own recruiting window not yet used this
+        // month, 求人媒体 becomes the fallback recommendation instead of a
+        // dead end — the entire point of the fix.
         expect(
           currentWorkflow(tester).engineers.first.stage,
           PublicDemoSalesStage.ordered,
         );
         await switchPublicDemoTab(tester, PublicDemoTab.home);
-        expect(recommended(tester), isNull);
-        expect(slot(tester), isA<HomeRecommendedActionNone>());
-        expect(find.text('今月やること'), findsOneWidget);
-        expect(ctaFinder, findsNothing);
+        expect(
+          recommended(tester)!.kind,
+          HomeRecommendedActionKind.recruitmentMedia,
+        );
+        expect(
+          recommended(tester)!.targetId,
+          isNot(first),
+          reason: 'the exhausted engineer must not still hold the slot',
+        );
+        expect(ctaFinder, findsOneWidget);
       }
     });
 
@@ -425,38 +434,49 @@ void main() {
       );
     });
 
-    testWidgets('July does not expose recruitment media, while the domain '
-        'eligibility and July-to-August progression stay unchanged', (
-      tester,
-    ) async {
+    testWidgets('July DOES expose recruitment media — CORE-GAMEPLAY Phase '
+        '4.5\'s merge-blocker fix widened the Sales tab\'s own gate to the '
+        'domain\'s real month 4-8 window, retiring the fixed-month trap this '
+        'test used to document', (tester) async {
       await pumpDemo(tester);
       await playApril(tester);
-      await playIntoJuly(tester);
+      await tapAndSettle(tester, '4月を終了して5月へ');
+      await dismiss(tester);
+      await tapAndSettle(tester, '5月を終了して6月へ');
+      await settle(tester);
+      // `playIntoJuly` deliberately leaves eng-01's own June order decision
+      // undecided (needed elsewhere, e.g. the cash-shortage/Recovery
+      // trajectory above), but that same fact makes them genuinely
+      // `PublicDemoRecoveryEligibility.isEligible` from July on — see this
+      // file's own "6: terminal and financial precedence" group doc for the
+      // identical mechanism. Confirming the order here instead keeps this
+      // test's July build genuinely candidate-free apart from
+      // recruitmentMedia, which is the one fact under test.
+      await tapAndSettle(tester, '発注を確認する');
+      await tapAndSettle(tester, '発注を受注する');
+      await tapAndSettle(tester, '6月を終了して7月へ');
+      await settle(tester);
       expect(currentState(tester).month, 7);
 
-      // The UI exposes neither the card nor the button/sheet title, so the
-      // paid recruitment action is not reachable from July. Checked on
-      // 営業, the tab that would render it (PUBLIC-DEMO-HOME-UI-3B).
+      // The UI now exposes the card in July too — checked on 営業, the tab
+      // that renders it (PUBLIC-DEMO-HOME-UI-3B) — because the render
+      // condition IS `canUseRecruitmentMediaInMonth` now, not a fixed month.
       await switchPublicDemoTab(tester, PublicDemoTab.sales);
       expect(
         find.byKey(const Key('public-demo-recruitment-media-card')),
-        findsNothing,
+        findsOneWidget,
       );
-      expect(
-        find.byKey(const Key('public-demo-open-recruitment-media')),
-        findsNothing,
-      );
-      expect(find.text('求人媒体を選ぶ'), findsNothing);
+      expect(find.text('求人媒体を選ぶ'), findsOneWidget);
 
-      // This is a UI-only fix: the domain still supports July eligibility
-      // for a future flow that can process its applicants.
       expect(
         currentState(tester).canUseRecruitmentMediaInMonth(7),
         isTrue,
         reason: 'the domain month 4–8 range remains unchanged',
       );
 
-      // July continues to render no applicant cards.
+      // No applicant has been recruited on this trajectory yet, so the
+      // funnel — gated on `workflow.applicants.isNotEmpty`, not on month —
+      // still renders nothing.
       expect(actionButton('スキルシート確認'), findsNothing);
       expect(actionButton('採用面談'), findsNothing);
 
@@ -471,17 +491,20 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('選択済み：なし'), findsOneWidget);
 
-      // Recommended Action remains unchanged: it never suggests recruitment.
-      // The slot itself is HOME's own.
+      // Recommended Action now DOES suggest recruitment: with eng-01
+      // `ordered` (no button) and eng-02 never field-sales-ready, and the
+      // summer bonus already decided, 求人媒体 is the only remaining
+      // candidate — and, per HOME-RUNTIME-2C's own rule, it is only ever
+      // emitted here because the Sales tab genuinely renders its button
+      // right now (checked above).
       await switchPublicDemoTab(tester, PublicDemoTab.home);
-      final action = recommended(tester);
-      if (action != null) {
-        expect(action.kind, isNot(HomeRecommendedActionKind.recruitmentMedia));
-      }
-      expect(find.text('求人媒体で候補者を追加'), findsNothing);
+      expect(
+        recommended(tester)!.kind,
+        HomeRecommendedActionKind.recruitmentMedia,
+      );
 
       // July's summer-bonus confirmation and ordinary progression are
-      // unchanged by removing the unrelated recruitment entry point.
+      // unchanged by widening the recruitment entry point.
       await tapAndSettle(tester, '7月を終了して8月へ');
       expect(currentState(tester).month, 8);
     });
@@ -925,7 +948,10 @@ void main() {
   // 7: no eligible action
   // =====================================================================
   group('7: with nothing eligible the slot states the month goal', () {
-    testWidgets('June on the no-hire route falls back', (tester) async {
+    testWidgets('June on the no-hire route recommends recruitment media, '
+        'not a fallback — CORE-GAMEPLAY Phase 4.5\'s merge-blocker fix means '
+        'an unused recruiting window is always a real "nothing eligible" '
+        'escape hatch now', (tester) async {
       await pumpDemo(tester);
       await tapAndSettle(tester, '4月を終了して5月へ');
       await dismiss(tester);
@@ -933,11 +959,57 @@ void main() {
       await settle(tester);
 
       expect(currentState(tester).month, 6);
-      expect(slot(tester), isA<HomeRecommendedActionNone>());
-      expect(recommended(tester), isNull);
-      expect(ctaFinder, findsNothing);
-      expect(find.text('今月やること'), findsOneWidget);
-      expect(find.text('翌月の発注を確認し、7月も稼働できる状態を作りましょう'), findsOneWidget);
+      // Neither founding engineer holds the slot on the no-hire route
+      // (eng-01 untouched and out of `ec(i)`'s April/July-February render
+      // window; eng-02 never field-sales-ready) — but June is still inside
+      // the domain's recruiting window and it has not been used yet, so
+      // 求人媒体 is recommended instead of the true "nothing eligible"
+      // fallback this test used to document.
+      expect(
+        currentState(tester).canUseRecruitmentMediaInMonth(6),
+        isTrue,
+      );
+      expect(
+        recommended(tester)!.kind,
+        HomeRecommendedActionKind.recruitmentMedia,
+      );
+      expect(ctaFinder, findsOneWidget);
+    });
+
+    testWidgets('June on the no-hire route: using up the recruiting window '
+        'surfaces the newly-recruited applicant as the next recommendation '
+        '— recruiting is never a true dead end, it always leaves a real '
+        'candidate behind for the slot to pick up next', (tester) async {
+      await pumpDemo(tester);
+      await tapAndSettle(tester, '4月を終了して5月へ');
+      await dismiss(tester);
+      await tapAndSettle(tester, '5月を終了して6月へ');
+      await settle(tester);
+      expect(currentState(tester).month, 6);
+
+      // Use up June's own recruiting window via the real production
+      // command (never a reconstructed state). The free medium is picked
+      // by its own unique key: the sheet's "この方法で募集する" button text
+      // repeats once per medium option.
+      await switchPublicDemoTab(tester, PublicDemoTab.sales);
+      await tapAndSettle(tester, '求人媒体を選ぶ');
+      await tester.tap(
+        find.byKey(const Key('public-demo-recruitment-medium-free')),
+      );
+      await settle(tester);
+      await switchPublicDemoTab(tester, PublicDemoTab.home);
+
+      expect(currentState(tester).canUseRecruitmentMediaInMonth(6), isFalse);
+      // Recruiting always generates at least one applicant
+      // (`medium.applicantCount`), so the slot now recommends reviewing
+      // them — this is not the true "nothing eligible" fallback case this
+      // group's own first test above already covers.
+      expect(currentWorkflow(tester).applicants, isNotEmpty);
+      expect(
+        recommended(tester)!.kind,
+        HomeRecommendedActionKind.applicantReviewResume,
+      );
+      expect(ctaFinder, findsOneWidget);
     });
   });
 

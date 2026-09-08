@@ -1821,12 +1821,24 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
   ///    optional, player-paced decision into exactly the nag this feature
   ///    exists to avoid. The card and HOME CTA remain visible and available
   ///    the whole window regardless of this exclusion.
+  ///  * [HomeRecommendedActionKind.recruitmentMedia] — CORE-GAMEPLAY Phase
+  ///    4.5's merge-blocker fix widened this from a one-time May card to
+  ///    every month the domain's own `canUseRecruitmentMediaInMonth` allows
+  ///    and this month has not yet used it (April-August). Recruiting is a
+  ///    discretionary, costed economic choice, not an outstanding decision
+  ///    the player forgot — the same "does not need to be a forced modal
+  ///    every month" principle [founderFollowUp] states above applies
+  ///    identically here, and without this exclusion the guard would nag on
+  ///    literally every close in that window, including a run where the
+  ///    player has genuinely finished everything else. The card and HOME
+  ///    CTA remain visible and available regardless of this exclusion.
   List<PublicDemoMonthGuardCandidate> get _monthGuardRecommendedCandidates => [
     for (final candidate in _recommendedActionCandidates)
       if (!candidate.action.kind.isInformational &&
           candidate.action.kind !=
               HomeRecommendedActionKind.summerBonusDecision &&
-          candidate.action.kind != HomeRecommendedActionKind.founderFollowUp)
+          candidate.action.kind != HomeRecommendedActionKind.founderFollowUp &&
+          candidate.action.kind != HomeRecommendedActionKind.recruitmentMedia)
         PublicDemoMonthGuardCandidate(
           id: candidate.action.targetId == null
               ? candidate.action.kind.name
@@ -2393,17 +2405,22 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
   //
   // The rule every emit site below follows, without exception:
   //
-  //   A candidate is emitted only from the same `if (s.month == N)` branch,
-  //   under the same predicate, as the production button it triggers.
+  //   A candidate is emitted only under the exact same condition — a
+  //   month `if`, an authority predicate, or both together — as the
+  //   production button it triggers.
   //
   // That is not a stylistic preference — it is the whole correctness
-  // argument. Action availability in Public Demo is not expressible as a
-  // per-action predicate: it is a predicate *inside a month-gated UI
-  // branch*. `canUseRecruitmentMediaInMonth(month)` is the standing example
-  // — it is satisfied in months where no 求人媒体 card is rendered at all, so
-  // a recommendation engine that consulted the predicate alone would offer
-  // the player a button that does not exist. Reading the predicate at the
-  // render site instead makes that class of bug unrepresentable.
+  // argument. Most action availability in Public Demo is a predicate
+  // *inside a month-gated UI branch*, so a recommendation engine that
+  // consulted only the domain predicate would offer the player a button
+  // that does not exist in the month's own UI. CORE-GAMEPLAY Phase 4.5's
+  // merge-blocker fix retired the standing example of this trap —
+  // `canUseRecruitmentMediaInMonth(month)` used to be satisfied across
+  // months 4-8 while the 求人媒体 card rendered only in month 5 — by
+  // widening the card's own render condition to that same authority
+  // instead (see `_salesNextActionCards`), so the two are simply the same
+  // condition read twice: no month `if` to duplicate, no gap for a
+  // recommendation to outrun its own button.
   //
   // Consequences worth stating explicitly:
   //
@@ -2491,12 +2508,22 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
       }
     }
 
-    // ---- month 5: recruitment media, then `for (...) ac(i)` ----------
-    if (s.month == 5) {
-      _addRecruitmentMediaCandidate(add);
-      for (final a in workflow.applicants) {
-        _addApplicantStageCandidate(add, a);
-      }
+    // ---- recruitment media: CORE-GAMEPLAY Phase 4.5 — mirrors
+    // `_salesNextActionCards`'s own (no longer month-fixed) render
+    // condition, `s.canUseRecruitmentMediaInMonth(s.month)`, the same
+    // authority `_addRecruitmentMediaCandidate` itself already reads. Not
+    // wrapped in a month `if` here for the same reason the render site no
+    // longer is: the domain's real recruiting window is months 4-8, not a
+    // single fixed month, and a candidate gated to less than its own
+    // button's real availability would under-recommend, not over-recommend.
+    _addRecruitmentMediaCandidate(add);
+
+    // ---- applicant funnel: mirrors `_salesApplicantProgressCards`'s own
+    // render condition (whenever there is an applicant to act on) — not
+    // fixed to May, so a candidate recruited in a later month (June-August,
+    // via the same widened recruitment window) is still recommendable.
+    for (final a in workflow.applicants) {
+      _addApplicantStageCandidate(add, a);
     }
 
     // ---- month 6: condition cards, the still-selling engineers, then
@@ -3907,17 +3934,21 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
   /// decision this month), 2) 今やるべき営業アクション
   /// ([_salesNextActionCards] — the recruitment-media card, May's own
   /// company-level lever to start the funnel), 3) 採用・候補者進捗
-  /// ([_salesApplicantProgressCards] — May's applicant funnel, `ac(i)`), and
+  /// ([_salesApplicantProgressCards] — the applicant funnel, `ac(i)`), and
   /// 4) 案件・参画/継続状況 ([_salesProjectStatusCards] — June's assignment
-  /// decision cards and July's closing narrative). Every card, key, month
-  /// gate, and eligibility check below is moved verbatim from the prior
-  /// single flat list — only which section groups it changed. No domain
-  /// rule, save field, or command changes.
+  /// decision cards and July's closing narrative). Every card, key, and
+  /// eligibility check below is moved verbatim from the prior single flat
+  /// list — only which section groups it changed (and, per the CORE-
+  /// GAMEPLAY Phase 4.5 merge-blocker fix, the recruitment-media/applicant-
+  /// funnel gates themselves — see their own doc comments). No domain rule,
+  /// save field, or command changes.
   ///
-  /// PUBLIC-DEMO-HOME-UI-3C: before May's recruitment media exists, and from
-  /// August on (once the funnel/assignment cards above have nothing left to
-  /// show — any further per-employee sales progress renders on 社員, not
-  /// here), this tab used to render a fully blank body with no explanation.
+  /// PUBLIC-DEMO-HOME-UI-3C: before any recruitment media exists (April,
+  /// before the player has used it this month) and once there is neither an
+  /// unused recruiting window nor anything left in the funnel/assignment
+  /// cards above to show (any further per-employee sales progress renders
+  /// on 社員, not here), this tab used to render a fully blank body with no
+  /// explanation.
   /// [_salesTabEmptyState] replaces that with a truthful, non-interactive
   /// (beyond real navigation) empty state — unchanged by Phase 1 — built
   /// only when all three section card lists below are genuinely empty
@@ -3982,20 +4013,19 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
   /// [_employeeRosterSection] already show verbatim, to avoid the exact
   /// "不要なカード重複" the phase's own scope calls out to reduce.
   ///
-  /// The candidate count is gated to `s.month >= 5` to match
-  /// [_salesApplicantProgressCards]'s own funnel — the only place a player
-  /// can actually inspect or act on any applicant — which is itself gated
-  /// the same way and renders nothing before May. CORE-GAMEPLAY Phase 4.5:
+  /// The candidate count reads `workflow.applicants` directly — the same
+  /// authoritative list [_salesApplicantProgressCards]'s own funnel counts
+  /// — rather than a month gate. CORE-GAMEPLAY Phase 4.5:
   /// [PublicDemoWorkflowState.initial] no longer pre-seeds any applicant, so
-  /// `workflow.applicants` is genuinely empty before the player's first
-  /// [PublicDemoAggregate.recruit] call regardless of this gate; the gate
-  /// stays as an explicit, still-correct statement of "this tab never has
-  /// anything applicant-related to count before May" rather than an
-  /// incidental one.
+  /// this is genuinely 0 before the player's first
+  /// [PublicDemoAggregate.recruit] call; the merge-blocker follow-up that
+  /// widened recruiting to the domain's real months 4-8 window (see
+  /// [_salesNextActionCards]) means that first call is no longer
+  /// necessarily in May, so a month-based gate here would under-count.
   Widget _salesOverviewSection() {
-    final pipelineApplicantCount = s.month < 5
-        ? 0
-        : workflow.applicants.where((a) => !a.hasJoined).length;
+    final pipelineApplicantCount = workflow.applicants
+        .where((a) => !a.hasJoined)
+        .length;
     final pendingAssignmentCount = workflow.assignments
         .where(
           (a) =>
@@ -4059,19 +4089,32 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
     );
   }
 
-  /// Section 2 — 今やるべき営業アクション: the recruitment-media card, moved
-  /// verbatim (same widget, same key, same `s.month == 5` gate, same
-  /// [_openRecruitmentMedia] handler) from the prior flat [_salesTabItems].
+  /// Section 2 — 今やるべき営業アクション: the recruitment-media card (same
+  /// widget, same key, same [_openRecruitmentMedia] handler as the prior
+  /// flat [_salesTabItems]). CORE-GAMEPLAY Phase 4.5 (merge-blocker fix):
+  /// this used to be fixed to `s.month == 5`, which dead-ended recruiting
+  /// for the rest of the run the moment May's single seeded candidate
+  /// turned out unhireable (no fallback, no retry) — even though the
+  /// domain's own recruiting window, [PublicDemoState
+  /// .canUseRecruitmentMediaInMonth], already spans months 4-8. The gate
+  /// now reads that authority directly, so the card is available in any
+  /// month the domain allows and not yet used in, with no new recruiting
+  /// authority, cost, or generator behavior invented here.
   List<Widget> _salesNextActionCards() => [
-    if (s.month == 5)
+    if (s.canUseRecruitmentMediaInMonth(s.month))
       _RecruitmentMediaCard(state: s, onPressed: _openRecruitmentMedia),
   ];
 
-  /// Section 3 — 採用・候補者進捗: the May applicant funnel, moved verbatim
-  /// (same `ac(i)` widget/key/eligibility, same `s.month == 5` gate) from
-  /// the prior flat [_salesTabItems].
+  /// Section 3 — 採用・候補者進捗: the applicant funnel (same `ac(i)`
+  /// widget/key/eligibility as the prior flat [_salesTabItems]).
+  /// CORE-GAMEPLAY Phase 4.5 (merge-blocker fix): previously fixed to
+  /// `s.month == 5`, so a candidate recruited in any later month (now
+  /// reachable via [_salesNextActionCards]'s widened gate above) would
+  /// never have a funnel to act through. Gated on the same authoritative
+  /// fact the funnel itself is about — whether there is an applicant to
+  /// show — rather than on which month it is.
   List<Widget> _salesApplicantProgressCards() => [
-    if (s.month == 5)
+    if (workflow.applicants.isNotEmpty)
       for (var i = 0; i < workflow.applicants.length; i++) ac(i),
   ];
 

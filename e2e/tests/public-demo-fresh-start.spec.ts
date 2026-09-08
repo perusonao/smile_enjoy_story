@@ -78,7 +78,7 @@ test.describe('Public Demo fresh start', () => {
     // The production HOME action now opens inspectable SkillSheet content
     // first. Merely opening it must not silently advance the sales stage.
     await page.getByRole('button', { name: 'スキルシートを確認', exact: true }).click();
-    await expect(page.getByText('営業用SkillSheet', { exact: false })).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText('営業用スキルシート', { exact: false })).toBeVisible({ timeout: 15_000 });
     await expect(page.getByText('Java / SQL・開発経験3年', { exact: true })).toBeVisible();
 
     // 案件スキル適合/ヒューマンスキル live in 営業・面談プロフィール, the
@@ -98,7 +98,7 @@ test.describe('Public Demo fresh start', () => {
 
     // Only explicit confirmation advances to the existing sales-start step.
     await page.getByRole('button', { name: 'スキルシートを確認', exact: true }).click();
-    await expect(page.getByText('営業用SkillSheet', { exact: false })).toBeVisible();
+    await expect(page.getByText('営業用スキルシート', { exact: false })).toBeVisible();
     await page.getByRole('button', { name: '内容を確認', exact: true }).click();
     await expect(page.getByRole('button', { name: '営業を開始', exact: true })).toBeVisible({ timeout: 15_000 });
 

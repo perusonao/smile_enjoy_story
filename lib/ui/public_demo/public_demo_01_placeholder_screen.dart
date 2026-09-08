@@ -17,6 +17,7 @@ import '../../game/public_demo/public_demo_monthly_growth.dart';
 import '../../game/public_demo/public_demo_recovery.dart';
 import '../../game/public_demo/public_demo_recruitment.dart';
 import '../../game/public_demo/public_demo_recruitment_medium.dart';
+import '../../game/models/recruitment_interview.dart';
 import '../../game/public_demo/public_demo_sales.dart';
 import '../../game/public_demo/public_demo_salary_finance.dart';
 import '../../game/public_demo/public_demo_salary.dart';
@@ -48,6 +49,7 @@ import 'public_demo_interview_result_dialog.dart';
 import 'public_demo_menu_visual.dart';
 import 'public_demo_month_guard_warning_dialog.dart';
 import 'public_demo_monthly_cash_flow_card.dart';
+import 'public_demo_recruitment_interview_dialog.dart';
 import 'public_demo_sales_progress.dart';
 import 'public_demo_sales_visual.dart';
 import 'public_demo_skill_sheet_sheet.dart';
@@ -157,6 +159,7 @@ const Set<HomeRecommendedActionKind> _recruitmentTaskActionKinds = {
   HomeRecommendedActionKind.applicantBeginPreEntrySelling,
   HomeRecommendedActionKind.applicantBeginPreEntrySkillSheet,
   HomeRecommendedActionKind.applicantSalaryOffer,
+  HomeRecommendedActionKind.applicantContinueInterview,
   HomeRecommendedActionKind.applicantInterview,
   HomeRecommendedActionKind.applicantReviewResume,
   HomeRecommendedActionKind.recruitmentMedia,
@@ -284,7 +287,8 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
     }
     if (!mounted) return;
     setState(() {
-      _game = restored ?? PublicDemoAggregate.initial(runSeed: widget.debugSeed);
+      _game =
+          restored ?? PublicDemoAggregate.initial(runSeed: widget.debugSeed);
       _isRestoring = false;
     });
   }
@@ -1185,8 +1189,7 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
         icon: Icons.science_outlined,
         label: '開発・テストメニュー',
         expanded: _isDevMenuExpanded,
-        onTap: () =>
-            setState(() => _isDevMenuExpanded = !_isDevMenuExpanded),
+        onTap: () => setState(() => _isDevMenuExpanded = !_isDevMenuExpanded),
       ),
       if (_isDevMenuExpanded) ...[
         const SizedBox(height: 10),
@@ -1445,6 +1448,42 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
     final result = _game.completeInterview(workflow.applicants[i].id);
     if (!result.isCompleted) return;
     _commitAggregate(result.aggregate);
+  }
+
+  /// The active (not yet decided) interactive interview session for
+  /// [applicantId], if one has been started (CORE-GAMEPLAY Phase 3).
+  RecruitmentInterviewSession? _activeInterviewSession(String applicantId) =>
+      workflow.interviewSessions
+          .where(
+            (session) =>
+                session.applicantId == applicantId && !session.completed,
+          )
+          .firstOrNull;
+
+  /// Whether [applicantId]'s interview was decided "採用候補として進める" —
+  /// the point at which the pre-existing 合格・給与提示 offer flow becomes
+  /// this card's action again, exactly as it always has been. A session
+  /// decided "見送る" never reaches this: [PublicDemoAggregate
+  /// .concludeInterviewSession] moves that applicant to
+  /// `PublicDemoApplicantStage.rejected` in the same commit, so this
+  /// `interviewed`-stage branch never renders for them again.
+  bool _interviewDecidedHired(String applicantId) =>
+      workflow.interviewSessions.any(
+        (session) =>
+            session.applicantId == applicantId &&
+            session.completed &&
+            session.outcome == InterviewOutcome.hired,
+      );
+
+  Future<void> _openInterview(String applicantId) async {
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => PublicDemoRecruitmentInterviewDialog(
+        applicantId: applicantId,
+        aggregate: _game,
+        onCommit: _commitAggregate,
+      ),
+    );
   }
 
   Future<void> offer(int i) async {
@@ -2617,10 +2656,17 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
           );
         }
       case PublicDemoApplicantStage.interviewed:
-        if (a.interviewScore >= 60) {
+        if (_interviewDecidedHired(a.id)) {
+          if (a.interviewScore >= 60) {
+            emit(
+              HomeRecommendedActionKind.applicantSalaryOffer,
+              () => unawaited(offer(index)),
+            );
+          }
+        } else {
           emit(
-            HomeRecommendedActionKind.applicantSalaryOffer,
-            () => unawaited(offer(index)),
+            HomeRecommendedActionKind.applicantContinueInterview,
+            () => unawaited(_openInterview(a.id)),
           );
         }
       case PublicDemoApplicantStage.offerAccepted:
@@ -3125,10 +3171,19 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
           if (a.stage == PublicDemoApplicantStage.interviewed) ...[
             Text('評価 ${a.interviewScore}'),
             Text('希望給与 ${a.requestedMonthlySalary ~/ 10000}万円'),
-            FilledButton(
-              onPressed: a.interviewScore >= 60 ? () => offer(i) : null,
-              child: const Text('合格・給与提示'),
-            ),
+            if (_interviewDecidedHired(a.id))
+              FilledButton(
+                onPressed: a.interviewScore >= 60 ? () => offer(i) : null,
+                child: const Text('合格・給与提示'),
+              )
+            else
+              FilledButton(
+                key: ValueKey('public-demo-interview-open-${a.id}'),
+                onPressed: () => _openInterview(a.id),
+                child: Text(
+                  _activeInterviewSession(a.id) == null ? '面談を行う' : '面談を続ける',
+                ),
+              ),
           ],
           if (a.stage == PublicDemoApplicantStage.offerAccepted &&
               a.canEnterPreJoinSales)
@@ -4174,8 +4229,7 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
     if (flow != null) {
       final delta = flow.netCashMovement;
       deltaPositive = delta >= 0;
-      deltaText =
-          '前回決算の収支 ${delta >= 0 ? '+' : '-'}${formatYen(delta.abs())}';
+      deltaText = '前回決算の収支 ${delta >= 0 ? '+' : '-'}${formatYen(delta.abs())}';
     }
     return Padding(
       key: const Key('public-demo-accounting-fund-status-section'),
@@ -4183,7 +4237,10 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _sectionHeader('現在の資金状態', icon: Icons.account_balance_wallet_outlined),
+          _sectionHeader(
+            '現在の資金状態',
+            icon: Icons.account_balance_wallet_outlined,
+          ),
           PublicDemoAccountingCard(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -4430,10 +4487,7 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
                       color: Color(0xFF8A5A00),
                     ),
                     SizedBox(width: 6),
-                    Text(
-                      '夏季賞与',
-                      style: TextStyle(fontWeight: FontWeight.bold),
-                    ),
+                    Text('夏季賞与', style: TextStyle(fontWeight: FontWeight.bold)),
                   ],
                 ),
                 const SizedBox(height: 4),

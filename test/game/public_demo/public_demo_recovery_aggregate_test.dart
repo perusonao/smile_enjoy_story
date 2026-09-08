@@ -168,6 +168,10 @@ void main() {
         'applicants',
         'engineers',
         'assignments',
+        // CORE-GAMEPLAY Phase 3: additive interactive recruitment-interview
+        // session list -- unrelated to Recovery, present on every workflow
+        // JSON since this phase.
+        'interviewSessions',
       });
 
       final assignmentsJson = workflowJson['assignments'] as List;

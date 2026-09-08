@@ -68,4 +68,19 @@ class PublicDemoRng {
       identifier: identifier,
     ),
   );
+
+  /// Deterministic seed for the narrow legacy-fixture interview fallback
+  /// (`PublicDemoRecruitmentInterview` -- CORE-GAMEPLAY Phase 3). Deliberately
+  /// NOT `runSeed`-derived: the hand-authored founding-pool fixtures
+  /// (`app-01`, `app-02`, `free-template-*`) predate
+  /// [PublicDemoSeededRecruitmentGenerator] and were never produced by
+  /// `ApplicantGenerator` in the first place, so there is no `runSeed`-linked
+  /// domain `Applicant` to recover for them -- only a stable, id-only seed
+  /// so the interview engine still has consistent (if not "real") flavor
+  /// data to draw from across reloads. This is the one other sanctioned use
+  /// of `rng.dart`'s primitives outside [derivedSeed]/[random] above, kept
+  /// here rather than duplicated in the interview adapter so every
+  /// Public Demo file still reaches `rng.dart` through this one adapter.
+  static int legacyFixtureSeed(String applicantId) =>
+      stableHash('legacy-recruitment-interview:$applicantId');
 }

@@ -39,6 +39,7 @@ import 'package:smile_enjoy_story/game/public_demo/public_demo_engineer_runtime.
 import 'package:smile_enjoy_story/game/public_demo/public_demo_state.dart';
 import 'package:smile_enjoy_story/ui/public_demo/public_demo_01_placeholder_screen.dart';
 
+import 'public_demo_interview_test_helpers.dart';
 import 'public_demo_tab_test_helpers.dart';
 
 const _suzukiId = 'eng-02';
@@ -187,6 +188,7 @@ void main() {
       await switchPublicDemoTab(tester, PublicDemoTab.sales);
       await tapAndSettle(tester, '経歴書確認');
       await tapAndSettle(tester, '採用面談');
+      await driveRecruitmentInterviewToHireDecision(tester);
       await tapAndSettle(tester, '合格・給与提示');
       await tester.tap(
         find.byKey(const Key('public-demo-salary-offer-320000')),

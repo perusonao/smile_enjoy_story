@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:smile_enjoy_story/ui/public_demo/public_demo_01_placeholder_screen.dart';
 
+import 'public_demo_interview_test_helpers.dart';
 import 'public_demo_tab_test_helpers.dart';
 
 Finder actionButton(String text) => find.ancestor(
@@ -122,6 +123,7 @@ void main() {
     await tapAndSettle(tester, '経歴書確認');
     await tapAndSettle(tester, '採用面談');
     expect(find.textContaining('評価 74'), findsOneWidget);
+    await driveRecruitmentInterviewToHireDecision(tester);
     await tapAndSettle(tester, '合格・給与提示');
     expect(find.text('給与を提示'), findsOneWidget);
     expect(find.text('月給 ¥32万'), findsWidgets);

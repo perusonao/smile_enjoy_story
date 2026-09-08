@@ -178,7 +178,8 @@ _guidanceCopyFor(HomeRecommendedActionKind kind) => switch (kind) {
   ),
   HomeRecommendedActionKind.founderFollowUp => (
     message: '参画が続く社員のフォローを検討しましょう。',
-    explanation: '長く現場に参画している社員には、会社から声をかけたり支援したりする機会があります。既存の選択肢からどう対応するか決めます。',
+    explanation:
+        '長く現場に参画している社員には、会社から声をかけたり支援したりする機会があります。既存の選択肢からどう対応するか決めます。',
     semantic: HomeNavigatorAdviceSemantic.neutral,
   ),
   HomeRecommendedActionKind.employeeAcceptOrder ||
@@ -237,6 +238,11 @@ _guidanceCopyFor(HomeRecommendedActionKind kind) => switch (kind) {
   HomeRecommendedActionKind.applicantInterview => (
     message: '採用面談を進めましょう。',
     explanation: '採用面談は、候補者について確認する機会です。面談内容を確認して既存の手続きを進めます。',
+    semantic: HomeNavigatorAdviceSemantic.neutral,
+  ),
+  HomeRecommendedActionKind.applicantContinueInterview => (
+    message: '面談を進めましょう。',
+    explanation: '質問への回答から、候補者の特徴や適性を確認しながら面談を進めます。',
     semantic: HomeNavigatorAdviceSemantic.neutral,
   ),
   HomeRecommendedActionKind.applicantReviewResume => (

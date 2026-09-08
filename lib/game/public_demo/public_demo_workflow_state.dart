@@ -1,3 +1,4 @@
+import '../models/recruitment_interview.dart';
 import 'public_demo_assignment.dart';
 import 'public_demo_binding_offer.dart';
 import 'public_demo_fiscal_close_id.dart';
@@ -45,12 +46,14 @@ class PublicDemoWorkflowState {
     applicants: List.unmodifiable(applicants),
     engineers: List.unmodifiable(engineers),
     assignments: const [],
+    interviewSessions: const [],
   );
 
   const PublicDemoWorkflowState._({
     required this.applicants,
     required this.engineers,
     required this.assignments,
+    required this.interviewSessions,
   });
 
   /// Public Demo 0.1's starting workflow, matching the founding team and
@@ -66,6 +69,19 @@ class PublicDemoWorkflowState {
   final List<PublicDemoEngineerSales> engineers;
   final List<PublicDemoAssignment> assignments;
 
+  /// In-progress/completed interactive recruitment-interview sessions
+  /// (CORE-GAMEPLAY Phase 3), one per applicant who has started the
+  /// question-selection step reused from the main game's own
+  /// `RecruitmentInterviewSession`/`RecruitmentInterviewEngine`
+  /// (`lib/game/models/recruitment_interview.dart`,
+  /// `lib/game/engine/recruitment_interview_engine.dart`). This is
+  /// deliberately a separate top-level list rather than a field on
+  /// [PublicDemoApplicant] itself: that class is locked down to only
+  /// unforgeable terminal facts (see its own class doc), never in-progress,
+  /// freely-overwritable session state. Additive to the save schema — see
+  /// [fromJson]'s backward-compatible default below.
+  final List<RecruitmentInterviewSession> interviewSessions;
+
   /// Complete workflow persistence representation.  This is intentionally
   /// separate from the production constructor: an assignment roster is only
   /// restored from a validated aggregate save, never supplied by gameplay
@@ -73,7 +89,12 @@ class PublicDemoWorkflowState {
   Map<String, dynamic> toJson() => {
     'applicants': applicants.map((applicant) => applicant.toJson()).toList(),
     'engineers': engineers.map((engineer) => engineer.toJson()).toList(),
-    'assignments': assignments.map((assignment) => assignment.toJson()).toList(),
+    'assignments': assignments
+        .map((assignment) => assignment.toJson())
+        .toList(),
+    'interviewSessions': interviewSessions
+        .map((session) => session.toJson())
+        .toList(),
   };
 
   factory PublicDemoWorkflowState.fromJson(Map<String, dynamic> json) {
@@ -85,9 +106,21 @@ class PublicDemoWorkflowState {
 
     List<T> decodeList<T>(List raw, T Function(Map<String, dynamic>) decode) =>
         raw.map((entry) {
-          if (entry is! Map) throw const FormatException('Invalid workflow entry');
+          if (entry is! Map)
+            throw const FormatException('Invalid workflow entry');
           return decode(entry.cast<String, dynamic>());
         }).toList();
+
+    // Additive field (CORE-GAMEPLAY Phase 3): a save written before this
+    // change has no 'interviewSessions' key at all. Absent means "no
+    // interactive interview was ever in progress" — an empty list, not a
+    // rejected/invalid save — exactly like every applicant that save
+    // already carries: their (unrelated) `stage`/records round-trip
+    // unmodified regardless of this key's presence.
+    final interviewSessionsRaw = json['interviewSessions'];
+    if (interviewSessionsRaw != null && interviewSessionsRaw is! List) {
+      throw const FormatException('Invalid workflow interviewSessions');
+    }
 
     return PublicDemoWorkflowState._(
       applicants: List.unmodifiable(
@@ -98,6 +131,14 @@ class PublicDemoWorkflowState {
       ),
       assignments: List.unmodifiable(
         decodeList(requiredList('assignments'), PublicDemoAssignment.fromJson),
+      ),
+      interviewSessions: List.unmodifiable(
+        interviewSessionsRaw == null
+            ? const <RecruitmentInterviewSession>[]
+            : decodeList(
+                interviewSessionsRaw,
+                RecruitmentInterviewSession.fromJson,
+              ),
       ),
     );
   }
@@ -136,10 +177,14 @@ class PublicDemoWorkflowState {
     List<PublicDemoApplicant>? applicants,
     List<PublicDemoEngineerSales>? engineers,
     List<PublicDemoAssignment>? assignments,
+    List<RecruitmentInterviewSession>? interviewSessions,
   }) => PublicDemoWorkflowState._(
     applicants: List.unmodifiable(applicants ?? this.applicants),
     engineers: List.unmodifiable(engineers ?? this.engineers),
     assignments: List.unmodifiable(assignments ?? this.assignments),
+    interviewSessions: List.unmodifiable(
+      interviewSessions ?? this.interviewSessions,
+    ),
   );
 
   // ---------------------------------------------------------------------
@@ -254,6 +299,64 @@ class PublicDemoWorkflowState {
     applicantId,
     (applicant) => applicant.completeInterview(proof),
   );
+
+  /// The single sanctioned way to decline an applicant after their
+  /// interactive interview (CORE-GAMEPLAY Phase 3), wiring up the
+  /// `PublicDemoApplicantStage.rejected` value that has existed on the enum
+  /// since WORKFLOW-STATE-1 but was never reachable from any production
+  /// command until this phase. A no-op unless the applicant is currently at
+  /// `interviewed` — in particular, an applicant who already has a
+  /// [PublicDemoApplicant.bindingOffer] or a decided
+  /// [PublicDemoApplicantStage.offerDeclined] can never be rejected
+  /// retroactively through this method.
+  PublicDemoWorkflowState rejectApplicant(String applicantId) =>
+      _transitionApplicantStage(
+        applicantId,
+        from: const {PublicDemoApplicantStage.interviewed},
+        to: PublicDemoApplicantStage.rejected,
+      );
+
+  // ---------------------------------------------------------------------
+  // Interactive recruitment-interview sessions (CORE-GAMEPLAY Phase 3)
+  // ---------------------------------------------------------------------
+
+  /// Appends [session] as the interview session for its own
+  /// [RecruitmentInterviewSession.applicantId] — a no-op if a session for
+  /// that applicant already exists (starting one is otherwise idempotent,
+  /// matching [PublicDemoApplicant.completeInterview]'s own idempotency
+  /// convention), so a caller can always call this unconditionally before
+  /// opening the interview UI without double-appending on a resumed session.
+  PublicDemoWorkflowState startInterviewSession(
+    RecruitmentInterviewSession session,
+  ) {
+    if (interviewSessions.any(
+      (existing) => existing.applicantId == session.applicantId,
+    )) {
+      return this;
+    }
+    return _copyWith(interviewSessions: [...interviewSessions, session]);
+  }
+
+  /// Replaces the active (not yet [RecruitmentInterviewSession.completed])
+  /// session for [applicantId] with [update]'s result. A no-op when no such
+  /// session exists — every real call site (asking a question, answering
+  /// the reverse question, concluding the interview) only ever follows a
+  /// successful [startInterviewSession], exactly mirroring
+  /// [_withApplicant]'s own "missing id is a caller bug, not a real
+  /// workflow event" contract.
+  PublicDemoWorkflowState updateInterviewSession(
+    String applicantId,
+    RecruitmentInterviewSession Function(RecruitmentInterviewSession session)
+    update,
+  ) {
+    final index = interviewSessions.indexWhere(
+      (session) => session.applicantId == applicantId && !session.completed,
+    );
+    if (index < 0) return this;
+    final next = [...interviewSessions];
+    next[index] = update(next[index]);
+    return _copyWith(interviewSessions: next);
+  }
 
   /// Records the pre-entry partner-interview outcome for one applicant
   /// (WORKFLOW-STATE-1AB FIX6 P1, moved out of
@@ -547,12 +650,13 @@ class PublicDemoWorkflowState {
         return engineer;
       }
       return engineer.copyWith(
-        mental: (engineer.mental +
-                PublicDemoFounderFollowUp.mentalDeltaFor(decision))
-            .clamp(0, 100),
-        trust: (engineer.trust +
-                PublicDemoFounderFollowUp.trustDeltaFor(decision))
-            .clamp(0, 100),
+        mental:
+            (engineer.mental +
+                    PublicDemoFounderFollowUp.mentalDeltaFor(decision))
+                .clamp(0, 100),
+        trust:
+            (engineer.trust + PublicDemoFounderFollowUp.trustDeltaFor(decision))
+                .clamp(0, 100),
         founderFollowUpMonth: month,
       );
     });

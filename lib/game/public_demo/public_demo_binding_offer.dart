@@ -113,6 +113,20 @@ class PublicDemoOfferAcceptance {
       );
     }
 
+    // CORE-GAMEPLAY Phase 3: an applicant the player already declined
+    // through the interactive interview ([PublicDemoAggregate
+    // .concludeInterviewSession] with `InterviewOutcome.rejected`) keeps
+    // `hasBeenInterviewed` true (that record is about the paperwork step,
+    // not the hire decision) but must never receive a binding offer
+    // afterward — "見送る" would otherwise not actually be terminal.
+    if (applicant.stage == PublicDemoApplicantStage.rejected) {
+      return PublicDemoOfferAcceptanceResult._(
+        applicant: applicant,
+        bindingOffer: null,
+        status: PublicDemoOfferAcceptanceStatus.invalidStage,
+      );
+    }
+
     final decided = offer
         .applyTo(applicant)
         .copyWith(

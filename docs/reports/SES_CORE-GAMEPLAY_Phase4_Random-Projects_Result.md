@@ -1,6 +1,6 @@
 # SES CORE-GAMEPLAY Phase 4: Random Projects — Result
 
-Status: **Implementation complete, tests green (one pre-existing, unrelated flake noted below)**
+Status: **Implementation complete, full test suite green (1874/1874)**
 
 ## BASE SHA / branch / HEAD
 
@@ -333,9 +333,13 @@ below.
   `public_demo_financial_status_test.dart`, `public_demo_monthly_cash_flow_
   test.dart`, `public_demo_revenue_*_test.dart`), assignment/HOME suites.
 - Full suite: `flutter test --concurrency=6` (whole `test/` tree) —
-  **1872 passed, 1 failed.**
+  **1872 passed, 1 failed** on the first run (before the post-review fix
+  below); **1874 passed, 0 failed** on a second full run after the
+  post-review fix was applied (18 new project-generator tests + 1 new
+  paymentTermDays test = 1874, matching the 1856 pre-existing tests plus
+  this phase's own additions) — the flake below did not recur.
 
-### The one failure — pre-existing, unrelated flake
+### The one failure — pre-existing, unrelated flake (did not recur on re-run)
 
 `test/game/public_demo/public_demo_financial_status_test.dart` › "N-U.
 Recruitment/offer/training shortage gates ... P: shortage blocks new offer
@@ -466,7 +470,9 @@ Two automated findings came in after the PR was opened:
 ## Final verdict
 
 **PASS** — implementation complete, Balance Guard verified over a 700-seed
-sweep, save/reload/legacy compatibility verified directly, zero regressions
-in every suite this phase's diff can plausibly affect. One flaky,
-pre-existing, out-of-scope test failure documented above with isolation
-evidence, not attributable to this change.
+sweep (plus a 100-seed paymentTermDays sweep after the post-review fix),
+save/reload/legacy compatibility verified directly, zero regressions in any
+suite. The one flaky, pre-existing, out-of-scope test failure seen on the
+first full run (documented above with isolation evidence, not attributable
+to this change) did not recur on the second full run after the
+post-review fix — final full suite: **1874/1874 green**.

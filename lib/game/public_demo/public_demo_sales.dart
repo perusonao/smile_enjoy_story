@@ -258,6 +258,42 @@ class PublicDemoEngineerSales {
           : null,
     );
   }
+
+  /// CORE-GAMEPLAY Phase 6 (Project Interview Gameplay): applies the
+  /// genuine outcome of the interactive project interview
+  /// (`public_demo_project_interview.dart`) to this engineer's sales
+  /// pipeline — the richer, real-[Project]-driven replacement for
+  /// [evaluateInterview]'s generic [PublicDemoInterviewEvaluator] formula
+  /// at this same `partnerInterviewPassed` → client-interview stage.
+  /// Structurally mirrors [evaluateInterview]: the same stage precondition
+  /// gate, and [interviewRecord] is minted only on a genuine pass, never on
+  /// [stage]/`lastInterviewScore` alone (see [hasGenuineInterviewRecord]'s
+  /// own doc).
+  ///
+  /// [passed]/[score] are never caller-asserted outcomes with no real
+  /// interview behind them: this method's only production call site is
+  /// [PublicDemoWorkflowState.concludeProjectInterview], which computes
+  /// both from a fresh [PublicDemoProjectInterview.conclude] call —
+  /// [ClientInterviewEngine.finalRate] (fit + choices + trust/track record)
+  /// rolled through [ProjectInterviewEngine.roll]'s seeded RNG — made
+  /// immediately before calling this, and only after verifying a genuine,
+  /// fully-answered session exists. A no-op unless [stage] already equals
+  /// [PublicDemoSalesStage.partnerInterviewPassed].
+  PublicDemoEngineerSales applyProjectInterviewResult({
+    required bool passed,
+    required int score,
+  }) {
+    if (stage != PublicDemoSalesStage.partnerInterviewPassed) return this;
+    return copyWith(
+      stage: passed
+          ? PublicDemoSalesStage.clientInterviewPassed
+          : PublicDemoSalesStage.clientInterviewFailed,
+      lastInterviewScore: score,
+      interviewRecord: passed
+          ? PublicDemoEngineerInterviewRecord._(engineerId: id)
+          : null,
+    );
+  }
 }
 
 const publicDemoInitialEngineers = <PublicDemoEngineerSales>[

@@ -1,3 +1,4 @@
+import '../models/client_interview.dart';
 import '../models/recruitment_interview.dart';
 import 'public_demo_assignment.dart';
 import 'public_demo_engineer_runtime.dart';
@@ -8,6 +9,7 @@ import 'public_demo_internal_training_transaction.dart';
 import 'public_demo_matching_proposal.dart';
 import 'public_demo_monthly_close.dart';
 import 'public_demo_project_generator.dart';
+import 'public_demo_project_interview.dart';
 import 'public_demo_raise_transaction.dart';
 import 'public_demo_recovery.dart';
 import 'public_demo_recruitment.dart';
@@ -658,6 +660,126 @@ class PublicDemoAggregate {
         actualCapability:
             state.runtimeForOrNull(engineerId)?.actualCapability ?? 0,
       ),
+    );
+  }
+
+  // ---------------------------------------------------------------------
+  // CORE-GAMEPLAY Phase 6 (Project Interview Gameplay): the interactive
+  // 案件面談 entered from Phase 5's real matching-proposal handoff. Reuses
+  // the existing `partnerInterviewPassed` → client-interview 0-slot stage
+  // as-is (no new sales capacity, no double slot consumption) — see
+  // `public_demo_workflow_state.dart`'s own section doc.
+  // ---------------------------------------------------------------------
+
+  /// Resolves [engineerId]'s current Phase 5 [PublicDemoMatchingProposal]
+  /// back to its full [PublicDemoProjectCandidate] — `null` when no
+  /// proposal has been made yet (or, in principle, an id this generator did
+  /// not mint, which never happens for a genuine proposal). Every Phase 6
+  /// screen reads the real project through this single accessor rather than
+  /// re-deriving it.
+  PublicDemoProjectCandidate? projectInterviewCandidateFor(String engineerId) {
+    final proposal = workflow.matchingProposalFor(engineerId);
+    if (proposal == null) return null;
+    return PublicDemoSeededProjectGenerator.regenerate(
+      runSeed: runSeed,
+      projectId: proposal.projectId,
+    );
+  }
+
+  /// The current in-progress/completed project-interview session for
+  /// [engineerId], if any.
+  ClientInterviewSession? projectInterviewSessionFor(String engineerId) =>
+      workflow.projectInterviewSessionFor(engineerId);
+
+  /// Starts (or resumes) the interactive project interview for
+  /// [engineerId] — Phase 6's entry point from Phase 5's matching-proposal
+  /// handoff. A no-op unless the engineer is genuinely at
+  /// `partnerInterviewPassed` and a real Phase 5 proposal/project/runtime
+  /// all resolve (an engineer who reached this stage without ever using
+  /// Matching has no proposal at all, and stays on the existing generic
+  /// [recordEngineerInterviewResult] path the UI falls back to).
+  PublicDemoAggregate startProjectInterview(String engineerId) {
+    final engineer = workflow.engineers
+        .where((candidate) => candidate.id == engineerId)
+        .firstOrNull;
+    if (engineer == null ||
+        engineer.stage != PublicDemoSalesStage.partnerInterviewPassed) {
+      return this;
+    }
+    final candidate = projectInterviewCandidateFor(engineerId);
+    final runtime = state.runtimeForOrNull(engineerId);
+    if (candidate == null || runtime == null) return this;
+    final session = PublicDemoProjectInterview.start(
+      state: state,
+      runtime: runtime,
+      candidate: candidate,
+    );
+    return _copyWith(workflow: workflow.startProjectInterviewSession(session));
+  }
+
+  /// The player's follow-up choices for [engineerId]'s current interview
+  /// question — `const []` if no session/candidate/runtime resolves.
+  List<ClientInterviewFollowUp> projectInterviewChoicesFor(String engineerId) {
+    final session = projectInterviewSessionFor(engineerId);
+    if (session == null || session.completed) return const [];
+    return PublicDemoProjectInterview.choicesFor(session);
+  }
+
+  /// Applies [followUp] to [engineerId]'s current interview question and
+  /// advances the session — see [PublicDemoProjectInterview.chooseFollowUp].
+  /// A no-op unless a real proposal/project/runtime/in-progress session all
+  /// resolve.
+  PublicDemoAggregate chooseProjectInterviewFollowUp(
+    String engineerId,
+    ClientInterviewFollowUp followUp,
+  ) {
+    final candidate = projectInterviewCandidateFor(engineerId);
+    final runtime = state.runtimeForOrNull(engineerId);
+    if (candidate == null || runtime == null) return this;
+    return _copyWith(
+      workflow: workflow.updateProjectInterviewSession(
+        engineerId,
+        (session) => PublicDemoProjectInterview.chooseFollowUp(
+          runSeed: runSeed,
+          runtime: runtime,
+          project: candidate.project,
+          session: session,
+          followUp: followUp,
+        ),
+      ),
+    );
+  }
+
+  /// Concludes [engineerId]'s fully-answered project interview and applies
+  /// its genuine pass/fail to the sales pipeline — see
+  /// [PublicDemoWorkflowState.concludeProjectInterview] for the actual
+  /// derivation/precondition contract. A no-op unless a real
+  /// proposal/project/runtime resolve.
+  PublicDemoAggregate concludeProjectInterview(String engineerId) {
+    final candidate = projectInterviewCandidateFor(engineerId);
+    final runtime = state.runtimeForOrNull(engineerId);
+    if (candidate == null || runtime == null) return this;
+    return _copyWith(
+      workflow: workflow.concludeProjectInterview(
+        engineerId: engineerId,
+        runSeed: runSeed,
+        runtime: runtime,
+        project: candidate.project,
+      ),
+    );
+  }
+
+  /// The 1-2 truthful reasons [engineerId]'s failed project interview did
+  /// not pass, for the real project their [PublicDemoMatchingProposal]
+  /// names — `const []` if no proposal/runtime resolves (should not happen
+  /// once a session has actually completed).
+  List<String> projectInterviewFailureReasonsFor(String engineerId) {
+    final candidate = projectInterviewCandidateFor(engineerId);
+    final runtime = state.runtimeForOrNull(engineerId);
+    if (candidate == null || runtime == null) return const [];
+    return PublicDemoProjectInterview.failureReasons(
+      runtime,
+      candidate.project,
     );
   }
 

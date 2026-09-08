@@ -183,6 +183,10 @@ void main() {
         // unrelated to Recovery, present on every workflow JSON since this
         // phase.
         'matchingProposals',
+        // CORE-GAMEPLAY Phase 6: additive project-interview session list --
+        // also unrelated to Recovery, present on every workflow JSON since
+        // this phase.
+        'projectInterviewSessions',
       });
 
       final assignmentsJson = workflowJson['assignments'] as List;

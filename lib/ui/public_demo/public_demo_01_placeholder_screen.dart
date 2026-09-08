@@ -52,6 +52,7 @@ import 'public_demo_matching_screen.dart';
 import 'public_demo_menu_visual.dart';
 import 'public_demo_month_guard_warning_dialog.dart';
 import 'public_demo_monthly_cash_flow_card.dart';
+import 'public_demo_project_interview_dialog.dart';
 import 'public_demo_recruitment_interview_dialog.dart';
 import 'public_demo_sales_progress.dart';
 import 'public_demo_sales_visual.dart';
@@ -1461,6 +1462,38 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
     );
   }
 
+  /// CORE-GAMEPLAY Phase 6 (Project Interview Gameplay): the `客先面談`
+  /// entry point. When [engineer] has a real Phase 5
+  /// [PublicDemoMatchingProposal] — [PublicDemoAggregate
+  /// .projectInterviewCandidateFor] resolves it back to a genuine Phase 4
+  /// project — this opens the interactive project interview instead of the
+  /// pre-Phase-6 generic [ei] evaluation. An engineer who reached
+  /// `partnerInterviewPassed` without ever using Matching (including every
+  /// pre-Phase-6 save) has no proposal at all and keeps the exact existing
+  /// [ei] behavior unchanged.
+  Future<void> _startClientInterview(int i) async {
+    final engineer = workflow.engineers[i];
+    if (_game.projectInterviewCandidateFor(engineer.id) != null) {
+      await _openProjectInterview(engineer.id);
+    } else {
+      await ei(i, PublicDemoInterviewType.client);
+    }
+  }
+
+  Future<void> _openProjectInterview(String engineerId) async {
+    await _precacheEventImage(AssetPaths.eventClientInterview);
+    if (!mounted) return;
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => PublicDemoProjectInterviewDialog(
+        engineerId: engineerId,
+        aggregate: _game,
+        onCommit: _commitAggregate,
+      ),
+    );
+  }
+
   // april()/may() used to setState the month advance *before* awaiting the
   // event dialog. showDialog's fade-in transition runs for Material's
   // default 150ms, so for that whole window the ListView behind the modal
@@ -2716,9 +2749,8 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
         emit(
           HomeRecommendedActionKind.employeeClientInterview,
           () => unawaited(
-            ei(
+            _startClientInterview(
               workflow.engineers.indexWhere((x) => x.id == e.id),
-              PublicDemoInterviewType.client,
             ),
           ),
         );
@@ -3231,7 +3263,7 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
               ),
             if (e.stage == PublicDemoSalesStage.partnerInterviewPassed)
               FilledButton(
-                onPressed: () => ei(i, PublicDemoInterviewType.client),
+                onPressed: () => unawaited(_startClientInterview(i)),
                 child: const Text('客先面談'),
               ),
             if (e.stage == PublicDemoSalesStage.clientInterviewPassed)

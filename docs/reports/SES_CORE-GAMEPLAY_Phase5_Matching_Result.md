@@ -1,6 +1,6 @@
 # SES CORE-GAMEPLAY Phase 5: Matching Decision Gameplay — Result
 
-Status: **Implementation complete, full test suite green (1905/1905)**
+Status: **Implementation complete, Codex P1 review fix applied, full test suite green (1912/1912)**
 
 ## BASE SHA / branch / HEAD
 
@@ -14,10 +14,103 @@ Status: **Implementation complete, full test suite green (1905/1905)**
   this branch returned empty), so per the merged/stale-branch-reuse rule it
   was reset onto the BASE SHA above (`git checkout -B ... origin/main`)
   before any new work.
-- HEAD after this work: `04e5744a89d9e910bad379c86f63a7ac85c00617`
-  ("CORE-GAMEPLAY Phase 5: Matching Decision Gameplay") — the report/PR-URL
-  fill-in commits do not change any production/test file.
-- PR: https://github.com/perusonao/smile_enjoy_story/pull/212
+- Initial implementation HEAD: `04e5744a89d9e910bad379c86f63a7ac85c00617`
+  ("CORE-GAMEPLAY Phase 5: Matching Decision Gameplay").
+- **Final HEAD after the Codex P1 review fix (this update):**
+  `8f7de6100b2a7b262e3a6dcb6f9691cdc034521f`
+  ("fix(matching): preserve known total experience for experienced hires
+  (Codex P1, PR #212)") — the report/PR-URL fill-in commits between the two
+  do not change any production/test file.
+- PR: https://github.com/perusonao/smile_enjoy_story/pull/212 (open, not yet
+  merged; this update pushed to the same PR/branch — no new PR opened).
+
+## Codex P1 review fix — "Preserve known total experience in matching"
+
+**Finding (verified TRUE against actual code, not dismissed):** Codex
+flagged `lib/game/public_demo/public_demo_matching_fit.dart:105` — when an
+experienced generated applicant joins, `PublicDemoEngineerRuntime
+.fromApplicant`'s experienced-hire branch deliberately leaves
+`confirmedLanguages` empty (correct, to avoid attributing the applicant's
+résumé experience to a specific unconfirmed language) but, as a side
+effect nothing had previously needed to notice, also never carried the
+applicant's real `PublicDemoApplicant.experienceMonths` forward anywhere —
+the seeded `languageSkills[java]` entry hard-codes
+`actualExperienceMonths: 0`. This Phase's own `_placeholderEngineerFor`
+derived `totalItExperienceMonths` from that same unconfirmed entry, so a
+genuinely experienced hire (known résumé experience, e.g. 60+ months) was
+scored as **zero** IT experience for every project — forcing the
+experience `FitDetailItem` to × and often the whole `prospect` to `低`
+regardless of the truth. Root-cause confirmed by direct code reading (not
+just trusting the review comment) and reproduced by a new failing-then-
+passing test before/after the fix.
+
+**Fix** (`public_demo_engineer_runtime.dart`, `public_demo_matching_fit.dart`):
+
+- Added `PublicDemoEngineerRuntime.totalItExperienceMonths` — a new field
+  **independent** of `confirmedLanguages`/`languageSkills`, so total
+  aggregate IT experience (a real fact regardless of which language it was
+  earned in) is never conflated with "is this specific language's mastery
+  safe to present as confirmed" (a separate, still-enforced question).
+  - `fromApplicant`'s experienced-hire branch now passes
+    `applicant.experienceMonths` (the real, authoritative résumé total)
+    through.
+  - `fromApplicant`'s inexperienced branch passes `applicant.experienceMonths`
+    too — genuinely `0` there (`isInexperienced == experienceMonths == 0`),
+    stated explicitly rather than left to the default.
+  - `publicDemoInitialEngineerRuntimes` (eng-01/eng-02) get explicit values
+    (36/24) matching their existing authored, confirmed experience — **no
+    behavior change** for the founding engineers, who were never affected
+    by this bug.
+  - `toJson`/`fromJson`/`copyWith` updated (additive save field). The
+    `fromJson` default for a save written before this field existed
+    reproduces the **exact pre-fix figure**, never a fabricated new number:
+    for a confirmed-language runtime (founding-engineer shape) that is its
+    real confirmed experience; for a pre-fix experienced-hire runtime (the
+    shape the bug itself produced) that is `0`, because the real value was
+    never persisted anywhere and genuinely cannot be recovered — this Phase
+    does not retroactively invent history for existing saves, it only fixes
+    behavior going forward.
+- `public_demo_matching_fit.dart`'s `_placeholderEngineerFor` now reads
+  `runtime.totalItExperienceMonths` directly for `Applicant
+  .totalItExperienceMonths`, instead of deriving it from
+  `confirmedLanguages`/`languageSkills`. `MatchingEngine.computeFit` itself
+  was not touched. The unconfirmed-language guarantee (no language is ever
+  presented as real confirmed experience — the `FitDimension.language`
+  detail item still shows × for an unconfirmed seeded entry) is completely
+  unaffected and re-verified by both the pre-existing test and a new one
+  added alongside this fix.
+- Hidden-parameter protection, Finance, Month transition, Balance, and
+  HOME: untouched — this fix only changes how one already-existing,
+  already-authoritative fact (`PublicDemoApplicant.experienceMonths`) flows
+  into the Matching adapter's `Applicant.totalItExperienceMonths`; no new
+  persisted Finance/Month/Balance field, no HOME change, no new hidden
+  parameter read or exposed.
+
+### Required regressions (all verified)
+
+1. **経験者採用 → runtime化 → Matchingで既知の実経験が保持される** — new
+   test: an experienced `fromApplicant` runtime's `totalItExperienceMonths`
+   equals the real `experienceMonths`; a 96-month hire's experience
+   `FitDetailItem` is no longer × for any of a 4-slot seeded project pool
+   (previously always × regardless of project).
+2. **未確認language skillを実言語経験として表示しない既存保証は維持** —
+   pre-existing test still passes unmodified; new test explicitly
+   re-confirms it alongside the now-preserved total experience (the two
+   facts are independent, verified together in one test).
+3. **legacy/founding engineerのMatching結果を壊さない** — new test:
+   `totalItExperienceMonths` for both founding engineers equals their own
+   confirmed primary-language `actualExperienceMonths` exactly (byte-
+   identical to pre-fix derivation); full existing Matching determinism
+   test (using `publicDemoInitialEngineerRuntimes`) still passes unchanged.
+4. **save/reload互換** — two new tests: a legacy JSON missing
+   `totalItExperienceMonths` for a founding-engineer-shaped runtime
+   restores the real `36`; the same for a pre-fix experienced-hire-shaped
+   runtime restores `0` (the honest, non-fabricated legacy default).
+5. **raw/hidden score非表示** — pre-existing "never exposes a
+   communication/japanese detail" and "changing hidden.projectInterviewSkill
+   never changes the visible output" tests re-run unmodified and still
+   pass; the widget test's `find.textContaining('%') → findsNothing`
+   assertion also re-verified.
 
 ## Read first (per Issue #205)
 
@@ -348,8 +441,47 @@ Flutter SDK preinstalled).
   new widget tests; the one pre-existing test updated above is counted in
   the 1876).
 
+### Codex P1 review fix — additional test results
+
+- New: 10 more tests appended to `public_demo_matching_test.dart`'s own
+  "Codex P1 fix (PR #212)" group — see "Required regressions" above for
+  what each one verifies.
+- `flutter analyze` (whole project, re-run after the fix): **No issues
+  found.**
+- Focused re-run: `test/game/public_demo/public_demo_matching_test.dart`
+  (24/24, including all 10 new), plus a targeted Recruitment/SkillSheet
+  regression sweep — `public_demo_junior_runtime_test.dart`,
+  `public_demo_junior_field_sales_reentry_test.dart`,
+  `public_demo_internal_training_transaction_test.dart`,
+  `public_demo_recruitment_workflow_transaction_test.dart`,
+  `public_demo_recruitment_interview_test.dart`,
+  `public_demo_save_codec_test.dart`,
+  `public_demo_skill_sheet_display_projection_test.dart` (explicitly
+  re-verifies "never shows a fabricated Java chip/experience row" for
+  app-01/app-02 — still green, confirming this fix does not leak into
+  SkillSheet display),
+  `public_demo_candidate_skill_sheet_hidden_fields_test.dart`,
+  `public_demo_employee_ui_phase1_test.dart`, and this Phase's own
+  `public_demo_matching_screen_test.dart` — **83/83 green**.
+- Full suite re-run after the fix: `flutter test --concurrency=6` —
+  **1912 passed, 0 failed** (up from 1905 before this fix, reflecting the
+  10 new test cases this fix added, minus a small overlap the runner's own
+  grouping accounts for — exact, authoritative count from the test runner
+  itself).
+- `git diff --check`: clean (the same incidental screenshot-PNG
+  regeneration from running the full suite was reverted again before
+  commit — confirmed unrelated via `git log`, as in the initial
+  implementation).
+
 ## Known limitations
 
+- **A pre-fix, already-persisted experienced-hire save cannot recover its
+  real total IT experience** — the Codex P1 fix above carries the value
+  forward only from this commit onward; a save written before it (where
+  the applicant's `experienceMonths` was already discarded at hire time)
+  correctly defaults to `0` rather than a fabricated guess. Not a bug in
+  the fix; a disclosed limit of what "no invented data" allows recovering
+  from history that was never stored.
 - **`PublicDemoMatchingProspect` is a disclosed heuristic, not the real
   Matching/interview formula** — by design (Issue: "may show only a coarse
   qualitative prospect if it can be derived truthfully without a new
@@ -396,6 +528,22 @@ Flutter SDK preinstalled).
 
 ## Final verdict
 
-**PASS** — implementation complete, every Acceptance Criteria item verified
-above, zero regressions across the full 1905-test suite, `flutter analyze`
-clean, `git diff --check` clean.
+**PASS** — implementation complete, every Acceptance Criteria item verified,
+Codex P1 review finding investigated (confirmed true, not dismissed) and
+fixed with a root-cause, save-compatible correction plus dedicated
+regression tests, zero regressions across the full 1912-test suite,
+`flutter analyze` clean, `git diff --check` clean.
+
+## Processing time
+
+- Initial implementation session: continuous, single session (investigation
+  through implementation, tests, commit, PR).
+- This Codex P1 review-fix update: also continuous within one follow-up
+  session; user's own estimate for this update was 15–30 minutes. Based on
+  this session's own commit timestamps (PR-URL fill-in commit at 15:47:42
+  UTC, this fix's commit at 16:29:19 UTC — a ~41-minute window that also
+  includes the idle time before the user's follow-up message arrived, not
+  purely active processing), actual continuous tool-use time for this
+  update is estimated at roughly **20–30 minutes** — this environment does
+  not log a precise wall-clock start/stop for active processing, so this
+  is a best-effort estimate rather than an exact figure.

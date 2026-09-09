@@ -598,6 +598,117 @@ void main() {
     );
 
     test(
+      'the June-deferred row is never double-counted in July: once the '
+      'month rolls over, this engineer is genuinely excluded from July\'s '
+      'headcount and cannot generate a second, phantom revenue booking',
+      () {
+        var aggregate = assignedViaMay('eng-01');
+        aggregate = aggregate.withAssignmentUpdate(
+          'eng-01',
+          nextOrderStatus: PublicDemoNextOrderStatus.notOffered,
+        );
+        aggregate = aggregate.endAssignment('eng-01');
+        // June's own revenue is correctly booked (see the test above);
+        // closeJune now advances state.month to 7 with the stale row still
+        // sitting in workflow.assignments (deferred, never removed at this
+        // point).
+        aggregate = aggregate.closeJune(
+          assignedInJuly: 0,
+          monthlyExpenses: 0,
+        );
+        expect(aggregate.state.month, 7);
+        expect(
+          aggregate.workflow.assignments,
+          hasLength(1),
+          reason: 'the row is still present — deferred, not removed',
+        );
+
+        // July's own headcount/revenue projection must already exclude it:
+        // assignedEngineerIds(month>=7) filters by
+        // accepted/replacementStage-ordered, which this stale
+        // notOffered/none row never matches.
+        expect(
+          aggregate.workflow.assignedEngineerIds(month: 7),
+          isEmpty,
+          reason: 'no phantom July headcount from the ended assignment',
+        );
+        expect(
+          PublicDemoRevenue.monthlyRevenueForAssignedCount(
+            aggregate.workflow.assignedEngineerIds(month: 7).length,
+          ),
+          0,
+          reason: 'July books zero revenue for this engineer — the same '
+              'June billing must never be recognized twice',
+        );
+
+        // A real closeJuly confirms the same fact through the actual
+        // Finance authority, not a re-derived formula.
+        final closed = aggregate.closeJuly(monthlyExpenses: 0);
+        expect(closed.state.month, 8);
+        expect(
+          closed.state.pendingRevenue,
+          0,
+          reason: 'August\'s pending billing carries no revenue from the '
+              'already-ended eng-01 assignment',
+        );
+      },
+    );
+
+    test(
+      'a genuine Phase 6 project-bound assignment keeps its real projectId '
+      'through an unrelated endAssignment call — Phase 7A\'s '
+      'real-project-identity contract is unaffected by these P1 fixes (the '
+      'dedicated SaveCodec round-trip coverage for a genuine projectId '
+      'lives in public_demo_assignment_lifecycle_save_codec_test.dart and '
+      'is unmodified/still green)',
+      () {
+        // Two engineers on the same roster: eng-project-w has a genuine
+        // Phase 6 project-bound assignment (kept active); eng-01 has an
+        // ordinary generic assignment that gets declined and ended.
+        var workflow = PublicDemoWorkflowState(
+          applicants: const [],
+          engineers: [
+            recordTestProjectInterviewPass(
+              genuineEngineer('eng-project-w'),
+              projectId: 'project-4-2',
+            ),
+            recordTestClientInterviewPass(genuineEngineer('eng-01')),
+          ],
+        );
+        workflow = workflow
+            .recordOrder('eng-project-w')
+            .recordOrder('eng-01')
+            .assignOrderedForMay()
+            .withAssignmentUpdate(
+              'eng-01',
+              nextOrderStatus: PublicDemoNextOrderStatus.notOffered,
+            );
+        expect(
+          workflow.assignments
+              .firstWhere((a) => a.engineerId == 'eng-project-w')
+              .projectId,
+          'project-4-2',
+        );
+
+        workflow = workflow.endAssignment('eng-01', month: 8);
+
+        expect(
+          workflow.assignments.where((a) => a.engineerId == 'eng-01'),
+          isEmpty,
+        );
+        final survivor = workflow.assignments.firstWhere(
+          (a) => a.engineerId == 'eng-project-w',
+        );
+        expect(
+          survivor.projectId,
+          'project-4-2',
+          reason: 'an unrelated endAssignment call must never disturb '
+              'another engineer\'s genuine project identity',
+        );
+      },
+    );
+
+    test(
       'save/reload immediately after ending round-trips through the real '
       'PublicDemoSaveCodec (Codex P1 regression, PR #215) — not merely '
       'PublicDemoAggregate.fromJson, which bypasses '

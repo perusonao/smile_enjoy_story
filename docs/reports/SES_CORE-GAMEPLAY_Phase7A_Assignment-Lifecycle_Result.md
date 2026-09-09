@@ -1,13 +1,22 @@
 # SES CORE-GAMEPLAY Phase 7A: Assignment Lifecycle — Result Report
 
 **Issue:** [#207](https://github.com/perusonao/smile_enjoy_story/issues/207)
+**PR:** [#215](https://github.com/perusonao/smile_enjoy_story/pull/215)
 **Branch:** `claude/assignment-lifecycle-phase-7a-fi92g1`
 **BASE SHA:** `7662a4c756769d006d0e57b4e50c7811b48002ae` (Merge PR #214: CORE-GAMEPLAY Phase 6 Project Interview, `origin/main` HEAD at task start)
 **Dependency verified:** Phase 6 PR #214's merge commit is contained in `origin/main` (`git merge-base --is-ancestor` confirmed) before any implementation work began.
 
-## 1. Actual processing time
+## 0. Session log
 
-Roughly 2.5 hours of continuous execution (audit → design → implementation → hardening → focused tests → full regression → report), within the Issue's 120–180 minute estimate.
+| Round | Result | Commit |
+|---|---|---|
+| Implementation | Phase 7A implemented, hardened, tested, PR #215 opened | `6fd0dbe` |
+| P1 fix round 1 | Both Codex P1 findings root-caused and fixed, in the same session that opened the PR | `f00debb` |
+| P1 fix round 2 (this update) | Same 2 P1s: added the explicit regression coverage requested (next-month no-double-count, genuine-`projectId` survival) — no new fix was needed, both root causes were already corrected in round 1 and verified unchanged here | this report's own commit (see §14 for the final pushed HEAD) |
+
+**Actual processing time (this round):** ~25 minutes (verify round-1 fixes still hold at current HEAD → add the two explicitly-requested regression tests → full verification → report/thread updates), within the 20–40 minute estimate.
+
+**Actual processing time (cumulative, Issue #207 total):** ~2.5 hours implementation + ~30 minutes P1 fix round 1 + ~25 minutes this round.
 
 ## 2. Latest-main / authority audit
 
@@ -106,19 +115,25 @@ Existing Finance/Month/Recovery/SaveCodec suites (all pre-existing tests under `
 ## 9. Tests
 
 New focused files:
-- `test/game/public_demo/public_demo_assignment_lifecycle_test.dart` (23 tests) — workflow/aggregate-level lifecycle invariants (real project identity threading, `endAssignment` preconditions/atomicity/idempotency/month-awareness, re-entry, Finance re-projection, and dedicated regressions for both Codex P1 findings above — real `PublicDemoSaveCodec` round trip, and June revenue preservation through `closeJune`).
-- `test/game/public_demo/public_demo_assignment_lifecycle_save_codec_test.dart` (6 tests) — genuine round-trip, legacy migration, identity-mismatch rejection, duplicate-assignment rejection.
+- `test/game/public_demo/public_demo_assignment_lifecycle_test.dart` (**25 tests**) — workflow/aggregate-level lifecycle invariants (real project identity threading, `endAssignment` preconditions/atomicity/idempotency/month-awareness, re-entry, Finance re-projection), plus the explicit P1-regression set requested for this fix round:
+  1. June active → `notOffered` → `endAssignment` → `closeJune` → June's revenue is correctly booked for the released engineer (not 0).
+  2. The engineer genuinely returns to Sales (`startSkillSheetReview` succeeds post-release).
+  3. Save/reload preserves state — through the **real `PublicDemoSaveCodec.decode(encode(...))`** round trip, not `PublicDemoAggregate.fromJson` alone.
+  4. Double end is impossible — idempotent at every month tested (6 and 8).
+  5. **Next month, the ended assignment's revenue is never double-counted** — explicit check that `assignedEngineerIds(month: 7)` is empty and a real `closeJuly` books `pendingRevenue: 0` for August.
+  6. A genuine Phase 6 `projectId` on an unrelated, still-active assignment survives an `endAssignment` call untouched (existing real-project-identity round-trip contract, verified separately and still green in `public_demo_assignment_lifecycle_save_codec_test.dart`, is unaffected).
+- `test/game/public_demo/public_demo_assignment_lifecycle_save_codec_test.dart` (6 tests) — genuine round-trip, legacy migration, identity-mismatch rejection, duplicate-assignment rejection. Unmodified in this fix round; still green.
 - `test/game/public_demo/test_support/public_demo_sales_test_helpers.dart` — added `recordTestProjectInterviewPass` (project-bound counterpart to the existing `recordTestClientInterviewPass`).
 - `test/game/public_demo/public_demo_recovery_aggregate_test.dart` — updated one exact-key-set assertion for the new additive field.
 
 ## 10. CI status (this session)
 
 - `flutter analyze`: **0 issues** (whole repo).
-- `flutter test test/game/public_demo/ --concurrency=6`: **720/720 passed.**
-- `flutter test --concurrency=6` (full suite): **2030/2030 passed.**
+- `flutter test test/game/public_demo/ --concurrency=6`: **722/722 passed.**
+- `flutter test --concurrency=6` (full suite): **2032/2032 passed.**
 - `git diff --check`: clean (no whitespace errors).
 
-No repository CI workflow run was triggered from this session beyond the above local runs (same Flutter stable toolchain the repo pins via `.metadata`/`pubspec.yaml`).
+No repository CI workflow run was triggered from this session beyond the above local runs (same Flutter stable toolchain the repo pins via `.metadata`/`pubspec.yaml`); GitHub Actions CI on PR #215 is tracked separately (see PR checks).
 
 ## 11. Unresolved blockers
 

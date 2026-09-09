@@ -71,6 +71,40 @@ Branch: `claude/issue-221-recruitment-flow-5lv0vv`
 - **既存Finance/SkillSheet/Sales/Matching authorityへの自然な接続**: 新規joinは`workflow.engineers`に追加されるため、UIの社員タブ・SkillSheet・Sales tabは**既存のフィルタをそのまま使うだけで**新規社員を表示する（`workflow.engineers`が一次データソースであるコード箇所を変更していない）。#219/#220で接続済みのMatching→上位会社面談→客先面談パイプラインも`workflow.engineers`メンバーである限り月非依存で動作するため、6月以降のjoinはそのまま同じ経路で客先面談・受注・RECOVERY-LOOP-1経由の参画（アサイン）まで到達する。
 - **禁止事項の遵守**: fake employee/hard-coded successは追加していない。Finance計算式・Matchingの適合度式・Balanceパラメータは一切変更していない。HOME redesignや無関係なリファクタは行っていない。
 
+## P1 Fix（PR #222 レビュー指摘、Merge Gate対応）
+
+PR #222オープン後、リポジトリオーナーによるMerge Gateコメントで1件のP1が指摘された:
+
+> 5月以降の応募者が本物の入社前 `juneOrdered`（事前案件確保）状態に到達してからfiscal closeを迎える場合、later-month join pathはその既に勝ち取った受注を、joinした社員の正式なassignment/headcount projectionへ引き継がなければならない——待機social engineerとして生成し、プレイヤーにSales/Matching/面談をやり直させてはいけない。
+
+### Root cause（P1）
+
+`assignOrderedForMay`（5月専用のassignmentロスター**全体再構築**メソッド）の中に、`applicant.stage == juneOrdered && applicant.hasJoined`の場合だけ実在するassignmentを作る分岐が既に存在していた。しかし本fix（P1以前の版）が追加した`closeJune`/`closeJuly`/`closeOrdinaryMonth`の新しいjoin処理は、この分岐を一切呼んでいなかった——`workflow.engineers`への追加（`withJoinedEngineers`）だけ行い、既に勝ち取っていた`juneOrdered`のassignmentを作らなかった。結果、5月以降に入社前パイプライン（`beginPreEntrySkillSheet→…→recordJuneOrder`）を完走し、既に受注を確定していた応募者が、参画済みではなく**ただの待機social engineer**としてjoinしてしまい、SkillSheet確認・営業開始・案件紹介・上位会社面談・客先面談・受注を最初からやり直させられる状態になっていた。
+
+### Fix内容（P1）
+
+1. **`lib/game/public_demo/public_demo_workflow_state.dart`**
+   - 新規 `PublicDemoWorkflowState.appendPreEntryOrderAssignments(Iterable<PublicDemoApplicant> newlyJoined)` を追加。
+   - `assignOrderedForMay`の`juneOrdered`分岐と**全く同じ**既存テンプレート（`projectName: '新規開発支援', deliveryPressure: 50, budgetHealth: 70, humanity: 70`）をそのまま再利用——新しい経済式やhard-coded successを新規追加したわけではない。
+   - `recoverLateYearAssignment`と同じAPPEND/UPSERT契約: `assignments`に既に存在する他applicant/engineerのエントリは一切変更しない（`assignOrderedForMay`のような全体再構築ではない）。既にassignment済みのapplicantIdはスキップ（idempotent）。
+
+2. **`lib/game/public_demo/public_demo_state.dart`**
+   - `recordNewJoins`に`joinedWithOrders`（デフォルト0）パラメータを追加——`advanceToJune`の`hiredWithOrders`と全く同じパターンで、新規joinのうち何人が既にassigned状態で開始するかを`engineersAssigned`/`engineersWaiting`に反映する。
+
+3. **`lib/game/public_demo/public_demo_aggregate.dart`**
+   - `_joinAcceptedApplicants()`が新規joinの中から`stage==juneOrdered`の人数を数え（`newlyJoinedWithOrders`）、`appendPreEntryOrderAssignments`を呼んでassignmentも一緒に追加するよう拡張。
+   - `closeJune`/`closeJuly`/`closeOrdinaryMonth`は`recordNewJoins`にこの数を渡すよう更新。
+   - `closeJune`のみ追加対応が必要だった: `PublicDemoState.advanceToJune`系と異なり`advanceToJuly`は`engineersAssigned`を**caller供給の`assignedInJuly`で無条件に上書き**する（`recordNewJoins`の加算結果を後から潰してしまう）ため、`assignedInJuly: assignedInJuly + joined.newlyJoinedWithOrders`として、新規juneOrdered入社分を明示的に加算してから渡すよう修正。`closeJuly`/`closeOrdinaryMonth`の下流（`PublicDemoSummerBonusPayment.closeJuly`/`advanceToNextOrdinaryMonth`）は`engineersAssigned`/`engineersWaiting`を一切上書きしないため、`recordNewJoins`自身の加算がそのまま生き残る。
+
+### Acceptance確認
+
+- 既に勝ち取った本物のpre-entry order（`juneOrdered`）のみ引き継ぐ——fake/hard-coded assignmentの新規追加なし（既存テンプレート再利用のみ）。
+- May挙動は無変更（`closeMay`自体を変更していない、既存772テストが無傷）。
+- 6月/7月/8月joinでpre-entry orderあり→joined + assigned exactly once（新規regression testで確認）。
+- pre-entry orderなしのjoinは従来通りwaiting（新規regression testで確認、fake assignmentを生成しないことも確認）。
+- duplicate/retry/save-reload安全——同一applicantへの重複assignment・重複engineer・重複headcountなし（新規regression testで確認）。
+- #218 seeded balance・#220 project interview reachabilityの既存regressionは無傷（後述のフルテスト結果参照）。
+
 ## Regression / Tests
 
 ### 新規/更新テストファイル
@@ -84,6 +118,8 @@ Branch: `claude/issue-221-recruitment-flow-5lv0vv`
   - join前は`PublicDemoSalary.currentMonthlySalaryFor`がnull（給与対象外）、join後は`acceptedMonthlySalary`と一致する値を返す（給与対象）
   - save/reload（`toJson`/`fromJson`）がjoin前後どちらの状態でも`hasJoined`/`engineerCount`/`joinedApplicantIds`を正しく往復
   - フルライフサイクル: 6月join→SkillSheet確認→営業開始→Matching案件紹介→上位会社面談→客先面談→受注→RECOVERY-LOOP-1経由の参画（アサイン）→給与/売上（assignedEngineerIds反映）まで、既存productionコマンドのみで到達できることを実証
+  - **（P1 Fix追加）** pre-entry order保持 group: 6月/7月joinでpre-entry order（`juneOrdered`）を持つ応募者が、実在するassignmentを伴ってjoinし`engineersAssigned`に反映されること／pre-entry orderを持たない応募者は従来通りwaitingとしてjoinし、fakeなassignmentを一切生成しないこと／同一closeを再実行しても重複assignmentが生まれないことを検証（`walkToPreEntryOrder`ヘルパー使用、`recordPreEntryPartnerInterviewResult`/`recordPreEntryClientInterviewResult`が応募者自身の`salesSkillFit`から決定的にpass/failを導出するため、該当2テストは`salesSkillFit>=65`を確実に引く`runSeed`を明示指定——3回連続実行で決定性を確認済み）。
+- **`test/game/public_demo/public_demo_seeded_balance_regression_test.dart`**（P1 Fix追加分）: `post-May recruitment structural dead end (Issue #221 FIX)`テストに、`juneOrdered`到達済み応募者のjoin後assignment存在・`engineersAssigned`反映・再クローズ後の重複なしを追加検証。
 
 ### テスト実行結果（本環境にFlutter 3.44.9 / Dart 3.12.2を新規セットアップして実行）
 
@@ -92,13 +128,13 @@ flutter analyze
   → No issues found!
 
 flutter test test/game/public_demo/
-  → 772 tests, All tests passed!（新規9テスト含む）
+  → 775 tests, All tests passed!（新規12テスト含む、P1 Fix分3件含む）
 
 flutter test test/ui/public_demo/
   → 522 tests, All tests passed!（既存UIテストに変更なし・regressionゼロ）
 
 flutter test
-  → 2082 tests, All tests passed!（フルスイート204ファイル、regressionゼロ）
+  → 2082 tests, All tests passed!（フルスイート204ファイル、regressionゼロ、P1 Fix前の測定）
 
 git diff --check
   → 差分なし（trailing whitespace等の問題なし）

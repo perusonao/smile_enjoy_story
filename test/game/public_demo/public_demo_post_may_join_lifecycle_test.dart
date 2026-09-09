@@ -468,4 +468,163 @@ void main() {
       expect(aggregate.state.engineersAssigned, greaterThanOrEqualTo(1));
     });
   });
+
+  group('pre-entry order preservation at a later join (PR #222 review '
+      'finding)', () {
+    /// Walks [applicantId] through the same pre-entry pipeline May's own
+    /// cohort uses to secure an order before officially joining —
+    /// `beginPreEntrySkillSheet` → `beginPreEntrySelling` →
+    /// `introducePreEntryProject` → `recordPreEntryPartnerInterviewResult`
+    /// → `recordPreEntryClientInterviewResult` → `recordJuneOrder` — none
+    /// of which is month-gated, so a June-or-later hire can win this exact
+    /// same order too.
+    PublicDemoAggregate walkToPreEntryOrder(
+      PublicDemoAggregate aggregate,
+      String applicantId,
+    ) => aggregate
+        .beginPreEntrySkillSheet(applicantId)
+        .beginPreEntrySelling(applicantId)
+        .introducePreEntryProject(applicantId)
+        .recordPreEntryPartnerInterviewResult(applicantId)
+        .recordPreEntryClientInterviewResult(applicantId)
+        .recordJuneOrder(applicantId);
+
+    test('a June-accepted applicant who also wins a pre-entry order before '
+        'closeJune joins already assigned to a real project — not '
+        'downgraded to a plain waiting engineer who would have to redo '
+        'Sales/Matching/interviews for an order already won', () {
+      // Seed 358's first `engineer`-medium candidate generated right after
+      // closeApril/closeMay has salesSkillFit 100 (same seed the "full
+      // lifecycle" test above uses, same generation point) — needed here
+      // because recordPreEntryPartnerInterviewResult/
+      // recordPreEntryClientInterviewResult derive pass/fail deterministically
+      // from the applicant's own salesSkillFit (>=60/>=65), so an
+      // unseeded default aggregate would make this pre-entry walk flaky.
+      var aggregate = PublicDemoAggregate.initial(runSeed: 358)
+          .closeApril(monthlyExpenses: PublicDemoSalary.baselineMonthlyExpenses)
+          .closeMay(
+            week: 9,
+            monthlyExpenses: PublicDemoSalary.baselineMonthlyExpenses,
+          ); // month 6
+      final hired = recruitAndAccept(aggregate);
+      aggregate = walkToPreEntryOrder(hired.aggregate, hired.applicantId);
+      final beforeClose = aggregate.workflow.applicants.firstWhere(
+        (candidate) => candidate.id == hired.applicantId,
+      );
+      expect(beforeClose.stage, PublicDemoApplicantStage.juneOrdered);
+      expect(beforeClose.hasJoined, isFalse);
+      final assignedBefore = aggregate.state.engineersAssigned;
+
+      aggregate = aggregate.closeJune(
+        assignedInJuly: 0,
+        monthlyExpenses: PublicDemoSalaryFinance.monthlyExpenses(
+          baselineExpenses: PublicDemoSalary.baselineMonthlyExpenses,
+          hires: aggregate.workflow.joinedApplicants,
+        ),
+      );
+
+      final applicant = aggregate.workflow.applicants.firstWhere(
+        (candidate) => candidate.id == hired.applicantId,
+      );
+      expect(applicant.hasJoined, isTrue);
+      expect(
+        aggregate.workflow.assignments
+            .any((a) => a.engineerId == hired.applicantId),
+        isTrue,
+        reason: 'the already-won pre-entry order must become a real '
+            'assignment, not be discarded',
+      );
+      expect(aggregate.state.engineersAssigned, assignedBefore + 1);
+
+      // Retrying the same close idempotently — no duplicate assignment.
+      final retried = aggregate.closeJune(
+        assignedInJuly: 0,
+        monthlyExpenses: PublicDemoSalary.baselineMonthlyExpenses,
+      );
+      expect(
+        retried.workflow.assignments
+            .where((a) => a.engineerId == hired.applicantId)
+            .length,
+        1,
+      );
+    });
+
+    test('a July-accepted applicant with a pre-entry order joins assigned '
+        'at closeJuly too — the fix generalizes beyond June', () {
+      // Seed 454's first `engineer`-medium candidate generated right after
+      // closeApril/closeMay/closeJune has salesSkillFit 100 — same
+      // determinism reason as the June test above, re-searched for this
+      // sequence's own RNG stream position (one more recruit/close ahead).
+      var aggregate = PublicDemoAggregate.initial(runSeed: 454)
+          .closeApril(monthlyExpenses: PublicDemoSalary.baselineMonthlyExpenses)
+          .closeMay(
+            week: 9,
+            monthlyExpenses: PublicDemoSalary.baselineMonthlyExpenses,
+          )
+          .closeJune(
+            assignedInJuly: 0,
+            monthlyExpenses: PublicDemoSalary.baselineMonthlyExpenses,
+          ); // month 7
+      final hired = recruitAndAccept(aggregate);
+      aggregate = walkToPreEntryOrder(hired.aggregate, hired.applicantId);
+      final assignedBefore = aggregate.state.engineersAssigned;
+
+      aggregate = aggregate.closeJuly(
+        monthlyExpenses: PublicDemoSalaryFinance.monthlyExpenses(
+          baselineExpenses: PublicDemoSalary.baselineMonthlyExpenses,
+          hires: aggregate.workflow.joinedApplicants,
+          month: 7,
+        ),
+      );
+
+      final applicant = aggregate.workflow.applicants.firstWhere(
+        (candidate) => candidate.id == hired.applicantId,
+      );
+      expect(applicant.hasJoined, isTrue);
+      expect(
+        aggregate.workflow.assignments
+            .any((a) => a.engineerId == hired.applicantId),
+        isTrue,
+      );
+      expect(aggregate.state.engineersAssigned, assignedBefore + 1);
+    });
+
+    test('a June-accepted applicant WITHOUT a pre-entry order still joins '
+        'as a plain waiting engineer — the fix only preserves a genuine, '
+        'already-won order, it never fabricates an assignment for someone '
+        'who never earned one', () {
+      var aggregate = PublicDemoAggregate.initial()
+          .closeApril(monthlyExpenses: PublicDemoSalary.baselineMonthlyExpenses)
+          .closeMay(
+            week: 9,
+            monthlyExpenses: PublicDemoSalary.baselineMonthlyExpenses,
+          ); // month 6
+      final hired = recruitAndAccept(aggregate);
+      // No pre-entry pipeline walked — stage stays offerAccepted.
+
+      final aggregateAfter = hired.aggregate.closeJune(
+        assignedInJuly: 0,
+        monthlyExpenses: PublicDemoSalaryFinance.monthlyExpenses(
+          baselineExpenses: PublicDemoSalary.baselineMonthlyExpenses,
+          hires: hired.aggregate.workflow.joinedApplicants,
+        ),
+      );
+
+      final applicant = aggregateAfter.workflow.applicants.firstWhere(
+        (candidate) => candidate.id == hired.applicantId,
+      );
+      expect(applicant.hasJoined, isTrue);
+      expect(
+        aggregateAfter.workflow.assignments
+            .any((a) => a.engineerId == hired.applicantId),
+        isFalse,
+      );
+      expect(
+        aggregateAfter.workflow.engineers
+            .firstWhere((e) => e.id == hired.applicantId)
+            .stage,
+        PublicDemoSalesStage.waiting,
+      );
+    });
+  });
 }

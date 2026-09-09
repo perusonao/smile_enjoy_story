@@ -659,21 +659,33 @@ class PublicDemoState {
   /// Anyone already present in [joinedApplicantIds] is skipped, so passing
   /// an already-recorded cohort again — a retried close, or the same
   /// applicant surviving into a later month's call — never double-counts
-  /// headcount or duplicates payroll membership. Newly joined engineers
-  /// start in the waiting pool, exactly like May's extra (non-ordered)
-  /// hires.
+  /// headcount or duplicates payroll membership.
+  ///
+  /// [joinedWithOrders] mirrors [advanceToJune]'s own `hiredWithOrders`:
+  /// the count, among these same newly joined applicants, who joined with
+  /// an already-won pre-entry order (a genuine
+  /// [PublicDemoApplicantStage.juneOrdered] pass — see
+  /// [PublicDemoWorkflowState.appendPreEntryOrderAssignments]) and
+  /// therefore start assigned rather than waiting, exactly like May's
+  /// `juneOrdered` cohort — never a plain waiting engineer forced to redo
+  /// Sales/Matching for an order they already won (Issue #221 PR #222
+  /// review finding). Clamped to [0, newlyJoinedIds.length] so a
+  /// caller-miscounted value can never push either bucket negative.
   PublicDemoState recordNewJoins(
-    Iterable<PublicDemoApplicant> joinedApplicants,
-  ) {
+    Iterable<PublicDemoApplicant> joinedApplicants, {
+    int joinedWithOrders = 0,
+  }) {
     final newlyJoinedIds = <String>{
       for (final applicant in joinedApplicants)
         if (applicant.hasJoined && !joinedApplicantIds.contains(applicant.id))
           applicant.id,
     };
     if (newlyJoinedIds.isEmpty) return this;
+    final ordered = joinedWithOrders.clamp(0, newlyJoinedIds.length);
     return _copyWith(
       engineerCount: engineerCount + newlyJoinedIds.length,
-      engineersWaiting: engineersWaiting + newlyJoinedIds.length,
+      engineersAssigned: engineersAssigned + ordered,
+      engineersWaiting: engineersWaiting + (newlyJoinedIds.length - ordered),
       joinedApplicantIds: [...joinedApplicantIds, ...newlyJoinedIds],
     );
   }

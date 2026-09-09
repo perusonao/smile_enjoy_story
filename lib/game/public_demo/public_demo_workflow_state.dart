@@ -645,6 +645,52 @@ class PublicDemoWorkflowState {
     return _copyWith(applicants: updated);
   }
 
+  /// Appends a real assignment for every applicant in [newlyJoined] who
+  /// joined this close with an already-won pre-entry order
+  /// ([PublicDemoApplicantStage.juneOrdered]) — the exact same
+  /// authoritative template [assignOrderedForMay]'s own `juneOrdered`
+  /// branch already uses for May's cohort, reused here so a June-or-later
+  /// hire's already-earned order (a genuine pass through
+  /// `beginPreEntrySkillSheet` → `beginPreEntrySelling` →
+  /// `introducePreEntryProject` → `recordPreEntryPartnerInterviewResult` →
+  /// `recordPreEntryClientInterviewResult` → `recordJuneOrder`) is not
+  /// silently discarded into a plain waiting engineer, forcing them to
+  /// redo Sales/Matching/interviews from scratch (Issue #221 PR #222
+  /// review finding).
+  ///
+  /// APPEND-only — mirrors [recoverLateYearAssignment]'s own safety
+  /// contract, never [assignOrderedForMay]'s wholesale rebuild: every
+  /// assignment already on [assignments] for a different `engineerId` is
+  /// left completely untouched. Idempotent: an applicant who already has
+  /// an assignment entry — a retried close, or one already handled by an
+  /// earlier call this same month — is skipped, so this never double-adds
+  /// an assignment (and therefore never double-books revenue/payroll)
+  /// for the same applicant.
+  PublicDemoWorkflowState appendPreEntryOrderAssignments(
+    Iterable<PublicDemoApplicant> newlyJoined,
+  ) {
+    final existingIds = assignments
+        .map((assignment) => assignment.engineerId)
+        .toSet();
+    final additions = [
+      for (final applicant in newlyJoined)
+        if (applicant.hasJoined &&
+            applicant.stage == PublicDemoApplicantStage.juneOrdered &&
+            !existingIds.contains(applicant.id))
+          PublicDemoAssignment(
+            engineerId: applicant.id,
+            engineerName: applicant.name,
+            projectName: '新規開発支援',
+            deliveryPressure: 50,
+            budgetHealth: 70,
+            humanity: 70,
+          ),
+    ];
+    return additions.isEmpty
+        ? this
+        : _withAssignments([...assignments, ...additions]);
+  }
+
   Iterable<PublicDemoApplicant> get joinedApplicants =>
       applicants.where((applicant) => applicant.hasJoined);
 

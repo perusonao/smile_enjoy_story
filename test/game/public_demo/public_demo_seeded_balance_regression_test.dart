@@ -192,9 +192,20 @@ void main() {
       expect(aggregate.state.joinedApplicantIds, contains(applicantId));
       expect(aggregate.state.engineerCount, engineersBefore + 1);
 
+      // PR #222 review finding: the already-won juneOrdered pre-entry
+      // order must survive into a real assignment — not be silently
+      // downgraded to a plain waiting engineer who has to redo
+      // Sales/Matching/interviews for an order they already earned.
+      expect(
+        aggregate.workflow.assignments.any((a) => a.engineerId == applicantId),
+        isTrue,
+      );
+      expect(aggregate.state.engineersAssigned, greaterThanOrEqualTo(1));
+
       // Closing the next ordinary month again re-processes this same
       // already-joined applicant (idempotent — no double-join, no
-      // duplicate engineer, no double-counted headcount).
+      // duplicate engineer, no double-counted headcount, no duplicate
+      // assignment).
       final retried = aggregate.closeOrdinaryMonth(monthlyExpenses: 10000);
       expect(
         retried.workflow.engineers.where((e) => e.id == applicantId).length,
@@ -202,6 +213,12 @@ void main() {
       );
       expect(
         retried.state.joinedApplicantIds.where((id) => id == applicantId).length,
+        1,
+      );
+      expect(
+        retried.workflow.assignments
+            .where((a) => a.engineerId == applicantId)
+            .length,
         1,
       );
     });

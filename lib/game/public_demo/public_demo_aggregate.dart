@@ -1300,9 +1300,19 @@ class PublicDemoAggregate {
       workflow: joined.workflow,
     );
     final closedState = PublicDemoMonthlyClose.closeJune(
-      state: grown.state.recordNewJoins(joined.newlyJoined),
+      state: grown.state.recordNewJoins(
+        joined.newlyJoined,
+        joinedWithOrders: joined.newlyJoinedWithOrders,
+      ),
       monthlyExpenses: monthlyExpenses,
-      assignedInJuly: assignedInJuly,
+      // [advanceToJuly] (via this facade) overwrites engineersAssigned
+      // outright from this param — it never sees state.recordNewJoins's
+      // own additive engineersAssigned above — so a newly joined
+      // juneOrdered hire's assignment must be folded in here too, on top
+      // of the caller's own (pre-join) continuation-decision count, or
+      // they would be counted as waiting for this one month despite
+      // already having a real assignment on [joined.workflow.assignments].
+      assignedInJuly: assignedInJuly + joined.newlyJoinedWithOrders,
     ).state;
     return _copyWith(
       state: _withNewEngineerRuntimes(closedState, joined.newlyJoined),
@@ -1345,7 +1355,10 @@ class PublicDemoAggregate {
       workflow: joined.workflow,
     );
     final closedState = PublicDemoMonthlyClose.closeJuly(
-      state: grown.state.recordNewJoins(joined.newlyJoined),
+      state: grown.state.recordNewJoins(
+        joined.newlyJoined,
+        joinedWithOrders: joined.newlyJoinedWithOrders,
+      ),
       monthlyExpenses: monthlyExpenses,
       applicants: workflow.joinedApplicants,
     ).state;
@@ -1372,7 +1385,10 @@ class PublicDemoAggregate {
       workflow: joined.workflow,
     );
     final closedState = PublicDemoMonthlyClose.closeOrdinaryMonth(
-      state: grown.state.recordNewJoins(joined.newlyJoined),
+      state: grown.state.recordNewJoins(
+        joined.newlyJoined,
+        joinedWithOrders: joined.newlyJoinedWithOrders,
+      ),
       monthlyExpenses: monthlyExpenses,
     ).state;
     return _copyWith(
@@ -1392,13 +1408,27 @@ class PublicDemoAggregate {
   /// [PublicDemoWorkflowState.applicants] down to the accepted subset: that
   /// pruning was a one-time founding-cohort cutoff specific to May, and
   /// recruitment keeps running every month after that — see
-  /// [PublicDemoWorkflowState.joinAcceptedForFiscalClose]'s own doc. Callers
-  /// below still finish the headcount/roster projection themselves — via
-  /// [PublicDemoState.recordNewJoins] and [_withNewEngineerRuntimes] — using
-  /// [newlyJoined], because each caller commits its own [PublicDemoState] at
-  /// a different point (before/after Growth, before/after the summer-bonus
-  /// preview gate).
-  ({PublicDemoWorkflowState workflow, List<PublicDemoApplicant> newlyJoined})
+  /// [PublicDemoWorkflowState.joinAcceptedForFiscalClose]'s own doc.
+  ///
+  /// A newly joined applicant who also already won a pre-entry order
+  /// ([PublicDemoWorkflowState.appendPreEntryOrderAssignments]) gets a real
+  /// assignment here too — PR #222 review finding: without this, that
+  /// already-earned order was silently discarded, downgrading them to a
+  /// plain waiting engineer forced to redo Sales/Matching from scratch.
+  /// [newlyJoinedWithOrders] reports how many, so callers can fold them
+  /// into the headcount/assigned projection ([PublicDemoState
+  /// .recordNewJoins]) exactly like May's own `juneOrdered` cohort.
+  ///
+  /// Callers below still finish the headcount/roster projection themselves
+  /// — via [PublicDemoState.recordNewJoins] and [_withNewEngineerRuntimes]
+  /// — using [newlyJoined]/[newlyJoinedWithOrders], because each caller
+  /// commits its own [PublicDemoState] at a different point (before/after
+  /// Growth, before/after the summer-bonus preview gate).
+  ({
+    PublicDemoWorkflowState workflow,
+    List<PublicDemoApplicant> newlyJoined,
+    int newlyJoinedWithOrders,
+  })
   _joinAcceptedApplicants() {
     final nextWorkflow = workflow.joinAcceptedForFiscalClose(
       week: state.month * 4,
@@ -1411,11 +1441,25 @@ class PublicDemoAggregate {
               !state.joinedApplicantIds.contains(applicant.id),
         )
         .toList();
+    if (newlyJoined.isEmpty) {
+      return (
+        workflow: nextWorkflow,
+        newlyJoined: newlyJoined,
+        newlyJoinedWithOrders: 0,
+      );
+    }
+    final newlyJoinedWithOrders = newlyJoined
+        .where(
+          (applicant) =>
+              applicant.stage == PublicDemoApplicantStage.juneOrdered,
+        )
+        .length;
     return (
-      workflow: newlyJoined.isEmpty
-          ? nextWorkflow
-          : nextWorkflow.withJoinedEngineers(newlyJoined),
+      workflow: nextWorkflow
+          .withJoinedEngineers(newlyJoined)
+          .appendPreEntryOrderAssignments(newlyJoined),
       newlyJoined: newlyJoined,
+      newlyJoinedWithOrders: newlyJoinedWithOrders,
     );
   }
 

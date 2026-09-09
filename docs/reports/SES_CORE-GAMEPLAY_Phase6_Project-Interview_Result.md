@@ -1,6 +1,6 @@
 # SES CORE-GAMEPLAY Phase 6: Project Interview Gameplay — Result
 
-Status: **Phase 6 closed pending this update's merge-gate re-review. Merged onto latest `main` (PR #213); every Codex finding through this update fixed (P1, P1-1, P1-2, P2 duplicate-follow-up, P2-1 malformed-session-restore, P2-2 dialog-launch-serialization, P2 proposal/pass authority-chain, and this update's two scoped fixes: P2 duplicate-proposal rejection and P2 accumulated-evaluation recomputation) — no new broad audit performed this update, per explicit scope limit; `flutter analyze` clean, full test suite green (1998/1998)**
+Status: **Phase 6 closed pending this update's merge-gate re-review. Merged onto latest `main` (PR #213); every Codex finding through this update fixed (P1, P1-1, P1-2, P2 duplicate-follow-up, P2-1 malformed-session-restore, P2-2 dialog-launch-serialization, P2 proposal/pass authority-chain, P2 duplicate-proposal rejection, P2 accumulated-evaluation recomputation, and this update's single scoped fix: P2 offered-choice validation before evaluation replay) — no broad audit performed this update, per explicit scope limit; `flutter analyze` clean, full test suite green (2001/2001)**
 
 ## BASE SHA / branch / HEAD
 
@@ -69,16 +69,24 @@ Status: **Phase 6 closed pending this update's merge-gate re-review. Merged onto
   findings against that this update fixes: "Reject duplicate proposals
   before validating pass bindings" (P2) and "Validate restored accumulated
   interview evaluation" (P2).
-- **Final HEAD SHA (this update, the two scoped P2 fixes above; NO new
-  broad audit):** `930f2f7d08e5d535a1bf77b12a4409b30a357652`
-  ("fix(project-interview): reject duplicate matchingProposals and
-  recompute accumulatedEvaluation on restore (Codex P2 x2, PR #214)").
-  Note: this hash is the value actually committed and pushed; because this
-  file documents its own commit's hash, the file's bytes at the moment of
-  that commit necessarily differ infinitesimally from what a fresh re-hash
-  would produce (the well-known self-reference limit for a report that
-  names its own SHA) -- this value is not re-amended after this point and
-  is the one used consistently in the PR reply and final response.
+- HEAD after the Codex duplicate-proposal + accumulated-evaluation P2 x2
+  fixes: `34998758baa452f463a3d8f3b00a197a99672ac8` ("fix(project-interview):
+  reject duplicate matchingProposals and recompute accumulatedEvaluation on
+  restore (Codex P2 x2, PR #214)") — the report's own SHA line at the time
+  quoted `930f2f7...`, an intermediate value from before a same-session
+  amend; `3499875` is, and remains, the one actually pushed and reviewed.
+  This is the HEAD Codex reviewed and left the new "Reject restored
+  follow-ups that were never offered" P2 finding against.
+- **Final HEAD SHA (this update, the single scoped P2 fix above; NO
+  broad audit):** `41a8391b38b7ddbaf390907fc4415ff4c0ba0674`
+  ("fix(project-interview): reject restored follow-ups not among the
+  question's offered choices (Codex P2, PR #214)"). Note: this hash is the
+  value actually committed and pushed; because this file documents its own
+  commit's hash, the file's bytes at the moment of that commit necessarily
+  differ infinitesimally from what a fresh re-hash would produce (the
+  well-known self-reference limit for a report that names its own SHA) --
+  this value is not re-amended after this point and is the one used
+  consistently in the PR reply and final response.
 
 ## Main integration (PR #213 → PR #214)
 
@@ -763,6 +771,59 @@ Neither fix touches `MatchingEngine`, Finance/Month/Balance, HOME, or the
 Phase 7A lifecycle. Every prior Codex fix and all pre-existing tests
 continue to pass unmodified. Full suite after this update: 1998/1998
 (1988 prior + 10 new save-codec tests).
+
+## Codex P2 scoped fix (this update) — "Reject restored follow-ups that were never offered"
+
+This update is explicitly scoped to this one Codex finding, per the task's
+own instruction: no broad audit, no other functionality touched, existing
+PR #214. This is also the designated merge gate — the task's own framing
+treats a clean re-review here as closing Phase 6.
+
+**Finding (verified TRUE by direct code reading):**
+`_hasConsistentProjectInterviewEvaluations` (the previous update's
+accumulated-evaluation fix) replayed each recorded `playerFollowUps[i]`
+straight into `ClientInterviewEngine.evaluate` to recompute the stored
+total — but `evaluate` itself has no choice-validity guard of its own; it
+accepts any `ClientInterviewFollowUp` value unconditionally. The live
+`PublicDemoProjectInterview.chooseFollowUp` path only ever reaches
+`evaluate` after first checking `ClientInterviewEngine.choices(question)
+.contains(followUp)` (the Codex "Ignore duplicate follow-up submissions"
+fix, earlier in this PR). A shape-valid save that swapped a recorded
+follow-up for one `choices` never actually offers for that question — with
+`accumulatedEvaluation` doctored to match whatever `evaluate` produces for
+the substituted value — would replay "successfully" through the
+recomputation check and round-trip clean, even though no real interview
+session can ever reach that combination.
+
+**Fix (in `_hasConsistentProjectInterviewEvaluations`, reusing
+`ClientInterviewEngine.choices` as the sole authority — no new choice-
+validity rule invented):** immediately before replaying `playerFollowUps[i]`
+through `evaluate`, the loop now checks `ClientInterviewEngine
+.choices(questions[i]).contains(playerFollowUps[i])` and rejects the save
+if it does not hold — the exact same membership check `chooseFollowUp`
+itself already enforces at write time, now also enforced at restore time.
+The pre-existing accumulated-evaluation recomputation (this update touches
+nothing else in that method) still runs immediately after for any follow-up
+that does pass this check.
+
+**Tests** (`public_demo_save_codec_test.dart`, new group, 3 tests): a
+`playerFollowUps` entry not among the question's offered choices is
+rejected even when `accumulatedEvaluation` is doctored to exactly match
+what `evaluate` would produce for it (isolating this test from the
+separate accumulated-evaluation-tamper check); a genuine in-progress
+session (a genuinely offered follow-up) round-trips exactly; a genuine
+completed session (every follow-up genuinely offered) round-trips exactly.
+Verified this is a genuine regression-catcher by reverting the check and
+confirming the rejection test fails (`Expected: null, Actual:
+<PublicDemoAggregate>`), then restoring it and reconfirming green. Also
+re-ran the full existing accumulated-evaluation tamper-test group and the
+duplicate-proposal test group (both from the immediately preceding
+update) — all pass unmodified, confirming this fix is additive to, and
+does not interact with, either.
+
+Does not touch `MatchingEngine`, Finance/Month/Balance, HOME, or the Phase
+7A lifecycle, and touches no other Phase 6 code path. Full suite after
+this update: 2001/2001 (1998 prior + 3 new save-codec tests).
 
 ## Authority audit (READ-ONLY, before writing anything)
 

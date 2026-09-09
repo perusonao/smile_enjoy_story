@@ -181,6 +181,20 @@ class PublicDemoSaveCodec {
   /// `currentQuestionIndex` or, only once fully answered, `questions.length`
   /// — so `playerFollowUps.length` never exceeds `employeeAnswers.length`
   /// or `questions.length` in a save that reached this point.
+  ///
+  /// Codex P2 fix (PR #214) "Reject restored follow-ups that were never
+  /// offered": before replaying each `playerFollowUps[i]` through
+  /// [ClientInterviewEngine.evaluate], it must be one of
+  /// [ClientInterviewEngine.choices] for `questions[i]` — the exact same
+  /// membership check [PublicDemoProjectInterview.chooseFollowUp] itself
+  /// already enforces at write time (never a new choice-validity rule
+  /// invented here). `evaluate` has no such guard of its own — it accepts
+  /// any [ClientInterviewFollowUp] value — so a shape-valid save that
+  /// swaps a recorded follow-up for one `choices` never actually offered
+  /// for that question (with `accumulatedEvaluation` doctored to match
+  /// `evaluate`'s own output for the substituted value) would otherwise
+  /// replay "successfully" and round-trip clean, even though live gameplay
+  /// can never produce that combination.
   static bool _hasConsistentProjectInterviewEvaluations(
     PublicDemoAggregate aggregate,
   ) {
@@ -197,11 +211,16 @@ class PublicDemoSaveCodec {
       );
       var recomputed = const ClientInterviewEvaluation();
       for (var i = 0; i < session.playerFollowUps.length; i++) {
+        final question = session.questions[i];
+        final followUp = session.playerFollowUps[i];
+        if (!ClientInterviewEngine.choices(question).contains(followUp)) {
+          return false;
+        }
         final outcome = ClientInterviewEngine.evaluate(
           engineer,
-          session.questions[i],
+          question,
           session.employeeAnswers[i],
-          session.playerFollowUps[i],
+          followUp,
           seed,
           session.id,
         );

@@ -1,10 +1,14 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:smile_enjoy_story/game/engine/client_interview_engine.dart';
+import 'package:smile_enjoy_story/game/models/client_interview.dart';
 import 'package:smile_enjoy_story/game/persistence/public_demo_save_codec.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_aggregate.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_fiscal_close_id.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_interview.dart';
+import 'package:smile_enjoy_story/game/public_demo/public_demo_matching_fit.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_project_interview.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_recruitment_medium.dart';
+import 'package:smile_enjoy_story/game/public_demo/public_demo_rng.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_salary_offer.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_summer_bonus_plan.dart';
 
@@ -1005,6 +1009,130 @@ void main() {
       expect(afterEngineer.stage, beforeEngineer.stage);
       expect(afterEngineer.lastInterviewScore, beforeEngineer.lastInterviewScore);
       expect(codec.toJson(restored), codec.toJson(aggregate));
+    });
+  });
+
+  group('Codex P2 fix (PR #214) "Reject restored follow-ups that were '
+      'never offered": a recorded playerFollowUps entry must be one of '
+      'ClientInterviewEngine.choices for its own question', () {
+    PublicDemoAggregate readyInProgressAggregate({int runSeed = 1}) {
+      var aggregate = PublicDemoAggregate.initial(runSeed: runSeed)
+          .startSkillSheetReview('eng-01')
+          .beginSelling('eng-01')
+          .introduceProject('eng-01')
+          .recordEngineerInterviewResult(
+            engineerId: 'eng-01',
+            type: PublicDemoInterviewType.partner,
+          );
+      final project = aggregate
+          .projectCandidatesForMonth(aggregate.state.month)
+          .first;
+      aggregate = aggregate.proposeMatch(
+        engineerId: 'eng-01',
+        projectId: project.id,
+      );
+      aggregate = aggregate.startProjectInterview('eng-01');
+      final session = aggregate.projectInterviewSessionFor('eng-01')!;
+      aggregate = aggregate.chooseProjectInterviewFollowUp(
+        'eng-01',
+        session.currentQuestionIndex,
+        PublicDemoProjectInterview.choicesFor(session).first,
+      );
+      return aggregate;
+    }
+
+    test('a playerFollowUps entry not among the question\'s offered '
+        'choices is rejected even when accumulatedEvaluation is doctored '
+        'to exactly match what ClientInterviewEngine.evaluate would '
+        'produce for it — the live chooseFollowUp path can never produce '
+        'this combination, since it validates choice membership before '
+        'ever calling evaluate', () {
+      final aggregate = readyInProgressAggregate();
+      final session = aggregate.projectInterviewSessionFor('eng-01')!;
+      final question = session.questions[0];
+      final offered = ClientInterviewEngine.choices(question);
+      final notOffered = ClientInterviewFollowUp.values.firstWhere(
+        (choice) => !offered.contains(choice),
+      );
+      final runtime = aggregate.state.runtimeForOrNull('eng-01')!;
+      final engineer = PublicDemoEngineerProjectFit.engineerFor(runtime);
+      final seed = PublicDemoRng.derivedSeed(
+        runSeed: aggregate.state.runSeed,
+        month: session.startedWeek,
+        namespace: PublicDemoRngNamespace.projectInterview,
+        identifier: 'eng-01:${session.projectId}',
+      );
+      // Recompute what evaluate() would produce for the substituted,
+      // never-offered choice, so accumulatedEvaluation is internally
+      // "consistent" with playerFollowUps — isolating this test from the
+      // separate accumulatedEvaluation-tamper check above; only the new
+      // choice-membership check should be what rejects this envelope.
+      final outcome = ClientInterviewEngine.evaluate(
+        engineer,
+        question,
+        session.employeeAnswers[0],
+        notOffered,
+        seed,
+        session.id,
+      );
+
+      final encoded = codec.toJson(aggregate);
+      final aggregateJson = encoded['aggregate'] as Map<String, dynamic>;
+      final workflow = aggregateJson['workflow'] as Map<String, dynamic>;
+      final sessions = (workflow['projectInterviewSessions'] as List)
+          .map((entry) => Map<String, dynamic>.from(entry as Map))
+          .toList();
+      sessions[0] = {
+        ...sessions[0],
+        'playerFollowUps': [notOffered.name],
+        'accumulatedEvaluation': {
+          'technical': outcome.evaluation.technical,
+          'experience': outcome.evaluation.experience,
+          'communication': outcome.evaluation.communication,
+          'credibility': outcome.evaluation.credibility,
+          'clientFit': outcome.evaluation.clientFit,
+        },
+      };
+      final tampered = {
+        ...encoded,
+        'aggregate': {
+          ...aggregateJson,
+          'workflow': {...workflow, 'projectInterviewSessions': sessions},
+        },
+      };
+
+      expect(codec.fromJson(tampered), isNull);
+    });
+
+    test('a genuine in-progress session (a genuinely offered follow-up) '
+        'round-trips exactly — this check rejects nothing a real command '
+        'path produces', () {
+      final aggregate = readyInProgressAggregate();
+
+      final restored = codec.decode(codec.encode(aggregate));
+
+      expect(restored, isNotNull);
+      expect(codec.toJson(restored!), codec.toJson(aggregate));
+    });
+
+    test('a genuine completed session (every follow-up genuinely offered) '
+        'round-trips exactly', () {
+      var aggregate = readyInProgressAggregate();
+      var session = aggregate.projectInterviewSessionFor('eng-01')!;
+      while (session.playerFollowUps.length < session.questions.length) {
+        aggregate = aggregate.chooseProjectInterviewFollowUp(
+          'eng-01',
+          session.currentQuestionIndex,
+          PublicDemoProjectInterview.choicesFor(session).first,
+        );
+        session = aggregate.projectInterviewSessionFor('eng-01')!;
+      }
+      aggregate = aggregate.concludeProjectInterview('eng-01');
+
+      final restored = codec.decode(codec.encode(aggregate));
+
+      expect(restored, isNotNull);
+      expect(codec.toJson(restored!), codec.toJson(aggregate));
     });
   });
 }

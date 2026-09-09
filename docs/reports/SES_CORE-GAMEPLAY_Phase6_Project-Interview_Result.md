@@ -1,6 +1,6 @@
 # SES CORE-GAMEPLAY Phase 6: Project Interview Gameplay — Result
 
-Status: **Merged onto latest `main` (PR #213), a second save-codec gap found and fixed during integration, `flutter analyze` clean, full test suite green (1952/1952)**
+Status: **Merged onto latest `main` (PR #213); Codex P1-1/P1-2/P2 findings fixed; `flutter analyze` clean, full test suite green (1963/1963)**
 
 ## BASE SHA / branch / HEAD
 
@@ -30,12 +30,17 @@ Status: **Merged onto latest `main` (PR #213), a second save-codec gap found and
   ("Merge PR #213: fix Phase 5 save migration compatibility") — re-confirmed
   via a fresh `git fetch origin` as the actual `origin/main` tip, matching
   the task's expectation exactly.
-- **Final HEAD SHA (this update, main integration + save-codec fix):**
-  `038369d8e83f9b18e0b8fdcfad9b0be794394451`
-  ("fix(save): migrate interviewSessions/projectInterviewSessions before
-  strict save comparison"). (A commit's hash covers its own tree, so
-  amending this file after that hash was computed would change it again —
-  this is the value actually pushed; not re-amended after this point.)
+- HEAD after the main-integration + save-codec fix:
+  `038369d8e83f9b18e0b8fdcfad9b0be794394451` ("fix(save): migrate
+  interviewSessions/projectInterviewSessions before strict save
+  comparison") — this is the PR #214 HEAD Codex reviewed and left its
+  P1-1/P1-2/P2 findings against.
+- **Final HEAD SHA (this update, Codex P1-1/P1-2/P2 fixes):**
+  `7a0c5d8d98415a836f68abc96d8c61914aca3624` ("fix(project-interview):
+  address Codex P1-1/P1-2/P2 findings on PR #214"). (A commit's hash covers
+  its own tree, so amending this file after that hash was computed would
+  change it again — this is the value actually pushed; not re-amended
+  after this point.)
 
 ## Main integration (PR #213 → PR #214)
 
@@ -178,6 +183,115 @@ tests were added to `public_demo_save_codec_test.dart`:
 3. A save that already carries a real `projectInterviewSession` (with its
    real `engineerId`/`projectId` binding intact) round-trips it exactly,
    same non-override guarantee.
+
+## Codex P1-1/P1-2/P2 review fixes (this update)
+
+Three new findings on the post-main-integration HEAD
+(`038369d8e83f9b18e0b8fdcfad9b0be794394451`). All three root-caused by
+direct code reading before any fix was written; all three fixed with the
+smallest change that closes the gap without touching `MatchingEngine`,
+Finance/Month/Balance, HOME, or the Phase 7A lifecycle.
+
+### P1-1 — "Preserve stochastic passes when decoding saves"
+
+**Root cause:** `PublicDemoSaveCodec._hasConsistentAuthorityFacts` rejected
+any `clientInterviewPassed`/`ordered` engineer whose `lastInterviewScore` was
+below 60 — a rule written for the legacy `PublicDemoInterviewEvaluator`,
+whose `passed = score >= 60` really is a hard floor. Phase 6's own
+`ClientInterviewEngine.finalRate` + `ProjectInterviewEngine.roll` can
+legitimately **pass at any rate in its own clamped `[5, 95]` range** — a
+genuine pass at, say, 45 is exactly what "small seeded RNG on top of a real
+fit/choice-driven rate" means. That save was writable but silently
+discarded as "inconsistent" on the very next reload — real player progress
+lost.
+
+**Fix:** `PublicDemoEngineerInterviewRecord` gained an optional `projectId`
+(see P1-2 below — the two findings share one field). `_hasConsistentAuthorityFacts`
+now reads `interviewRecordProjectId`: `null` (the legacy, project-agnostic
+path) still requires `score >= 60`, **unconditionally, unchanged**; a real
+project id (a genuine Phase 6 pass) requires `score` in `[5, 95]` instead —
+Phase 6's own real range, never an unconditional pass-through. The new
+field is additive and spliced into the save-codec's comparison baseline for
+any save written before this fix (mirrors the existing per-entry
+`totalItExperienceMonths` splice), so no existing save is affected.
+
+### P1-2 — "Bind a passing record to the interviewed project"
+
+**Root cause:** `PublicDemoEngineerInterviewRecord` only ever stored
+`engineerId` — no project. After a genuine pass, `proposeMatch` still
+happily replaced that engineer's `PublicDemoMatchingProposal` with a
+*different*, never-interviewed project (it only checked assignment status),
+and `recordOrder` would then succeed using the old, employee-only record —
+ordering for a project this engineer was never actually vetted for. Fresh
+evidence confirmed this was still reachable even after the prior Codex P1
+in-progress-session fix, which only protected an *incomplete* session, not
+an already-*completed* pass.
+
+**Fix:** `PublicDemoEngineerInterviewRecord.projectId` (added for P1-1
+above) is minted with the real interviewed project's id on every genuine
+Phase 6 pass (`PublicDemoEngineerSales.applyProjectInterviewResult`).
+`PublicDemoWorkflowState.withMatchingProposal` now refuses to replace a
+proposal once the engineer has reached `clientInterviewPassed`/`ordered` —
+the proposal is permanently locked to the interviewed project from that
+point on (a *failed* interview is unaffected and stays freely
+re-proposable, exactly as before). `PublicDemoAggregate
+.availableEngineersForMatching` also now excludes such engineers, so
+Matching no longer offers a "提案する" that would silently no-op. This was
+the option explicitly recommended over locking `recordOrder` itself: the
+proposal can now never drift from the passed project in the first place, so
+there is nothing left for `recordOrder`/Phase 7A to need to cross-check.
+
+### P2 — "Freeze capability for the duration of an interview"
+
+**Root cause:** `PublicDemoState`'s own engineer runtime only ever changes
+at a month-close boundary — confirmed by reading
+`PublicDemoInternalTrainingTransaction.execute`, which only records a
+training *selection* mid-month (`state.selectInternalTraining`); the actual
+capability change lands later, via `applyMonthlyGrowth` at the next close.
+`startProjectInterviewSession`'s resume check (already fixed for `projectId`
+mismatch) never checked *when* the existing session was started: if the
+player closed an incomplete interview, let a month pass, and reopened it,
+the stale session's old-month questions/answers would be resumed and then
+scored (`chooseFollowUp`/`conclude`) against the engineer's new-month
+runtime — exactly the "old conversation state mixed with post-growth fit"
+Codex described.
+
+**Fix (minimal, no fake snapshot data):** `ClientInterviewSession
+.startedWeek` already exists and is already persisted — no new field was
+added. `startProjectInterviewSession`'s resume condition now also requires
+`existing.startedWeek == session.startedWeek` (the freshly-built session's
+own `startedWeek` is always the current month); a mismatch is treated
+exactly like the existing projectId-mismatch case — the stale session is
+discarded and a genuinely fresh one (new questions, current-month capability)
+replaces it, never resumed. `concludeProjectInterview` gained the matching
+defense-in-depth guard (`session.startedWeek == currentMonth`), mirroring
+the existing `projectId` guard from the prior Codex P1 fix. Verified against
+real production month-close code (`closeApril`) in a scratch probe before
+writing the permanent test: an unassigned engineer's stage/proposal/session
+are all left untouched by the close itself, and only the *next*
+`startProjectInterview` call correctly discards the stale session.
+
+### Regression tests added (this update)
+
+`public_demo_project_interview_test.dart` (6 new tests): proposing a
+different project after a genuine pass is a no-op and the engineer
+disappears from `availableEngineersForMatching`; `recordOrder` still
+succeeds normally for the actually-passed project; a *failed* interview
+stays freely re-proposable (proving the lock is pass-specific); advancing
+the month mid-interview forces a safe restart with zero carried-over
+follow-ups; both the P1-2 project lock and the P2 month-freshness check
+survive a save/reload round-trip.
+
+`public_demo_save_codec_test.dart` (5 new tests): a genuine low-score
+(`<60`) Phase 6 pass is accepted; the identical low score *without* a
+project binding is still rejected (the legacy floor is provably
+unweakened); a score above the `[5, 95]` ceiling on a project-bound record
+is rejected too; a save missing the new `interviewRecordProjectId` key
+entirely still decodes; a real end-to-end interview (genuine seeded roll,
+not a hand-crafted fixture) round-trips its project binding exactly.
+
+All pre-existing Phase 6 tests (28 domain + 8 widget, including the entire
+prior Codex P1 regression group) continue to pass unmodified.
 
 ## Authority audit (READ-ONLY, before writing anything)
 
@@ -386,13 +500,25 @@ Additive only, following the Phase 3 `interviewSessions` precedent exactly:
 - `public_demo_recovery_aggregate_test.dart`'s hardcoded schema-snapshot
   test was updated (not weakened) to include the new key, exactly like it
   already documents doing for Phase 3/Phase 5's own additive keys.
+- New field `PublicDemoEngineerInterviewRecord.projectId` (Codex P1-1/P1-2
+  fix, this update) — additive, nullable, persisted as
+  `interviewRecordProjectId` on each `workflow.engineers` entry, `null` for
+  every record minted before this fix (and for every generic-path record
+  minted since). Spliced into the save-codec's comparison baseline for any
+  pre-fix save (mirrors the existing `totalItExperienceMonths` splice), so
+  every existing save keeps decoding and round-tripping exactly as before.
 
 ## Success/fail handoff
 
 - **Pass:** `PublicDemoEngineerSales.applyProjectInterviewResult(passed:
-  true, ...)` sets `stage: clientInterviewPassed` and mints a genuine,
-  unforgeable `PublicDemoEngineerInterviewRecord` — the same record type
-  `hasGenuineInterviewRecord`/`assignOrderedForMay` already require. The
+  true, ..., projectId: ...)` sets `stage: clientInterviewPassed` and mints
+  a genuine, unforgeable `PublicDemoEngineerInterviewRecord` — bound to the
+  real interviewed project id (Codex P1-2 fix, this update) — the same
+  record type `hasGenuineInterviewRecord`/`assignOrderedForMay` already
+  require. `PublicDemoWorkflowState.withMatchingProposal` now refuses to
+  re-bind that engineer to a different project once passed, so the record's
+  own `projectId` and the engineer's current `PublicDemoMatchingProposal`
+  can never drift apart. The
   existing, **completely unmodified** `recordOrder` → `assignOrderedForMay`
   pipeline (Phase 7A's own order/assignment authority) accepts this exactly
   as it already accepts a generic client-interview pass — verified by a
@@ -444,29 +570,48 @@ Every item this task asked to specifically confirm, and how:
 | Sales slot atomicity | Re-ran the 0-slot regression tests (both the original pair and the Codex-P1-group's mid-interview-proposal-change variant) | ✅ unaffected, still passing |
 | Pass/fail continuation | Re-ran the pass→`recordOrder`→`ordered` and fail→`beginSelling` tests | ✅ unaffected, still passing |
 
+**This update (Codex P1-1/P1-2/P2 fixes) additionally verified:**
+
+| Item | Verified how | Result |
+|---|---|---|
+| `finalRate < 60` + seeded PASS → save/reload succeeds | New save-codec test: a genuine low-score (45) project-bound pass decodes successfully | ✅ fixed and verified |
+| Legacy threshold-based invalid state still rejected | New save-codec test: the identical score 45 *without* a project binding is still rejected | ✅ unweakened, verified |
+| Pass on project A, switch to project B → cannot order for the un-interviewed project | New domain test: `proposeMatch` to B after a pass on A is a no-op; proposal/record both stay on A | ✅ fixed and verified |
+| Pass project A → order project A works normally | New domain test: `recordOrder` still reaches `ordered` for the actually-passed project | ✅ verified |
+| Mid-interview project-swap prevention (prior Codex P1 fix) | Re-ran that entire 7-test group unmodified | ✅ unaffected, still passing |
+| Mid-interview month/runtime change → no old/new authority mixing | New domain test: a real `closeApril` mid-interview forces a fresh restart with zero carried-over answers on reopen | ✅ fixed and verified |
+| Save/reload preserves both new bindings | Two new domain tests: the project lock and the session's `startedWeek` both survive a round-trip | ✅ verified |
+| Sales slot atomicity (re-verified) | Existing 0-slot tests re-run; unaffected by any of the three fixes | ✅ unaffected |
+| Normal PASS/FAIL continuation (re-verified) | Existing pass/fail tests re-run; unaffected | ✅ unaffected |
+
 ## Tests
 
 New:
 
-- `test/game/public_demo/public_demo_project_interview_test.dart` (22
-  tests, 15 from the initial PR + 7 Codex P1 regression tests added in this
-  update): start/no-op preconditions, resume-not-restart, determinism,
-  choice-materially-affects-outcome, non-degenerate pass/fail distribution
-  (not a disguised coin flip), truthful failure reasons, 0-slot/no-double-
-  consumption regressions, pass→`recordOrder`→`ordered` Phase 7A handoff,
-  fail→`beginSelling` continuation, three persistence/round-trip tests
-  (in-progress, legacy-missing-key, full strict round-trip), and the
-  `Codex P1 fix (PR #214)` group covering the resumed-session
-  project-binding fix (see that section above for the full list).
+- `test/game/public_demo/public_demo_project_interview_test.dart` (28
+  tests: 15 from the initial PR + 7 Codex P1 regression tests + 6 Codex
+  P1-2/P2 regression tests added this update): start/no-op preconditions,
+  resume-not-restart, determinism, choice-materially-affects-outcome,
+  non-degenerate pass/fail distribution (not a disguised coin flip),
+  truthful failure reasons, 0-slot/no-double-consumption regressions,
+  pass→`recordOrder`→`ordered` Phase 7A handoff, fail→`beginSelling`
+  continuation, three persistence/round-trip tests (in-progress,
+  legacy-missing-key, full strict round-trip), the `Codex P1 fix (PR #214)`
+  group covering the resumed-session project-binding fix, and this update's
+  `Codex P1-2 fix`/`Codex P2 fix`/binding-survives-save-reload groups (see
+  the section above for the full list).
 - `test/ui/public_demo/public_demo_project_interview_dialog_test.dart` (8
   tests): question/answer/follow-up rendering and advancement, full
   interview-to-result flow with no raw score/percentage shown, and
   viewport/TextScaler regression across all 6 required combinations
   (390×844 / 360×800 × 1.0 / 1.3 / 2.0), each also driving one real
   follow-up tap (the densest on-screen content state) with zero exceptions.
-- `test/game/public_demo/public_demo_save_codec_test.dart` (3 new tests,
-  added this main-integration update): the `interviewSessions`/
-  `projectInterviewSessions` save-codec gap fix above.
+- `test/game/public_demo/public_demo_save_codec_test.dart` (3 tests from
+  the main-integration update + 5 new Codex P1-1 regression tests this
+  update): the `interviewSessions`/`projectInterviewSessions` gap fix, plus
+  this update's low-score-stochastic-pass/legacy-floor-unweakened/
+  out-of-range-score/legacy-missing-key/real-end-to-end-round-trip tests
+  (see the section above for the full list).
 
 Updated:
 
@@ -474,12 +619,11 @@ Updated:
   the new additive schema key to the existing hardcoded key-set assertion
   (no assertion removed or loosened).
 
-Verification run (this update, after the main integration + save-codec
-fix):
+Verification run (this update, after the Codex P1-1/P1-2/P2 fixes):
 
 ```
 flutter analyze            → No issues found!
-flutter test --concurrency=6 → 1952/1952 passed
+flutter test --concurrency=6 → 1963/1963 passed
 git diff --check           → clean (no whitespace errors)
 ```
 
@@ -499,22 +643,35 @@ No existing test was deleted, skipped, or weakened.
   assignment lifecycle/CareerHistory wiring is explicitly out of scope for
   Phase 6 per the task (Phase 7A/7B).
 - A project interview session is retried fresh (new questions) rather than
-  resuming the exact same question set after a fail — intentional, since a
-  fail returns the engineer through `selling`/`introduced`/partner
-  interview again before a new client interview can start, by which point
-  the month has very likely advanced and a fresh seed/question draw is the
-  more honest choice.
+  resuming the exact same question set after a fail, or after a month
+  boundary passes mid-interview (Codex P2 fix, this update) — intentional
+  in both cases: a fresh seed/question draw against current-month capability
+  is the more honest choice than either resuming stale state or fabricating
+  a snapshot.
+- Once an engineer reaches `clientInterviewPassed`/`ordered`, their
+  Matching proposal is now permanently locked (Codex P1-2 fix, this
+  update) — there is currently no production path back to an earlier stage
+  for such an engineer (no assignment-ends/re-entry lifecycle exists yet;
+  that is Phase 7A/7B scope), so this lock cannot yet be exercised twice
+  for the same engineer within a single playthrough. Should a future phase
+  add such a path, it would need to explicitly decide whether reaching
+  `selling` again also clears the old `interviewRecord`.
 
 ## Phase 7A handoff
 
 On a genuine pass, the engineer carries: `stage ==
 PublicDemoSalesStage.clientInterviewPassed`, a real
-`PublicDemoEngineerInterviewRecord` (`hasGenuineInterviewRecord == true`),
-`lastInterviewScore` set, and — recoverable at any time via
-`PublicDemoAggregate.projectInterviewCandidateFor(engineerId)` — the exact
-real Phase 4/5 `PublicDemoProjectCandidate`/`Project` the player interviewed
-for (never discarded; regenerable purely from `runSeed` + the still-present
-`PublicDemoMatchingProposal`). Phase 7A can read this candidate directly
+`PublicDemoEngineerInterviewRecord` — bound to the actually-interviewed
+project's id via `genuineInterviewProjectId` (Codex P1-2 fix, this update),
+never just the engineer's own id — `lastInterviewScore` set (any genuine
+value in `[5, 95]`, not only `>= 60` — Codex P1-1 fix, this update), and —
+recoverable at any time via `PublicDemoAggregate
+.projectInterviewCandidateFor(engineerId)` — the exact real Phase 4/5
+`PublicDemoProjectCandidate`/`Project` the player interviewed for (never
+discarded; regenerable purely from `runSeed` + the still-present
+`PublicDemoMatchingProposal`, which can now never drift from the passed
+project). Phase 7A can read this candidate — and now trust that
+`genuineInterviewProjectId` and the current proposal always agree — directly
 when building the full order/assignment/CareerHistory record, rather than
 falling back to `assignOrderedForMay`'s generic per-engineer template — that
 wiring itself is left to Phase 7A, per this phase's explicit scope limit.
@@ -531,8 +688,15 @@ content to `SingleChildScrollView`).
 **Second update (Codex P1 fix):** approximately 25 minutes, within the
 15–30 minute estimate.
 
-**This update (main integration to PR #213 + save-codec fix):**
+**Third update (main integration to PR #213 + save-codec fix):**
 approximately 30 minutes, within the 15–30 minute estimate's upper bound
 (the merge itself was immediate/conflict-free; the extra time went to
 discovering and fixing the `interviewSessions`/`projectInterviewSessions`
 save-codec gap and its regression tests).
+
+**This update (Codex P1-1/P1-2/P2 fixes):** approximately 45 minutes,
+within the 30–60 minute estimate (root-causing P1-1/P1-2 together — both
+traced to the same missing `projectId` field — was quick; P2's fix needed
+one scratch-probe run against real `closeApril` production code to confirm
+engineer runtime genuinely never changes mid-month before writing the
+permanent test).

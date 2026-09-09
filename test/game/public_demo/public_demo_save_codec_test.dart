@@ -3,6 +3,7 @@ import 'package:smile_enjoy_story/game/persistence/public_demo_save_codec.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_aggregate.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_fiscal_close_id.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_interview.dart';
+import 'package:smile_enjoy_story/game/public_demo/public_demo_project_interview.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_recruitment_medium.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_salary_offer.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_summer_bonus_plan.dart';
@@ -251,6 +252,165 @@ void main() {
       expect(codec.toJson(restored), codec.toJson(aggregate));
     });
   });
+
+  group('Codex P1-1 fix (PR #214): a genuine Phase 6 stochastic pass is '
+      'never conflated with the legacy threshold-evaluated one', () {
+    test('1. a genuine Phase 6 pass with finalRate (lastInterviewScore) < '
+        '60 still decodes — a stochastic pass is legitimately possible at '
+        'any rate in ClientInterviewEngine.finalRate\'s own [5, 95] range, '
+        'never only >= 60', () {
+      final encoded = codec.toJson(PublicDemoAggregate.initial());
+      final withLowScorePass = _withEngineerZero(encoded, {
+        'stage': 'clientInterviewPassed',
+        'lastInterviewScore': 45,
+        'interviewRecordEngineerId': 'eng-01',
+        'interviewRecordProjectId': 'project-4-1',
+      });
+
+      final restored = codec.fromJson(withLowScorePass);
+
+      expect(restored, isNotNull);
+      final engineer = restored!.workflow.engineers.firstWhere(
+        (e) => e.id == 'eng-01',
+      );
+      expect(engineer.stage.name, 'clientInterviewPassed');
+      expect(engineer.lastInterviewScore, 45);
+      expect(engineer.genuineInterviewProjectId, 'project-4-1');
+    });
+
+    test('2. the exact same low score WITHOUT a project binding (the '
+        'legacy, project-agnostic PublicDemoInterviewEvaluator path) is '
+        'still rejected — the >= 60 floor is not unconditionally weakened', () {
+      final encoded = codec.toJson(PublicDemoAggregate.initial());
+      final withLowScoreLegacy = _withEngineerZero(encoded, {
+        'stage': 'clientInterviewPassed',
+        'lastInterviewScore': 45,
+        'interviewRecordEngineerId': 'eng-01',
+        'interviewRecordProjectId': null,
+      });
+
+      expect(codec.fromJson(withLowScoreLegacy), isNull);
+    });
+
+    test('a genuine Phase 6 pass score above the [5, 95] clamp ceiling is '
+        'rejected — the new stochastic path still has a real, bounded '
+        'validity range, not an unconditional pass-through', () {
+      final encoded = codec.toJson(PublicDemoAggregate.initial());
+      final withOutOfRangeScore = _withEngineerZero(encoded, {
+        'stage': 'clientInterviewPassed',
+        'lastInterviewScore': 96,
+        'interviewRecordEngineerId': 'eng-01',
+        'interviewRecordProjectId': 'project-4-1',
+      });
+
+      expect(codec.fromJson(withOutOfRangeScore), isNull);
+    });
+
+    test('a legacy save with no interviewRecordProjectId key at all (a save '
+        'written before this fix) still decodes, rather than being '
+        'wholesale rejected', () {
+      var aggregate = _advancedAggregate();
+      expect(
+        aggregate.workflow.engineers.first.hasGenuineInterviewRecord,
+        isTrue,
+      );
+      final encoded = codec.toJson(aggregate);
+      final workflow = Map<String, dynamic>.from(
+        (encoded['aggregate'] as Map)['workflow'] as Map,
+      );
+      final engineers = (workflow['engineers'] as List)
+          .map(
+            (entry) => Map<String, dynamic>.from(entry as Map)
+              ..remove('interviewRecordProjectId'),
+          )
+          .toList();
+      final legacy = {
+        ...encoded,
+        'aggregate': {
+          ...(encoded['aggregate'] as Map<String, dynamic>),
+          'workflow': {...workflow, 'engineers': engineers},
+        },
+      };
+
+      final restored = codec.fromJson(legacy);
+
+      expect(restored, isNotNull);
+      // The generic pre-Phase-6 path this fixture actually used — never
+      // fabricated as project-bound just because the key was absent.
+      expect(
+        restored!.workflow.engineers.first.genuineInterviewProjectId,
+        isNull,
+      );
+    });
+
+    test('7. a genuine end-to-end Phase 6 pass (real interview, real seeded '
+        'roll) round-trips its project binding exactly', () {
+      var aggregate = PublicDemoAggregate.initial(runSeed: 1)
+          .startSkillSheetReview('eng-01')
+          .beginSelling('eng-01')
+          .introduceProject('eng-01')
+          .recordEngineerInterviewResult(
+            engineerId: 'eng-01',
+            type: PublicDemoInterviewType.partner,
+          );
+      final project = aggregate
+          .projectCandidatesForMonth(aggregate.state.month)
+          .first;
+      aggregate = aggregate.proposeMatch(
+        engineerId: 'eng-01',
+        projectId: project.id,
+      );
+      aggregate = aggregate.startProjectInterview('eng-01');
+      var session = aggregate.projectInterviewSessionFor('eng-01')!;
+      while (session.playerFollowUps.length < session.questions.length) {
+        aggregate = aggregate.chooseProjectInterviewFollowUp(
+          'eng-01',
+          PublicDemoProjectInterview.choicesFor(session).first,
+        );
+        session = aggregate.projectInterviewSessionFor('eng-01')!;
+      }
+      aggregate = aggregate.concludeProjectInterview('eng-01');
+
+      final restored = codec.decode(codec.encode(aggregate));
+
+      expect(restored, isNotNull);
+      final beforeEngineer = aggregate.workflow.engineers.firstWhere(
+        (e) => e.id == 'eng-01',
+      );
+      final afterEngineer = restored!.workflow.engineers.firstWhere(
+        (e) => e.id == 'eng-01',
+      );
+      expect(afterEngineer.stage, beforeEngineer.stage);
+      expect(afterEngineer.lastInterviewScore, beforeEngineer.lastInterviewScore);
+      expect(
+        afterEngineer.genuineInterviewProjectId,
+        beforeEngineer.genuineInterviewProjectId,
+      );
+      expect(codec.toJson(restored), codec.toJson(aggregate));
+    });
+  });
+}
+
+/// Replaces fields on `workflow.engineers[0]` in an already-encoded
+/// envelope — mirrors [_copyEnvelope]'s "shallow patch a nested map" shape,
+/// one level deeper.
+Map<String, dynamic> _withEngineerZero(
+  Map<String, dynamic> source,
+  Map<String, dynamic> engineerPatch,
+) {
+  final aggregate = source['aggregate'] as Map<String, dynamic>;
+  final workflow = aggregate['workflow'] as Map<String, dynamic>;
+  final engineers = (workflow['engineers'] as List)
+      .map((entry) => Map<String, dynamic>.from(entry as Map))
+      .toList();
+  engineers[0] = {...engineers[0], ...engineerPatch};
+  return {
+    ...source,
+    'aggregate': {
+      ...aggregate,
+      'workflow': {...workflow, 'engineers': engineers},
+    },
+  };
 }
 
 PublicDemoAggregate _advancedAggregate() {

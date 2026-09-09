@@ -93,6 +93,16 @@ class PublicDemoSaveCodec {
       // mode this comment already documents for `matchingProposals`/
       // `totalItExperienceMonths`. Spliced the same way, for the same
       // reason.
+      //
+      // Codex P1-2 fix (PR #214): the same gap again, for a THIRD kind —
+      // not a whole additive top-level field this time, but a new,
+      // always-emitted key (`interviewRecordProjectId`) inside each
+      // `workflow.engineers` entry. Every save written before this fix has
+      // no such key on any engineer entry at all (`null` for one every
+      // engineer already had — see [_withMigratedInterviewRecordProjectId]'s
+      // own doc), so it is spliced in the same per-entry way
+      // [_withMigratedEngineerRuntimeExperience] already splices
+      // `totalItExperienceMonths`.
       var baseline = _withMigratedRunSeed(json, aggregate.state.runSeed);
       baseline = _withMigratedMatchingProposals(
         baseline,
@@ -116,6 +126,7 @@ class PublicDemoSaveCodec {
             .map((session) => session.toJson())
             .toList(),
       );
+      baseline = _withMigratedInterviewRecordProjectId(baseline);
       if (_canonicalJson(baseline) != _canonicalJson(toJson(aggregate))) {
         return null;
       }
@@ -235,21 +246,50 @@ class PublicDemoSaveCodec {
       final stage = engineer['stage'];
       final score = engineer['lastInterviewScore'];
       final recordId = engineer['interviewRecordEngineerId'];
-      if (id is! String || stage is! String) return false;
+      // Additive (Codex P1-2 fix, PR #214): absent on any save predating
+      // that fix — `null` there, exactly the generic-path semantics such a
+      // record already had. A non-null value here means this pass was
+      // genuinely minted by CORE-GAMEPLAY Phase 6's own stochastic
+      // `ClientInterviewEngine.finalRate` + seeded roll
+      // (`public_demo_project_interview.dart`), never
+      // `PublicDemoInterviewEvaluator`'s fixed `>= 60` threshold — see the
+      // score-floor logic below (Codex P1-1 fix, PR #214).
+      final recordProjectId = engineer['interviewRecordProjectId'];
+      if (id is! String ||
+          stage is! String ||
+          (recordProjectId != null && recordProjectId is! String)) {
+        return false;
+      }
 
       final clientPassStage =
           stage == 'clientInterviewPassed' || stage == 'ordered';
+      // Codex P1-1 fix (PR #214): a genuine Phase 6 pass (`recordProjectId
+      // != null`) can legitimately carry ANY `ClientInterviewEngine
+      // .finalRate` value in its own clamped `[5, 95]` range — the seeded
+      // roll can pass at any rate in that range, not only `>= 60` — so the
+      // `>= 60` floor (and, symmetrically, the `<= 95` ceiling that range
+      // implies) applies ONLY to a genuine Phase 6 record. A record with no
+      // project binding at all (`recordProjectId == null`) is the legacy,
+      // project-agnostic `PublicDemoInterviewEvaluator` path, whose own
+      // `passed = score >= 60` really is a hard, unconditional floor — this
+      // never weakens that check: every pre-Phase-6 save, and every
+      // legacy-path pass minted since, still requires `score >= 60`,
+      // unchanged, with no new upper bound imposed on it either.
+      final isStochasticPass = recordProjectId != null;
+      final scoreFloor = isStochasticPass ? 5 : 60;
+      bool validScore(Object? value) =>
+          value is int &&
+          value >= scoreFloor &&
+          (!isStochasticPass || value <= 95);
       if (recordId != null) {
         if (recordId is! String ||
             recordId != id ||
             !clientPassStage ||
-            score is! int ||
-            score < 60) {
+            !validScore(score)) {
           return false;
         }
       }
-      if (clientPassStage &&
-          (recordId != id || score is! int || score < 60)) {
+      if (clientPassStage && (recordId != id || !validScore(score))) {
         return false;
       }
       if (stage == 'ordered' &&
@@ -389,6 +429,47 @@ class PublicDemoSaveCodec {
       'aggregate': {
         ...aggregate,
         'state': {...state, 'engineerRuntimes': migratedRuntimes},
+      },
+    };
+  }
+
+  /// Splices a `null` `interviewRecordProjectId` into each
+  /// `aggregate.workflow.engineers` entry that doesn't already carry that
+  /// key — a save from before CORE-GAMEPLAY Phase 6's Codex P1-2 fix.
+  /// Mirrors [_withMigratedEngineerRuntimeExperience]'s own per-entry
+  /// shape/doc, but the backward-compatible value is always `null` here
+  /// (never a value resolved per-entry): every
+  /// [PublicDemoEngineerInterviewRecord] minted before this fix existed was
+  /// necessarily the generic, project-agnostic
+  /// [PublicDemoEngineerSales.evaluateInterview] kind — see
+  /// [PublicDemoEngineerInterviewRecord.projectId]'s own doc — so `null` is
+  /// the genuinely correct value for every one of them, not a placeholder.
+  /// Deliberately does not handle `engineers` being entirely absent — no
+  /// save predates that field.
+  static Map<String, dynamic> _withMigratedInterviewRecordProjectId(
+    Map<String, dynamic> envelope,
+  ) {
+    final aggregate = (envelope['aggregate'] as Map).cast<String, dynamic>();
+    final workflow = (aggregate['workflow'] as Map).cast<String, dynamic>();
+    final engineersRaw = workflow['engineers'];
+    if (engineersRaw is! List) return envelope;
+    var changed = false;
+    final migratedEngineers = <Map<String, dynamic>>[];
+    for (final raw in engineersRaw) {
+      final entry = (raw as Map).cast<String, dynamic>();
+      if (entry.containsKey('interviewRecordProjectId')) {
+        migratedEngineers.add(entry);
+      } else {
+        changed = true;
+        migratedEngineers.add({...entry, 'interviewRecordProjectId': null});
+      }
+    }
+    if (!changed) return envelope;
+    return {
+      ...envelope,
+      'aggregate': {
+        ...aggregate,
+        'workflow': {...workflow, 'engineers': migratedEngineers},
       },
     };
   }

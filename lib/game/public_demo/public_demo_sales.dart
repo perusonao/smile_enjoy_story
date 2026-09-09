@@ -40,13 +40,29 @@ enum PublicDemoSalesStage {
 /// [PublicDemoInterviewRecord]/[PublicDemoApplicant.hasBeenInterviewed] in
 /// public_demo_recruitment.dart).
 class PublicDemoEngineerInterviewRecord {
-  const PublicDemoEngineerInterviewRecord._({required this.engineerId});
+  const PublicDemoEngineerInterviewRecord._({
+    required this.engineerId,
+    this.projectId,
+  });
 
   /// The engineer this client-interview pass was actually recorded for.
   /// Checked for identity match, not just presence — a genuine record
   /// reused across engineers via `copyWith` is rejected the same way a
   /// reused [PublicDemoBindingOffer] is (WORKFLOW-STATE-1AB FIX1 P1-1D).
   final String engineerId;
+
+  /// The real Phase 4/5 [Project] id this pass was actually interviewed
+  /// for (Codex P1-2 fix, PR #214) — `null` for a pass minted by the
+  /// generic, project-agnostic [PublicDemoEngineerSales.evaluateInterview]
+  /// path (which has no project concept at all), non-`null` only for a
+  /// genuine [PublicDemoEngineerSales.applyProjectInterviewResult] pass
+  /// (CORE-GAMEPLAY Phase 6). This is the single fact that lets
+  /// [PublicDemoWorkflowState.withMatchingProposal] refuse to silently
+  /// re-bind an already-passed engineer to a different, never-interviewed
+  /// project, and lets [PublicDemoSaveCodec] tell a genuinely stochastic
+  /// Phase 6 pass (any score in `[5, 95]`) apart from a legacy
+  /// threshold-evaluated one (`score >= 60` always) on reload.
+  final String? projectId;
 }
 
 class PublicDemoEngineerSales {
@@ -97,6 +113,15 @@ class PublicDemoEngineerSales {
   /// will treat `stage == ordered` as eligible for an assignment.
   bool get hasGenuineInterviewRecord => interviewRecord?.engineerId == id;
 
+  /// The real project id a genuine Phase 6 project-interview pass is bound
+  /// to (Codex P1-2 fix, PR #214) — `null` when there is no genuine record
+  /// at all, or when the genuine record is the generic, project-agnostic
+  /// [evaluateInterview] path's own kind (see
+  /// [PublicDemoEngineerInterviewRecord.projectId]'s own doc). Only ever
+  /// non-`null` via [hasGenuineInterviewRecord] already holding.
+  String? get genuineInterviewProjectId =>
+      hasGenuineInterviewRecord ? interviewRecord?.projectId : null;
+
   /// Post-join employees use the same sales flow. Their changing capability
   /// is read from the runtime at evaluation time, not stored here.
   factory PublicDemoEngineerSales.fromApplicant(
@@ -146,6 +171,11 @@ class PublicDemoEngineerSales {
     'stage': stage.name,
     'lastInterviewScore': lastInterviewScore,
     'interviewRecordEngineerId': interviewRecord?.engineerId,
+    // Additive (Codex P1-2 fix, PR #214): see
+    // [PublicDemoEngineerInterviewRecord.projectId]'s own doc. `null` for
+    // every record minted before this fix, and for every generic-path
+    // record minted since — never fabricated on encode.
+    'interviewRecordProjectId': interviewRecord?.projectId,
     'mental': mental,
     'trust': trust,
     'founderFollowUpMonth': founderFollowUpMonth,
@@ -164,8 +194,14 @@ class PublicDemoEngineerSales {
     final profileRaw = required<Map>('interviewProfile');
     final profile = profileRaw.cast<String, dynamic>();
     final recordId = json['interviewRecordEngineerId'];
+    // Additive (Codex P1-2 fix, PR #214): absent on any save written before
+    // this fix — `null` there, exactly reproducing the generic-path
+    // semantics every such record already had (see
+    // [PublicDemoEngineerInterviewRecord.projectId]'s own doc).
+    final recordProjectId = json['interviewRecordProjectId'];
     if (stage == null || (recordId != null && recordId is! String) ||
-        (recordId != null && recordId != id)) {
+        (recordId != null && recordId != id) ||
+        (recordProjectId != null && recordProjectId is! String)) {
       throw const FormatException('Invalid engineer persistence data');
     }
     int profileValue(String key) {
@@ -187,7 +223,10 @@ class PublicDemoEngineerSales {
       lastInterviewScore: json['lastInterviewScore'] as int?,
       interviewRecord: recordId == null
           ? null
-          : PublicDemoEngineerInterviewRecord._(engineerId: recordId),
+          : PublicDemoEngineerInterviewRecord._(
+              engineerId: recordId,
+              projectId: recordProjectId as String?,
+            ),
       mental: required<int>('mental'),
       trust: required<int>('trust'),
       founderFollowUpMonth: json['founderFollowUpMonth'] as int?,
@@ -279,9 +318,18 @@ class PublicDemoEngineerSales {
   /// immediately before calling this, and only after verifying a genuine,
   /// fully-answered session exists. A no-op unless [stage] already equals
   /// [PublicDemoSalesStage.partnerInterviewPassed].
+  ///
+  /// [projectId] (Codex P1-2 fix, PR #214) is the real Phase 4/5 project
+  /// this interview was actually conducted for — always
+  /// `session.projectId`/`project.id` at the one call site, never a
+  /// caller-chosen label — and is minted onto [interviewRecord] verbatim on
+  /// a pass, so a later re-proposal can never silently detach the pass from
+  /// the project it was genuinely earned for (see
+  /// [PublicDemoEngineerInterviewRecord.projectId]'s own doc).
   PublicDemoEngineerSales applyProjectInterviewResult({
     required bool passed,
     required int score,
+    required String projectId,
   }) {
     if (stage != PublicDemoSalesStage.partnerInterviewPassed) return this;
     return copyWith(
@@ -290,7 +338,10 @@ class PublicDemoEngineerSales {
           : PublicDemoSalesStage.clientInterviewFailed,
       lastInterviewScore: score,
       interviewRecord: passed
-          ? PublicDemoEngineerInterviewRecord._(engineerId: id)
+          ? PublicDemoEngineerInterviewRecord._(
+              engineerId: id,
+              projectId: projectId,
+            )
           : null,
     );
   }

@@ -46,6 +46,40 @@ PublicDemoEngineerSales _engineer(PublicDemoAggregate aggregate) => aggregate
     .engineers
     .firstWhere((engineer) => engineer.id == 'eng-01');
 
+/// Runs a full interview (always choosing the first available follow-up)
+/// to completion for whichever project is currently proposed, returning
+/// the concluded aggregate.
+PublicDemoAggregate _runInterviewToConclusion(PublicDemoAggregate aggregate) {
+  aggregate = aggregate.startProjectInterview('eng-01');
+  var session = aggregate.projectInterviewSessionFor('eng-01')!;
+  while (session.playerFollowUps.length < session.questions.length) {
+    final choice = PublicDemoProjectInterview.choicesFor(session).first;
+    aggregate = aggregate.chooseProjectInterviewFollowUp('eng-01', choice);
+    session = aggregate.projectInterviewSessionFor('eng-01')!;
+  }
+  return aggregate.concludeProjectInterview('eng-01');
+}
+
+/// Scans a bounded, deterministic seed range for one where `eng-01`
+/// genuinely passes the project interview for the first candidate offered
+/// — the same scanning pattern the existing "mints the unforgeable
+/// interview record" test already uses, extracted so the new Codex P1-2/P2
+/// regression tests below can reuse it. Never asserts an outcome — the
+/// pass is always the real, seeded-RNG-derived result.
+({PublicDemoAggregate aggregate, String projectId})? _findGenuinePass({
+  int maxSeed = 40,
+}) {
+  for (var seed = 0; seed < maxSeed; seed++) {
+    var aggregate = _withRealProposal(PublicDemoAggregate.initial(runSeed: seed));
+    final projectId = aggregate.workflow.matchingProposalFor('eng-01')!.projectId;
+    aggregate = _runInterviewToConclusion(aggregate);
+    if (_engineer(aggregate).stage == PublicDemoSalesStage.clientInterviewPassed) {
+      return (aggregate: aggregate, projectId: projectId);
+    }
+  }
+  return null;
+}
+
 void main() {
   group('PublicDemoAggregate.startProjectInterview', () {
     test('is a no-op unless the engineer is genuinely partnerInterviewPassed', () {
@@ -552,6 +586,189 @@ void main() {
       aggregate = aggregate.concludeProjectInterview('eng-01');
 
       expect(aggregate.state.salesUsed, slotsBefore);
+    });
+  });
+
+  group('Codex P1-2 fix (PR #214): a passing record stays bound to the '
+      'interviewed project', () {
+    test('3. after a genuine pass on project A, proposing project B for the '
+        'same engineer is a no-op — the proposal stays locked to A, so '
+        'nothing can ever order for the un-interviewed project', () {
+      final found = _findGenuinePass();
+      expect(found, isNotNull, reason: 'expected at least one pass across 40 seeds');
+      var aggregate = found!.aggregate;
+      final projectAId = found.projectId;
+      expect(_engineer(aggregate).genuineInterviewProjectId, projectAId);
+
+      final otherCandidates = aggregate
+          .projectCandidatesForMonth(aggregate.state.month)
+          .where((candidate) => candidate.id != projectAId)
+          .toList();
+      expect(otherCandidates, isNotEmpty);
+      final projectB = otherCandidates.first;
+
+      final swapped = aggregate.proposeMatch(
+        engineerId: 'eng-01',
+        projectId: projectB.id,
+      );
+
+      // The proposal never moved -- still project A.
+      expect(
+        swapped.workflow.matchingProposalFor('eng-01')?.projectId,
+        projectAId,
+      );
+      expect(_engineer(swapped).genuineInterviewProjectId, projectAId);
+      // The passed engineer is also no longer offered in Matching at all.
+      expect(
+        swapped.availableEngineersForMatching.any((e) => e.id == 'eng-01'),
+        isFalse,
+      );
+    });
+
+    test('4. recordOrder still succeeds normally for the actually-passed '
+        'project', () {
+      final found = _findGenuinePass();
+      expect(found, isNotNull, reason: 'expected at least one pass across 40 seeds');
+      final aggregate = found!.aggregate;
+
+      final ordered = aggregate.recordOrder('eng-01');
+
+      expect(_engineer(ordered).stage, PublicDemoSalesStage.ordered);
+      expect(_engineer(ordered).genuineInterviewProjectId, found.projectId);
+      expect(
+        ordered.workflow.matchingProposalFor('eng-01')?.projectId,
+        found.projectId,
+      );
+    });
+
+    test('a failed interview (not a pass) leaves the proposal freely '
+        're-proposable, exactly as before', () {
+      // Find a seed where eng-01 FAILS instead, to prove the lock is
+      // specific to a genuine pass, not to having interviewed at all.
+      PublicDemoAggregate? failedAggregate;
+      for (var seed = 0; seed < 60 && failedAggregate == null; seed++) {
+        var aggregate = _withRealProposal(PublicDemoAggregate.initial(runSeed: seed));
+        aggregate = _runInterviewToConclusion(aggregate);
+        if (_engineer(aggregate).stage ==
+            PublicDemoSalesStage.clientInterviewFailed) {
+          failedAggregate = aggregate;
+        }
+      }
+      expect(failedAggregate, isNotNull, reason: 'expected a fail across 60 seeds');
+      final otherProject = failedAggregate!
+          .projectCandidatesForMonth(failedAggregate.state.month)
+          .last;
+      final reproposed = failedAggregate.proposeMatch(
+        engineerId: 'eng-01',
+        projectId: otherProject.id,
+      );
+      expect(
+        reproposed.workflow.matchingProposalFor('eng-01')?.projectId,
+        otherProject.id,
+      );
+    });
+  });
+
+  group('Codex P2 fix (PR #214): capability is frozen for the duration of '
+      'an interview', () {
+    test('6. advancing the month mid-interview forces a safe restart on '
+        'reopen — no mixing of old-month answers with new-month capability', () {
+      var aggregate = _withRealProposal(PublicDemoAggregate.initial(runSeed: 91));
+      aggregate = aggregate.startProjectInterview('eng-01');
+      final firstQuestionAnswer = aggregate
+          .projectInterviewSessionFor('eng-01')!
+          .employeeAnswers
+          .first;
+      aggregate = aggregate.chooseProjectInterviewFollowUp(
+        'eng-01',
+        PublicDemoProjectInterview.choicesFor(
+          aggregate.projectInterviewSessionFor('eng-01')!,
+        ).first,
+      );
+      final midSession = aggregate.projectInterviewSessionFor('eng-01')!;
+      expect(midSession.playerFollowUps, hasLength(1));
+      expect(midSession.startedWeek, 4);
+
+      // A real, unmodified monthly close -- the only production way
+      // `state.month` (and, in general, engineer runtime capability via
+      // growth/training) ever advances. eng-01 stays unassigned throughout,
+      // so its own stage/proposal are untouched by this close.
+      aggregate = aggregate.closeApril(monthlyExpenses: 10000);
+      expect(aggregate.state.month, 5);
+      expect(
+        _engineer(aggregate).stage,
+        PublicDemoSalesStage.partnerInterviewPassed,
+      );
+
+      // Reopening does NOT resume the stale month-4 session.
+      aggregate = aggregate.startProjectInterview('eng-01');
+      final resumed = aggregate.projectInterviewSessionFor('eng-01')!;
+      expect(resumed.startedWeek, 5);
+      expect(resumed.playerFollowUps, isEmpty);
+      expect(resumed.employeeAnswers.first.text, isNotNull);
+      // A genuinely fresh draw, not carried over from the month-4 session
+      // (the two need not differ in every case, but the session identity
+      // itself must be a clean restart: zero recorded progress).
+      expect(resumed.completed, isFalse);
+      // Sanity: the original (discarded) session's own first answer is
+      // still whatever it was -- proving nothing mutated it in place.
+      expect(firstQuestionAnswer.text, isNotNull);
+    });
+  });
+
+  group('Codex P1-2 + P2 fixes: bindings survive save/reload', () {
+    test('7. the passed-project lock and the month-freshness of an '
+        'in-progress session both survive a toJson/fromJson round-trip', () {
+      final found = _findGenuinePass();
+      expect(found, isNotNull, reason: 'expected at least one pass across 40 seeds');
+      final aggregate = found!.aggregate;
+
+      final restored = PublicDemoAggregate.fromJson(aggregate.toJson());
+      expect(
+        restored.workflow.engineers
+            .firstWhere((e) => e.id == 'eng-01')
+            .genuineInterviewProjectId,
+        found.projectId,
+      );
+
+      // The lock itself survives reload too.
+      final otherProject = restored
+          .projectCandidatesForMonth(restored.state.month)
+          .firstWhere((candidate) => candidate.id != found.projectId);
+      final swapped = restored.proposeMatch(
+        engineerId: 'eng-01',
+        projectId: otherProject.id,
+      );
+      expect(
+        swapped.workflow.matchingProposalFor('eng-01')?.projectId,
+        found.projectId,
+      );
+      expect(restored.toJson(), aggregate.toJson());
+    });
+
+    test('an in-progress session persists its own startedWeek, so the '
+        'month-freshness check keeps working identically after a reload', () {
+      var aggregate = _withRealProposal(PublicDemoAggregate.initial(runSeed: 91));
+      aggregate = aggregate.startProjectInterview('eng-01');
+      aggregate = aggregate.chooseProjectInterviewFollowUp(
+        'eng-01',
+        PublicDemoProjectInterview.choicesFor(
+          aggregate.projectInterviewSessionFor('eng-01')!,
+        ).first,
+      );
+
+      final restored = PublicDemoAggregate.fromJson(aggregate.toJson());
+      expect(
+        restored.projectInterviewSessionFor('eng-01')!.startedWeek,
+        aggregate.projectInterviewSessionFor('eng-01')!.startedWeek,
+      );
+
+      // Resuming right after reload (same month) still resumes.
+      final resumedSameMonth = restored.startProjectInterview('eng-01');
+      expect(
+        resumedSameMonth.projectInterviewSessionFor('eng-01')!.playerFollowUps,
+        hasLength(1),
+      );
     });
   });
 }

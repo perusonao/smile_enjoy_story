@@ -1039,12 +1039,33 @@ class PublicDemoWorkflowState {
   /// actually names a known engineer in [engineers] — this file's own
   /// precondition-gated-transition convention (see this class's own doc),
   /// so a caller cannot record a proposal for a fabricated id.
+  ///
+  /// Also a no-op once that engineer has already reached
+  /// `clientInterviewPassed`/`ordered` (Codex P1-2 fix, PR #214): a genuine
+  /// pass is a binding real-world fact — the engineer was actually
+  /// interviewed, and evaluated, for the project their proposal named at
+  /// that moment. Allowing a later `proposeMatch` to silently swap that
+  /// proposal onto a *different*, never-interviewed project would let
+  /// [recordOrder] proceed for a project this engineer was never actually
+  /// vetted for — a correctness gap Phase 7A's real order/assignment
+  /// handoff must never inherit. Once passed, the proposal is permanently
+  /// locked to the interviewed project (recoverable at any time via
+  /// [PublicDemoEngineerSales.genuineInterviewProjectId]); a *failed*
+  /// interview (`clientInterviewFailed`) is unaffected and still freely
+  /// re-proposable, exactly as before.
   PublicDemoWorkflowState withMatchingProposal({
     required String engineerId,
     required String projectId,
     required int month,
   }) {
-    if (engineers.every((engineer) => engineer.id != engineerId)) return this;
+    final engineer = engineers
+        .where((candidate) => candidate.id == engineerId)
+        .firstOrNull;
+    if (engineer == null ||
+        engineer.stage == PublicDemoSalesStage.clientInterviewPassed ||
+        engineer.stage == PublicDemoSalesStage.ordered) {
+      return this;
+    }
     return _copyWith(
       matchingProposals: [
         for (final proposal in matchingProposals)
@@ -1096,12 +1117,28 @@ class PublicDemoWorkflowState {
   /// whenever it is already *completed* (a past pass/fail attempt — a
   /// failed project interview must be retryable after the engineer returns
   /// to selling and reaches `partnerInterviewPassed` again, for the same or
-  /// a newly proposed project — never a dead end) or when it names a
+  /// a newly proposed project — never a dead end), when it names a
   /// *different* [ClientInterviewSession.projectId] than [session] (the
   /// Codex P1 case above: the stale, project-mismatched session is safely
   /// discarded in favor of this fresh one for the currently proposed
   /// project, rather than either resuming it or leaving two sessions
-  /// around for the same engineer).
+  /// around for the same engineer), or when it names a *different*
+  /// [ClientInterviewSession.startedWeek] (Codex P2 fix, PR #214): Public
+  /// Demo's own engineer runtime only ever changes at a month-close
+  /// boundary ([PublicDemoState.applyMonthlyGrowth]/`selectInternalTraining`
+  /// itself only records a selection mid-month — the actual capability
+  /// change lands at the next close), so [session]'s own freshly-derived
+  /// `startedWeek` (always [PublicDemoState.month] at the moment [session]
+  /// was built — see [PublicDemoProjectInterview.start]) differing from the
+  /// existing incomplete session's `startedWeek` is exactly "the player
+  /// closed this interview, let at least one month pass (training/growth
+  /// may have changed this engineer's runtime), and reopened it" — resuming
+  /// would otherwise let old questions/answers (built from the old-month
+  /// capability) sit alongside new-month capability at
+  /// [chooseFollowUp]/[conclude] time. No new persisted field is needed —
+  /// this compares [ClientInterviewSession.startedWeek], which already
+  /// exists — and the stale session is safely discarded for a fresh
+  /// restart, never resumed, exactly like the projectId case above.
   PublicDemoWorkflowState startProjectInterviewSession(
     ClientInterviewSession session,
   ) {
@@ -1109,6 +1146,7 @@ class PublicDemoWorkflowState {
       (existing) =>
           existing.employeeId == session.employeeId &&
           existing.projectId == session.projectId &&
+          existing.startedWeek == session.startedWeek &&
           !existing.completed,
     );
     if (hasMatchingIncomplete) return this;
@@ -1165,7 +1203,11 @@ class PublicDemoWorkflowState {
   /// (Codex P1 fix, PR #214, defense in depth alongside
   /// [startProjectInterviewSession]'s own doc — a session left over for a
   /// since-replaced proposal must never be concluded against a different
-  /// project than the one it was actually interviewed for); and every
+  /// project than the one it was actually interviewed for); that session
+  /// was also genuinely started *this exact [currentMonth]* (Codex P2 fix,
+  /// PR #214, the same defense-in-depth pairing for the month/runtime
+  /// freeze — see [startProjectInterviewSession]'s own doc for why a
+  /// month-mismatched session must never be concluded either); and every
   /// question in that session has already received a player-chosen
   /// follow-up ([PublicDemoProjectInterview.isReadyToConclude]) — i.e. the
   /// interactive interview genuinely ran to its end, never a shortcut past
@@ -1173,6 +1215,7 @@ class PublicDemoWorkflowState {
   PublicDemoWorkflowState concludeProjectInterview({
     required String engineerId,
     required int runSeed,
+    required int currentMonth,
     required PublicDemoEngineerRuntime runtime,
     required Project project,
   }) {
@@ -1187,6 +1230,7 @@ class PublicDemoWorkflowState {
     if (session == null ||
         session.completed ||
         session.projectId != project.id ||
+        session.startedWeek != currentMonth ||
         !PublicDemoProjectInterview.isReadyToConclude(session)) {
       return this;
     }
@@ -1210,6 +1254,7 @@ class PublicDemoWorkflowState {
             candidate.applyProjectInterviewResult(
               passed: outcome.passed,
               score: outcome.score,
+              projectId: project.id,
             )
           else
             candidate,

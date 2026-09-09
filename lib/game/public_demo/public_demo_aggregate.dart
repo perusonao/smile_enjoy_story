@@ -123,14 +123,23 @@ class PublicDemoAggregate {
   /// CORE-GAMEPLAY Phase 5 (Matching Decision Gameplay): every engineer
   /// currently eligible for the matching decision flow — every engineer
   /// this workflow knows about, minus whoever [PublicDemoWorkflowState
-  /// .assignedEngineerIds] already reports as actively staffed this month.
-  /// Reuses that exact same SSOT set rather than a second "is this engineer
+  /// .assignedEngineerIds] already reports as actively staffed this month,
+  /// and minus anyone who has already reached `clientInterviewPassed`/
+  /// `ordered` (Codex P1-2 fix, PR #214): such an engineer is done with
+  /// Matching for this cycle — their proposal is now permanently locked to
+  /// the project they were genuinely interviewed/passed for (see
+  /// [PublicDemoWorkflowState.withMatchingProposal]'s own doc), so offering
+  /// them here would only ever show a "提案する" that silently does nothing.
+  /// Reuses the exact same SSOT sets rather than a second "is this engineer
   /// busy" definition.
   List<PublicDemoEngineerSales> get availableEngineersForMatching {
     final assignedIds = workflow.assignedEngineerIds(month: state.month);
     return [
       for (final engineer in workflow.engineers)
-        if (!assignedIds.contains(engineer.id)) engineer,
+        if (!assignedIds.contains(engineer.id) &&
+            engineer.stage != PublicDemoSalesStage.clientInterviewPassed &&
+            engineer.stage != PublicDemoSalesStage.ordered)
+          engineer,
     ];
   }
 
@@ -769,6 +778,7 @@ class PublicDemoAggregate {
       workflow: workflow.concludeProjectInterview(
         engineerId: engineerId,
         runSeed: runSeed,
+        currentMonth: state.month,
         runtime: runtime,
         project: candidate.project,
       ),

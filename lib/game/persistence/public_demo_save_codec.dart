@@ -152,6 +152,12 @@ class PublicDemoSaveCodec {
             .toList(),
       );
       baseline = _withMigratedInterviewRecordProjectId(baseline);
+      // CORE-GAMEPLAY Phase 7A: the same additive-new-key-inside-each-entry
+      // gap as `interviewRecordProjectId` above, this time for
+      // `workflow.assignments[*].projectId` (see [PublicDemoAssignment
+      // .projectId]'s own doc) — every save written before this field
+      // existed has no such key on any assignment entry at all.
+      baseline = _withMigratedAssignmentProjectId(baseline);
       if (_canonicalJson(baseline) != _canonicalJson(toJson(aggregate))) {
         return null;
       }
@@ -340,11 +346,29 @@ class PublicDemoSaveCodec {
     final assignmentsRaw = workflow['assignments'];
     if (engineersRaw is! List || assignmentsRaw is! List) return false;
     final assignmentEngineerIds = <String>{};
+    // CORE-GAMEPLAY Phase 7A: [PublicDemoAssignment.projectId], keyed by
+    // its own `engineerId` — cross-checked below against each engineer's
+    // `interviewRecordProjectId`, mirroring the proposal/session
+    // cross-checks already performed for that same field further down.
+    final assignmentProjectIdByEngineer = <String, String?>{};
     for (final entry in assignmentsRaw) {
       if (entry is! Map) return false;
       final engineerId = entry['engineerId'];
       if (engineerId is! String) return false;
+      // [_validateForPersistence] already rejects a duplicate `engineerId`
+      // across [PublicDemoWorkflowState.assignments] post-decode; a save
+      // reaching that check with two entries for the same id would fail
+      // there regardless, but a `Map` build here would otherwise silently
+      // let the second entry's `projectId` overwrite the first's for this
+      // cross-check specifically — reject outright instead, exactly like
+      // the duplicate-matching-proposal case below.
+      if (assignmentEngineerIds.contains(engineerId)) return false;
       assignmentEngineerIds.add(engineerId);
+      final assignmentProjectId = entry['projectId'];
+      if (assignmentProjectId != null && assignmentProjectId is! String) {
+        return false;
+      }
+      assignmentProjectIdByEngineer[engineerId] = assignmentProjectId as String?;
     }
     final engineerIds = <String>{};
 
@@ -506,6 +530,23 @@ class PublicDemoSaveCodec {
             completedSessionProjectId != recordProjectId) {
           return false;
         }
+      }
+      // CORE-GAMEPLAY Phase 7A: "projectId / engineerId / assignment
+      // identity不一致を許可しない" — a present [PublicDemoAssignment
+      // .projectId] can only ever have been minted from this exact
+      // engineer's own `genuineInterviewProjectId` (see
+      // [PublicDemoWorkflowState.assignOrderedForMay]/
+      // [recoverLateYearAssignment]'s own doc), so it must agree with
+      // `recordProjectId` whenever it is present. Deliberately one-way: a
+      // `null` assignment `projectId` is never rejected here even when
+      // `recordProjectId` is non-null — that is exactly the legacy-save
+      // shape every real save written before this field existed has (a
+      // genuine Phase 6 pass already existed pre-Phase-7A; the assignment
+      // simply never captured its project link yet), and remains fully
+      // loadable.
+      final assignmentProjectId = assignmentProjectIdByEngineer[id];
+      if (assignmentProjectId != null && assignmentProjectId != recordProjectId) {
+        return false;
       }
     }
 
@@ -792,6 +833,44 @@ class PublicDemoSaveCodec {
       'aggregate': {
         ...aggregate,
         'workflow': {...workflow, 'engineers': migratedEngineers},
+      },
+    };
+  }
+
+  /// Splices a `null` `projectId` into each `aggregate.workflow.assignments`
+  /// entry that doesn't already carry that key — a save from before
+  /// CORE-GAMEPLAY Phase 7A. Mirrors
+  /// [_withMigratedInterviewRecordProjectId]'s own per-entry shape/doc: the
+  /// backward-compatible value is always `null` here too — every assignment
+  /// persisted before this field existed was necessarily built without any
+  /// notion of a real Phase 6 project link (see [PublicDemoAssignment
+  /// .projectId]'s own doc), so `null` is the genuinely correct value for
+  /// every one of them, not a placeholder. Deliberately does not handle
+  /// `assignments` being entirely absent — no save predates that field.
+  static Map<String, dynamic> _withMigratedAssignmentProjectId(
+    Map<String, dynamic> envelope,
+  ) {
+    final aggregate = (envelope['aggregate'] as Map).cast<String, dynamic>();
+    final workflow = (aggregate['workflow'] as Map).cast<String, dynamic>();
+    final assignmentsRaw = workflow['assignments'];
+    if (assignmentsRaw is! List) return envelope;
+    var changed = false;
+    final migratedAssignments = <Map<String, dynamic>>[];
+    for (final raw in assignmentsRaw) {
+      final entry = (raw as Map).cast<String, dynamic>();
+      if (entry.containsKey('projectId')) {
+        migratedAssignments.add(entry);
+      } else {
+        changed = true;
+        migratedAssignments.add({...entry, 'projectId': null});
+      }
+    }
+    if (!changed) return envelope;
+    return {
+      ...envelope,
+      'aggregate': {
+        ...aggregate,
+        'workflow': {...workflow, 'assignments': migratedAssignments},
       },
     };
   }

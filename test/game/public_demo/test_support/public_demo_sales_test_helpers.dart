@@ -30,3 +30,27 @@ PublicDemoEngineerSales recordTestClientInterviewPass(
       type: PublicDemoInterviewType.client,
       actualCapability: actualCapability ?? engineer.interviewProfile.skillFit,
     );
+
+/// CORE-GAMEPLAY Phase 7A: the project-BOUND counterpart to
+/// [recordTestClientInterviewPass] above — mints [engineer]'s genuine
+/// client-interview-pass record through
+/// [PublicDemoEngineerSales.applyProjectInterviewResult], the real Phase 6
+/// project-interview outcome path
+/// [PublicDemoWorkflowState.concludeProjectInterview] itself calls, so the
+/// resulting [PublicDemoEngineerInterviewRecord.projectId] is genuinely
+/// non-null — exactly the fact
+/// [PublicDemoEngineerSales.genuineInterviewProjectId] and Phase 7A's
+/// assignment-identity wiring depend on. [engineer] is moved to
+/// `partnerInterviewPassed` first, mirroring [recordTestClientInterviewPass]
+/// exactly.
+PublicDemoEngineerSales recordTestProjectInterviewPass(
+  PublicDemoEngineerSales engineer, {
+  required String projectId,
+  int score = 80,
+}) => engineer
+    .copyWith(stage: PublicDemoSalesStage.partnerInterviewPassed)
+    .applyProjectInterviewResult(
+      passed: true,
+      score: score,
+      projectId: projectId,
+    );

@@ -855,14 +855,29 @@ class PublicDemoWorkflowState {
       for (final engineer in engineers)
         if (engineer.stage == PublicDemoSalesStage.ordered &&
             engineer.hasGenuineInterviewRecord)
-          publicDemoInitialAssignments
-                  .where((assignment) => assignment.engineerId == engineer.id)
-                  .firstOrNull ??
-              PublicDemoAssignment.forOrderedEngineer(
-                engineerId: engineer.id,
-                engineerName: engineer.name,
-                humanity: engineer.interviewProfile.humanity,
-              ),
+          // CORE-GAMEPLAY Phase 7A: a genuine, project-bound Phase 6 pass
+          // always produces an assignment tied to that exact real project —
+          // never the founding-engineer template/generic placeholder, even
+          // when one exists for this engineer id, so the real project
+          // identity Phase 6 already earned is never silently discarded.
+          if (engineer.genuineInterviewProjectId case final projectId?)
+            PublicDemoAssignment.forOrderedEngineer(
+              engineerId: engineer.id,
+              engineerName: engineer.name,
+              humanity: engineer.interviewProfile.humanity,
+              projectId: projectId,
+            )
+          else
+            publicDemoInitialAssignments
+                    .where(
+                      (assignment) => assignment.engineerId == engineer.id,
+                    )
+                    .firstOrNull ??
+                PublicDemoAssignment.forOrderedEngineer(
+                  engineerId: engineer.id,
+                  engineerName: engineer.name,
+                  humanity: engineer.interviewProfile.humanity,
+                ),
       for (final applicant in applicants)
         if (applicant.stage == PublicDemoApplicantStage.juneOrdered &&
             applicant.hasJoined)
@@ -926,25 +941,106 @@ class PublicDemoWorkflowState {
     final existing = assignments
         .where((assignment) => assignment.engineerId == engineerId)
         .firstOrNull;
-    final recovered =
-        (existing ??
-                publicDemoInitialAssignments
-                    .where((assignment) => assignment.engineerId == engineerId)
-                    .firstOrNull ??
-                PublicDemoAssignment.forOrderedEngineer(
-                  engineerId: engineer.id,
-                  engineerName: engineer.name,
-                  humanity: engineer.interviewProfile.humanity,
-                ))
-            .copyWith(
-              nextOrderStatus: PublicDemoNextOrderStatus.accepted,
-              replacementStage: PublicDemoReplacementStage.ordered,
-            );
+    final genuineProjectId = engineer.genuineInterviewProjectId;
+    // CORE-GAMEPLAY Phase 7A: a genuine, project-bound Phase 6 pass always
+    // produces a FRESH entry tied to that exact real project — never a
+    // reused `existing`/founding-engineer template, even when one already
+    // sits on [assignments] for this engineer id (a placeholder never
+    // activated, or a prior cycle's now-superseded entry): reusing it here
+    // would silently keep stale identity/project fields (including a
+    // `projectId` for a *different* project, or none at all) under this
+    // new genuine order. The generic, project-agnostic path (no real
+    // project behind this pass) is unchanged from before this field
+    // existed — still an UPSERT of `existing`/the template.
+    final recovered = genuineProjectId != null
+        ? PublicDemoAssignment.forOrderedEngineer(
+            engineerId: engineer.id,
+            engineerName: engineer.name,
+            humanity: engineer.interviewProfile.humanity,
+            projectId: genuineProjectId,
+          ).copyWith(
+            nextOrderStatus: PublicDemoNextOrderStatus.accepted,
+            replacementStage: PublicDemoReplacementStage.ordered,
+          )
+        : (existing ??
+                  publicDemoInitialAssignments
+                      .where(
+                        (assignment) => assignment.engineerId == engineerId,
+                      )
+                      .firstOrNull ??
+                  PublicDemoAssignment.forOrderedEngineer(
+                    engineerId: engineer.id,
+                    engineerName: engineer.name,
+                    humanity: engineer.interviewProfile.humanity,
+                  ))
+              .copyWith(
+                nextOrderStatus: PublicDemoNextOrderStatus.accepted,
+                replacementStage: PublicDemoReplacementStage.ordered,
+              );
     return _withAssignments([
       for (final assignment in assignments)
         if (assignment.engineerId == engineerId) recovered else assignment,
       if (existing == null) recovered,
     ]);
+  }
+
+  /// The single domain-owned way to end an assignment whose next-month
+  /// order was explicitly declined (CORE-GAMEPLAY Phase 7A: real
+  /// start→active→end→available lifecycle), releasing [engineerId] back to
+  /// the genuine Sales pipeline (`stage: waiting`) so they can pursue an
+  /// entirely new real project via [startSkillSheetReview] → ... →
+  /// [recordOrder] → [recoverLateYearAssignment]/[assignOrderedForMay],
+  /// exactly like any other waiting engineer — never a fake/placeholder
+  /// re-entry. This is the acceptance-criteria "ended engineer becomes
+  /// available and can re-enter Sales/Matching" path, and the counterpart
+  /// to the pre-existing `replacementStage` mini-cycle (which keeps the
+  /// SAME assignment slot and never leaves it): a player may choose either
+  /// path once `nextOrderStatus == notOffered`, but never both for the same
+  /// decision — see the precondition below.
+  ///
+  /// A no-op (idempotent, so a duplicate/re-sent command is always safe)
+  /// unless: an assignment for [engineerId] exists; its
+  /// `nextOrderStatus == notOffered` (the current project's continuation
+  /// was already explicitly declined via [PublicDemoAssignment
+  /// .willOfferNextMonthFor] — this can never fire while a renewal is still
+  /// undecided/offered/accepted); and its `replacementStage !=
+  /// PublicDemoReplacementStage.ordered` (a replacement already secured
+  /// through the existing mini-cycle is a continued, genuine assignment —
+  /// ending it here would silently discard a real order the player already
+  /// won). Removing the assignment from [assignments] and resetting the
+  /// engineer's [PublicDemoSalesStage] to `waiting` happen atomically in
+  /// one [_copyWith] call: there is no intermediate, persistable state
+  /// where the engineer is off the roster yet still frozen at `ordered`
+  /// (which would otherwise permanently lock them out of
+  /// [startSkillSheetReview], a genuine dead end), nor one where the
+  /// assignment still exists yet the engineer already reports `waiting`.
+  /// Once applied, the assignment is gone — the engineer id is no longer in
+  /// [assignedEngineerIdsUnfiltered]/[assignedEngineerIds] at all, so a
+  /// second call finds no matching assignment and is a true no-op: an
+  /// engineer's contract can never be "ended" twice.
+  PublicDemoWorkflowState endAssignment(String engineerId) {
+    final assignment = assignments
+        .where((candidate) => candidate.engineerId == engineerId)
+        .firstOrNull;
+    if (assignment == null ||
+        assignment.nextOrderStatus != PublicDemoNextOrderStatus.notOffered ||
+        assignment.replacementStage == PublicDemoReplacementStage.ordered) {
+      return this;
+    }
+    if (engineers.every((engineer) => engineer.id != engineerId)) return this;
+    return _copyWith(
+      assignments: [
+        for (final candidate in assignments)
+          if (candidate.engineerId != engineerId) candidate,
+      ],
+      engineers: [
+        for (final engineer in engineers)
+          if (engineer.id == engineerId)
+            engineer.copyWith(stage: PublicDemoSalesStage.waiting)
+          else
+            engineer,
+      ],
+    );
   }
 
   // ---------------------------------------------------------------------

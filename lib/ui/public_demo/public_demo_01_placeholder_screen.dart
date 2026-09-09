@@ -1804,6 +1804,19 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
     );
   }
 
+  /// CORE-GAMEPLAY Phase 7A (Assignment Lifecycle): ends the current
+  /// project's assignment and releases the engineer back to the real Sales
+  /// pipeline (`PublicDemoSalesStage.waiting`) — see
+  /// [PublicDemoWorkflowState.endAssignment]'s own doc for the full
+  /// precondition/atomicity contract. `_commitAggregate` here is a true
+  /// no-op unless [PublicDemoAggregate.endAssignment]'s own precondition
+  /// holds, so a stray double-tap (or a resend after an already-processed
+  /// press) can never end the same assignment twice.
+  void endAssignment(int i) {
+    final a = workflow.assignments[i];
+    _commitAggregate(_game.endAssignment(a.engineerId));
+  }
+
   Future<void> june() async {
     // Issue #168 FIRST-FUN-YEAR-ONBOARDING-1: same Month Guard wiring as
     // `april()`/`may()` above. `june()` was synchronous before this change
@@ -3113,6 +3126,18 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
             const Text('7月：現案件継続予定'),
           if (a.nextOrderStatus == PublicDemoNextOrderStatus.notOffered) ...[
             const Text('7月分発注なし'),
+            // CORE-GAMEPLAY Phase 7A (Assignment Lifecycle): the real
+            // end-of-contract path, alongside the existing 別案件探し
+            // (replacementStage) mini-cycle below — once a replacement is
+            // actually secured (`ordered`) this button no longer appears,
+            // matching [PublicDemoWorkflowState.endAssignment]'s own
+            // precondition exactly.
+            if (a.replacementStage != PublicDemoReplacementStage.ordered)
+              OutlinedButton(
+                key: Key('public-demo-assignment-end-${a.engineerId}'),
+                onPressed: () => endAssignment(i),
+                child: const Text('契約終了して営業へ戻す'),
+              ),
             if (a.replacementStage == PublicDemoReplacementStage.none)
               FilledButton(
                 onPressed: () => ars(i, PublicDemoReplacementStage.selling),

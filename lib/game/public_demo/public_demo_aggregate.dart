@@ -935,6 +935,37 @@ class PublicDemoAggregate {
     );
   }
 
+  /// The single sanctioned way to end an assignment and release its
+  /// engineer back to the real Sales pipeline (CORE-GAMEPLAY Phase 7A —
+  /// see [PublicDemoWorkflowState.endAssignment]'s own doc for the full
+  /// precondition/atomicity contract this delegates to). Mirrors
+  /// [recoverAssignment]'s own re-projection pattern exactly: on success,
+  /// atomically re-projects [PublicDemoState.engineersAssigned]/
+  /// [engineersWaiting] from the resulting canonical
+  /// [PublicDemoWorkflowState.assignedEngineerIds] (never a bare -1 delta),
+  /// so [_validateForPersistence]'s month-≥-6 projection invariant always
+  /// holds immediately after this call, exactly like every other
+  /// assignment-roster-changing command. Finance is untouched here, for the
+  /// same reason [recoverAssignment] leaves it untouched: an ended
+  /// assignment was already excluded from [PublicDemoWorkflowState
+  /// .assignedEngineerIds] for month ≥ 7 the moment its `nextOrderStatus`
+  /// became `notOffered` (never `accepted`, and `replacementStage` never
+  /// reached `ordered` — this method's own precondition), so no revenue was
+  /// ever booked for it after that point; ending it here changes no
+  /// already-recognized figure, only unblocks the engineer's own stage.
+  PublicDemoAggregate endAssignment(String engineerId) {
+    final nextWorkflow = workflow.endAssignment(engineerId);
+    if (identical(nextWorkflow, workflow)) return this;
+    final assignedIds = nextWorkflow.assignedEngineerIds(month: state.month);
+    return _copyWith(
+      state: state.copyWith(
+        engineersAssigned: assignedIds.length,
+        engineersWaiting: state.engineerCount - assignedIds.length,
+      ),
+      workflow: nextWorkflow,
+    );
+  }
+
   /// The single sanctioned way to decide a raise for [applicantId]
   /// (POST-12MONTH-1-FIX1 P1-1), via [PublicDemoRaiseTransaction] — reads
   /// [state] for the fiscal-year-completion guard, mutates only [workflow].

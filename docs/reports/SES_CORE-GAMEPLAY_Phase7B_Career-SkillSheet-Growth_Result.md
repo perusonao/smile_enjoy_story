@@ -4,7 +4,10 @@ Issue: #208
 Base branch: `main`
 Working branch: `claude/phase-7b-career-skillsheet-9k0k5s`
 BASE SHA: `a7f2938dc55ced3426aaffe82533d6e767a30f60` (Phase 7A merge commit, PR #215 — confirmed an ancestor of `origin/main` before work started)
-Final HEAD SHA: _(recorded after commit — see the final chat response for the actual value)_
+Final HEAD SHA: `7eedb59211695b4e294fb029e2c1bd0b69b3e387`
+PR: [#216](https://github.com/perusonao/smile_enjoy_story/pull/216)
+
+**Actual processing time:** ~35 minutes (git fetch/branch setup through PR creation), against the issue's 90–150 minute estimate.
 
 ## 1. Summary
 
@@ -161,6 +164,7 @@ Both are wired into `fromJson`'s baseline chain right after the existing `_withM
 | `lib/game/public_demo/public_demo_aggregate.dart` | `_closeGrowth` restructured to return `(state, workflow)` and credit `monthsCredited`/resolve industry; every month-end close (`closeApril`/`closeMay`/`closeJune`/`closeJuly`/`closeOrdinaryMonth`) updated to the new shape; `endAssignment` gains the CareerHistory writer; adds `_careerHistoryEntryFor`, `_technologiesFor`, `_industryByEngineerId`. |
 | `lib/game/persistence/public_demo_save_codec.dart` | Adds `_withMigratedAssignmentMonthsCredited`; extends `_withMigratedEngineerRuntimeExperience` to also splice `careerHistory`; wires the new splice into `fromJson`. |
 | `test/game/public_demo/public_demo_career_history_writer_test.dart` | New focused test file (8 tests) — see §9. |
+| `test/game/public_demo/public_demo_recovery_aggregate_test.dart` | Updates a pre-existing schema-lock-in test to acknowledge the new additive `monthsCredited` JSON key (caught by the full suite run — see §9). |
 
 No changes to `MatchingEngine`, HOME, Finance/balance code, or any SkillSheet UI/presentation file.
 
@@ -192,7 +196,7 @@ No changes to `MatchingEngine`, HOME, Finance/balance code, or any SkillSheet UI
 
 - `flutter analyze`: **No issues found.**
 - `git diff --check`: clean (no whitespace errors).
-- `flutter test --concurrency=6` (full suite): _(result recorded in the final chat response)_
+- `flutter test --concurrency=6` (full suite): **2040/2040 passing.** The first full run caught one pre-existing schema-lock-in test (`public_demo_recovery_aggregate_test.dart`'s "Recovery introduces no new save-schema keys" — an explicit enumeration of `PublicDemoAssignment`'s JSON keys) that needed updating to acknowledge the new additive `monthsCredited` key, following that test's own existing per-phase-field documentation convention (`// CORE-GAMEPLAY Phase 7A: ...` / now `Phase 7B: ...`). This is expected maintenance the test exists specifically to force, not a regression — the second full run passed clean.
 
 ## 10. Known limitations
 

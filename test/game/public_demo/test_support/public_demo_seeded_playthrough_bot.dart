@@ -88,7 +88,6 @@ class PublicDemoSeededPlaythroughBot {
     int? terminalMonth;
     PublicDemoFinancialStatus? terminalStatus;
     int engineersJoinedInMay = 0;
-    int monthlyExpenses = PublicDemoSalary.baselineMonthlyExpenses;
 
     void recordEngagement(int month, Iterable<String> engagedIds, Iterable<String> rosterIds) {
       for (final id in rosterIds) {
@@ -117,31 +116,27 @@ class PublicDemoSeededPlaythroughBot {
             orderedNow,
             aggregate.workflow.engineers.map((e) => e.id),
           );
-          aggregate = aggregate.closeApril(monthlyExpenses: monthlyExpenses);
+          aggregate = aggregate.closeApril(monthlyExpenses: _monthlyExpensesFor(aggregate));
 
         case 5:
           aggregate = _maybeRecruit(aggregate, log);
           aggregate = _trainThenAdvance(aggregate);
-          final hires = aggregate.workflow.applicants
-              .where(
-                (applicant) => const {
-                  PublicDemoApplicantStage.offerAccepted,
-                  PublicDemoApplicantStage.preEntrySkillSheet,
-                  PublicDemoApplicantStage.preEntrySelling,
-                  PublicDemoApplicantStage.preEntryIntroduced,
-                  PublicDemoApplicantStage.preEntryPartnerPassed,
-                  PublicDemoApplicantStage.preEntryPartnerFailed,
-                  PublicDemoApplicantStage.preEntryClientPassed,
-                  PublicDemoApplicantStage.preEntryClientFailed,
-                  PublicDemoApplicantStage.juneOrdered,
-                }.contains(applicant.stage),
-              )
-              .toList();
-          monthlyExpenses = PublicDemoSalaryFinance.monthlyExpenses(
-            baselineExpenses: PublicDemoSalary.baselineMonthlyExpenses,
-            hires: hires,
+          // Codex P1 fix (PR #218): monthlyExpenses must be computed from
+          // this workflow's own real, authoritative `joinedApplicants` —
+          // never a pre-close snapshot of applicants who have not actually
+          // joined yet (`PublicDemoSalary.currentMonthlySalaryFor` requires
+          // `hasJoined`, so a pre-join snapshot silently contributes ¥0 per
+          // hire, forever, once that stale value is reused in later
+          // months). `workflow.joinedApplicants` is still empty here (the
+          // join itself happens INSIDE `closeMay`), so this call correctly
+          // evaluates to the baseline — May's own close never charges a
+          // brand-new hire's salary for the month they joined, matching
+          // `public_demo_balance_regression_test.dart`'s own established
+          // fixture pattern.
+          aggregate = aggregate.closeMay(
+            week: 9,
+            monthlyExpenses: _monthlyExpensesFor(aggregate),
           );
-          aggregate = aggregate.closeMay(week: 9, monthlyExpenses: monthlyExpenses);
           engineersJoinedInMay = aggregate.workflow.joinedApplicantIds.length;
           final assignedIds5 = aggregate.workflow.assignedEngineerIds(month: 5);
           recordEngagement(
@@ -162,7 +157,7 @@ class PublicDemoSeededPlaythroughBot {
               .length;
           aggregate = aggregate.closeJune(
             assignedInJuly: assignedInJuly,
-            monthlyExpenses: monthlyExpenses,
+            monthlyExpenses: _monthlyExpensesFor(aggregate),
           );
           final assignedIds6 = aggregate.workflow.assignedEngineerIds(month: 6);
           recordEngagement(
@@ -188,7 +183,7 @@ class PublicDemoSeededPlaythroughBot {
             assignedIds7,
             aggregate.workflow.engineers.map((e) => e.id),
           );
-          aggregate = aggregate.closeJuly(monthlyExpenses: monthlyExpenses);
+          aggregate = aggregate.closeJuly(monthlyExpenses: _monthlyExpensesFor(aggregate));
 
         default:
           aggregate = _trainThenAdvance(aggregate);
@@ -201,7 +196,9 @@ class PublicDemoSeededPlaythroughBot {
             assignedIdsN,
             aggregate.workflow.engineers.map((e) => e.id),
           );
-          aggregate = aggregate.closeOrdinaryMonth(monthlyExpenses: monthlyExpenses);
+          aggregate = aggregate.closeOrdinaryMonth(
+            monthlyExpenses: _monthlyExpensesFor(aggregate),
+          );
       }
 
       cashByMonth[month] = aggregate.state.cash;
@@ -226,6 +223,34 @@ class PublicDemoSeededPlaythroughBot {
 
   static int _capabilityFor(PublicDemoAggregate aggregate, String engineerId) =>
       aggregate.state.runtimeForOrNull(engineerId)?.actualCapability ?? 0;
+
+  /// The real, current-month monthly expense figure — the same production
+  /// [PublicDemoSalaryFinance.monthlyExpenses] formula every other Public
+  /// Demo fixture uses, fed this workflow's own real, authoritative
+  /// [PublicDemoWorkflowState.joinedApplicants] every time it is called
+  /// (never a value cached from an earlier month, and never a snapshot of
+  /// applicants who have not actually joined yet).
+  ///
+  /// Codex P1 fix (PR #218): the bot's first version computed this once,
+  /// in May, from a PRE-close snapshot of applicants who were still
+  /// `hasJoined == false` at that moment. [PublicDemoSalary
+  /// .currentMonthlySalaryFor] requires `hasJoined` to return a hire's
+  /// salary at all — a not-yet-joined snapshot silently contributed ¥0 per
+  /// hire — and that stale, wrong value was then reused unchanged for
+  /// every month from June through March, so no May hire's salary was ever
+  /// actually deducted for the rest of the fiscal year. Calling this fresh
+  /// immediately before every single month-end close (including April/May,
+  /// where [PublicDemoWorkflowState.joinedApplicants] is still genuinely
+  /// empty — nobody has joined until `closeMay` itself runs) closes that
+  /// gap without adding a second Finance formula: this is exactly
+  /// [PublicDemoSalaryFinance.monthlyExpenses], never a bot-authored
+  /// substitute.
+  static int _monthlyExpensesFor(PublicDemoAggregate aggregate) =>
+      PublicDemoSalaryFinance.monthlyExpenses(
+        baselineExpenses: PublicDemoSalary.baselineMonthlyExpenses,
+        hires: aggregate.workflow.joinedApplicants,
+        month: aggregate.state.month,
+      );
 
   /// Runs every currently-free (no sales-slot cost) stage advance to a
   /// fixed point, then spends the month's remaining real sales-slot budget

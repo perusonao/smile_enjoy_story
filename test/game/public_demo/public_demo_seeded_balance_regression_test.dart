@@ -8,6 +8,7 @@ import 'package:smile_enjoy_story/game/public_demo/public_demo_project_generator
 import 'package:smile_enjoy_story/game/public_demo/public_demo_recruitment.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_recruitment_medium.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_salary.dart';
+import 'package:smile_enjoy_story/game/public_demo/public_demo_salary_finance.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_salary_offer.dart';
 
 import 'test_support/public_demo_seeded_playthrough_bot.dart';
@@ -185,6 +186,153 @@ void main() {
     });
   });
 
+  group('monthlyExpenses recomputation regression (Codex P1 fix, PR #218)', () {
+    // The bot's first version computed `monthlyExpenses` once, in May,
+    // from a PRE-close snapshot of applicants who were still
+    // `hasJoined == false` at that moment — `PublicDemoSalary
+    // .currentMonthlySalaryFor` requires `hasJoined`, so that snapshot
+    // silently contributed ¥0 per hire, and the stale value was then reused
+    // unchanged for every month June-March, so no May hire's salary was
+    // ever actually deducted. These tests exercise the fix directly
+    // against real production `PublicDemoAggregate`/`PublicDemoSalaryFinance`
+    // — the exact same formula the bot's own `_monthlyExpensesFor` helper
+    // calls, never a bot-authored substitute — independent of the bot's
+    // own emergent month-by-month play.
+    test('no May hire: the recomputed June expenses equal exactly the '
+        'baseline — no phantom hire is ever charged', () {
+      final aggregate = PublicDemoAggregate.initial()
+          .closeApril(monthlyExpenses: PublicDemoSalary.baselineMonthlyExpenses)
+          .closeMay(
+            week: 9,
+            monthlyExpenses: PublicDemoSalary.baselineMonthlyExpenses,
+          );
+      expect(aggregate.workflow.joinedApplicants, isEmpty);
+      final juneExpenses = PublicDemoSalaryFinance.monthlyExpenses(
+        baselineExpenses: PublicDemoSalary.baselineMonthlyExpenses,
+        hires: aggregate.workflow.joinedApplicants,
+        month: aggregate.state.month,
+      );
+      expect(juneExpenses, PublicDemoSalary.baselineMonthlyExpenses);
+    });
+
+    test('one May hire: joins by closeMay, and the recomputed June expenses '
+        'increase by exactly that hire\'s own accepted salary — May\'s own '
+        'close itself is unaffected (the hire is not on payroll for the '
+        'month they joined)', () {
+      // Mirrors the recorded `public_demo_balance_regression_test.dart`
+      // runSeed-46 fixture ordering exactly: recruit() in April, THEN
+      // closeApril, THEN the interview/offer (now at month 5 — the SAME
+      // month closeMay itself will run at). Accepting the offer before
+      // closeApril would mint a May applicant against an April
+      // PublicDemoFiscalCloseId — stale by the time closeMay checks it,
+      // silently failing the join (PublicDemoJoinTransaction.join's own
+      // "stale fiscal close" guard) — a real ordering bug this test itself
+      // caught in an earlier draft.
+      var aggregate = PublicDemoAggregate.initial(runSeed: 46)
+          .recruit(PublicDemoRecruitmentMedium.engineer)
+          .aggregate!
+          .closeApril(monthlyExpenses: PublicDemoSalary.baselineMonthlyExpenses);
+      final applicantId = aggregate.workflow.applicants.first.id;
+      final interview = aggregate.completeInterview(applicantId);
+      expect(interview.isCompleted, isTrue);
+      aggregate = interview.aggregate;
+      final applicant = aggregate.workflow.applicants.firstWhere(
+        (candidate) => candidate.id == applicantId,
+      );
+      aggregate = aggregate.acceptOffer(
+        applicantId: applicantId,
+        offer: PublicDemoSalaryOfferEvaluator.evaluate(
+          applicant: applicant,
+          offeredMonthlySalary: applicant.requestedMonthlySalary,
+        ),
+        fiscalCloseId: PublicDemoFiscalCloseId.forMonth(aggregate.state.month),
+      );
+      aggregate = aggregate.closeMay(
+        week: 9,
+        monthlyExpenses: PublicDemoSalary.baselineMonthlyExpenses,
+      );
+      final hire = aggregate.workflow.joinedApplicants.single;
+      expect(hire.id, applicantId);
+      final juneExpenses = PublicDemoSalaryFinance.monthlyExpenses(
+        baselineExpenses: PublicDemoSalary.baselineMonthlyExpenses,
+        hires: aggregate.workflow.joinedApplicants,
+        month: aggregate.state.month,
+      );
+      expect(
+        juneExpenses,
+        PublicDemoSalary.baselineMonthlyExpenses + hire.acceptedMonthlySalary!,
+      );
+      // Matches the already-locked runSeed-46 fixture value in
+      // public_demo_balance_regression_test.dart — same hire, same salary.
+      expect(juneExpenses, 1120000);
+    });
+
+    test('two May hires: both are included in the recomputed expenses', () {
+      // See the previous test's own comment: recruit() in April, THEN
+      // closeApril, THEN interview/offer at month 5 — never accept an
+      // offer before closeApril, or its PublicDemoFiscalCloseId goes stale
+      // by the time closeMay checks it.
+      var aggregate = PublicDemoAggregate.initial(runSeed: 46)
+          .recruit(PublicDemoRecruitmentMedium.engineer)
+          .aggregate!
+          .closeApril(monthlyExpenses: PublicDemoSalary.baselineMonthlyExpenses);
+      for (final applicantId in aggregate.workflow.applicants
+          .map((candidate) => candidate.id)
+          .toList()) {
+        final interview = aggregate.completeInterview(applicantId);
+        expect(interview.isCompleted, isTrue);
+        aggregate = interview.aggregate;
+        final applicant = aggregate.workflow.applicants.firstWhere(
+          (candidate) => candidate.id == applicantId,
+        );
+        final offer = PublicDemoSalaryOfferEvaluator.evaluate(
+          applicant: applicant,
+          offeredMonthlySalary: applicant.requestedMonthlySalary,
+        );
+        expect(offer.accepted, isTrue, reason: applicantId);
+        aggregate = aggregate.acceptOffer(
+          applicantId: applicantId,
+          offer: offer,
+          fiscalCloseId: PublicDemoFiscalCloseId.forMonth(aggregate.state.month),
+        );
+      }
+      aggregate = aggregate.closeMay(
+        week: 9,
+        monthlyExpenses: PublicDemoSalary.baselineMonthlyExpenses,
+      );
+      expect(aggregate.workflow.joinedApplicants, hasLength(2));
+      final juneExpenses = PublicDemoSalaryFinance.monthlyExpenses(
+        baselineExpenses: PublicDemoSalary.baselineMonthlyExpenses,
+        hires: aggregate.workflow.joinedApplicants,
+        month: aggregate.state.month,
+      );
+      final expectedTotal = PublicDemoSalary.baselineMonthlyExpenses +
+          aggregate.workflow.joinedApplicants
+              .fold<int>(0, (sum, a) => sum + a.acceptedMonthlySalary!);
+      expect(juneExpenses, expectedTotal);
+      expect(juneExpenses, 1530000); // 800000 baseline + 320000 + 410000
+    });
+
+    test('an applicant whose offer is never accepted contributes nothing '
+        'to the recomputed expenses (never joins)', () {
+      final aggregate = PublicDemoAggregate.initial(runSeed: 46)
+          .recruit(PublicDemoRecruitmentMedium.engineer)
+          .aggregate!
+          .closeApril(monthlyExpenses: PublicDemoSalary.baselineMonthlyExpenses)
+          .closeMay(
+            week: 9,
+            monthlyExpenses: PublicDemoSalary.baselineMonthlyExpenses,
+          );
+      expect(aggregate.workflow.joinedApplicants, isEmpty);
+      final juneExpenses = PublicDemoSalaryFinance.monthlyExpenses(
+        baselineExpenses: PublicDemoSalary.baselineMonthlyExpenses,
+        hires: aggregate.workflow.joinedApplicants,
+        month: aggregate.state.month,
+      );
+      expect(juneExpenses, PublicDemoSalary.baselineMonthlyExpenses);
+    });
+  });
+
   group('required-seed playthrough (deterministic bot, reproducibility)', () {
     const requiredSeeds = [0, 1, 42, 13, 666, 315, 2147483000];
 
@@ -205,28 +353,53 @@ void main() {
 
     // Exact per-seed outcomes, locked as a characterization/regression
     // test (CORE-GAMEPLAY Phase 7A/7B/Recovery/Growth/Finance formulas are
-    // all unchanged by this Issue — see the result report). A future
-    // balance change to any of those is expected to change these numbers;
-    // when it does, re-run `tool/simulate_public_demo_seeded_balance.dart`
-    // and this file together and update both intentionally, never one
-    // without re-examining the other.
+    // all unchanged by this Issue — see the result report). Re-measured
+    // after the Codex P1 fix (PR #218: monthlyExpenses now recomputed every
+    // month from the real, authoritative joinedApplicants roster) — every
+    // figure here changed from the pre-fix version of this file, because
+    // the pre-fix numbers never actually deducted a May hire's salary. A
+    // future balance change to Phase 7A/7B/Recovery/Growth/Finance is
+    // expected to change these numbers again; when it does, re-run
+    // `tool/simulate_public_demo_seeded_balance.dart` and this file
+    // together and update both intentionally, never one without
+    // re-examining the other.
     const expected = {
-      0: (reachedMarch: true, terminal: null, joinedInMay: 1, finalCash: 470000),
-      1: (reachedMarch: true, terminal: null, joinedInMay: 2, finalCash: 4260000),
-      42: (reachedMarch: true, terminal: null, joinedInMay: 2, finalCash: 4260000),
-      13: (reachedMarch: true, terminal: null, joinedInMay: 1, finalCash: 5060000),
+      0: (
+        reachedMarch: false,
+        terminal: PublicDemoFinancialStatus.bankruptcy,
+        joinedInMay: 1,
+        finalCash: -1140000,
+      ),
+      1: (
+        reachedMarch: false,
+        terminal: PublicDemoFinancialStatus.bankruptcy,
+        joinedInMay: 2,
+        finalCash: -720000,
+      ),
+      42: (
+        reachedMarch: false,
+        terminal: PublicDemoFinancialStatus.bankruptcy,
+        joinedInMay: 2,
+        finalCash: -960000,
+      ),
+      13: (reachedMarch: true, terminal: null, joinedInMay: 1, finalCash: 1560000),
       666: (
         reachedMarch: false,
         terminal: PublicDemoFinancialStatus.bankruptcy,
         joinedInMay: 1,
-        finalCash: -20000,
+        finalCash: -1240000,
       ),
-      315: (reachedMarch: true, terminal: null, joinedInMay: 2, finalCash: 4760000),
+      315: (
+        reachedMarch: false,
+        terminal: PublicDemoFinancialStatus.bankruptcy,
+        joinedInMay: 2,
+        finalCash: -790000,
+      ),
       2147483000: (
         reachedMarch: false,
         terminal: PublicDemoFinancialStatus.bankruptcy,
         joinedInMay: 2,
-        finalCash: -400000,
+        finalCash: -1660000,
       ),
     };
 
@@ -269,19 +442,34 @@ void main() {
       }
     });
 
-    test('Suzuki (eng-02) has an 8-month no-order streak in every required '
-        'seed (April through November) before training-driven Growth '
-        'finally clears the field-sales/client-interview threshold — a '
+    test('Suzuki (eng-02) has a >=6-month no-order streak in every required '
+        'seed, and the full structural 8-month minimum (April-November) '
+        'wherever the company survives long enough to show it — a '
         'CONFIRMED VIOLATION of the issue\'s own "5か月連続no-orderは実質的に '
-        '禁止" guardrail, and seed-INDEPENDENT (Suzuki\'s path never '
-        'touches the seeded project/recruitment generators at all — only '
-        'the deterministic training-growth formula). See the result '
+        '禁止" guardrail either way, and seed-INDEPENDENT (Suzuki\'s path '
+        'never touches the seeded project/recruitment generators at all — '
+        'only the deterministic training-growth formula). After the Codex '
+        'P1 fix (real May-hire payroll deduction), most required seeds now '
+        'go bankrupt before month 12 — see the result report — which '
+        'TRUNCATES the observed streak below the true 8-month structural '
+        'minimum for those seeds (the company simply does not survive long '
+        'enough to keep counting). Locked per-seed rather than a single '
+        'flat 8, unlike the pre-fix version of this test. See the result '
         'report for the root-cause analysis and recommended follow-up.', () {
+      const expectedStreak = {
+        0: 7, // bankrupt month 10 — truncated below the 8-month structural minimum.
+        1: 6, // bankrupt month 9 — truncated.
+        42: 6, // bankrupt month 9 — truncated.
+        13: 8, // reaches March — the full, untruncated structural minimum.
+        666: 7, // bankrupt month 10 — truncated.
+        315: 7, // bankrupt month 10 — truncated.
+        2147483000: 6, // bankrupt month 9 — truncated.
+      };
       for (final seed in requiredSeeds) {
         final result = PublicDemoSeededPlaythroughBot.run(seed);
         expect(
           result.longestNoOrderStreak('eng-02'),
-          8,
+          expectedStreak[seed],
           reason: 'seed $seed',
         );
       }

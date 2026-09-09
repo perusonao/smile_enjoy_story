@@ -1284,31 +1284,43 @@ class PublicDemoAggregate {
     return _copyWith(state: finalState, workflow: grown.workflow);
   }
 
-  /// Closes June (state-only; workflow is read-only here).
+  /// Closes June: also joins any applicant hired this month (Issue #221
+  /// FIRST-FUN-YEAR — see [_joinAcceptedApplicants]) before Growth and the
+  /// finance close run.
   PublicDemoAggregate closeJune({
     required int assignedInJuly,
     required int monthlyExpenses,
   }) {
     if (state.month != 6 || state.isCloseBlocked) return this;
+    final joined = _joinAcceptedApplicants();
     final grown = _closeGrowth(
-      workflow.assignments.map((assignment) => assignment.engineerId).toSet(),
+      joined.workflow.assignments
+          .map((assignment) => assignment.engineerId)
+          .toSet(),
+      workflow: joined.workflow,
     );
+    final closedState = PublicDemoMonthlyClose.closeJune(
+      state: grown.state.recordNewJoins(joined.newlyJoined),
+      monthlyExpenses: monthlyExpenses,
+      assignedInJuly: assignedInJuly,
+    ).state;
     return _copyWith(
-      state: PublicDemoMonthlyClose.closeJune(
-        state: grown.state,
-        monthlyExpenses: monthlyExpenses,
-        assignedInJuly: assignedInJuly,
-      ).state,
+      state: _withNewEngineerRuntimes(closedState, joined.newlyJoined),
       workflow: grown.workflow,
     );
   }
 
-  /// Closes July (state-only; reads `workflow.joinedApplicants` — the full
-  /// authoritative derived set, never a caller-chosen subset).
+  /// Closes July (reads `workflow.joinedApplicants` — the full
+  /// authoritative derived set, never a caller-chosen subset — for the
+  /// summer bonus itself; an applicant hired this same July joins
+  /// alongside it, exactly like [closeJune], but starts payroll/bonus
+  /// eligibility next month, matching how a new hire never back-dates into
+  /// the very month they joined).
   ///
   /// The zero plan always permits the mandatory close, including a negative
   /// result. An unaffordable paid plan is rejected before Growth, AR, or any
-  /// expense is applied — see [PublicDemoMonthlyClose.closeJuly].
+  /// expense — or this month's join — is applied: see
+  /// [PublicDemoMonthlyClose.closeJuly].
   PublicDemoAggregate closeJuly({required int monthlyExpenses}) {
     if (state.month != 7 || state.isCloseBlocked) return this;
     final preview = PublicDemoMonthlyClose.previewJuly(
@@ -1318,8 +1330,9 @@ class PublicDemoAggregate {
       plan: state.summerBonusSelection,
     );
     if (!preview.isEligible) return this;
+    final joined = _joinAcceptedApplicants();
     final grown = _closeGrowth(
-      workflow.assignments
+      joined.workflow.assignments
           .where(
             (assignment) =>
                 assignment.nextOrderStatus ==
@@ -1329,31 +1342,99 @@ class PublicDemoAggregate {
           )
           .map((assignment) => assignment.engineerId)
           .toSet(),
+      workflow: joined.workflow,
     );
+    final closedState = PublicDemoMonthlyClose.closeJuly(
+      state: grown.state.recordNewJoins(joined.newlyJoined),
+      monthlyExpenses: monthlyExpenses,
+      applicants: workflow.joinedApplicants,
+    ).state;
     return _copyWith(
-      state: PublicDemoMonthlyClose.closeJuly(
-        state: grown.state,
-        monthlyExpenses: monthlyExpenses,
-        applicants: workflow.joinedApplicants,
-      ).state,
+      state: _withNewEngineerRuntimes(closedState, joined.newlyJoined),
       workflow: grown.workflow,
     );
   }
 
-  /// Closes any ordinary month from August through March (state-only).
+  /// Closes any ordinary month from August through March: also joins any
+  /// applicant hired this month (Issue #221 FIRST-FUN-YEAR), exactly like
+  /// [closeJune]/[closeJuly] — recruitment media stays legal through month 8
+  /// ([PublicDemoState.canUseRecruitmentMediaInMonth]), so an August hire
+  /// joins here at month 8's own close; later months keep this generalized
+  /// too, since nothing prevents an already-accepted offer from a prior
+  /// month reaching this close instead (e.g. a retried/delayed close).
   PublicDemoAggregate closeOrdinaryMonth({required int monthlyExpenses}) {
     if (state.month < 8 || state.month > 15 || state.isCloseBlocked) {
       return this;
     }
-    final grown = _closeGrowth(workflow.assignedEngineerIds(month: state.month));
+    final joined = _joinAcceptedApplicants();
+    final grown = _closeGrowth(
+      joined.workflow.assignedEngineerIds(month: state.month),
+      workflow: joined.workflow,
+    );
+    final closedState = PublicDemoMonthlyClose.closeOrdinaryMonth(
+      state: grown.state.recordNewJoins(joined.newlyJoined),
+      monthlyExpenses: monthlyExpenses,
+    ).state;
     return _copyWith(
-      state: PublicDemoMonthlyClose.closeOrdinaryMonth(
-        state: grown.state,
-        monthlyExpenses: monthlyExpenses,
-      ).state,
+      state: _withNewEngineerRuntimes(closedState, joined.newlyJoined),
       workflow: grown.workflow,
     );
   }
+
+  /// Joins every applicant with a genuinely accepted offer for this
+  /// aggregate's current month and folds them into the authoritative
+  /// engineer roster (Issue #221 FIRST-FUN-YEAR: generalizes [closeMay]'s
+  /// founding-cohort join step — previously the only month-end close that
+  /// ever joined anyone — to every later month-end close, so a June-or-later
+  /// hire actually becomes an employee too, not just May's cohort).
+  ///
+  /// Unlike [closeMay]'s `joinAndKeepOnly`, this never prunes
+  /// [PublicDemoWorkflowState.applicants] down to the accepted subset: that
+  /// pruning was a one-time founding-cohort cutoff specific to May, and
+  /// recruitment keeps running every month after that — see
+  /// [PublicDemoWorkflowState.joinAcceptedForFiscalClose]'s own doc. Callers
+  /// below still finish the headcount/roster projection themselves — via
+  /// [PublicDemoState.recordNewJoins] and [_withNewEngineerRuntimes] — using
+  /// [newlyJoined], because each caller commits its own [PublicDemoState] at
+  /// a different point (before/after Growth, before/after the summer-bonus
+  /// preview gate).
+  ({PublicDemoWorkflowState workflow, List<PublicDemoApplicant> newlyJoined})
+  _joinAcceptedApplicants() {
+    final nextWorkflow = workflow.joinAcceptedForFiscalClose(
+      week: state.month * 4,
+      currentFiscalCloseId: PublicDemoFiscalCloseId.forMonth(state.month),
+    );
+    final newlyJoined = nextWorkflow.applicants
+        .where(
+          (applicant) =>
+              applicant.hasJoined &&
+              !state.joinedApplicantIds.contains(applicant.id),
+        )
+        .toList();
+    return (
+      workflow: newlyJoined.isEmpty
+          ? nextWorkflow
+          : nextWorkflow.withJoinedEngineers(newlyJoined),
+      newlyJoined: newlyJoined,
+    );
+  }
+
+  /// Appends an engineer runtime for each of [newlyJoined] to [state]'s own
+  /// (already up to date) [PublicDemoEngineerRuntime] list — the same
+  /// append [closeMay] already performs for May's cohort, reused here for
+  /// every later month-end close.
+  PublicDemoState _withNewEngineerRuntimes(
+    PublicDemoState state,
+    List<PublicDemoApplicant> newlyJoined,
+  ) => newlyJoined.isEmpty
+      ? state
+      : state.copyWith(
+          engineerRuntimes: [
+            ...state.engineerRuntimes,
+            for (final applicant in newlyJoined)
+              PublicDemoEngineerRuntime.fromApplicant(applicant),
+          ],
+        );
 
   /// This is called only by the month-end commands above, after all
   /// current-month work/contract decisions and before the next month

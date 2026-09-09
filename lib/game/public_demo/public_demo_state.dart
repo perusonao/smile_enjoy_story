@@ -646,6 +646,38 @@ class PublicDemoState {
     );
   }
 
+  /// Records applicants who genuinely joined this month into the
+  /// authoritative headcount/roster projection (Issue #221 FIRST-FUN-YEAR:
+  /// generalizes [advanceToJune]'s join-recording — previously the only
+  /// place [engineerCount]/[joinedApplicantIds] ever updated — to every
+  /// month-end close from June onward, so an applicant hired after May
+  /// actually becomes a counted employee too).
+  ///
+  /// Like [advanceToJune], trusts nothing beyond each applicant's own
+  /// [PublicDemoApplicant.hasJoined] fact: [joinedApplicants] must carry
+  /// authoritative applicant records, never a caller-supplied id list.
+  /// Anyone already present in [joinedApplicantIds] is skipped, so passing
+  /// an already-recorded cohort again — a retried close, or the same
+  /// applicant surviving into a later month's call — never double-counts
+  /// headcount or duplicates payroll membership. Newly joined engineers
+  /// start in the waiting pool, exactly like May's extra (non-ordered)
+  /// hires.
+  PublicDemoState recordNewJoins(
+    Iterable<PublicDemoApplicant> joinedApplicants,
+  ) {
+    final newlyJoinedIds = <String>{
+      for (final applicant in joinedApplicants)
+        if (applicant.hasJoined && !joinedApplicantIds.contains(applicant.id))
+          applicant.id,
+    };
+    if (newlyJoinedIds.isEmpty) return this;
+    return _copyWith(
+      engineerCount: engineerCount + newlyJoinedIds.length,
+      engineersWaiting: engineersWaiting + newlyJoinedIds.length,
+      joinedApplicantIds: [...joinedApplicantIds, ...newlyJoinedIds],
+    );
+  }
+
   /// Records an internal-training charge already computed and applied by
   /// [PublicDemoInternalTrainingTransaction] against [monthTrainingSpent]
   /// (FINANCE-UX-1). This does not itself move cash — the transaction's own

@@ -608,6 +608,43 @@ class PublicDemoWorkflowState {
     return _copyWith(applicants: kept);
   }
 
+  /// Joins every applicant with a genuinely accepted offer for
+  /// [currentFiscalCloseId] via [PublicDemoJoinTransaction] (Issue #221
+  /// FIRST-FUN-YEAR: generalizes [joinAndKeepOnly]'s join step beyond May).
+  ///
+  /// Unlike [joinAndKeepOnly], this never prunes [applicants] down to the
+  /// accepted subset — that pruning was a one-time founding-cohort cutoff
+  /// specific to the May-to-June transition. Recruitment keeps running
+  /// every month from June onward ([PublicDemoAggregate.recruit] has no
+  /// month ceiling), so applicants still mid-pipeline — applied,
+  /// interviewing, rejected, or awaiting a later offer — must remain in
+  /// [applicants] untouched, not be dropped the way May's cohort cutoff
+  /// drops them.
+  ///
+  /// Safe to call at every month-end close, including repeatedly: each
+  /// applicant is passed through [PublicDemoJoinTransaction.join]
+  /// independently, which itself is a no-op for anyone already joined,
+  /// never offered, declined, or whose offer belongs to a different fiscal
+  /// close — so re-processing an already-joined cohort at a later month's
+  /// close (or a retried close) never double-joins anyone.
+  PublicDemoWorkflowState joinAcceptedForFiscalClose({
+    required int week,
+    required PublicDemoFiscalCloseId currentFiscalCloseId,
+  }) {
+    const transaction = PublicDemoJoinTransaction();
+    final updated = [
+      for (final applicant in applicants)
+        transaction
+            .join(
+              applicant: applicant,
+              week: week,
+              currentFiscalCloseId: currentFiscalCloseId,
+            )
+            .applicant,
+    ];
+    return _copyWith(applicants: updated);
+  }
+
   Iterable<PublicDemoApplicant> get joinedApplicants =>
       applicants.where((applicant) => applicant.hasJoined);
 

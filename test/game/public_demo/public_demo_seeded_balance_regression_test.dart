@@ -126,13 +126,16 @@ void main() {
     }
   });
 
-  group('post-May recruitment structural dead end (CONFIRMED FINDING)', () {
-    test('an applicant recruited AFTER May can be walked through the '
-        'entire hire/pre-entry/order pipeline to juneOrdered, but never '
-        'joins as an engineer and is never staffed — recruit() after May '
-        'spends real cash/sales-slot budget for zero possible return '
-        '(see the result report for the root cause: joinAndKeepOnly / '
-        'assignOrderedForMay only ever run inside closeMay)', () {
+  group('post-May recruitment structural dead end (Issue #221 FIX)', () {
+    test('an applicant recruited AFTER May, walked through the entire '
+        'hire/pre-entry/order pipeline, now genuinely joins as an engineer '
+        'and is staffed at the next month-end close — previously CONFIRMED '
+        'as a structural dead end (recruit() after May spent real '
+        'cash/sales-slot budget for zero possible return, since '
+        'joinAndKeepOnly/assignOrderedForMay only ever ran inside closeMay); '
+        'fixed by generalizing the join step to every month-end close (see '
+        'PublicDemoAggregate._joinAcceptedApplicants and '
+        'PublicDemoWorkflowState.joinAcceptedForFiscalClose)', () {
       var aggregate = PublicDemoAggregate.initial(runSeed: 46)
           .closeApril(monthlyExpenses: 10000)
           .closeMay(week: 9, monthlyExpenses: 10000)
@@ -166,22 +169,57 @@ void main() {
           .recordPreEntryPartnerInterviewResult(applicantId)
           .recordPreEntryClientInterviewResult(applicantId)
           .recordJuneOrder(applicantId);
-      final finalApplicant = aggregate.workflow.applicants.firstWhere(
+      final beforeClose = aggregate.workflow.applicants.firstWhere(
         (candidate) => candidate.id == applicantId,
       );
-      expect(finalApplicant.stage, PublicDemoApplicantStage.juneOrdered);
+      expect(beforeClose.stage, PublicDemoApplicantStage.juneOrdered);
       // The "order" is genuinely won — every real pipeline precondition
-      // passed — yet:
-      expect(finalApplicant.hasJoined, isFalse);
+      // passed — but joining itself only happens at the next month-end
+      // close, exactly like May's own cohort.
+      expect(beforeClose.hasJoined, isFalse);
+      expect(aggregate.state.joinedApplicantIds, isNot(contains(applicantId)));
 
       aggregate = aggregate.closeOrdinaryMonth(monthlyExpenses: 10000);
-      expect(aggregate.workflow.engineers, hasLength(engineersBefore));
-      expect(aggregate.workflow.assignments, isEmpty);
+      final joinedApplicant = aggregate.workflow.applicants.firstWhere(
+        (candidate) => candidate.id == applicantId,
+      );
+      expect(joinedApplicant.hasJoined, isTrue);
+      expect(aggregate.workflow.engineers, hasLength(engineersBefore + 1));
       expect(
-        aggregate.workflow.applicants
-            .firstWhere((candidate) => candidate.id == applicantId)
-            .stage,
-        PublicDemoApplicantStage.juneOrdered, // frozen forever — never joins
+        aggregate.workflow.engineers.any((e) => e.id == applicantId),
+        isTrue,
+      );
+      expect(aggregate.state.joinedApplicantIds, contains(applicantId));
+      expect(aggregate.state.engineerCount, engineersBefore + 1);
+
+      // PR #222 review finding: the already-won juneOrdered pre-entry
+      // order must survive into a real assignment — not be silently
+      // downgraded to a plain waiting engineer who has to redo
+      // Sales/Matching/interviews for an order they already earned.
+      expect(
+        aggregate.workflow.assignments.any((a) => a.engineerId == applicantId),
+        isTrue,
+      );
+      expect(aggregate.state.engineersAssigned, greaterThanOrEqualTo(1));
+
+      // Closing the next ordinary month again re-processes this same
+      // already-joined applicant (idempotent — no double-join, no
+      // duplicate engineer, no double-counted headcount, no duplicate
+      // assignment).
+      final retried = aggregate.closeOrdinaryMonth(monthlyExpenses: 10000);
+      expect(
+        retried.workflow.engineers.where((e) => e.id == applicantId).length,
+        1,
+      );
+      expect(
+        retried.state.joinedApplicantIds.where((id) => id == applicantId).length,
+        1,
+      );
+      expect(
+        retried.workflow.assignments
+            .where((a) => a.engineerId == applicantId)
+            .length,
+        1,
       );
     });
   });

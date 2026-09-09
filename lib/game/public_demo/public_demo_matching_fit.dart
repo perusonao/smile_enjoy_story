@@ -87,6 +87,16 @@ class PublicDemoEngineerProjectFit {
     MatchingEngine.computeFit(_placeholderEngineerFor(runtime), project),
   );
 
+  /// CORE-GAMEPLAY Phase 6 (Project Interview Gameplay): exposes this
+  /// file's own [_placeholderEngineerFor] builder so
+  /// `public_demo_project_interview.dart` can hand the exact same
+  /// placeholder [Engineer] Phase 5's [compute] already builds for this
+  /// [runtime] to [ClientInterviewEngine]/[ProjectInterviewEngine] — never
+  /// a second, independently-built stand-in that could quietly drift from
+  /// the one Matching itself scored against.
+  static Engineer engineerFor(PublicDemoEngineerRuntime runtime) =>
+      _placeholderEngineerFor(runtime);
+
   static Engineer _placeholderEngineerFor(PublicDemoEngineerRuntime runtime) {
     final confirmedLanguageSkills = <ProgrammingLanguage, LanguageSkill>{
       for (final skill in runtime.languageSkills.values)

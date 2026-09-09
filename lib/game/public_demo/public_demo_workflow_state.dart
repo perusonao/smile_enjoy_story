@@ -1,11 +1,15 @@
+import '../../domain/domain.dart';
+import '../models/client_interview.dart';
 import '../models/recruitment_interview.dart';
 import 'public_demo_assignment.dart';
 import 'public_demo_binding_offer.dart';
+import 'public_demo_engineer_runtime.dart';
 import 'public_demo_fiscal_close_id.dart';
 import 'public_demo_founder_follow_up.dart';
 import 'public_demo_interview.dart';
 import 'public_demo_join.dart';
 import 'public_demo_matching_proposal.dart';
+import 'public_demo_project_interview.dart';
 import 'public_demo_raise_transaction.dart';
 import 'public_demo_recruitment.dart';
 import 'public_demo_sales.dart';
@@ -49,6 +53,7 @@ class PublicDemoWorkflowState {
     assignments: const [],
     interviewSessions: const [],
     matchingProposals: const [],
+    projectInterviewSessions: const [],
   );
 
   const PublicDemoWorkflowState._({
@@ -57,6 +62,7 @@ class PublicDemoWorkflowState {
     required this.assignments,
     required this.interviewSessions,
     required this.matchingProposals,
+    required this.projectInterviewSessions,
   });
 
   /// Public Demo 0.1's starting workflow: the founding engineer team
@@ -107,6 +113,16 @@ class PublicDemoWorkflowState {
   /// default.
   final List<PublicDemoMatchingProposal> matchingProposals;
 
+  /// CORE-GAMEPLAY Phase 6 (Project Interview Gameplay): at most one
+  /// in-progress/completed [ClientInterviewSession] per engineer id (its
+  /// own [ClientInterviewSession.employeeId]) — the interactive project
+  /// interview reused from the main game's own
+  /// [ClientInterviewEngine]/[ProjectInterviewEngine]
+  /// (`public_demo_project_interview.dart`), exactly like
+  /// [interviewSessions] reuses [RecruitmentInterviewEngine]. Additive to
+  /// the save schema — see [fromJson]'s backward-compatible default below.
+  final List<ClientInterviewSession> projectInterviewSessions;
+
   /// Complete workflow persistence representation.  This is intentionally
   /// separate from the production constructor: an assignment roster is only
   /// restored from a validated aggregate save, never supplied by gameplay
@@ -122,6 +138,9 @@ class PublicDemoWorkflowState {
         .toList(),
     'matchingProposals': matchingProposals
         .map((proposal) => proposal.toJson())
+        .toList(),
+    'projectInterviewSessions': projectInterviewSessions
+        .map((session) => session.toJson())
         .toList(),
   };
 
@@ -160,6 +179,19 @@ class PublicDemoWorkflowState {
       throw const FormatException('Invalid workflow matchingProposals');
     }
 
+    // Additive field (CORE-GAMEPLAY Phase 6): a save written before this
+    // change has no 'projectInterviewSessions' key at all. Absent means "no
+    // project interview was ever in progress" — an empty list, not a
+    // rejected/invalid save, exactly like [interviewSessions]/
+    // [matchingProposals] above.
+    final projectInterviewSessionsRaw = json['projectInterviewSessions'];
+    if (projectInterviewSessionsRaw != null &&
+        projectInterviewSessionsRaw is! List) {
+      throw const FormatException(
+        'Invalid workflow projectInterviewSessions',
+      );
+    }
+
     return PublicDemoWorkflowState._(
       applicants: List.unmodifiable(
         decodeList(requiredList('applicants'), PublicDemoApplicant.fromJson),
@@ -184,6 +216,14 @@ class PublicDemoWorkflowState {
             : decodeList(
                 matchingProposalsRaw,
                 PublicDemoMatchingProposal.fromJson,
+              ),
+      ),
+      projectInterviewSessions: List.unmodifiable(
+        projectInterviewSessionsRaw == null
+            ? const <ClientInterviewSession>[]
+            : decodeList(
+                projectInterviewSessionsRaw,
+                ClientInterviewSession.fromJson,
               ),
       ),
     );
@@ -225,6 +265,7 @@ class PublicDemoWorkflowState {
     List<PublicDemoAssignment>? assignments,
     List<RecruitmentInterviewSession>? interviewSessions,
     List<PublicDemoMatchingProposal>? matchingProposals,
+    List<ClientInterviewSession>? projectInterviewSessions,
   }) => PublicDemoWorkflowState._(
     applicants: List.unmodifiable(applicants ?? this.applicants),
     engineers: List.unmodifiable(engineers ?? this.engineers),
@@ -234,6 +275,9 @@ class PublicDemoWorkflowState {
     ),
     matchingProposals: List.unmodifiable(
       matchingProposals ?? this.matchingProposals,
+    ),
+    projectInterviewSessions: List.unmodifiable(
+      projectInterviewSessions ?? this.projectInterviewSessions,
     ),
   );
 
@@ -995,12 +1039,33 @@ class PublicDemoWorkflowState {
   /// actually names a known engineer in [engineers] — this file's own
   /// precondition-gated-transition convention (see this class's own doc),
   /// so a caller cannot record a proposal for a fabricated id.
+  ///
+  /// Also a no-op once that engineer has already reached
+  /// `clientInterviewPassed`/`ordered` (Codex P1-2 fix, PR #214): a genuine
+  /// pass is a binding real-world fact — the engineer was actually
+  /// interviewed, and evaluated, for the project their proposal named at
+  /// that moment. Allowing a later `proposeMatch` to silently swap that
+  /// proposal onto a *different*, never-interviewed project would let
+  /// [recordOrder] proceed for a project this engineer was never actually
+  /// vetted for — a correctness gap Phase 7A's real order/assignment
+  /// handoff must never inherit. Once passed, the proposal is permanently
+  /// locked to the interviewed project (recoverable at any time via
+  /// [PublicDemoEngineerSales.genuineInterviewProjectId]); a *failed*
+  /// interview (`clientInterviewFailed`) is unaffected and still freely
+  /// re-proposable, exactly as before.
   PublicDemoWorkflowState withMatchingProposal({
     required String engineerId,
     required String projectId,
     required int month,
   }) {
-    if (engineers.every((engineer) => engineer.id != engineerId)) return this;
+    final engineer = engineers
+        .where((candidate) => candidate.id == engineerId)
+        .firstOrNull;
+    if (engineer == null ||
+        engineer.stage == PublicDemoSalesStage.clientInterviewPassed ||
+        engineer.stage == PublicDemoSalesStage.ordered) {
+      return this;
+    }
     return _copyWith(
       matchingProposals: [
         for (final proposal in matchingProposals)
@@ -1010,6 +1075,193 @@ class PublicDemoWorkflowState {
           projectId: projectId,
           decidedMonth: month,
         ),
+      ],
+    );
+  }
+
+  // ---------------------------------------------------------------------
+  // CORE-GAMEPLAY Phase 6 (Project Interview Gameplay): the interactive
+  // 案件面談 that turns a Phase 5 [PublicDemoMatchingProposal] into an
+  // actual `clientInterviewPassed`/`clientInterviewFailed` outcome, reusing
+  // the existing `partnerInterviewPassed` → client-interview 0-slot stage
+  // exactly as-is — nothing here consumes `salesCapacity`/`salesUsed`, and
+  // `beginSelling`'s existing `clientInterviewFailed` recovery path already
+  // gives a failed attempt a dead-end-free way back to selling.
+  // ---------------------------------------------------------------------
+
+  /// The current in-progress/completed project-interview session for
+  /// [engineerId], if one exists — `null` otherwise. At most one is ever
+  /// kept per engineer (see [startProjectInterviewSession]).
+  ClientInterviewSession? projectInterviewSessionFor(String engineerId) {
+    for (final session in projectInterviewSessions) {
+      if (session.employeeId == engineerId) return session;
+    }
+    return null;
+  }
+
+  /// Starts [session] as the project-interview session for its own
+  /// [ClientInterviewSession.employeeId] — a no-op (resume) only when an
+  /// incomplete session for that engineer **already exists for the same
+  /// [ClientInterviewSession.projectId]** — mirrors
+  /// [startInterviewSession]'s own idempotency convention, but additionally
+  /// keyed by project (Codex P1 fix, PR #214): resuming an incomplete
+  /// session purely by employee id was unsafe — if the player closed an
+  /// in-progress interview and then used the Matching screen to replace
+  /// that engineer's [PublicDemoMatchingProposal] with a *different*
+  /// project, the old session's questions/answers (built for the old
+  /// project) would otherwise be resumed and then scored against the new
+  /// project's fit/requirements by [chooseFollowUp]/[conclude] — old
+  /// questions and new-project scoring must never mix.
+  ///
+  /// A prior session for the same engineer is replaced (never resumed)
+  /// whenever it is already *completed* (a past pass/fail attempt — a
+  /// failed project interview must be retryable after the engineer returns
+  /// to selling and reaches `partnerInterviewPassed` again, for the same or
+  /// a newly proposed project — never a dead end), when it names a
+  /// *different* [ClientInterviewSession.projectId] than [session] (the
+  /// Codex P1 case above: the stale, project-mismatched session is safely
+  /// discarded in favor of this fresh one for the currently proposed
+  /// project, rather than either resuming it or leaving two sessions
+  /// around for the same engineer), or when it names a *different*
+  /// [ClientInterviewSession.startedWeek] (Codex P2 fix, PR #214): Public
+  /// Demo's own engineer runtime only ever changes at a month-close
+  /// boundary ([PublicDemoState.applyMonthlyGrowth]/`selectInternalTraining`
+  /// itself only records a selection mid-month — the actual capability
+  /// change lands at the next close), so [session]'s own freshly-derived
+  /// `startedWeek` (always [PublicDemoState.month] at the moment [session]
+  /// was built — see [PublicDemoProjectInterview.start]) differing from the
+  /// existing incomplete session's `startedWeek` is exactly "the player
+  /// closed this interview, let at least one month pass (training/growth
+  /// may have changed this engineer's runtime), and reopened it" — resuming
+  /// would otherwise let old questions/answers (built from the old-month
+  /// capability) sit alongside new-month capability at
+  /// [chooseFollowUp]/[conclude] time. No new persisted field is needed —
+  /// this compares [ClientInterviewSession.startedWeek], which already
+  /// exists — and the stale session is safely discarded for a fresh
+  /// restart, never resumed, exactly like the projectId case above.
+  PublicDemoWorkflowState startProjectInterviewSession(
+    ClientInterviewSession session,
+  ) {
+    final hasMatchingIncomplete = projectInterviewSessions.any(
+      (existing) =>
+          existing.employeeId == session.employeeId &&
+          existing.projectId == session.projectId &&
+          existing.startedWeek == session.startedWeek &&
+          !existing.completed,
+    );
+    if (hasMatchingIncomplete) return this;
+    return _copyWith(
+      projectInterviewSessions: [
+        for (final existing in projectInterviewSessions)
+          if (existing.employeeId != session.employeeId) existing,
+        session,
+      ],
+    );
+  }
+
+  /// Replaces the active (not yet completed) project-interview session for
+  /// [engineerId] with [update]'s result — mirrors
+  /// [updateInterviewSession] exactly, plus a [projectId] match (Codex P1
+  /// fix, PR #214, defense in depth alongside [startProjectInterviewSession]
+  /// above): a no-op when no such session exists **for this exact
+  /// project**, so a stale session left over for a since-replaced proposal
+  /// can never be advanced against the wrong project even if some future
+  /// caller reached this without going through [startProjectInterviewSession]
+  /// first.
+  PublicDemoWorkflowState updateProjectInterviewSession(
+    String engineerId,
+    String projectId,
+    ClientInterviewSession Function(ClientInterviewSession session) update,
+  ) {
+    final index = projectInterviewSessions.indexWhere(
+      (session) =>
+          session.employeeId == engineerId &&
+          session.projectId == projectId &&
+          !session.completed,
+    );
+    if (index < 0) return this;
+    final next = [...projectInterviewSessions];
+    next[index] = update(next[index]);
+    return _copyWith(projectInterviewSessions: next);
+  }
+
+  /// Concludes the project interview for [engineerId] and applies its
+  /// genuine outcome to the engineer's sales pipeline — the one place the
+  /// actual pass/fail is derived (via
+  /// [PublicDemoProjectInterview.conclude], itself
+  /// [ClientInterviewEngine.finalRate] + [ProjectInterviewEngine.roll]),
+  /// mirroring [recordEngineerInterviewResult]/[PublicDemoEngineerSales
+  /// .evaluateInterview]'s own "derive, never accept, the outcome"
+  /// contract: [runtime]/[project] are real facts the caller
+  /// ([PublicDemoAggregate], the only place with both [runSeed] and the
+  /// resolved Phase 5 proposal/project) already has in hand — never a
+  /// `passed`/`score` assertion.
+  ///
+  /// A no-op unless: [engineerId] is currently at `partnerInterviewPassed`
+  /// (the existing 0-slot client-interview stage this phase reuses as-is);
+  /// a genuine, started session exists for it *for this exact [project]*
+  /// (Codex P1 fix, PR #214, defense in depth alongside
+  /// [startProjectInterviewSession]'s own doc — a session left over for a
+  /// since-replaced proposal must never be concluded against a different
+  /// project than the one it was actually interviewed for); that session
+  /// was also genuinely started *this exact [currentMonth]* (Codex P2 fix,
+  /// PR #214, the same defense-in-depth pairing for the month/runtime
+  /// freeze — see [startProjectInterviewSession]'s own doc for why a
+  /// month-mismatched session must never be concluded either); and every
+  /// question in that session has already received a player-chosen
+  /// follow-up ([PublicDemoProjectInterview.isReadyToConclude]) — i.e. the
+  /// interactive interview genuinely ran to its end, never a shortcut past
+  /// the choice sequence.
+  PublicDemoWorkflowState concludeProjectInterview({
+    required String engineerId,
+    required int runSeed,
+    required int currentMonth,
+    required PublicDemoEngineerRuntime runtime,
+    required Project project,
+  }) {
+    final engineer = engineers
+        .where((candidate) => candidate.id == engineerId)
+        .firstOrNull;
+    if (engineer == null ||
+        engineer.stage != PublicDemoSalesStage.partnerInterviewPassed) {
+      return this;
+    }
+    final session = projectInterviewSessionFor(engineerId);
+    if (session == null ||
+        session.completed ||
+        session.projectId != project.id ||
+        session.startedWeek != currentMonth ||
+        !PublicDemoProjectInterview.isReadyToConclude(session)) {
+      return this;
+    }
+
+    final outcome = PublicDemoProjectInterview.conclude(
+      runSeed: runSeed,
+      runtime: runtime,
+      project: project,
+      session: session,
+    );
+    final completedSession = session.copyWith(
+      completed: true,
+      result: outcome.passed
+          ? ClientInterviewResult.passed
+          : ClientInterviewResult.failed,
+    );
+    return _copyWith(
+      engineers: [
+        for (final candidate in engineers)
+          if (candidate.id == engineerId)
+            candidate.applyProjectInterviewResult(
+              passed: outcome.passed,
+              score: outcome.score,
+              projectId: project.id,
+            )
+          else
+            candidate,
+      ],
+      projectInterviewSessions: [
+        for (final existing in projectInterviewSessions)
+          if (existing.employeeId == engineerId) completedSession else existing,
       ],
     );
   }

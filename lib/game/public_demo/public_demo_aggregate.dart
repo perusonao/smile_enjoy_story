@@ -1,3 +1,4 @@
+import '../models/client_interview.dart';
 import '../models/recruitment_interview.dart';
 import 'public_demo_assignment.dart';
 import 'public_demo_engineer_runtime.dart';
@@ -8,6 +9,7 @@ import 'public_demo_internal_training_transaction.dart';
 import 'public_demo_matching_proposal.dart';
 import 'public_demo_monthly_close.dart';
 import 'public_demo_project_generator.dart';
+import 'public_demo_project_interview.dart';
 import 'public_demo_raise_transaction.dart';
 import 'public_demo_recovery.dart';
 import 'public_demo_recruitment.dart';
@@ -121,14 +123,23 @@ class PublicDemoAggregate {
   /// CORE-GAMEPLAY Phase 5 (Matching Decision Gameplay): every engineer
   /// currently eligible for the matching decision flow — every engineer
   /// this workflow knows about, minus whoever [PublicDemoWorkflowState
-  /// .assignedEngineerIds] already reports as actively staffed this month.
-  /// Reuses that exact same SSOT set rather than a second "is this engineer
+  /// .assignedEngineerIds] already reports as actively staffed this month,
+  /// and minus anyone who has already reached `clientInterviewPassed`/
+  /// `ordered` (Codex P1-2 fix, PR #214): such an engineer is done with
+  /// Matching for this cycle — their proposal is now permanently locked to
+  /// the project they were genuinely interviewed/passed for (see
+  /// [PublicDemoWorkflowState.withMatchingProposal]'s own doc), so offering
+  /// them here would only ever show a "提案する" that silently does nothing.
+  /// Reuses the exact same SSOT sets rather than a second "is this engineer
   /// busy" definition.
   List<PublicDemoEngineerSales> get availableEngineersForMatching {
     final assignedIds = workflow.assignedEngineerIds(month: state.month);
     return [
       for (final engineer in workflow.engineers)
-        if (!assignedIds.contains(engineer.id)) engineer,
+        if (!assignedIds.contains(engineer.id) &&
+            engineer.stage != PublicDemoSalesStage.clientInterviewPassed &&
+            engineer.stage != PublicDemoSalesStage.ordered)
+          engineer,
     ];
   }
 
@@ -658,6 +669,146 @@ class PublicDemoAggregate {
         actualCapability:
             state.runtimeForOrNull(engineerId)?.actualCapability ?? 0,
       ),
+    );
+  }
+
+  // ---------------------------------------------------------------------
+  // CORE-GAMEPLAY Phase 6 (Project Interview Gameplay): the interactive
+  // 案件面談 entered from Phase 5's real matching-proposal handoff. Reuses
+  // the existing `partnerInterviewPassed` → client-interview 0-slot stage
+  // as-is (no new sales capacity, no double slot consumption) — see
+  // `public_demo_workflow_state.dart`'s own section doc.
+  // ---------------------------------------------------------------------
+
+  /// Resolves [engineerId]'s current Phase 5 [PublicDemoMatchingProposal]
+  /// back to its full [PublicDemoProjectCandidate] — `null` when no
+  /// proposal has been made yet (or, in principle, an id this generator did
+  /// not mint, which never happens for a genuine proposal). Every Phase 6
+  /// screen reads the real project through this single accessor rather than
+  /// re-deriving it.
+  PublicDemoProjectCandidate? projectInterviewCandidateFor(String engineerId) {
+    final proposal = workflow.matchingProposalFor(engineerId);
+    if (proposal == null) return null;
+    return PublicDemoSeededProjectGenerator.regenerate(
+      runSeed: runSeed,
+      projectId: proposal.projectId,
+    );
+  }
+
+  /// The current in-progress/completed project-interview session for
+  /// [engineerId], if any.
+  ClientInterviewSession? projectInterviewSessionFor(String engineerId) =>
+      workflow.projectInterviewSessionFor(engineerId);
+
+  /// Starts (or resumes) the interactive project interview for
+  /// [engineerId] — Phase 6's entry point from Phase 5's matching-proposal
+  /// handoff. A no-op unless the engineer is genuinely at
+  /// `partnerInterviewPassed` and a real Phase 5 proposal/project/runtime
+  /// all resolve (an engineer who reached this stage without ever using
+  /// Matching has no proposal at all, and stays on the existing generic
+  /// [recordEngineerInterviewResult] path the UI falls back to).
+  PublicDemoAggregate startProjectInterview(String engineerId) {
+    final engineer = workflow.engineers
+        .where((candidate) => candidate.id == engineerId)
+        .firstOrNull;
+    if (engineer == null ||
+        engineer.stage != PublicDemoSalesStage.partnerInterviewPassed) {
+      return this;
+    }
+    final candidate = projectInterviewCandidateFor(engineerId);
+    final runtime = state.runtimeForOrNull(engineerId);
+    if (candidate == null || runtime == null) return this;
+    final session = PublicDemoProjectInterview.start(
+      state: state,
+      runtime: runtime,
+      candidate: candidate,
+    );
+    return _copyWith(workflow: workflow.startProjectInterviewSession(session));
+  }
+
+  /// The player's follow-up choices for [engineerId]'s current interview
+  /// question — `const []` if no session/candidate/runtime resolves.
+  List<ClientInterviewFollowUp> projectInterviewChoicesFor(String engineerId) {
+    final session = projectInterviewSessionFor(engineerId);
+    if (session == null || session.completed) return const [];
+    return PublicDemoProjectInterview.choicesFor(session);
+  }
+
+  /// Applies [followUp] to [engineerId]'s question at [questionIndex] and
+  /// advances the session — see [PublicDemoProjectInterview.chooseFollowUp].
+  /// A no-op unless a real proposal/project/runtime/in-progress session all
+  /// resolve **for this exact [candidate]** (Codex P1 fix, PR #214):
+  /// [candidate] always names the engineer's *current*
+  /// [PublicDemoMatchingProposal] project, and is passed through as the
+  /// [PublicDemoWorkflowState.updateProjectInterviewSession] `projectId`
+  /// match — a session left over for a since-replaced proposal (a
+  /// different project) is never advanced here.
+  ///
+  /// [questionIndex] (Codex P2 fix, PR #214) must be the index of the
+  /// question the caller actually rendered/answered — the UI is required
+  /// to capture this from the specific [ClientInterviewSession] snapshot it
+  /// built the follow-up buttons from, never re-derive it from whatever the
+  /// session's *current* state happens to be when the tap is finally
+  /// processed. [PublicDemoProjectInterview.chooseFollowUp] rejects the
+  /// call outright once that no longer matches the session's actual current
+  /// question — see its own doc for exactly which duplicate/stale-
+  /// submission shapes this closes, and why a UI-only disabled-button guard
+  /// is insufficient on its own.
+  PublicDemoAggregate chooseProjectInterviewFollowUp(
+    String engineerId,
+    int questionIndex,
+    ClientInterviewFollowUp followUp,
+  ) {
+    final candidate = projectInterviewCandidateFor(engineerId);
+    final runtime = state.runtimeForOrNull(engineerId);
+    if (candidate == null || runtime == null) return this;
+    return _copyWith(
+      workflow: workflow.updateProjectInterviewSession(
+        engineerId,
+        candidate.id,
+        (session) => PublicDemoProjectInterview.chooseFollowUp(
+          runSeed: runSeed,
+          runtime: runtime,
+          project: candidate.project,
+          session: session,
+          questionIndex: questionIndex,
+          followUp: followUp,
+        ),
+      ),
+    );
+  }
+
+  /// Concludes [engineerId]'s fully-answered project interview and applies
+  /// its genuine pass/fail to the sales pipeline — see
+  /// [PublicDemoWorkflowState.concludeProjectInterview] for the actual
+  /// derivation/precondition contract. A no-op unless a real
+  /// proposal/project/runtime resolve.
+  PublicDemoAggregate concludeProjectInterview(String engineerId) {
+    final candidate = projectInterviewCandidateFor(engineerId);
+    final runtime = state.runtimeForOrNull(engineerId);
+    if (candidate == null || runtime == null) return this;
+    return _copyWith(
+      workflow: workflow.concludeProjectInterview(
+        engineerId: engineerId,
+        runSeed: runSeed,
+        currentMonth: state.month,
+        runtime: runtime,
+        project: candidate.project,
+      ),
+    );
+  }
+
+  /// The 1-2 truthful reasons [engineerId]'s failed project interview did
+  /// not pass, for the real project their [PublicDemoMatchingProposal]
+  /// names — `const []` if no proposal/runtime resolves (should not happen
+  /// once a session has actually completed).
+  List<String> projectInterviewFailureReasonsFor(String engineerId) {
+    final candidate = projectInterviewCandidateFor(engineerId);
+    final runtime = state.runtimeForOrNull(engineerId);
+    if (candidate == null || runtime == null) return const [];
+    return PublicDemoProjectInterview.failureReasons(
+      runtime,
+      candidate.project,
     );
   }
 

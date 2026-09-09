@@ -209,6 +209,11 @@ void main() {
         // genuine record is the generic, project-agnostic path — see
         // PublicDemoAssignment.projectId's own doc).
         'projectId',
+        // CORE-GAMEPLAY Phase 7B: additive real-months-credited counter --
+        // also unrelated to Recovery specifically, present on every
+        // assignment JSON since this phase — see
+        // PublicDemoAssignment.monthsCredited's own doc.
+        'monthsCredited',
       });
     });
   });

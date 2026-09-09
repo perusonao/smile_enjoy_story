@@ -74,9 +74,26 @@ class _PublicDemoProjectInterviewDialogState
     widget.onCommit(next);
   }
 
-  void _chooseFollowUp(ClientInterviewFollowUp choice) => _commit(
-    _aggregate.chooseProjectInterviewFollowUp(widget.engineerId, choice),
-  );
+  /// [questionIndex] (Codex P2 fix, PR #214) must come from the specific
+  /// [ClientInterviewSession] snapshot [build] actually rendered the
+  /// pressed follow-up button from (see the `onChoose` wiring below) —
+  /// never re-read from `_session`/`_aggregate` here, which may already
+  /// reflect a prior tap's own advance by the time a second, stale tap on
+  /// the same (not-yet-rebuilt) button is processed. The authority layer
+  /// ([PublicDemoAggregate.chooseProjectInterviewFollowUp] →
+  /// [PublicDemoProjectInterview.chooseFollowUp]) rejects the call outright
+  /// once [questionIndex] no longer matches the session's actual current
+  /// question, so this capture is what makes that rejection possible — a
+  /// disabled button alone is not relied on to prevent a duplicate/stale
+  /// submission.
+  void _chooseFollowUp(int questionIndex, ClientInterviewFollowUp choice) =>
+      _commit(
+        _aggregate.chooseProjectInterviewFollowUp(
+          widget.engineerId,
+          questionIndex,
+          choice,
+        ),
+      );
 
   void _conclude() =>
       _commit(_aggregate.concludeProjectInterview(widget.engineerId));
@@ -136,7 +153,13 @@ class _PublicDemoProjectInterviewDialogState
                       engineer: engineer,
                       candidate: candidate,
                       session: session,
-                      onChoose: _chooseFollowUp,
+                      // Codex P2 fix (PR #214): binds this exact rendered
+                      // question's index into the closure at build time —
+                      // see `_chooseFollowUp`'s own doc for why this must
+                      // never be re-derived from `_session`/`_aggregate`
+                      // when the tap actually fires.
+                      onChoose: (choice) =>
+                          _chooseFollowUp(session.currentQuestionIndex, choice),
                     ),
             ),
           ],

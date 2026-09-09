@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:smile_enjoy_story/game/models/client_interview.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_aggregate.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_interview.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_project_interview.dart';
@@ -54,7 +55,7 @@ PublicDemoAggregate _runInterviewToConclusion(PublicDemoAggregate aggregate) {
   var session = aggregate.projectInterviewSessionFor('eng-01')!;
   while (session.playerFollowUps.length < session.questions.length) {
     final choice = PublicDemoProjectInterview.choicesFor(session).first;
-    aggregate = aggregate.chooseProjectInterviewFollowUp('eng-01', choice);
+    aggregate = aggregate.chooseProjectInterviewFollowUp('eng-01', session.currentQuestionIndex, choice);
     session = aggregate.projectInterviewSessionFor('eng-01')!;
   }
   return aggregate.concludeProjectInterview('eng-01');
@@ -131,7 +132,7 @@ void main() {
         var session = aggregate.projectInterviewSessionFor('eng-01')!;
         while (session.playerFollowUps.length < session.questions.length) {
           final choice = PublicDemoProjectInterview.choicesFor(session).first;
-          aggregate = aggregate.chooseProjectInterviewFollowUp('eng-01', choice);
+          aggregate = aggregate.chooseProjectInterviewFollowUp('eng-01', session.currentQuestionIndex, choice);
           session = aggregate.projectInterviewSessionFor('eng-01')!;
         }
         return aggregate.concludeProjectInterview('eng-01');
@@ -159,7 +160,7 @@ void main() {
         while (session.playerFollowUps.length < session.questions.length) {
           final choices = PublicDemoProjectInterview.choicesFor(session);
           final choice = alwaysFirstChoice ? choices.first : choices.last;
-          aggregate = aggregate.chooseProjectInterviewFollowUp('eng-01', choice);
+          aggregate = aggregate.chooseProjectInterviewFollowUp('eng-01', session.currentQuestionIndex, choice);
           session = aggregate.projectInterviewSessionFor('eng-01')!;
         }
         return aggregate;
@@ -196,7 +197,7 @@ void main() {
         var session = aggregate.projectInterviewSessionFor('eng-01')!;
         while (session.playerFollowUps.length < session.questions.length) {
           final choice = PublicDemoProjectInterview.choicesFor(session).first;
-          aggregate = aggregate.chooseProjectInterviewFollowUp('eng-01', choice);
+          aggregate = aggregate.chooseProjectInterviewFollowUp('eng-01', session.currentQuestionIndex, choice);
           session = aggregate.projectInterviewSessionFor('eng-01')!;
         }
         aggregate = aggregate.concludeProjectInterview('eng-01');
@@ -246,7 +247,7 @@ void main() {
       var session = aggregate.projectInterviewSessionFor('eng-01')!;
       while (session.playerFollowUps.length < session.questions.length) {
         final choice = PublicDemoProjectInterview.choicesFor(session).first;
-        aggregate = aggregate.chooseProjectInterviewFollowUp('eng-01', choice);
+        aggregate = aggregate.chooseProjectInterviewFollowUp('eng-01', session.currentQuestionIndex, choice);
         expect(aggregate.state.salesUsed, slotsAfterProposal);
         session = aggregate.projectInterviewSessionFor('eng-01')!;
       }
@@ -298,7 +299,7 @@ void main() {
         var session = aggregate.projectInterviewSessionFor('eng-01')!;
         while (session.playerFollowUps.length < session.questions.length) {
           final choice = PublicDemoProjectInterview.choicesFor(session).first;
-          aggregate = aggregate.chooseProjectInterviewFollowUp('eng-01', choice);
+          aggregate = aggregate.chooseProjectInterviewFollowUp('eng-01', session.currentQuestionIndex, choice);
           session = aggregate.projectInterviewSessionFor('eng-01')!;
         }
         aggregate = aggregate.concludeProjectInterview('eng-01');
@@ -320,11 +321,11 @@ void main() {
     test('an in-progress session survives a toJson/fromJson round-trip', () {
       var aggregate = _withRealProposal(PublicDemoAggregate.initial(runSeed: 61));
       aggregate = aggregate.startProjectInterview('eng-01');
+      final firstSession = aggregate.projectInterviewSessionFor('eng-01')!;
       aggregate = aggregate.chooseProjectInterviewFollowUp(
         'eng-01',
-        PublicDemoProjectInterview.choicesFor(
-          aggregate.projectInterviewSessionFor('eng-01')!,
-        ).first,
+        firstSession.currentQuestionIndex,
+        PublicDemoProjectInterview.choicesFor(firstSession).first,
       );
 
       final json = aggregate.toJson();
@@ -354,7 +355,7 @@ void main() {
       var session = aggregate.projectInterviewSessionFor('eng-01')!;
       while (session.playerFollowUps.length < session.questions.length) {
         final choice = PublicDemoProjectInterview.choicesFor(session).first;
-        aggregate = aggregate.chooseProjectInterviewFollowUp('eng-01', choice);
+        aggregate = aggregate.chooseProjectInterviewFollowUp('eng-01', session.currentQuestionIndex, choice);
         session = aggregate.projectInterviewSessionFor('eng-01')!;
       }
       aggregate = aggregate.concludeProjectInterview('eng-01');
@@ -371,11 +372,11 @@ void main() {
         'resumed (not reset) on a second startProjectInterview call', () {
       final aggregate = _withRealProposal(PublicDemoAggregate.initial(runSeed: 81));
       final started = aggregate.startProjectInterview('eng-01');
+      final startedSession = started.projectInterviewSessionFor('eng-01')!;
       var withProgress = started.chooseProjectInterviewFollowUp(
         'eng-01',
-        PublicDemoProjectInterview.choicesFor(
-          started.projectInterviewSessionFor('eng-01')!,
-        ).first,
+        startedSession.currentQuestionIndex,
+        PublicDemoProjectInterview.choicesFor(startedSession).first,
       );
       final resumed = withProgress.startProjectInterview('eng-01');
       final resumedSession = resumed.projectInterviewSessionFor('eng-01')!;
@@ -413,6 +414,7 @@ void main() {
       expect(oldSession.projectId, oldProject.id);
       aggregate = aggregate.chooseProjectInterviewFollowUp(
         'eng-01',
+        oldSession.currentQuestionIndex,
         PublicDemoProjectInterview.choicesFor(oldSession).first,
       );
 
@@ -483,7 +485,7 @@ void main() {
       var session = aggregate.projectInterviewSessionFor('eng-01')!;
       while (session.playerFollowUps.length < session.questions.length) {
         final choice = PublicDemoProjectInterview.choicesFor(session).first;
-        aggregate = aggregate.chooseProjectInterviewFollowUp('eng-01', choice);
+        aggregate = aggregate.chooseProjectInterviewFollowUp('eng-01', session.currentQuestionIndex, choice);
         session = aggregate.projectInterviewSessionFor('eng-01')!;
       }
 
@@ -535,7 +537,7 @@ void main() {
       var session = aggregate.projectInterviewSessionFor('eng-01')!;
       while (session.playerFollowUps.length < session.questions.length) {
         final choice = PublicDemoProjectInterview.choicesFor(session).first;
-        aggregate = aggregate.chooseProjectInterviewFollowUp('eng-01', choice);
+        aggregate = aggregate.chooseProjectInterviewFollowUp('eng-01', session.currentQuestionIndex, choice);
         session = aggregate.projectInterviewSessionFor('eng-01')!;
       }
       aggregate = aggregate.concludeProjectInterview('eng-01');
@@ -566,11 +568,11 @@ void main() {
         projectId: candidates[0].id,
       );
       aggregate = aggregate.startProjectInterview('eng-01');
+      final firstProjectSession = aggregate.projectInterviewSessionFor('eng-01')!;
       aggregate = aggregate.chooseProjectInterviewFollowUp(
         'eng-01',
-        PublicDemoProjectInterview.choicesFor(
-          aggregate.projectInterviewSessionFor('eng-01')!,
-        ).first,
+        firstProjectSession.currentQuestionIndex,
+        PublicDemoProjectInterview.choicesFor(firstProjectSession).first,
       );
       aggregate = aggregate.proposeMatch(
         engineerId: 'eng-01',
@@ -580,7 +582,7 @@ void main() {
       var session = aggregate.projectInterviewSessionFor('eng-01')!;
       while (session.playerFollowUps.length < session.questions.length) {
         final choice = PublicDemoProjectInterview.choicesFor(session).first;
-        aggregate = aggregate.chooseProjectInterviewFollowUp('eng-01', choice);
+        aggregate = aggregate.chooseProjectInterviewFollowUp('eng-01', session.currentQuestionIndex, choice);
         session = aggregate.projectInterviewSessionFor('eng-01')!;
       }
       aggregate = aggregate.concludeProjectInterview('eng-01');
@@ -675,15 +677,12 @@ void main() {
         'reopen — no mixing of old-month answers with new-month capability', () {
       var aggregate = _withRealProposal(PublicDemoAggregate.initial(runSeed: 91));
       aggregate = aggregate.startProjectInterview('eng-01');
-      final firstQuestionAnswer = aggregate
-          .projectInterviewSessionFor('eng-01')!
-          .employeeAnswers
-          .first;
+      final startSession = aggregate.projectInterviewSessionFor('eng-01')!;
+      final firstQuestionAnswer = startSession.employeeAnswers.first;
       aggregate = aggregate.chooseProjectInterviewFollowUp(
         'eng-01',
-        PublicDemoProjectInterview.choicesFor(
-          aggregate.projectInterviewSessionFor('eng-01')!,
-        ).first,
+        startSession.currentQuestionIndex,
+        PublicDemoProjectInterview.choicesFor(startSession).first,
       );
       final midSession = aggregate.projectInterviewSessionFor('eng-01')!;
       expect(midSession.playerFollowUps, hasLength(1));
@@ -750,11 +749,11 @@ void main() {
         'month-freshness check keeps working identically after a reload', () {
       var aggregate = _withRealProposal(PublicDemoAggregate.initial(runSeed: 91));
       aggregate = aggregate.startProjectInterview('eng-01');
+      final freshSession = aggregate.projectInterviewSessionFor('eng-01')!;
       aggregate = aggregate.chooseProjectInterviewFollowUp(
         'eng-01',
-        PublicDemoProjectInterview.choicesFor(
-          aggregate.projectInterviewSessionFor('eng-01')!,
-        ).first,
+        freshSession.currentQuestionIndex,
+        PublicDemoProjectInterview.choicesFor(freshSession).first,
       );
 
       final restored = PublicDemoAggregate.fromJson(aggregate.toJson());
@@ -768,6 +767,251 @@ void main() {
       expect(
         resumedSameMonth.projectInterviewSessionFor('eng-01')!.playerFollowUps,
         hasLength(1),
+      );
+    });
+  });
+
+  group('Codex P2 fix (PR #214): duplicate/stale follow-up submissions are '
+      'ignored at the authority boundary', () {
+    test('submitting the same follow-up twice in a row (the second call '
+        'still claiming the question index the first one already answered) '
+        'is a no-op', () {
+      var aggregate = _withRealProposal(PublicDemoAggregate.initial(runSeed: 5));
+      aggregate = aggregate.startProjectInterview('eng-01');
+      final session0 = aggregate.projectInterviewSessionFor('eng-01')!;
+      final choice = PublicDemoProjectInterview.choicesFor(session0).first;
+
+      final afterFirst = aggregate.chooseProjectInterviewFollowUp(
+        'eng-01',
+        session0.currentQuestionIndex,
+        choice,
+      );
+      final sessionAfterFirst = afterFirst.projectInterviewSessionFor(
+        'eng-01',
+      )!;
+      expect(sessionAfterFirst.playerFollowUps, hasLength(1));
+
+      // The duplicate/stale second submission -- same captured
+      // questionIndex (0, from the session the button was originally built
+      // from), submitted against the aggregate AFTER the first call already
+      // advanced it.
+      final afterDuplicate = afterFirst.chooseProjectInterviewFollowUp(
+        'eng-01',
+        session0.currentQuestionIndex,
+        choice,
+      );
+      final sessionAfterDuplicate = afterDuplicate.projectInterviewSessionFor(
+        'eng-01',
+      )!;
+
+      expect(sessionAfterDuplicate.playerFollowUps, hasLength(1));
+      expect(
+        sessionAfterDuplicate.currentQuestionIndex,
+        sessionAfterFirst.currentQuestionIndex,
+      );
+      expect(
+        sessionAfterDuplicate.employeeAnswers.length,
+        sessionAfterFirst.employeeAnswers.length,
+      );
+      expect(
+        sessionAfterDuplicate.accumulatedEvaluation.total,
+        sessionAfterFirst.accumulatedEvaluation.total,
+      );
+      expect(
+        sessionAfterDuplicate.interviewerReactions.length,
+        sessionAfterFirst.interviewerReactions.length,
+      );
+    });
+
+    test('a double submit on a NON-final question does not skip the next '
+        'question — its own real follow-up is still required and accepted '
+        'normally', () {
+      var aggregate = _withRealProposal(PublicDemoAggregate.initial(runSeed: 5));
+      aggregate = aggregate.startProjectInterview('eng-01');
+      final session0 = aggregate.projectInterviewSessionFor('eng-01')!;
+      expect(session0.questions.length, greaterThan(1));
+      final choice0 = PublicDemoProjectInterview.choicesFor(session0).first;
+
+      aggregate = aggregate.chooseProjectInterviewFollowUp('eng-01', 0, choice0);
+      // Stale duplicate still claiming question 0.
+      aggregate = aggregate.chooseProjectInterviewFollowUp('eng-01', 0, choice0);
+
+      final session1 = aggregate.projectInterviewSessionFor('eng-01')!;
+      expect(session1.currentQuestionIndex, 1);
+      expect(session1.playerFollowUps, hasLength(1));
+
+      // Question 1's own real answer is still genuinely required and works.
+      final choice1 = PublicDemoProjectInterview.choicesFor(session1).first;
+      aggregate = aggregate.chooseProjectInterviewFollowUp('eng-01', 1, choice1);
+      final session2 = aggregate.projectInterviewSessionFor('eng-01')!;
+      expect(session2.playerFollowUps, hasLength(2));
+    });
+
+    test('a double submit on the FINAL question does not double-add its '
+        'evaluation into accumulatedEvaluation', () {
+      var aggregate = _withRealProposal(PublicDemoAggregate.initial(runSeed: 5));
+      aggregate = aggregate.startProjectInterview('eng-01');
+      var session = aggregate.projectInterviewSessionFor('eng-01')!;
+      while (session.currentQuestionIndex < session.questions.length - 1) {
+        final choice = PublicDemoProjectInterview.choicesFor(session).first;
+        aggregate = aggregate.chooseProjectInterviewFollowUp(
+          'eng-01',
+          session.currentQuestionIndex,
+          choice,
+        );
+        session = aggregate.projectInterviewSessionFor('eng-01')!;
+      }
+      final lastIndex = session.currentQuestionIndex;
+      final lastChoice = PublicDemoProjectInterview.choicesFor(session).first;
+
+      final afterFirst = aggregate.chooseProjectInterviewFollowUp(
+        'eng-01',
+        lastIndex,
+        lastChoice,
+      );
+      final sessionAfterFirst = afterFirst.projectInterviewSessionFor(
+        'eng-01',
+      )!;
+      expect(sessionAfterFirst.playerFollowUps, hasLength(session.questions.length));
+
+      final afterDuplicate = afterFirst.chooseProjectInterviewFollowUp(
+        'eng-01',
+        lastIndex,
+        lastChoice,
+      );
+      final sessionAfterDuplicate = afterDuplicate.projectInterviewSessionFor(
+        'eng-01',
+      )!;
+
+      // Not questions.length + 1 -- the duplicate final answer never lands.
+      expect(
+        sessionAfterDuplicate.playerFollowUps,
+        hasLength(session.questions.length),
+      );
+      expect(
+        sessionAfterDuplicate.accumulatedEvaluation.total,
+        sessionAfterFirst.accumulatedEvaluation.total,
+      );
+    });
+
+    test('a followUp that is not among the current question\'s offered '
+        'choices is rejected', () {
+      var aggregate = _withRealProposal(PublicDemoAggregate.initial(runSeed: 5));
+      aggregate = aggregate.startProjectInterview('eng-01');
+      final session0 = aggregate.projectInterviewSessionFor('eng-01')!;
+      final offered = PublicDemoProjectInterview.choicesFor(session0);
+      final notOffered = ClientInterviewFollowUp.values.firstWhere(
+        (candidate) => !offered.contains(candidate),
+      );
+
+      final rejected = aggregate.chooseProjectInterviewFollowUp(
+        'eng-01',
+        0,
+        notOffered,
+      );
+
+      expect(
+        rejected.projectInterviewSessionFor('eng-01')!.playerFollowUps,
+        isEmpty,
+      );
+    });
+
+    test('a followUp submitted for a stale (already-advanced) question '
+        'index is rejected even when the choice itself is generally valid '
+        'for the current question', () {
+      var aggregate = _withRealProposal(PublicDemoAggregate.initial(runSeed: 5));
+      aggregate = aggregate.startProjectInterview('eng-01');
+      final session0 = aggregate.projectInterviewSessionFor('eng-01')!;
+      final choice0 = PublicDemoProjectInterview.choicesFor(session0).first;
+      aggregate = aggregate.chooseProjectInterviewFollowUp('eng-01', 0, choice0);
+
+      final stale = aggregate.chooseProjectInterviewFollowUp(
+        'eng-01',
+        0,
+        choice0,
+      );
+
+      expect(
+        stale.projectInterviewSessionFor('eng-01')!.playerFollowUps,
+        hasLength(1),
+      );
+    });
+
+    test('a negative or out-of-range question index is rejected', () {
+      var aggregate = _withRealProposal(PublicDemoAggregate.initial(runSeed: 5));
+      aggregate = aggregate.startProjectInterview('eng-01');
+      final session0 = aggregate.projectInterviewSessionFor('eng-01')!;
+      final choice0 = PublicDemoProjectInterview.choicesFor(session0).first;
+
+      final rejectedNegative = aggregate.chooseProjectInterviewFollowUp(
+        'eng-01',
+        -1,
+        choice0,
+      );
+      final rejectedTooLarge = aggregate.chooseProjectInterviewFollowUp(
+        'eng-01',
+        session0.questions.length,
+        choice0,
+      );
+
+      expect(
+        rejectedNegative.projectInterviewSessionFor('eng-01')!.playerFollowUps,
+        isEmpty,
+      );
+      expect(
+        rejectedTooLarge.projectInterviewSessionFor('eng-01')!.playerFollowUps,
+        isEmpty,
+      );
+    });
+
+    test('valid normal progression through every question still completes '
+        'and concludes correctly', () {
+      final result = _runInterviewToConclusion(
+        _withRealProposal(PublicDemoAggregate.initial(runSeed: 5)),
+      );
+      final session = result.projectInterviewSessionFor('eng-01')!;
+      expect(session.completed, isTrue);
+      expect(session.result, isNotNull);
+    });
+
+    test('save/reload preserves progress, and a stale duplicate is still '
+        'rejected identically after reload', () {
+      var aggregate = _withRealProposal(PublicDemoAggregate.initial(runSeed: 5));
+      aggregate = aggregate.startProjectInterview('eng-01');
+      final session0 = aggregate.projectInterviewSessionFor('eng-01')!;
+      final choice0 = PublicDemoProjectInterview.choicesFor(session0).first;
+      aggregate = aggregate.chooseProjectInterviewFollowUp('eng-01', 0, choice0);
+
+      final restored = PublicDemoAggregate.fromJson(aggregate.toJson());
+      expect(
+        restored.projectInterviewSessionFor('eng-01')!.playerFollowUps,
+        hasLength(1),
+      );
+
+      final stale = restored.chooseProjectInterviewFollowUp(
+        'eng-01',
+        0,
+        choice0,
+      );
+      expect(
+        stale.projectInterviewSessionFor('eng-01')!.playerFollowUps,
+        hasLength(1),
+      );
+    });
+
+    test('determinism is unaffected: replaying the same runSeed/choices '
+        'through the question-index-validated API still reproduces the '
+        'same result', () {
+      PublicDemoAggregate runOnce() =>
+          _runInterviewToConclusion(_withRealProposal(PublicDemoAggregate.initial(runSeed: 5)));
+
+      final first = runOnce();
+      final second = runOnce();
+
+      expect(_engineer(first).stage, _engineer(second).stage);
+      expect(
+        _engineer(first).lastInterviewScore,
+        _engineer(second).lastInterviewScore,
       );
     });
   });

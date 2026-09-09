@@ -1,6 +1,6 @@
 # SES CORE-GAMEPLAY Phase 6: Project Interview Gameplay — Result
 
-Status: **Merged onto latest `main` (PR #213); Codex P1-1/P1-2/P2 findings fixed; `flutter analyze` clean, full test suite green (1963/1963)**
+Status: **Merged onto latest `main` (PR #213); all Codex findings (P1-1/P1-2/P2, plus this update's duplicate-follow-up P2) fixed; `flutter analyze` clean, full test suite green (1972/1972)**
 
 ## BASE SHA / branch / HEAD
 
@@ -35,12 +35,22 @@ Status: **Merged onto latest `main` (PR #213); Codex P1-1/P1-2/P2 findings fixed
   interviewSessions/projectInterviewSessions before strict save
   comparison") — this is the PR #214 HEAD Codex reviewed and left its
   P1-1/P1-2/P2 findings against.
-- **Final HEAD SHA (this update, Codex P1-1/P1-2/P2 fixes):**
-  `7a0c5d8d98415a836f68abc96d8c61914aca3624` ("fix(project-interview):
-  address Codex P1-1/P1-2/P2 findings on PR #214"). (A commit's hash covers
-  its own tree, so amending this file after that hash was computed would
-  change it again — this is the value actually pushed; not re-amended
-  after this point.)
+- HEAD after the Codex P1-1/P1-2/P2 fixes:
+  `d9c6a09851de1179db4d0e7257c99a64e5c10baa` ("fix(project-interview):
+  address Codex P1-1/P1-2/P2 findings on PR #214") — the report's own SHA
+  line at the time quoted `7a0c5d8...`, an intermediate value from before a
+  same-session amend; `d9c6a09` is, and remains, the one actually pushed
+  and reviewed. This is the HEAD Codex reviewed and left the new
+  "Ignore duplicate follow-up submissions" P2 finding against.
+- **Final HEAD SHA (this update, Codex duplicate-follow-up P2 fix):**
+  `d42d70c70ef04027edacdfb035b5b66bfa6f9331` ("fix(project-interview): reject
+  duplicate/stale follow-up submissions at the authority boundary (Codex P2,
+  PR #214)"). Note: this hash is the value actually committed and pushed;
+  because this file documents its own commit's hash, the file's bytes at the
+  moment of that commit necessarily differ infinitesimally from what a
+  fresh re-hash would produce (the well-known self-reference limit for a
+  report that names its own SHA) -- this value is not re-amended after this
+  point and is the one used consistently in the PR reply and final response.
 
 ## Main integration (PR #213 → PR #214)
 
@@ -292,6 +302,92 @@ not a hand-crafted fixture) round-trips its project binding exactly.
 
 All pre-existing Phase 6 tests (28 domain + 8 widget, including the entire
 prior Codex P1 regression group) continue to pass unmodified.
+
+## Codex P2 review fix (this update) — "Ignore duplicate follow-up submissions"
+
+**Finding (verified TRUE by direct code reading):** `PublicDemoProjectInterview
+.chooseFollowUp` applied a follow-up to `session.currentQuestionIndex`
+unconditionally — nothing checked whether that exact question had already
+received one. If the same logical player action reached the authority layer
+twice (a rapid double tap before a rebuild swaps out the pressed button, a
+duplicated accessibility activation, or any other caller invoking the
+command twice for what the player experienced as one choice), the second
+call would either (a) for a non-final question, apply the stale,
+player-unintended `followUp` value to the question the session had *already
+advanced to*, silently skipping the player's real decision for it, or (b)
+for the final question (whose `currentQuestionIndex` never advances once
+answered), re-run `ClientInterviewEngine.evaluate` a second time and add its
+result into `accumulatedEvaluation` again — corrupting the seeded
+`finalRate`/`conclude` outcome the player never actually chose.
+
+**Root-cause analysis — why a simple "already answered" flag on the session
+alone cannot fully catch this:** `session.currentQuestionIndex` and
+`session.playerFollowUps.length` advance together for every non-final
+question, so a stale duplicate arriving after a genuine advance looks
+*identical* to a legitimate first answer for the new current question —
+there is no way to distinguish "the player's real answer for question K+1"
+from "a stale echo of their answer for question K, misapplied to K+1" using
+only the session's own current state. The only way to detect a stale
+resubmission is for the caller to say *which* question it believes it is
+answering, captured at the moment the player actually made the choice, so
+authority can reject it once the session has since moved past that index.
+
+**Fix (minimal, authority-enforced, no reliance on UI disabling):**
+
+- `PublicDemoProjectInterview.chooseFollowUp` gained a required
+  `questionIndex` parameter. It is now a no-op unless **both**
+  `questionIndex == session.currentQuestionIndex` **and**
+  `questionIndex == session.playerFollowUps.length` hold (plus an in-range
+  bounds check). Verified this pair — not either alone — correctly rejects
+  a duplicate on every question: `currentQuestionIndex` alone misses the
+  final-question case (it never advances there), and `playerFollowUps
+  .length` alone is otherwise implied by `currentQuestionIndex` for a
+  fresh/valid submission, so the combination is exactly "this question has
+  not yet received its one follow-up."
+- `followUp` is additionally required to be one of
+  `ClientInterviewEngine.choices(question)`'s own offered values for that
+  exact question — never an arbitrary enum value the UI never actually
+  presented (every category offers only 3 of the 6
+  `ClientInterviewFollowUp` values, so this is a real, non-vacuous check).
+- `PublicDemoAggregate.chooseProjectInterviewFollowUp` threads the new
+  `questionIndex` straight through — the aggregate itself derives/asserts
+  nothing about it, exactly like every other value that crosses this
+  boundary in this file.
+- `PublicDemoProjectInterviewDialog` now captures `session
+  .currentQuestionIndex` from the specific `ClientInterviewSession` **local
+  variable** `build()` actually rendered the pressed follow-up button from,
+  and closes over that captured value — never re-reading `_session`/
+  `_aggregate` (the mutable State fields) at tap time, which could already
+  reflect a prior tap's own advance by the time a second, stale tap on the
+  same (not-yet-rebuilt) button is processed. This is what makes the
+  authority-level rejection actually reachable from a genuine double-tap,
+  rather than the UI accidentally self-correcting via field mutation timing
+  — the fix does not depend on, or assume anything about, that timing.
+- `MatchingEngine`, Finance/Month/Balance, HOME, and the Phase 7A lifecycle
+  were not touched — purely a duplicate-submission guard in the Phase
+  6-only interview adapter/aggregate/dialog.
+
+**Regression tests added** (`public_demo_project_interview_test.dart`,
+group `Codex P2 fix (PR #214): duplicate/stale follow-up submissions are
+ignored at the authority boundary`, 11 tests): the same follow-up submitted
+twice in a row is a no-op the second time; a double submit on a non-final
+question does not skip that question's real successor; a double submit on
+the *final* question does not double-add its evaluation; a follow-up not
+among the current question's offered choices is rejected; a follow-up for a
+stale, already-advanced question index is rejected even when the choice
+value is otherwise valid; a negative or out-of-range index is rejected;
+normal valid progression through every question still completes and
+concludes correctly; save/reload preserves progress and the stale-duplicate
+rejection keeps working identically after a reload; determinism is
+unaffected (replaying the same seed/choices through the new, validated API
+reproduces the same result).
+
+All pre-existing Phase 6 tests (37 domain including the full P1/P1-1/P1-2/P2
+regression history + 8 widget) continue to pass unmodified — the existing
+widget test suite in particular already exercised the real
+`PublicDemoProjectInterviewDialog` tap flow end-to-end and needed no changes
+to keep passing, confirming the new `questionIndex` capture is transparent
+to normal, non-duplicate play.
 
 ## Authority audit (READ-ONLY, before writing anything)
 

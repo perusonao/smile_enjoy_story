@@ -134,15 +134,52 @@ class PublicDemoProjectInterview {
   /// chosen follow-up. Never touches `completed`/`result` itself: those are
   /// only ever set by [conclude], exactly like the main game's own
   /// `_completeClientInterview`.
+  ///
+  /// [questionIndex] (Codex P2 fix, PR #214) is the index of the question
+  /// the caller believes it is answering — captured by the UI from the
+  /// [ClientInterviewSession] it actually rendered, never re-derived from
+  /// whatever the session's *current* state happens to be at call time.
+  /// This is a no-op (returns [session] unchanged) unless [questionIndex]
+  /// still names a question that has not yet received a follow-up:
+  /// `questionIndex == session.currentQuestionIndex &&
+  /// questionIndex == session.playerFollowUps.length`. Both halves matter —
+  /// `currentQuestionIndex` alone is insufficient because it does NOT
+  /// advance past the *last* question once answered, so a duplicate
+  /// resubmission for the final question would otherwise still match it;
+  /// `playerFollowUps.length` alone is insufficient because it advances in
+  /// lockstep with `currentQuestionIndex` for every non-final question, so
+  /// a stale duplicate arriving after a real advance would otherwise still
+  /// match it too. Together they reject a same-question double submission
+  /// (rapid double-tap, duplicated accessibility activation, or any other
+  /// caller invoking this twice for what the player experienced as one
+  /// action) whether it lands on the final question (which would otherwise
+  /// double-add [ClientInterviewEngine.evaluate]'s evaluation into
+  /// `accumulatedEvaluation`, corrupting the seeded [conclude] rate) or an
+  /// earlier one (which would otherwise apply the stale, player-unintended
+  /// choice to the *next* question, silently skipping the real decision for
+  /// it). [followUp] is additionally required to be one of the choices
+  /// [ClientInterviewEngine.choices] actually offers for that exact
+  /// question — never an arbitrary enum value the UI never actually
+  /// presented.
   static ClientInterviewSession chooseFollowUp({
     required int runSeed,
     required PublicDemoEngineerRuntime runtime,
     required Project project,
     required ClientInterviewSession session,
+    required int questionIndex,
     required ClientInterviewFollowUp followUp,
   }) {
+    if (questionIndex < 0 ||
+        questionIndex >= session.questions.length ||
+        questionIndex != session.currentQuestionIndex ||
+        questionIndex != session.playerFollowUps.length) {
+      return session;
+    }
+    final question = session.questions[questionIndex];
+    if (!ClientInterviewEngine.choices(question).contains(followUp)) {
+      return session;
+    }
     final engineer = engineerFor(runtime);
-    final question = session.questions[session.currentQuestionIndex];
     final answer = session.employeeAnswers[session.currentQuestionIndex];
     final seed = _seed(
       runSeed: runSeed,

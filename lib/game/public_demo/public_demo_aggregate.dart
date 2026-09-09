@@ -734,7 +734,7 @@ class PublicDemoAggregate {
     return PublicDemoProjectInterview.choicesFor(session);
   }
 
-  /// Applies [followUp] to [engineerId]'s current interview question and
+  /// Applies [followUp] to [engineerId]'s question at [questionIndex] and
   /// advances the session — see [PublicDemoProjectInterview.chooseFollowUp].
   /// A no-op unless a real proposal/project/runtime/in-progress session all
   /// resolve **for this exact [candidate]** (Codex P1 fix, PR #214):
@@ -743,8 +743,20 @@ class PublicDemoAggregate {
   /// [PublicDemoWorkflowState.updateProjectInterviewSession] `projectId`
   /// match — a session left over for a since-replaced proposal (a
   /// different project) is never advanced here.
+  ///
+  /// [questionIndex] (Codex P2 fix, PR #214) must be the index of the
+  /// question the caller actually rendered/answered — the UI is required
+  /// to capture this from the specific [ClientInterviewSession] snapshot it
+  /// built the follow-up buttons from, never re-derive it from whatever the
+  /// session's *current* state happens to be when the tap is finally
+  /// processed. [PublicDemoProjectInterview.chooseFollowUp] rejects the
+  /// call outright once that no longer matches the session's actual current
+  /// question — see its own doc for exactly which duplicate/stale-
+  /// submission shapes this closes, and why a UI-only disabled-button guard
+  /// is insufficient on its own.
   PublicDemoAggregate chooseProjectInterviewFollowUp(
     String engineerId,
+    int questionIndex,
     ClientInterviewFollowUp followUp,
   ) {
     final candidate = projectInterviewCandidateFor(engineerId);
@@ -759,6 +771,7 @@ class PublicDemoAggregate {
           runtime: runtime,
           project: candidate.project,
           session: session,
+          questionIndex: questionIndex,
           followUp: followUp,
         ),
       ),

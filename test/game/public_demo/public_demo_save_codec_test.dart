@@ -365,6 +365,7 @@ void main() {
       while (session.playerFollowUps.length < session.questions.length) {
         aggregate = aggregate.chooseProjectInterviewFollowUp(
           'eng-01',
+          session.currentQuestionIndex,
           PublicDemoProjectInterview.choicesFor(session).first,
         );
         session = aggregate.projectInterviewSessionFor('eng-01')!;

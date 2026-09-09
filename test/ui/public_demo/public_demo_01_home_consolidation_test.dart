@@ -149,7 +149,7 @@ Future<void> dismiss(WidgetTester tester) async {
 
 Future<void> pumpDemo(WidgetTester tester) async {
   await tester.pumpWidget(
-    const MaterialApp(home: PublicDemo01PlaceholderScreen()),
+    const MaterialApp(home: PublicDemo01PlaceholderScreen(debugSeed: 9)),
   );
   await tester.pumpAndSettle();
 }

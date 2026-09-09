@@ -85,7 +85,7 @@ void main() {
     'bankruptcy and the terminal guard afterward (FINANCE-FAILURE-1A+1B)',
     (tester) async {
       await tester.pumpWidget(
-        const MaterialApp(home: PublicDemo01PlaceholderScreen()),
+        const MaterialApp(home: PublicDemo01PlaceholderScreen(debugSeed: 9)),
       );
 
       // April: Sato wins the May order (deterministic interview scores).

@@ -85,7 +85,7 @@ void main() {
     tester,
   ) async {
     await tester.pumpWidget(
-      const MaterialApp(home: PublicDemo01PlaceholderScreen()),
+      const MaterialApp(home: PublicDemo01PlaceholderScreen(debugSeed: 9)),
     );
 
     // April: Sato wins the May order (same deterministic path as the

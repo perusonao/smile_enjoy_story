@@ -73,7 +73,7 @@ Future<void> pumpDemoAt(WidgetTester tester, Size size) async {
   tester.view.devicePixelRatio = 1.0;
   addTearDown(tester.view.reset);
   await tester.pumpWidget(
-    const MaterialApp(home: PublicDemo01PlaceholderScreen()),
+    const MaterialApp(home: PublicDemo01PlaceholderScreen(debugSeed: 9)),
   );
   await tester.pumpAndSettle();
 }

@@ -160,7 +160,9 @@ Future<void> pumpDemo(WidgetTester tester, {Size? size}) async {
     addTearDown(tester.view.reset);
   }
   await tester.pumpWidget(
-    MaterialApp(home: PublicDemo01PlaceholderScreen(key: UniqueKey())),
+    MaterialApp(
+      home: PublicDemo01PlaceholderScreen(key: UniqueKey(), debugSeed: 9),
+    ),
   );
   await tester.pumpAndSettle();
 }

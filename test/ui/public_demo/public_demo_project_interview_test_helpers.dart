@@ -22,6 +22,20 @@ import 'package:flutter_test/flutter_test.dart';
 /// no category-specific risk/mismatch penalty, the same safe default
 /// `public_demo_01_success_playthrough_test.dart` uses — then dismisses the
 /// result with '続ける'.
+///
+/// Unlike the old generic dialog (a pure function of the engineer's fixed
+/// interview profile, so always the same pass/fail for a given founding
+/// engineer regardless of `runSeed`), the real [ClientInterviewEngine] asks
+/// seed-derived questions about seed-derived project requirements — so a
+/// fixture that pumps [PublicDemo01PlaceholderScreen] with no `debugSeed`
+/// (a genuinely random seed every run) can now occasionally hit a real,
+/// natural interview failure here even with `letEmployeeHandle`, exactly as
+/// a real player could. That is correct game behavior, not a bug in this
+/// helper — but it makes an unseeded fixture that assumes a guaranteed pass
+/// (e.g. one that taps '受注' right after) flaky. Every fixture this helper
+/// was introduced for pins `debugSeed: 9`, the same seed
+/// `public_demo_01_success_playthrough_test.dart` already verifies passes
+/// this exact April/founding-engineer flow, to keep this deterministic.
 Future<void> dismissClientInterview(WidgetTester tester) async {
   if (find.text('案件面談').evaluate().isNotEmpty) {
     final letEmployeeHandle = find.byKey(

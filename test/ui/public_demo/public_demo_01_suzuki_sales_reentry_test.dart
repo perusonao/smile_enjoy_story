@@ -105,7 +105,7 @@ void main() {
       'changed threshold, no changed growth rate) puts スキルシート確認 back on '
       'screen for her', (tester) async {
     await tester.pumpWidget(
-      const MaterialApp(home: PublicDemo01PlaceholderScreen()),
+      const MaterialApp(home: PublicDemo01PlaceholderScreen(debugSeed: 9)),
     );
     await tester.pumpAndSettle();
 

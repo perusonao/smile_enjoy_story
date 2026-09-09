@@ -152,7 +152,7 @@ void main() {
     testWidgets('A. February close (→March) transitions into cashShortage; '
         'the March fiscal-year close commits bankruptcy', (tester) async {
       await tester.pumpWidget(
-        const MaterialApp(home: PublicDemo01PlaceholderScreen()),
+        const MaterialApp(home: PublicDemo01PlaceholderScreen(debugSeed: 9)),
       );
 
       // Drive to just before the November close. The employee
@@ -225,7 +225,7 @@ void main() {
     testWidgets('B. After bankruptcy: terminal state communicated, '
         'no-op close button absent, restart action exists', (tester) async {
       await tester.pumpWidget(
-        const MaterialApp(home: PublicDemo01PlaceholderScreen()),
+        const MaterialApp(home: PublicDemo01PlaceholderScreen(debugSeed: 9)),
       );
       await _driveToNovemberBankruptcy(tester);
 
@@ -265,7 +265,7 @@ void main() {
       tester,
     ) async {
       await tester.pumpWidget(
-        const MaterialApp(home: PublicDemo01PlaceholderScreen()),
+        const MaterialApp(home: PublicDemo01PlaceholderScreen(debugSeed: 9)),
       );
 
       // Drive to cashShortage state (after February close → March). The
@@ -391,7 +391,7 @@ void main() {
       // public_demo_01_persistence_test.dart.
       SharedPreferences.setMockInitialValues({});
       await tester.pumpWidget(
-        const MaterialApp(home: PublicDemo01PlaceholderScreen()),
+        const MaterialApp(home: PublicDemo01PlaceholderScreen(debugSeed: 9)),
       );
       await _driveToNovemberBankruptcy(tester);
 

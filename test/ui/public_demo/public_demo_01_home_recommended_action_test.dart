@@ -36,6 +36,7 @@ import 'package:smile_enjoy_story/presentation/home/models/home_recommended_acti
 import 'package:smile_enjoy_story/ui/public_demo/public_demo_01_placeholder_screen.dart';
 import 'package:smile_enjoy_story/ui/public_demo/public_demo_home_dashboard_section.dart';
 
+import 'public_demo_project_interview_test_helpers.dart';
 import 'public_demo_tab_test_helpers.dart';
 
 PublicDemoState currentState(WidgetTester tester) =>
@@ -159,7 +160,9 @@ Future<void> pumpDemo(WidgetTester tester, {Size? size}) async {
     addTearDown(tester.view.reset);
   }
   await tester.pumpWidget(
-    MaterialApp(home: PublicDemo01PlaceholderScreen(key: UniqueKey())),
+    MaterialApp(
+      home: PublicDemo01PlaceholderScreen(key: UniqueKey(), debugSeed: 9),
+    ),
   );
   await tester.pumpAndSettle();
 }
@@ -179,7 +182,7 @@ Future<void> playApril(WidgetTester tester) async {
   await tapAndSettle(tester, '上位会社面談');
   await dismiss(tester);
   await tapAndSettle(tester, '客先面談');
-  await dismiss(tester);
+  await dismissClientInterview(tester);
   await tapAndSettle(tester, '受注');
   await dismiss(tester);
   await switchPublicDemoTab(tester, PublicDemoTab.home);
@@ -304,7 +307,7 @@ void main() {
       await dismiss(tester);
       if (actionButton('客先面談').evaluate().isNotEmpty) {
         await tapAndSettle(tester, '客先面談');
-        await dismiss(tester);
+        await dismissClientInterview(tester);
       }
       if (actionButton('受注').evaluate().isNotEmpty) {
         await switchPublicDemoTab(tester, PublicDemoTab.home);

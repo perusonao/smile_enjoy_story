@@ -72,6 +72,33 @@ Future<void> dismissInterviewResult(
   await tester.pumpAndSettle();
 }
 
+/// Issue #219: `客先面談` now opens the real interactive Phase 6 mini-game
+/// ([PublicDemoProjectInterviewDialog], titled `案件面談`) whenever this
+/// engineer's `案件紹介` step already produced a real matching proposal —
+/// which, after this fix, it always does — instead of the old generic
+/// pass/fail dialog `dismissInterviewResult` above still covers for
+/// `上位会社面談` (partner interviews never route through Matching). Drives
+/// every follow-up with `letEmployeeHandle` — [ClientInterviewEngine
+/// .evaluate]'s one choice with no category-specific risk/mismatch penalty
+/// — until the result phase appears, then dismisses it with `続ける`.
+Future<void> driveProjectInterviewMiniGameToContinue(WidgetTester tester) async {
+  expect(find.text('案件面談'), findsOneWidget);
+  final letEmployeeHandle = find.byKey(
+    const Key('public-demo-project-interview-follow-letEmployeeHandle'),
+  );
+  for (var i = 0; i < 6; i++) {
+    if (find.text('続ける').evaluate().isNotEmpty) break;
+    await tester.ensureVisible(letEmployeeHandle);
+    await tester.pumpAndSettle();
+    await tester.tap(letEmployeeHandle);
+    await tester.pumpAndSettle();
+  }
+  expect(find.text('続ける'), findsOneWidget);
+  expect(find.textContaining('合格'), findsWidgets);
+  await tester.tap(find.text('続ける'));
+  await tester.pumpAndSettle();
+}
+
 Future<void> dismissEvent(
   WidgetTester tester,
   String title, {
@@ -111,8 +138,15 @@ void main() {
     await tapAndSettle(tester, '上位会社面談');
     await dismissInterviewResult(tester, '上位会社面談');
     expect(find.text('客先面談'), findsWidgets);
+    // Issue #219: `案件紹介` (above) now auto-proposes a real Phase 4/5
+    // matching candidate for Sato, so `客先面談` opens the real interactive
+    // Phase 6 mini-game (`案件面談`) — not the pre-Phase-6 generic pass/fail
+    // dialog `上位会社面談` above still exercises (partner interviews never
+    // touch Matching). This is the exact reachability this issue's fix
+    // targets: a player who only ever follows this same guided per-engineer
+    // flow now genuinely reaches the mini-game.
     await tapAndSettle(tester, '客先面談');
-    await dismissInterviewResult(tester, '客先面談');
+    await driveProjectInterviewMiniGameToContinue(tester);
     await tapAndSettle(tester, '受注');
     await dismissEvent(
       tester,
@@ -161,6 +195,15 @@ void main() {
     await tester.pumpAndSettle();
     await tapAndSettle(tester, '入社前スキルシートを確認');
     await tapAndSettle(tester, '入社前営業');
+    // 斎藤拓也 is still a not-yet-joined applicant here — the separate
+    // pre-entry pipeline (`preEntrySelling` -> `_introducePreEntryProject`
+    // -> `preEntryIntroduced` -> `recordPreEntry{Partner,Client}
+    // InterviewResult`), never the `PublicDemoEngineerSales`/
+    // `_introduceProject` path this issue's fix changed. Real, confirmed,
+    // out-of-scope-for-this-fix limitation (see the Issue #219 result
+    // report): a recruited-and-hired-later engineer never gets a matching
+    // proposal before joining, so this stays the pre-Phase-6 generic dialog
+    // — unchanged by this fix, and deliberately not widened here.
     await tapAndSettle(tester, '案件紹介');
     await tapAndSettle(tester, '上位会社面談');
     await dismissInterviewResult(tester, '上位会社面談');

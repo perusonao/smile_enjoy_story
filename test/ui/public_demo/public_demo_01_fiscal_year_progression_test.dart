@@ -5,6 +5,7 @@ import 'package:smile_enjoy_story/game/public_demo/public_demo_state.dart';
 import 'package:smile_enjoy_story/ui/public_demo/public_demo_01_placeholder_screen.dart';
 import 'package:smile_enjoy_story/ui/public_demo/public_demo_home_dashboard_section.dart';
 
+import 'public_demo_project_interview_test_helpers.dart';
 import 'public_demo_tab_test_helpers.dart';
 
 // `s` (unlike the enclosing `_S` state class) is not library-private, so it
@@ -97,7 +98,7 @@ void main() {
     'bankruptcy (FINANCE-FAILURE-1A+1B)',
     (tester) async {
       await tester.pumpWidget(
-        const MaterialApp(home: PublicDemo01PlaceholderScreen()),
+        const MaterialApp(home: PublicDemo01PlaceholderScreen(debugSeed: 9)),
       );
 
       // April: Sato wins the May order (deterministic interview scores),
@@ -110,7 +111,7 @@ void main() {
       await tapAndSettle(tester, '上位会社面談');
       await dismissDialog(tester, '確認');
       await tapAndSettle(tester, '客先面談');
-      await dismissDialog(tester, '確認');
+      await dismissClientInterview(tester);
       await tapAndSettle(tester, '受注');
       await dismissDialog(tester, '確認');
       // The month-close CTA is HOME's own monthly primary action.

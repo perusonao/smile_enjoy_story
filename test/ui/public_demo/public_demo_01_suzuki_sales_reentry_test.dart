@@ -21,6 +21,7 @@ import 'package:smile_enjoy_story/game/public_demo/public_demo_engineer_runtime.
 import 'package:smile_enjoy_story/game/public_demo/public_demo_state.dart';
 import 'package:smile_enjoy_story/ui/public_demo/public_demo_01_placeholder_screen.dart';
 
+import 'public_demo_project_interview_test_helpers.dart';
 import 'public_demo_tab_test_helpers.dart';
 
 const _suzukiId = 'eng-02';
@@ -104,7 +105,7 @@ void main() {
       'changed threshold, no changed growth rate) puts スキルシート確認 back on '
       'screen for her', (tester) async {
     await tester.pumpWidget(
-      const MaterialApp(home: PublicDemo01PlaceholderScreen()),
+      const MaterialApp(home: PublicDemo01PlaceholderScreen(debugSeed: 9)),
     );
     await tester.pumpAndSettle();
 
@@ -123,7 +124,7 @@ void main() {
     await tapAndSettle(tester, '上位会社面談');
     await dismissDialog(tester, '確認');
     await tapAndSettle(tester, '客先面談');
-    await dismissDialog(tester, '確認');
+    await dismissClientInterview(tester);
     await tapAndSettle(tester, '受注');
     await dismissDialog(tester, '確認');
 

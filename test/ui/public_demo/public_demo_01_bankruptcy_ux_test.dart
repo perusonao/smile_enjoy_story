@@ -20,6 +20,7 @@ import 'package:smile_enjoy_story/game/public_demo/public_demo_financial_status.
 import 'package:smile_enjoy_story/game/public_demo/public_demo_state.dart';
 import 'package:smile_enjoy_story/ui/public_demo/public_demo_01_placeholder_screen.dart';
 
+import 'public_demo_project_interview_test_helpers.dart';
 import 'public_demo_tab_test_helpers.dart';
 
 // ---------------------------------------------------------------------------
@@ -94,7 +95,7 @@ Future<void> _driveToNovemberBankruptcy(WidgetTester tester) async {
   await _tapAndSettle(tester, '上位会社面談');
   await _dismiss(tester);
   await _tapAndSettle(tester, '客先面談');
-  await _dismiss(tester);
+  await dismissClientInterview(tester);
   await _tapAndSettle(tester, '受注');
   await _dismiss(tester);
   // The month-close CTA is HOME's own monthly primary action.
@@ -151,7 +152,7 @@ void main() {
     testWidgets('A. February close (→March) transitions into cashShortage; '
         'the March fiscal-year close commits bankruptcy', (tester) async {
       await tester.pumpWidget(
-        const MaterialApp(home: PublicDemo01PlaceholderScreen()),
+        const MaterialApp(home: PublicDemo01PlaceholderScreen(debugSeed: 9)),
       );
 
       // Drive to just before the November close. The employee
@@ -163,7 +164,7 @@ void main() {
       await _tapAndSettle(tester, '上位会社面談');
       await _dismiss(tester);
       await _tapAndSettle(tester, '客先面談');
-      await _dismiss(tester);
+      await dismissClientInterview(tester);
       await _tapAndSettle(tester, '受注');
       await _dismiss(tester);
       await switchPublicDemoTab(tester, PublicDemoTab.home);
@@ -224,7 +225,7 @@ void main() {
     testWidgets('B. After bankruptcy: terminal state communicated, '
         'no-op close button absent, restart action exists', (tester) async {
       await tester.pumpWidget(
-        const MaterialApp(home: PublicDemo01PlaceholderScreen()),
+        const MaterialApp(home: PublicDemo01PlaceholderScreen(debugSeed: 9)),
       );
       await _driveToNovemberBankruptcy(tester);
 
@@ -264,7 +265,7 @@ void main() {
       tester,
     ) async {
       await tester.pumpWidget(
-        const MaterialApp(home: PublicDemo01PlaceholderScreen()),
+        const MaterialApp(home: PublicDemo01PlaceholderScreen(debugSeed: 9)),
       );
 
       // Drive to cashShortage state (after February close → March). The
@@ -276,7 +277,7 @@ void main() {
       await _tapAndSettle(tester, '上位会社面談');
       await _dismiss(tester);
       await _tapAndSettle(tester, '客先面談');
-      await _dismiss(tester);
+      await dismissClientInterview(tester);
       await _tapAndSettle(tester, '受注');
       await _dismiss(tester);
       await switchPublicDemoTab(tester, PublicDemoTab.home);
@@ -390,7 +391,7 @@ void main() {
       // public_demo_01_persistence_test.dart.
       SharedPreferences.setMockInitialValues({});
       await tester.pumpWidget(
-        const MaterialApp(home: PublicDemo01PlaceholderScreen()),
+        const MaterialApp(home: PublicDemo01PlaceholderScreen(debugSeed: 9)),
       );
       await _driveToNovemberBankruptcy(tester);
 

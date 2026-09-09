@@ -65,6 +65,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_financial_status.dart';
 import 'package:smile_enjoy_story/ui/public_demo/public_demo_01_placeholder_screen.dart';
 
+import 'public_demo_project_interview_test_helpers.dart';
 import 'public_demo_tab_test_helpers.dart';
 
 Future<void> pumpDemoAt(WidgetTester tester, Size size) async {
@@ -72,7 +73,7 @@ Future<void> pumpDemoAt(WidgetTester tester, Size size) async {
   tester.view.devicePixelRatio = 1.0;
   addTearDown(tester.view.reset);
   await tester.pumpWidget(
-    const MaterialApp(home: PublicDemo01PlaceholderScreen()),
+    const MaterialApp(home: PublicDemo01PlaceholderScreen(debugSeed: 9)),
   );
   await tester.pumpAndSettle();
 }
@@ -367,7 +368,7 @@ Future<void> _driveToActualCashShortage(WidgetTester tester) async {
   await tapAndSettle('上位会社面談');
   await dismiss();
   await tapAndSettle('客先面談');
-  await dismiss();
+  await dismissClientInterview(tester);
   await tapAndSettle('受注');
   await dismiss();
   // The month-close CTA is HOME's own monthly primary action.

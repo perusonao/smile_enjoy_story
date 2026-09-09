@@ -1,3 +1,6 @@
+import '../../domain/models/career_history_entry.dart';
+import '../../domain/models/project.dart';
+import '../../domain/models/sales_profile.dart' show Industry;
 import '../models/client_interview.dart';
 import '../models/recruitment_interview.dart';
 import 'public_demo_assignment.dart';
@@ -954,18 +957,149 @@ class PublicDemoAggregate {
   /// month-aware deferred-removal contract this depends on), so
   /// re-projecting the count here can only ever confirm the same number,
   /// never book or drop revenue.
+  ///
+  /// CORE-GAMEPLAY Phase 7B (Career History / SkillSheet Growth): this is
+  /// also the single production writer for [CareerHistoryEntry] — the
+  /// "案件終了→案件経歴を記録" step of the growth loop. It fires exactly
+  /// once per genuine assignment end: [ended] is captured BEFORE
+  /// [PublicDemoWorkflowState.endAssignment] runs, and the write only
+  /// happens in the same `!identical(nextWorkflow, workflow)` branch this
+  /// method already requires to do anything — the exact guard that already
+  /// makes a repeated call for the same ended assignment a structural
+  /// no-op (see this method's own doc above), so a second, independent
+  /// "already recorded" flag is not needed here.
+  ///
+  /// Records ONLY facts already authoritative elsewhere: [ended]'s own
+  /// [PublicDemoAssignment.monthsCredited] (see its own doc — never a
+  /// calendar span, never a lump-sum re-application of growth already
+  /// applied monthly by [PublicDemoGrowthEngine]), and, when [ended]
+  /// genuinely resolves to a real Phase 4/5 [Project]/[Client] via
+  /// [PublicDemoSeededProjectGenerator.regenerate] (the exact same
+  /// resolution [_industryByEngineerId] uses), that project's real title/
+  /// industry/required-domain footprint and its client's real name. A
+  /// `projectId`-less (generic/legacy) assignment still records its own
+  /// real [PublicDemoAssignment.projectName] rather than nothing — a
+  /// genuine domain fact, never fabricated here — but with no
+  /// industry/client/technologies, exactly matching what is actually
+  /// known. Skips writing an entry entirely when the recorded
+  /// `experienceMonths` (below) is `0`: an assignment that never earned a
+  /// single month of real, Growth-credited participation has no truthful
+  /// "months of experience" to record, and a `0か月` placeholder would only
+  /// be clutter, never a fact worth keeping.
+  ///
+  /// Codex P1 fix (PR #216): before month 7, [PublicDemoWorkflowState
+  /// .endAssignment] deliberately LEAVES the ended row in place (see that
+  /// method's own doc) because every assignment still counts toward the
+  /// CURRENT month's revenue/Growth regardless of `nextOrderStatus` —
+  /// meaning the very next month-end close (`closeApril`/`closeMay`/
+  /// `closeJune`) will still credit this same, still-present row one more
+  /// time before anything ever removes or supersedes it. Reading
+  /// `ended.monthsCredited` alone at this point would freeze the recorded
+  /// entry one month short of the truth the moment that close runs. So
+  /// [experienceMonths] adds that one still-pending month whenever the
+  /// row genuinely survives this call (`nextWorkflow.assignments` still
+  /// names [engineerId] — the exact same fact that branch's own atomic
+  /// `_copyWith` just decided) and this month's Growth has not already
+  /// been applied (`state.growthAppliedMonths` — defensive: in every real
+  /// production sequence a surviving row implies month < 7, which always
+  /// precedes its own close). From month 7 on the row is always removed
+  /// immediately instead (this method's own precondition already excludes
+  /// `notOffered` from that month's filtered `assignedEngineerIds`), so
+  /// `ended.monthsCredited` is already final there — no adjustment needed.
   PublicDemoAggregate endAssignment(String engineerId) {
+    final ended = workflow.assignments
+        .where((assignment) => assignment.engineerId == engineerId)
+        .firstOrNull;
     final nextWorkflow = workflow.endAssignment(engineerId, month: state.month);
     if (identical(nextWorkflow, workflow)) return this;
     final assignedIds = nextWorkflow.assignedEngineerIds(month: state.month);
+    final rowSurvives = nextWorkflow.assignments.any(
+      (assignment) => assignment.engineerId == engineerId,
+    );
+    final hasPendingMonthCredit =
+        rowSurvives &&
+        !state.fiscalYearCompleted &&
+        !state.growthAppliedMonths.contains(state.month);
+    final experienceMonths =
+        (ended?.monthsCredited ?? 0) + (hasPendingMonthCredit ? 1 : 0);
+    final runtimes = ended == null || experienceMonths <= 0
+        ? state.engineerRuntimes
+        : [
+            for (final runtime in state.engineerRuntimes)
+              if (runtime.engineerId == engineerId)
+                runtime.copyWith(
+                  careerHistory: [
+                    ...runtime.careerHistory,
+                    _careerHistoryEntryFor(ended, runtime, experienceMonths),
+                  ],
+                )
+              else
+                runtime,
+          ];
     return _copyWith(
       state: state.copyWith(
+        engineerRuntimes: runtimes,
         engineersAssigned: assignedIds.length,
         engineersWaiting: state.engineerCount - assignedIds.length,
       ),
       workflow: nextWorkflow,
     );
   }
+
+  /// See [endAssignment]'s own doc for exactly which facts this may/may not
+  /// record. [assignment] is the just-ended [PublicDemoAssignment]
+  /// (captured before [PublicDemoWorkflowState.endAssignment] removed or
+  /// superseded it); [runtime] is that same engineer's current, pre-write
+  /// [PublicDemoEngineerRuntime]. [experienceMonths] is [endAssignment]'s
+  /// own already-adjusted figure — [assignment.monthsCredited] plus one
+  /// still-pending month when the row survives this call (see
+  /// [endAssignment]'s own doc for why `assignment.monthsCredited` alone
+  /// can be one short) — never re-derived here. [CareerHistoryEntry
+  /// .languages] is always exactly `[runtime.primaryLanguage]` — the one
+  /// language [PublicDemoGrowthEngine] actually grew during this
+  /// assignment (see its own doc), never [Project.requiredLanguages]
+  /// verbatim, which can list a language this engineer never personally
+  /// worked in.
+  CareerHistoryEntry _careerHistoryEntryFor(
+    PublicDemoAssignment assignment,
+    PublicDemoEngineerRuntime runtime,
+    int experienceMonths,
+  ) {
+    final projectId = assignment.projectId;
+    final candidate = projectId == null
+        ? null
+        : PublicDemoSeededProjectGenerator.regenerate(
+            runSeed: state.runSeed,
+            projectId: projectId,
+          );
+    final project = candidate?.project;
+    final projectName = project?.title ?? assignment.projectName;
+    return CareerHistoryEntry(
+      id: 'career-${assignment.engineerId}-${projectId ?? 'generic'}-m${state.month}',
+      projectName: projectName,
+      experienceMonths: experienceMonths,
+      languages: [runtime.primaryLanguage],
+      technologies: project == null ? const [] : _technologiesFor(project),
+      industry: project?.industry,
+      clientNameSnapshot: candidate?.client.name,
+      summary: '$projectNameに$experienceMonthsか月間参画し、実務経験を積んだ。',
+    );
+  }
+
+  /// Real, non-fabricated technology chips for [_careerHistoryEntryFor]:
+  /// every skill domain [project] genuinely required at a non-zero level,
+  /// under the exact same domain labels the SkillSheet's own tech-skill
+  /// section already uses — never a free-text list [Project] has no field
+  /// for.
+  static List<String> _technologiesFor(Project project) => [
+    if (project.requiredDatabase > 0) 'DB',
+    if (project.requiredNetwork > 0) 'Network',
+    if (project.requiredInfrastructure > 0) 'Infra',
+    if (project.requiredFrontend > 0) 'Frontend',
+    if (project.requiredBackend > 0) 'Backend',
+    if (project.requiredLeader > 0) 'Leader',
+    if (project.requiredManager > 0) 'Manager',
+  ];
 
   /// The single sanctioned way to decide a raise for [applicantId]
   /// (POST-12MONTH-1-FIX1 P1-1), via [PublicDemoRaiseTransaction] — reads
@@ -1064,12 +1198,14 @@ class PublicDemoAggregate {
   /// mutation. Every other month-end command below follows the same shape.
   PublicDemoAggregate closeApril({required int monthlyExpenses}) {
     if (state.month != 4 || state.isCloseBlocked) return this;
+    final grown = _closeGrowth(const {});
     return _copyWith(
       state: PublicDemoMonthlyClose.closeApril(
-        state: _closeGrowth(const {}),
+        state: grown.state,
         monthlyExpenses: monthlyExpenses,
         orderedEngineers: workflow.orderedEngineerCount,
       ).state,
+      workflow: grown.workflow,
     );
   }
 
@@ -1124,16 +1260,16 @@ class PublicDemoAggregate {
     // from the post-join/post-assignment workflow, while moraleByEngineerId
     // is read from THIS aggregate's own pre-transition workflow — see
     // `_closeGrowth` below and its call site here.
-    final grownState = state.applyMonthlyGrowth(
-      assignedEngineerIds: nextWorkflow.engineers
+    final grown = _closeGrowth(
+      nextWorkflow.engineers
           .where((engineer) => engineer.stage == PublicDemoSalesStage.ordered)
           .map((engineer) => engineer.id)
           .toSet(),
-      moraleByEngineerId: workflow.moraleByEngineerId,
+      workflow: nextWorkflow,
     );
     final closedState = PublicDemoMonthlyClose.closeMay(
-      state: grownState,
-      workflow: nextWorkflow,
+      state: grown.state,
+      workflow: grown.workflow,
       monthlyExpenses: monthlyExpenses,
       acceptedHires: hires,
       hiredWithOrders: ordered,
@@ -1145,7 +1281,7 @@ class PublicDemoAggregate {
           PublicDemoEngineerRuntime.fromApplicant(applicant),
       ],
     );
-    return _copyWith(state: finalState, workflow: nextWorkflow);
+    return _copyWith(state: finalState, workflow: grown.workflow);
   }
 
   /// Closes June (state-only; workflow is read-only here).
@@ -1154,16 +1290,16 @@ class PublicDemoAggregate {
     required int monthlyExpenses,
   }) {
     if (state.month != 6 || state.isCloseBlocked) return this;
+    final grown = _closeGrowth(
+      workflow.assignments.map((assignment) => assignment.engineerId).toSet(),
+    );
     return _copyWith(
       state: PublicDemoMonthlyClose.closeJune(
-        state: _closeGrowth(
-          workflow.assignments
-              .map((assignment) => assignment.engineerId)
-              .toSet(),
-        ),
+        state: grown.state,
         monthlyExpenses: monthlyExpenses,
         assignedInJuly: assignedInJuly,
       ).state,
+      workflow: grown.workflow,
     );
   }
 
@@ -1182,23 +1318,25 @@ class PublicDemoAggregate {
       plan: state.summerBonusSelection,
     );
     if (!preview.isEligible) return this;
+    final grown = _closeGrowth(
+      workflow.assignments
+          .where(
+            (assignment) =>
+                assignment.nextOrderStatus ==
+                    PublicDemoNextOrderStatus.accepted ||
+                assignment.replacementStage ==
+                    PublicDemoReplacementStage.ordered,
+          )
+          .map((assignment) => assignment.engineerId)
+          .toSet(),
+    );
     return _copyWith(
       state: PublicDemoMonthlyClose.closeJuly(
-        state: _closeGrowth(
-          workflow.assignments
-              .where(
-                (assignment) =>
-                    assignment.nextOrderStatus ==
-                        PublicDemoNextOrderStatus.accepted ||
-                    assignment.replacementStage ==
-                        PublicDemoReplacementStage.ordered,
-              )
-              .map((assignment) => assignment.engineerId)
-              .toSet(),
-        ),
+        state: grown.state,
         monthlyExpenses: monthlyExpenses,
         applicants: workflow.joinedApplicants,
       ).state,
+      workflow: grown.workflow,
     );
   }
 
@@ -1207,24 +1345,87 @@ class PublicDemoAggregate {
     if (state.month < 8 || state.month > 15 || state.isCloseBlocked) {
       return this;
     }
+    final grown = _closeGrowth(workflow.assignedEngineerIds(month: state.month));
     return _copyWith(
       state: PublicDemoMonthlyClose.closeOrdinaryMonth(
-        state: _closeGrowth(workflow.assignedEngineerIds(month: state.month)),
+        state: grown.state,
         monthlyExpenses: monthlyExpenses,
       ).state,
+      workflow: grown.workflow,
     );
   }
 
   /// This is called only by the month-end commands above, after all
   /// current-month work/contract decisions and before the next month
   /// transition — mirrors the pre-cutover widget's own `_closeGrowth`
-  /// helper exactly, including reading `moraleByEngineerId` from this
-  /// aggregate's own (pre-transition) [workflow].
-  PublicDemoState _closeGrowth(Set<String> assignedEngineerIds) =>
-      state.applyMonthlyGrowth(
-        assignedEngineerIds: assignedEngineerIds,
-        moraleByEngineerId: workflow.moraleByEngineerId,
+  /// helper exactly, including reading `moraleByEngineerId` from THIS
+  /// aggregate's own (pre-transition) [workflow], never [workflow]'s
+  /// [workflow] parameter override below.
+  ///
+  /// CORE-GAMEPLAY Phase 7B: also feeds each currently-assigned engineer's
+  /// genuine project [Industry] (via [_industryByEngineerId]) into the same
+  /// Growth call — see [PublicDemoState.applyMonthlyGrowth]'s own doc — and,
+  /// only when Growth actually changed something this month (never on a
+  /// fiscalYearCompleted/already-applied-month no-op), credits
+  /// [PublicDemoWorkflowState.creditAssignmentMonths] with the exact same
+  /// [assignedEngineerIds] set, so [PublicDemoAssignment.monthsCredited]
+  /// stays in lockstep with Growth's own once-per-month application — never
+  /// a second, independently-gated counter. [workflow] lets [closeMay]
+  /// resolve/credit against its own post-join/post-assignment roster
+  /// (`nextWorkflow`) rather than this aggregate's pre-transition one, the
+  /// same split the pre-existing `moraleByEngineerId` comment above already
+  /// documents; every other caller omits it and gets [this.workflow].
+  /// Returns both halves atomically — no caller may apply the state half
+  /// without the workflow half, or vice versa.
+  ({PublicDemoState state, PublicDemoWorkflowState workflow}) _closeGrowth(
+    Set<String> assignedEngineerIds, {
+    PublicDemoWorkflowState? workflow,
+  }) {
+    final effectiveWorkflow = workflow ?? this.workflow;
+    final grownState = state.applyMonthlyGrowth(
+      assignedEngineerIds: assignedEngineerIds,
+      moraleByEngineerId: this.workflow.moraleByEngineerId,
+      industryByEngineerId: _industryByEngineerId(
+        assignedEngineerIds,
+        workflow: effectiveWorkflow,
+      ),
+    );
+    return (
+      state: grownState,
+      workflow: identical(grownState, state)
+          ? effectiveWorkflow
+          : effectiveWorkflow.creditAssignmentMonths(assignedEngineerIds),
+    );
+  }
+
+  /// CORE-GAMEPLAY Phase 7B: the real [Industry] of every currently-assigned
+  /// engineer's genuine Phase 6 project-bound assignment, resolved purely
+  /// from `(state.runSeed, PublicDemoAssignment.projectId)` via
+  /// [PublicDemoSeededProjectGenerator.regenerate] — the exact same
+  /// resolution [PublicDemoAggregate.endAssignment] uses for its
+  /// [CareerHistoryEntry], so both share one derivation instead of two that
+  /// could quietly drift apart. Omits any engineer whose assignment has no
+  /// `projectId` (the generic, project-agnostic path — see that field's own
+  /// doc) or whose id resolves to nothing: never a fabricated industry.
+  Map<String, Industry> _industryByEngineerId(
+    Set<String> assignedEngineerIds, {
+    required PublicDemoWorkflowState workflow,
+  }) {
+    final result = <String, Industry>{};
+    for (final assignment in workflow.assignments) {
+      if (!assignedEngineerIds.contains(assignment.engineerId)) continue;
+      final projectId = assignment.projectId;
+      if (projectId == null) continue;
+      final candidate = PublicDemoSeededProjectGenerator.regenerate(
+        runSeed: state.runSeed,
+        projectId: projectId,
       );
+      if (candidate != null) {
+        result[assignment.engineerId] = candidate.project.industry;
+      }
+    }
+    return result;
+  }
 }
 
 /// Result of [PublicDemoAggregate.completeInterview] (WORKFLOW-STATE-1AB

@@ -812,6 +812,33 @@ class PublicDemoWorkflowState {
     ],
   );
 
+  /// CORE-GAMEPLAY Phase 7B: credits exactly one month of real assignment
+  /// participation to every assignment whose `engineerId` is in
+  /// [engineerIds] — see [PublicDemoAssignment.monthsCredited]'s own doc.
+  /// The sole production caller is [PublicDemoAggregate]'s month-end close
+  /// helper, which only ever passes this the exact same
+  /// `assignedEngineerIds` set it just fed to
+  /// [PublicDemoState.applyMonthlyGrowth] for `source: assignment`, and
+  /// only when that call actually changed something (never on a
+  /// fiscalYearCompleted/already-applied-month no-op) — so this stays in
+  /// lockstep with Growth's own once-per-month application without a
+  /// second, independent "did growth already run this month" guard here.
+  /// A no-op for any assignment whose `engineerId` is not in [engineerIds]
+  /// — every other assignment (and its own `monthsCredited`) is carried
+  /// forward completely untouched.
+  PublicDemoWorkflowState creditAssignmentMonths(Set<String> engineerIds) {
+    if (engineerIds.isEmpty) return this;
+    return _withAssignments([
+      for (final assignment in assignments)
+        if (engineerIds.contains(assignment.engineerId))
+          assignment.copyWith(
+            monthsCredited: assignment.monthsCredited + 1,
+          )
+        else
+          assignment,
+    ]);
+  }
+
   /// Replaces the assignment roster wholesale. Private to this file
   /// (WORKFLOW-STATE-1AB FIX1 P1-3): arbitrary roster replacement is not a
   /// production-sanctioned capability — only [assignOrderedForMay] below,

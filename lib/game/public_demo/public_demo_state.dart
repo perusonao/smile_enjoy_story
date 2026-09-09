@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import '../../domain/models/sales_profile.dart' show Industry;
 import '../engine/rng.dart' show stableHash;
 import 'public_demo_engineer_runtime.dart';
 import 'public_demo_financial_status.dart';
@@ -680,8 +681,17 @@ class PublicDemoState {
   /// advanced. Assignment IDs and morale are supplied by the live Public Demo
   /// workflow because those transient workflow objects own that information.
   ///
-  /// The current demo assignment model has no reliable industry field, so this
-  /// method intentionally does not invent one; industry experience remains 0.
+  /// [industryByEngineerId] (CORE-GAMEPLAY Phase 7B) is the real [Industry]
+  /// of the genuine Phase 6 project-bound assignment each currently-assigned
+  /// engineer is on, when [PublicDemoAssignment.projectId] resolves to one —
+  /// see [PublicDemoAggregate]'s own build of this map. Optional and
+  /// defaults to empty so any caller that predates this field (including
+  /// every existing focused Growth test) keeps its exact prior behavior:
+  /// industry experience stays 0 unless a genuine project's industry is
+  /// actually supplied. Only ever consulted for an engineer whose [source]
+  /// this month is [PublicDemoGrowthSource.assignment] — a waiting/training
+  /// engineer never gains industry experience regardless of what this map
+  /// carries for their id.
   ///
   /// Also a no-op once [fiscalYearCompleted] is true (POST-12MONTH-1): the
   /// live UI always closes growth before completion is set, so this guard is
@@ -690,11 +700,13 @@ class PublicDemoState {
   PublicDemoState applyMonthlyGrowth({
     required Set<String> assignedEngineerIds,
     required Map<String, int> moraleByEngineerId,
+    Map<String, Industry>? industryByEngineerId,
   }) {
     if (fiscalYearCompleted || growthAppliedMonths.contains(month)) {
       return this;
     }
     final results = <PublicDemoMonthlyGrowth>[];
+    final effectiveIndustryByEngineerId = industryByEngineerId ?? const {};
     final runtimes = [
       for (final runtime in engineerRuntimes)
         () {
@@ -702,11 +714,16 @@ class PublicDemoState {
               ? PublicDemoGrowthSource.assignment
               : trainingSelections[runtime.engineerId] ??
                     PublicDemoGrowthSource.waiting;
+          final isAssigned = source == PublicDemoGrowthSource.assignment;
+          final Industry? industry = isAssigned
+              ? effectiveIndustryByEngineerId[runtime.engineerId]
+              : null;
           final result = PublicDemoGrowthEngine.calculate(
             runtime,
             PublicDemoGrowthRequest(
               source: source,
               morale: moraleByEngineerId[runtime.engineerId] ?? 50,
+              industry: industry,
             ),
           );
           results.add(

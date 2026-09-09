@@ -23,6 +23,7 @@ class PublicDemoAssignment {
     this.replacementStage = PublicDemoReplacementStage.none,
     this.fieldEvaluation = 50,
     this.projectId,
+    this.monthsCredited = 0,
   });
   final String engineerId, engineerName, projectName;
   final int deliveryPressure, budgetHealth, humanity;
@@ -44,6 +45,25 @@ class PublicDemoAssignment {
   /// [copyWith] parameter: like [engineerId]/[projectName], this is
   /// identity fixed at creation, never a mutable per-month decision field.
   final String? projectId;
+
+  /// CORE-GAMEPLAY Phase 7B (Career History / SkillSheet Growth): the exact
+  /// number of months [PublicDemoWorkflowState.creditAssignmentMonths] has
+  /// credited THIS assignment — incremented by exactly 1, at most once per
+  /// month, in lockstep with [PublicDemoGrowthEngine]'s own one-time-per-
+  /// month `source: assignment` application (see
+  /// [PublicDemoAggregate.endAssignment]'s own doc for why this, not a
+  /// calendar month span, is the only honest measure of "months actually
+  /// worked" — a player may leave `nextOrderStatus == notOffered` for
+  /// several months before finally ending the assignment, and none of
+  /// those idle months ever earned assignment-sourced growth). This is the
+  /// single source [PublicDemoAggregate.endAssignment] reads for a real,
+  /// ended assignment's [CareerHistoryEntry.experienceMonths] — never a
+  /// second, independently-computed figure. `0` for every assignment ended
+  /// before this field existed (a legacy save's in-flight assignment simply
+  /// starts counting from the moment it is loaded under this field, never
+  /// retroactively inferred — see [fromJson]'s own doc).
+  final int monthsCredited;
+
   bool willOfferNextMonthFor(int actualCapability) =>
       (actualCapability * 35 +
               humanity * 20 +
@@ -59,6 +79,7 @@ class PublicDemoAssignment {
     PublicDemoNextOrderStatus? nextOrderStatus,
     PublicDemoReplacementStage? replacementStage,
     int? fieldEvaluation,
+    int? monthsCredited,
   }) => PublicDemoAssignment(
     engineerId: engineerId,
     engineerName: engineerName,
@@ -74,6 +95,10 @@ class PublicDemoAssignment {
     // engineerId/projectName/deliveryPressure/budgetHealth/humanity above,
     // never one of copyWith's own parameters.
     projectId: projectId,
+    // Phase 7B: unlike projectId, this genuinely needs to be settable —
+    // [PublicDemoWorkflowState.creditAssignmentMonths] is the sole
+    // production caller that ever passes a non-null value here.
+    monthsCredited: monthsCredited ?? this.monthsCredited,
   );
 
   Map<String, dynamic> toJson() => {
@@ -90,6 +115,8 @@ class PublicDemoAssignment {
     // genuine Phase 6 project-bound pass behind it — never fabricated on
     // encode. See this field's own doc above.
     'projectId': projectId,
+    // Additive (CORE-GAMEPLAY Phase 7B): see [monthsCredited]'s own doc.
+    'monthsCredited': monthsCredited,
   };
 
   factory PublicDemoAssignment.fromJson(Map<String, dynamic> json) {
@@ -130,6 +157,12 @@ class PublicDemoAssignment {
       replacementStage: replacement,
       fieldEvaluation: required<int>('fieldEvaluation'),
       projectId: projectId as String?,
+      // Additive (CORE-GAMEPLAY Phase 7B): absent on any save written
+      // before this field existed — `0` there, exactly reproducing "no
+      // months credited yet under this field's own tracking" for a
+      // pre-Phase-7B in-flight assignment (see [monthsCredited]'s own
+      // doc) rather than fabricating a retroactive figure.
+      monthsCredited: json['monthsCredited'] as int? ?? 0,
     );
   }
 

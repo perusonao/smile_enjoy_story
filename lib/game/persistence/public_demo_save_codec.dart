@@ -158,6 +158,14 @@ class PublicDemoSaveCodec {
       // .projectId]'s own doc) — every save written before this field
       // existed has no such key on any assignment entry at all.
       baseline = _withMigratedAssignmentProjectId(baseline);
+      // CORE-GAMEPLAY Phase 7B: the same additive-new-key-inside-each-entry
+      // gap as `projectId` above, this time for
+      // `workflow.assignments[*].monthsCredited` (see [PublicDemoAssignment
+      // .monthsCredited]'s own doc) — every save written before this field
+      // existed has no such key on any assignment entry at all, and
+      // [_withMigratedEngineerRuntimeExperience] above already splices
+      // `careerHistory` the same way for `state.engineerRuntimes[*]`.
+      baseline = _withMigratedAssignmentMonthsCredited(baseline);
       if (_canonicalJson(baseline) != _canonicalJson(toJson(aggregate))) {
         return null;
       }
@@ -754,14 +762,21 @@ class PublicDemoSaveCodec {
   }
 
   /// Splices each already-decoded [PublicDemoEngineerRuntime
-  /// .totalItExperienceMonths] (per [resolvedRuntimes], in the same order as
+  /// .totalItExperienceMonths]/[PublicDemoEngineerRuntime.careerHistory]
+  /// (per [resolvedRuntimes], in the same order as
   /// `aggregate.state.engineerRuntimes`) into a copy of [envelope]'s own
-  /// `engineerRuntimes` entries, but only for an entry that doesn't already
-  /// carry that key — a save from before CORE-GAMEPLAY Phase 5's Codex P1
-  /// fix. Mirrors [_withMigratedRunSeed]'s own shape/doc. Deliberately does
-  /// not handle `engineerRuntimes` being entirely absent (a save predating
-  /// EG-1) or having a different length than [resolvedRuntimes] — neither
-  /// is a scenario this fix's own field-level default was written for.
+  /// `engineerRuntimes` entries, but only for a key an entry doesn't
+  /// already carry — a save from before CORE-GAMEPLAY Phase 5's Codex P1
+  /// fix (`totalItExperienceMonths`) or Phase 7B (`careerHistory`). Mirrors
+  /// [_withMigratedRunSeed]'s own shape/doc. `careerHistory`'s
+  /// backward-compatible value is always `[]` here — see
+  /// [PublicDemoEngineerRuntime.careerHistory]'s own doc: a save from
+  /// before this field existed genuinely had no recorded history, never a
+  /// value worth resolving per-entry the way `totalItExperienceMonths`
+  /// is. Deliberately does not handle `engineerRuntimes` being entirely
+  /// absent (a save predating EG-1) or having a different length than
+  /// [resolvedRuntimes] — neither is a scenario either field's own
+  /// backward-compatible default was written for.
   static Map<String, dynamic> _withMigratedEngineerRuntimeExperience(
     Map<String, dynamic> envelope,
     List<PublicDemoEngineerRuntime> resolvedRuntimes,
@@ -775,16 +790,19 @@ class PublicDemoSaveCodec {
     var changed = false;
     final migratedRuntimes = <Map<String, dynamic>>[];
     for (var i = 0; i < runtimesRaw.length; i++) {
-      final entry = (runtimesRaw[i] as Map).cast<String, dynamic>();
-      if (entry.containsKey('totalItExperienceMonths')) {
-        migratedRuntimes.add(entry);
-      } else {
+      var entry = (runtimesRaw[i] as Map).cast<String, dynamic>();
+      if (!entry.containsKey('totalItExperienceMonths')) {
         changed = true;
-        migratedRuntimes.add({
+        entry = {
           ...entry,
           'totalItExperienceMonths': resolvedRuntimes[i].totalItExperienceMonths,
-        });
+        };
       }
+      if (!entry.containsKey('careerHistory')) {
+        changed = true;
+        entry = {...entry, 'careerHistory': const <Object?>[]};
+      }
+      migratedRuntimes.add(entry);
     }
     if (!changed) return envelope;
     return {
@@ -863,6 +881,43 @@ class PublicDemoSaveCodec {
       } else {
         changed = true;
         migratedAssignments.add({...entry, 'projectId': null});
+      }
+    }
+    if (!changed) return envelope;
+    return {
+      ...envelope,
+      'aggregate': {
+        ...aggregate,
+        'workflow': {...workflow, 'assignments': migratedAssignments},
+      },
+    };
+  }
+
+  /// Splices a `0` `monthsCredited` into each
+  /// `aggregate.workflow.assignments` entry that doesn't already carry
+  /// that key — a save from before CORE-GAMEPLAY Phase 7B. Mirrors
+  /// [_withMigratedAssignmentProjectId]'s own per-entry shape/doc: `0` is
+  /// the genuinely correct value for every assignment persisted before
+  /// this field existed — see [PublicDemoAssignment.monthsCredited]'s own
+  /// doc — never a fabricated retroactive figure. Deliberately does not
+  /// handle `assignments` being entirely absent — no save predates that
+  /// field.
+  static Map<String, dynamic> _withMigratedAssignmentMonthsCredited(
+    Map<String, dynamic> envelope,
+  ) {
+    final aggregate = (envelope['aggregate'] as Map).cast<String, dynamic>();
+    final workflow = (aggregate['workflow'] as Map).cast<String, dynamic>();
+    final assignmentsRaw = workflow['assignments'];
+    if (assignmentsRaw is! List) return envelope;
+    var changed = false;
+    final migratedAssignments = <Map<String, dynamic>>[];
+    for (final raw in assignmentsRaw) {
+      final entry = (raw as Map).cast<String, dynamic>();
+      if (entry.containsKey('monthsCredited')) {
+        migratedAssignments.add(entry);
+      } else {
+        changed = true;
+        migratedAssignments.add({...entry, 'monthsCredited': 0});
       }
     }
     if (!changed) return envelope;

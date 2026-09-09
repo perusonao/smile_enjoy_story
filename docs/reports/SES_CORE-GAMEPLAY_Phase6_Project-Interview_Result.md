@@ -1,6 +1,6 @@
 # SES CORE-GAMEPLAY Phase 6: Project Interview Gameplay — Result
 
-Status: **Merged onto latest `main` (PR #213); all Codex findings (P1-1/P1-2/P2, plus this update's duplicate-follow-up P2) fixed; `flutter analyze` clean, full test suite green (1972/1972)**
+Status: **Merged onto latest `main` (PR #213); all Codex findings (P1-1/P1-2/P2, duplicate-follow-up P2, plus this update's malformed-session-restore P2-1 and dialog-launch-serialization P2-2) fixed; `flutter analyze` clean, full test suite green (1982/1982)**
 
 ## BASE SHA / branch / HEAD
 
@@ -42,9 +42,18 @@ Status: **Merged onto latest `main` (PR #213); all Codex findings (P1-1/P1-2/P2,
   same-session amend; `d9c6a09` is, and remains, the one actually pushed
   and reviewed. This is the HEAD Codex reviewed and left the new
   "Ignore duplicate follow-up submissions" P2 finding against.
-- **Final HEAD SHA (this update, Codex duplicate-follow-up P2 fix):**
-  `d42d70c70ef04027edacdfb035b5b66bfa6f9331` ("fix(project-interview): reject
+- HEAD after the Codex duplicate-follow-up P2 fix:
+  `40fa9434d94512a26b3af70c92bc8b264037f354` ("fix(project-interview): reject
   duplicate/stale follow-up submissions at the authority boundary (Codex P2,
+  PR #214)") — the report's own SHA line at the time quoted `d42d70c...`, an
+  intermediate value from before a same-session amend; `40fa943` is, and
+  remains, the one actually pushed and reviewed. This is the HEAD Codex
+  reviewed and left the new "Reject malformed project-interview sessions
+  during restore" (P2-1) and "Serialize project-interview dialog launches"
+  (P2-2) findings against.
+- **Final HEAD SHA (this update, Codex P2-1/P2-2 fixes):**
+  `c34831dbf79be98196095a3445590f5dbd183d07` ("fix(project-interview):
+  validate restored sessions and serialize dialog launches (Codex P2-1/P2-2,
   PR #214)"). Note: this hash is the value actually committed and pushed;
   because this file documents its own commit's hash, the file's bytes at the
   moment of that commit necessarily differ infinitesimally from what a
@@ -388,6 +397,127 @@ widget test suite in particular already exercised the real
 `PublicDemoProjectInterviewDialog` tap flow end-to-end and needed no changes
 to keep passing, confirming the new `questionIndex` capture is transparent
 to normal, non-duplicate play.
+
+## Codex P2-1/P2-2 review fixes (this update)
+
+### P2-1 — "Reject malformed project-interview sessions during restore"
+
+**Finding (verified TRUE by direct code reading):**
+`ClientInterviewSession.fromJson` only casts fields — it never checks that
+they describe a coherent interview. A save with, say, an empty `questions`
+list or an out-of-range `currentQuestionIndex` decodes without throwing and
+re-encodes byte-for-byte identical to what it decoded from (nothing about
+these values is normalized away), so `PublicDemoSaveCodec`'s strict
+round-trip comparison — the only other gate a save has to pass — accepted
+it. The dialog's own `session.questions[session.currentQuestionIndex]` /
+`session.employeeAnswers[session.currentQuestionIndex]` indexing then
+crashes the first time the player reopens that interview, instead of the
+corrupt save ever being rejected up front.
+
+**Fix (in `PublicDemoSaveCodec._hasConsistentAuthorityFacts`, the same gate
+that already rejects other impossible-from-production combinations — see
+its existing engineer/assignment checks above):** every
+`workflow.projectInterviewSessions` entry, when present, is now validated
+against the exact structural invariants every session
+`PublicDemoProjectInterview.start`/`chooseFollowUp` can ever actually
+produce — none of this is a new restriction on real gameplay, only
+enforcing here what production code already guarantees:
+
+- **Identity:** `applicationId == projectId` and
+  `id == 'public-demo-project-interview:$employeeId:$projectId'` — both
+  always true for a genuine session, so a mismatch proves the entry did not
+  come from `start()`.
+- **Duplicate session identity:** at most one entry per `employeeId` — a
+  second entry for the same engineer is unreachable from
+  `startProjectInterviewSession`/`projectInterviewSessionFor`, both of
+  which assume exactly this.
+- **Employee identity:** `employeeId` must name an engineer that actually
+  exists elsewhere in the same save (`workflow.engineers`).
+- **`startedWeek` vs. existing authority:** `1 <= startedWeek <= month` — a
+  session cannot have started after the month this same save records
+  having reached.
+- **`questions` non-empty**, and `0 <= currentQuestionIndex < questions.length`.
+- **`employeeAnswers` in lockstep:** `employeeAnswers.length ==
+  currentQuestionIndex + 1` — `ClientInterviewEngine.answer` always
+  pre-computes exactly one answer ahead of, and including, the current
+  question.
+- **`playerFollowUps`/`interviewerReactions` progression invariant:**
+  `chooseFollowUp` advances `currentQuestionIndex` in lockstep with
+  `playerFollowUps.length` for every question except the last (which never
+  advances past itself), so a valid session has either
+  `playerFollowUps.length == currentQuestionIndex` (this question not yet
+  answered) or, only once `currentQuestionIndex` is the final index,
+  `playerFollowUps.length == questions.length` (every question answered,
+  ready for `conclude`) — any other combination cannot come from
+  `chooseFollowUp`. `interviewerReactions.length` must equal
+  `playerFollowUps.length` (appended together, every call).
+- **completed/incomplete invariants:** `completed` may only be `true`
+  together with the "every question answered" case above and a genuine
+  `result` (`'passed'`/`'failed'`) — only `conclude` ever sets either, and
+  always together.
+
+**Tests** (`public_demo_save_codec_test.dart`, group `Codex P2-1 fix (PR
+#214)`, 8 tests): an empty `questions` list is rejected; an out-of-range
+`currentQuestionIndex` is rejected; `employeeAnswers` falling out of
+lockstep is rejected; a `playerFollowUps` count violating the progression
+invariant is rejected; a duplicate session for the same `employeeId` is
+rejected; a session for an unknown `employeeId` is rejected; a valid,
+genuine session round-trips exactly (this validation rejects nothing a real
+command path produces); a genuinely *completed* session (the one case where
+`playerFollowUps.length` and `currentQuestionIndex` legitimately diverge)
+also round-trips exactly.
+
+### P2-2 — "Serialize project-interview dialog launches"
+
+**Finding (verified TRUE by direct code reading):** `_openProjectInterview`
+awaited `_precacheEventImage(...)` *before* ever calling `showDialog` and
+set no guard beforehand. Activating `客先面談` twice in quick succession —
+well within that await window, and before any `setState`-driven button
+disable could even repaint — let both invocations reach `showDialog`,
+pushing `PublicDemoProjectInterviewDialog` twice. Each pushed dialog
+captures its own `aggregate: _game` snapshot at build time and only writes
+back through `onCommit`/`_commitAggregate` when it closes; with two
+independent dialogs alive at once, closing the top one commits its result,
+but the dialog still open underneath still holds the *older*, pre-result
+snapshot — completing it (or the player merely interacting with it) then
+commits that stale snapshot over the first result, silently undoing it.
+
+**Fix (minimal, screen-level, no dependency on button-disable timing):**
+added a plain `bool _projectInterviewLaunchInProgress` `State` field.
+`_openProjectInterview` now checks it and returns immediately (no-op) if
+already `true`; otherwise it sets `true` **before** its first `await`
+(`_precacheEventImage`, the exact window the race exploited — not after
+that await returns, which would leave the same window open) and clears it
+in a `finally` block wrapping everything through `showDialog`'s own
+`await`, so the guard is released whichever way the route ends: a genuine
+pass/fail commit, the player dismissing/backing out, or this widget being
+disposed while still awaiting (a `finally` still runs after disposal here;
+it only ever mutates a plain field, never calls `setState`, so this is
+safe). The guard does not depend on, or replace, any button-level
+`setState` disable — it is checked and set synchronously, before any such
+disable could even take visual effect.
+
+**Tests** (new file `test/ui/public_demo/
+public_demo_01_project_interview_launch_guard_test.dart`, 2 widget tests,
+driving the real, full `PublicDemo01PlaceholderScreen` — not the isolated
+dialog — via a fake `PublicDemoSaveService` seeded with a genuine
+`partnerInterviewPassed` + Phase 5 proposal aggregate): rapid double
+activation of the real `客先面談` button (two `tester.tap` calls back to
+back, with no `pump()` in between, so the second call's synchronous
+onPressed genuinely runs while the first is still suspended inside its own
+`_precacheEventImage` await — reproducing the exact race, not merely
+approximating it) opens exactly one `PublicDemoProjectInterviewDialog`;
+after that dialog is popped, a fresh activation opens a new dialog normally
+(the guard does not outlive its own dialog). Verified this test file
+actually fails (finds 2 dialogs) against the pre-fix code and passes
+against the fix, confirming it is a genuine regression test rather than a
+false positive.
+
+Neither fix touches `MatchingEngine`, Finance/Month/Balance, HOME, or the
+Phase 7A lifecycle. Every prior Codex fix (P1, P1-1, P1-2, P2
+duplicate-follow-up) and all pre-existing tests (37 domain + 8 dialog
+widget tests) continue to pass unmodified; full suite after this update:
+1982/1982 (1972 prior + 8 new save-codec + 2 new widget).
 
 ## Authority audit (READ-ONLY, before writing anything)
 

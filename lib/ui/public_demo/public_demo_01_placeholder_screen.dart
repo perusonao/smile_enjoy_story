@@ -252,6 +252,16 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
   bool _isRestoring = true;
   bool _isRestarting = false;
 
+  /// Codex P2-2 fix (PR #214): true from the moment [_openProjectInterview]
+  /// is entered until its dialog route (however it ends — a genuine
+  /// pass/fail commit, the player dismissing it, or this widget being
+  /// disposed while it awaits) is fully gone. A second activation of the
+  /// `客先面談` action while this is true is a no-op — see
+  /// [_openProjectInterview]'s own doc for why the guard must be set before
+  /// its first `await`, not after, and why relying only on the button's own
+  /// `setState`-driven disable is not enough.
+  bool _projectInterviewLaunchInProgress = false;
+
   /// SES-FIRST-FUN-YEAR-UI-PHASE-2: whether the bottom "開発・テストメニュー"
   /// fold is open. Starts closed so the test-only restart control never
   /// reads as part of the normal monthly game flow — see
@@ -1480,18 +1490,50 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
     }
   }
 
+  /// Codex P2-2 fix (PR #214): activating `客先面談` twice in quick
+  /// succession — before this method's first `await` yields and any
+  /// `setState`-driven button disable could even repaint — used to be able
+  /// to push [PublicDemoProjectInterviewDialog] twice. Each pushed dialog
+  /// captures its own `aggregate: _game` snapshot at build time and only
+  /// ever writes back through [_commitAggregate] when it closes; with two
+  /// independent dialogs alive at once, closing the top one commits its
+  /// result, but the still-open dialog underneath still holds the *older*
+  /// pre-result snapshot — interacting with it (or it simply also
+  /// completing) then commits that stale snapshot over the first result,
+  /// silently undoing it and replacing it with a second, independently
+  /// chosen outcome for the same interview.
+  ///
+  /// [_projectInterviewLaunchInProgress] closes this by making a second
+  /// activation a no-op for as long as any one project-interview route is
+  /// in flight, from the moment this method is entered — set **before** the
+  /// `await _precacheEventImage(...)` below, since that await is exactly
+  /// the window the race above exploited, not after it returns — until the
+  /// route is fully gone, via `try`/`finally` so the guard is released
+  /// whether the dialog resolves normally (pass or fail), the player
+  /// dismisses/backs out of it, or this widget is disposed while the
+  /// `await`s here are still pending (a `finally` block still runs after
+  /// disposal; it only ever mutates this plain field, never calls
+  /// `setState`, so that is safe). This does not depend on, or replace, any
+  /// button-level `setState` disable — the field is checked and set
+  /// synchronously, before any such disable could even take visual effect.
   Future<void> _openProjectInterview(String engineerId) async {
-    await _precacheEventImage(AssetPaths.eventClientInterview);
-    if (!mounted) return;
-    await showDialog<void>(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => PublicDemoProjectInterviewDialog(
-        engineerId: engineerId,
-        aggregate: _game,
-        onCommit: _commitAggregate,
-      ),
-    );
+    if (_projectInterviewLaunchInProgress) return;
+    _projectInterviewLaunchInProgress = true;
+    try {
+      await _precacheEventImage(AssetPaths.eventClientInterview);
+      if (!mounted) return;
+      await showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => PublicDemoProjectInterviewDialog(
+          engineerId: engineerId,
+          aggregate: _game,
+          onCommit: _commitAggregate,
+        ),
+      );
+    } finally {
+      _projectInterviewLaunchInProgress = false;
+    }
   }
 
   // april()/may() used to setState the month advance *before* awaiting the

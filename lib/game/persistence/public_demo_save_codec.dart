@@ -238,6 +238,7 @@ class PublicDemoSaveCodec {
       if (engineerId is! String) return false;
       assignmentEngineerIds.add(engineerId);
     }
+    final engineerIds = <String>{};
 
     for (final entry in engineersRaw) {
       if (entry is! Map) return false;
@@ -260,6 +261,7 @@ class PublicDemoSaveCodec {
           (recordProjectId != null && recordProjectId is! String)) {
         return false;
       }
+      engineerIds.add(id);
 
       final clientPassStage =
           stage == 'clientInterviewPassed' || stage == 'ordered';
@@ -296,6 +298,118 @@ class PublicDemoSaveCodec {
           month >= 5 &&
           !assignmentEngineerIds.contains(id)) {
         return false;
+      }
+    }
+
+    // Codex P2-1 fix (PR #214): [ClientInterviewSession.fromJson] only casts
+    // fields — it never checks that they describe a coherent interview
+    // (non-empty questions, an in-range `currentQuestionIndex`, parallel
+    // lists that actually stay in lockstep with it). A hand-edited or
+    // otherwise corrupted save with, say, an empty `questions` list or an
+    // out-of-range `currentQuestionIndex` decodes without error and
+    // round-trips byte-for-byte identical (nothing here is normalized away),
+    // so the strict comparison above this method's caller performs would
+    // accept it — only for `PublicDemoProjectInterviewDialog`'s own
+    // `session.questions[session.currentQuestionIndex]`/
+    // `session.employeeAnswers[session.currentQuestionIndex]` indexing to
+    // crash the first time the player reopens that interview. Every
+    // invariant checked below is a genuine structural fact of every session
+    // [PublicDemoProjectInterview.start]/[chooseFollowUp] can ever produce —
+    // not a new restriction, just enforcing here what production code
+    // already guarantees, so no real save is ever rejected by this.
+    final projectInterviewSessionsRaw = workflow['projectInterviewSessions'];
+    if (projectInterviewSessionsRaw != null) {
+      if (projectInterviewSessionsRaw is! List) return false;
+      final seenEmployeeIds = <String>{};
+      for (final entry in projectInterviewSessionsRaw) {
+        if (entry is! Map) return false;
+        final session = entry.cast<String, dynamic>();
+        final id = session['id'];
+        final applicationId = session['applicationId'];
+        final employeeId = session['employeeId'];
+        final projectId = session['projectId'];
+        final startedWeek = session['startedWeek'];
+        final currentQuestionIndex = session['currentQuestionIndex'];
+        final questionsRaw = session['questions'];
+        final employeeAnswersRaw = session['employeeAnswers'];
+        final playerFollowUpsRaw = session['playerFollowUps'];
+        final interviewerReactionsRaw = session['interviewerReactions'];
+        final completed = session['completed'];
+        final result = session['result'];
+        if (id is! String ||
+            applicationId is! String ||
+            employeeId is! String ||
+            projectId is! String ||
+            startedWeek is! int ||
+            currentQuestionIndex is! int ||
+            questionsRaw is! List ||
+            employeeAnswersRaw is! List ||
+            playerFollowUpsRaw is! List ||
+            interviewerReactionsRaw is! List ||
+            completed is! bool) {
+          return false;
+        }
+
+        // Identity (Codex P2-1 "employee/project identity"):
+        // [PublicDemoProjectInterview.start] always sets
+        // `applicationId == projectId` and derives `id` from
+        // `employeeId:projectId` — a save with mismatched identity fields
+        // did not come from that command, whatever its individual field
+        // types check out as.
+        if (applicationId != projectId ||
+            id != 'public-demo-project-interview:$employeeId:$projectId') {
+          return false;
+        }
+        // Duplicate session identity: [projectInterviewSessionFor]/
+        // [startProjectInterviewSession] both assume at most one session per
+        // engineer; a second entry for the same `employeeId` is unreachable
+        // from any real command path.
+        if (!seenEmployeeIds.add(employeeId)) return false;
+        // The engineer this session belongs to must actually exist in this
+        // same save.
+        if (!engineerIds.contains(employeeId)) return false;
+        // A session cannot have started after the month this save itself
+        // records having reached.
+        if (startedWeek < 1 || startedWeek > month) return false;
+
+        final questionCount = questionsRaw.length;
+        if (questionCount == 0) return false;
+        if (currentQuestionIndex < 0 || currentQuestionIndex >= questionCount) {
+          return false;
+        }
+        // [ClientInterviewEngine.answer] always pre-computes exactly one
+        // answer ahead of, and including, the current question — see
+        // [PublicDemoProjectInterview.start]/[chooseFollowUp].
+        if (employeeAnswersRaw.length != currentQuestionIndex + 1) {
+          return false;
+        }
+        // [chooseFollowUp] advances `currentQuestionIndex` in lockstep with
+        // `playerFollowUps.length` for every question except the last (which
+        // never advances past itself): `playerFollowUps.length` is either
+        // exactly `currentQuestionIndex` (this question not yet answered) or,
+        // only once `currentQuestionIndex` is the final index, exactly
+        // `questionCount` (every question answered, ready for
+        // [PublicDemoProjectInterview.conclude]).
+        final followUpCount = playerFollowUpsRaw.length;
+        final readyToConclude =
+            currentQuestionIndex == questionCount - 1 &&
+            followUpCount == questionCount;
+        if (followUpCount != currentQuestionIndex && !readyToConclude) {
+          return false;
+        }
+        // [interviewerReactions] is appended exactly once per
+        // [playerFollowUps] entry, in the same [chooseFollowUp] call.
+        if (interviewerReactionsRaw.length != followUpCount) return false;
+        // completed/incomplete session invariants: only [conclude] ever sets
+        // `completed`, and only once [isReadyToConclude] holds, always
+        // together with a genuine `result`.
+        if (completed) {
+          if (!readyToConclude || (result != 'passed' && result != 'failed')) {
+            return false;
+          }
+        } else if (result != null) {
+          return false;
+        }
       }
     }
 

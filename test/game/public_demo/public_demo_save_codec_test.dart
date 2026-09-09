@@ -390,6 +390,180 @@ void main() {
       expect(codec.toJson(restored), codec.toJson(aggregate));
     });
   });
+
+  group('Codex P2-1 fix (PR #214): malformed project-interview sessions are '
+      'rejected during restore, not left to crash the dialog later', () {
+    PublicDemoAggregate readySessionAggregate({int runSeed = 1}) {
+      var aggregate = PublicDemoAggregate.initial(runSeed: runSeed)
+          .startSkillSheetReview('eng-01')
+          .beginSelling('eng-01')
+          .introduceProject('eng-01')
+          .recordEngineerInterviewResult(
+            engineerId: 'eng-01',
+            type: PublicDemoInterviewType.partner,
+          );
+      final project = aggregate
+          .projectCandidatesForMonth(aggregate.state.month)
+          .first;
+      aggregate = aggregate.proposeMatch(
+        engineerId: 'eng-01',
+        projectId: project.id,
+      );
+      aggregate = aggregate.startProjectInterview('eng-01');
+      expect(aggregate.workflow.projectInterviewSessions, hasLength(1));
+      return aggregate;
+    }
+
+    Map<String, dynamic> withSessionZero(
+      Map<String, dynamic> envelope,
+      Map<String, dynamic> patch,
+    ) {
+      final aggregate = envelope['aggregate'] as Map<String, dynamic>;
+      final workflow = aggregate['workflow'] as Map<String, dynamic>;
+      final sessions = (workflow['projectInterviewSessions'] as List)
+          .map((entry) => Map<String, dynamic>.from(entry as Map))
+          .toList();
+      sessions[0] = {...sessions[0], ...patch};
+      return {
+        ...envelope,
+        'aggregate': {
+          ...aggregate,
+          'workflow': {...workflow, 'projectInterviewSessions': sessions},
+        },
+      };
+    }
+
+    test('1. an empty questions list is rejected — ClientInterviewSession'
+        '.fromJson itself never throws on it, but the dialog\'s own '
+        'questions[currentQuestionIndex] indexing would crash on reopen', () {
+      final encoded = codec.toJson(readySessionAggregate());
+      final malformed = withSessionZero(encoded, {'questions': <dynamic>[]});
+
+      expect(codec.fromJson(malformed), isNull);
+    });
+
+    test('2. an out-of-range currentQuestionIndex is rejected', () {
+      final aggregate = readySessionAggregate();
+      final questionCount = aggregate
+          .projectInterviewSessionFor('eng-01')!
+          .questions
+          .length;
+      final encoded = codec.toJson(aggregate);
+      final malformed = withSessionZero(encoded, {
+        'currentQuestionIndex': questionCount,
+      });
+
+      expect(codec.fromJson(malformed), isNull);
+    });
+
+    test('3. employeeAnswers falling out of lockstep with '
+        'currentQuestionIndex (too few answers for the current question) '
+        'is rejected', () {
+      final encoded = codec.toJson(readySessionAggregate());
+      final malformed = withSessionZero(encoded, {
+        'employeeAnswers': <dynamic>[],
+      });
+
+      expect(codec.fromJson(malformed), isNull);
+    });
+
+    test('4. a playerFollowUps count that violates the progression '
+        'invariant (an answer recorded for the current question without '
+        'the session having advanced past it) is rejected — this is not a '
+        'state chooseFollowUp can ever produce', () {
+      final aggregate = readySessionAggregate();
+      final session = aggregate.projectInterviewSessionFor('eng-01')!;
+      final followUpName = PublicDemoProjectInterview.choicesFor(
+        session,
+      ).first.name;
+      final encoded = codec.toJson(aggregate);
+      final malformed = withSessionZero(encoded, {
+        'playerFollowUps': [followUpName],
+      });
+
+      expect(codec.fromJson(malformed), isNull);
+    });
+
+    test('5. a duplicate session for the same employeeId is rejected — '
+        'startProjectInterviewSession/projectInterviewSessionFor both '
+        'assume at most one session per engineer', () {
+      final encoded = codec.toJson(readySessionAggregate());
+      final aggregateJson = encoded['aggregate'] as Map<String, dynamic>;
+      final workflow = aggregateJson['workflow'] as Map<String, dynamic>;
+      final sessions = (workflow['projectInterviewSessions'] as List)
+          .map((entry) => Map<String, dynamic>.from(entry as Map))
+          .toList();
+      final duplicated = {
+        ...encoded,
+        'aggregate': {
+          ...aggregateJson,
+          'workflow': {
+            ...workflow,
+            'projectInterviewSessions': [...sessions, sessions.first],
+          },
+        },
+      };
+
+      expect(codec.fromJson(duplicated), isNull);
+    });
+
+    test('6. a session for an unknown employeeId is rejected', () {
+      final aggregate = readySessionAggregate();
+      final session = aggregate.projectInterviewSessionFor('eng-01')!;
+      const fakeEmployeeId = 'not-a-real-engineer';
+      final encoded = codec.toJson(aggregate);
+      final malformed = withSessionZero(encoded, {
+        'employeeId': fakeEmployeeId,
+        'id':
+            'public-demo-project-interview:$fakeEmployeeId:'
+            '${session.projectId}',
+      });
+
+      expect(codec.fromJson(malformed), isNull);
+    });
+
+    test('7. a valid, genuine project-interview session round-trips exactly '
+        '— this validation rejects nothing a real command path produces', () {
+      final aggregate = readySessionAggregate();
+
+      final restored = codec.decode(codec.encode(aggregate));
+
+      expect(restored, isNotNull);
+      expect(restored!.workflow.projectInterviewSessions, hasLength(1));
+      expect(codec.toJson(restored), codec.toJson(aggregate));
+    });
+
+    test('8. a completed (passed) session — playerFollowUps filling every '
+        'question while currentQuestionIndex stays pinned at the final '
+        'index — still round-trips, proving the progression invariant '
+        'correctly accepts the one case where the two lengths legitimately '
+        'differ', () {
+      var aggregate = readySessionAggregate();
+      var session = aggregate.projectInterviewSessionFor('eng-01')!;
+      while (session.playerFollowUps.length < session.questions.length) {
+        aggregate = aggregate.chooseProjectInterviewFollowUp(
+          'eng-01',
+          session.currentQuestionIndex,
+          PublicDemoProjectInterview.choicesFor(session).first,
+        );
+        session = aggregate.projectInterviewSessionFor('eng-01')!;
+      }
+      aggregate = aggregate.concludeProjectInterview('eng-01');
+      expect(
+        aggregate.projectInterviewSessionFor('eng-01')!.completed,
+        isTrue,
+      );
+
+      final restored = codec.decode(codec.encode(aggregate));
+
+      expect(restored, isNotNull);
+      expect(
+        restored!.projectInterviewSessionFor('eng-01')!.completed,
+        isTrue,
+      );
+      expect(codec.toJson(restored), codec.toJson(aggregate));
+    });
+  });
 }
 
 /// Replaces fields on `workflow.engineers[0]` in an already-encoded

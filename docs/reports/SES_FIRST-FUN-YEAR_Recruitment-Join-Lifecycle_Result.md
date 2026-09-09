@@ -6,7 +6,7 @@ Branch: `claude/issue-221-recruitment-flow-5lv0vv`
 ## BASE / HEAD SHA
 
 - BASE (`origin/main` at task start, PR #220 merge済み): `7b9d18eeacce5c7840d8de3e9f09e71ec2b92b35`
-- HEAD (this fix, pushed): 本レポートcommit直前の同ブランチHEAD（下記PRリンク参照）
+- HEAD (this fix, pushed): `2bd503b6b522cd8f4e3f0379464482f54e1423dd`
 
 このブランチは開始時点で `origin/main` から逸脱していない古い1コミット (`f4ca78f`, リポジトリのroot commit) しか持っておらず、実質的に未着手だったため、`origin/main` から作り直して開発した（未マージの独自コミットは無かったため、履歴の欠落はない）。
 
@@ -98,11 +98,7 @@ flutter test test/ui/public_demo/
   → 522 tests, All tests passed!（既存UIテストに変更なし・regressionゼロ）
 
 flutter test
-  → フルスイート（204ファイル）をバックグラウンドで実行中。本環境（サンドボックス、
-    software rendering）はwidgetテストが重く、test/ui/public_demo/単体で約20分
-    かかっているため、フルスイートは本コミット時点でまだ完走していない。
-    game/public_demo・ui/public_demo（Issue必須項目）は完走・全件pass済み。
-    完走後、追ってこのレポート/PRへ結果を追記する。
+  → 2082 tests, All tests passed!（フルスイート204ファイル、regressionゼロ）
 
 git diff --check
   → 差分なし（trailing whitespace等の問題なし）
@@ -143,4 +139,4 @@ Fresh Audit・root cause確定・実装・regression・フルテスト実行・�
 
 ## PR URL
 
-（コミット/プッシュ後に追記）
+https://github.com/perusonao/smile_enjoy_story/pull/222

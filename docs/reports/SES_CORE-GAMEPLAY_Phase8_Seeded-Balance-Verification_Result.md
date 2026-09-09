@@ -4,7 +4,7 @@ Issue: [#217](https://github.com/perusonao/smile_enjoy_story/issues/217)
 Base branch: `main`
 Working branch: `claude/issue-217-m7d5jb`
 BASE SHA: `3423c5643bdbb0878b9688a85d3176e4b7b5037b` (PR #216 merge, `origin/main` HEAD at task start — confirmed via `git fetch origin main` before any work began, matching the value the issue itself records)
-Final HEAD SHA: recorded at the end of this report, after the final commit
+Final HEAD SHA: `e8ef806` (the substantive commit — bot/tests/tool; this report's own final wording lands in a trailing docs-only commit on top of it, `claude/issue-217-m7d5jb`'s actual HEAD)
 
 **Actual processing time:** ~2 hours (git fetch/branch setup, Flutter SDK 3.44.9 install — this environment ships with no Flutter/Dart toolchain at all, see §8 — through domain-API research, bot harness implementation/debugging, seed sweeps, test authoring, full-suite verification, and this report), against the issue's 30–60 minute estimate. The overrun is almost entirely the Flutter SDK install (~5 min, one-time) plus the domain-command research needed to build a faithful non-UI player bot (§2) and the two real bot-logic bugs that research caught before they could contaminate the measurement (§3).
 
@@ -170,7 +170,7 @@ This remote execution environment ships with no Flutter/Dart toolchain pre-insta
 ### Full suite / static checks
 
 - `flutter analyze` (whole repo): **No issues found.**
-- `flutter test --concurrency=6` (full suite): running at the time of the initial commit below; result recorded in a follow-up commit to this file once it completes.
+- `flutter test --concurrency=6` (full suite): **2069/2069 passing.**
 - `git diff --check`: clean (no whitespace errors).
 
 ## 10. Known limitations

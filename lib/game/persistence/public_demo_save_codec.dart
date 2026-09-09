@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import '../public_demo/public_demo_aggregate.dart';
+import '../public_demo/public_demo_engineer_runtime.dart';
 
 /// Versioned, self-contained persistence envelope for Public Demo 0.1.
 ///
@@ -66,7 +67,30 @@ class PublicDemoSaveCodec {
       // fallback `PublicDemoState.fromJson` already derived for it — every
       // other field is still required to match exactly, unchanged from
       // before this field existed.
-      final baseline = _withMigratedRunSeed(json, aggregate.state.runSeed);
+      // Codex P1 fix (PR #212): CORE-GAMEPLAY Phase 5 added two more
+      // additive, fallback-defaulted fields — [PublicDemoWorkflowState
+      // .matchingProposals] and [PublicDemoEngineerRuntime
+      // .totalItExperienceMonths] — exactly like `runSeed`
+      // (SEEDED-RNG-REUSE-1) before them: a save written before either
+      // field existed decodes fine (their own `fromJson` supplies a
+      // backward-compatible default), but without splicing that resolved
+      // default into [baseline] here too, the strict round-trip below would
+      // find the re-encoded aggregate now carrying a key the original
+      // payload never had, fail the comparison, and reject the ENTIRE
+      // legacy save — silently discarding real player progress. Both
+      // splices are no-ops (return their input unchanged) once a save
+      // genuinely already has these keys.
+      var baseline = _withMigratedRunSeed(json, aggregate.state.runSeed);
+      baseline = _withMigratedMatchingProposals(
+        baseline,
+        aggregate.workflow.matchingProposals
+            .map((proposal) => proposal.toJson())
+            .toList(),
+      );
+      baseline = _withMigratedEngineerRuntimeExperience(
+        baseline,
+        aggregate.state.engineerRuntimes,
+      );
       if (_canonicalJson(baseline) != _canonicalJson(toJson(aggregate))) {
         return null;
       }
@@ -231,6 +255,69 @@ class PublicDemoSaveCodec {
       'aggregate': {
         ...aggregate,
         'state': {...state, 'runSeed': resolvedRunSeed},
+      },
+    };
+  }
+
+  /// Splices [resolvedMatchingProposals] (the already-decoded, defaulted
+  /// value — `[]` for a save predating CORE-GAMEPLAY Phase 5) into a copy of
+  /// [envelope]'s `aggregate.workflow.matchingProposals` only when that key
+  /// is absent there. Mirrors [_withMigratedRunSeed]'s own shape/doc.
+  static Map<String, dynamic> _withMigratedMatchingProposals(
+    Map<String, dynamic> envelope,
+    List<Map<String, dynamic>> resolvedMatchingProposals,
+  ) {
+    final aggregate = (envelope['aggregate'] as Map).cast<String, dynamic>();
+    final workflow = (aggregate['workflow'] as Map).cast<String, dynamic>();
+    if (workflow.containsKey('matchingProposals')) return envelope;
+    return {
+      ...envelope,
+      'aggregate': {
+        ...aggregate,
+        'workflow': {...workflow, 'matchingProposals': resolvedMatchingProposals},
+      },
+    };
+  }
+
+  /// Splices each already-decoded [PublicDemoEngineerRuntime
+  /// .totalItExperienceMonths] (per [resolvedRuntimes], in the same order as
+  /// `aggregate.state.engineerRuntimes`) into a copy of [envelope]'s own
+  /// `engineerRuntimes` entries, but only for an entry that doesn't already
+  /// carry that key — a save from before CORE-GAMEPLAY Phase 5's Codex P1
+  /// fix. Mirrors [_withMigratedRunSeed]'s own shape/doc. Deliberately does
+  /// not handle `engineerRuntimes` being entirely absent (a save predating
+  /// EG-1) or having a different length than [resolvedRuntimes] — neither
+  /// is a scenario this fix's own field-level default was written for.
+  static Map<String, dynamic> _withMigratedEngineerRuntimeExperience(
+    Map<String, dynamic> envelope,
+    List<PublicDemoEngineerRuntime> resolvedRuntimes,
+  ) {
+    final aggregate = (envelope['aggregate'] as Map).cast<String, dynamic>();
+    final state = (aggregate['state'] as Map).cast<String, dynamic>();
+    final runtimesRaw = state['engineerRuntimes'];
+    if (runtimesRaw is! List || runtimesRaw.length != resolvedRuntimes.length) {
+      return envelope;
+    }
+    var changed = false;
+    final migratedRuntimes = <Map<String, dynamic>>[];
+    for (var i = 0; i < runtimesRaw.length; i++) {
+      final entry = (runtimesRaw[i] as Map).cast<String, dynamic>();
+      if (entry.containsKey('totalItExperienceMonths')) {
+        migratedRuntimes.add(entry);
+      } else {
+        changed = true;
+        migratedRuntimes.add({
+          ...entry,
+          'totalItExperienceMonths': resolvedRuntimes[i].totalItExperienceMonths,
+        });
+      }
+    }
+    if (!changed) return envelope;
+    return {
+      ...envelope,
+      'aggregate': {
+        ...aggregate,
+        'state': {...state, 'engineerRuntimes': migratedRuntimes},
       },
     };
   }

@@ -1,6 +1,6 @@
 # SES CORE-GAMEPLAY Phase 5: Matching Decision Gameplay — Result
 
-Status: **Implementation complete, Codex P1 + 2×P2 review fixes applied, full test suite green (1918/1918)**
+Status: **Implementation complete, Codex 2×P1 + 2×P2 review fixes applied, full test suite green (1920/1920)**
 
 ## BASE SHA / branch / HEAD
 
@@ -19,12 +19,29 @@ Status: **Implementation complete, Codex P1 + 2×P2 review fixes applied, full t
 - HEAD after the Codex P1 review fix: `8f7de6100b2a7b262e3a6dcb6f9691cdc034521f`
   ("fix(matching): preserve known total experience for experienced hires
   (Codex P1, PR #212)").
-- **Final HEAD after the Codex P2×2 review fix (this update):**
-  `202871c30d9add1bbd87dd19ca61784d7570ddab`
-  ("fix(matching): apply Codex P2 findings on PR #212") — the report/PR-URL
-  fill-in commits between these do not change any production/test file.
-- PR: https://github.com/perusonao/smile_enjoy_story/pull/212 (open, not yet
-  merged; every update pushed to this same PR/branch — no new PR opened).
+- HEAD after the Codex P2×2 review fix: `202871c30d9add1bbd87dd19ca61784d7570ddab`
+  ("fix(matching): apply Codex P2 findings on PR #212").
+- **PR #212 merge race**: PR #212 was merged by the repository owner at
+  `c78b67a1b6a2ccda45256813597e6b4f066b9582` (merge commit
+  `4994301314535186165ee8b45ad031b6a801fca5` on `main`) **before** the
+  second Codex P1 review (submitted immediately after that merge) could be
+  investigated and fixed — the merged code on `main` therefore briefly
+  carried the save-corruption bug the fix below corrects. Per this
+  session's merged-branch-reuse policy, the two commits still pending on
+  `claude/github-issue-205-4zhj9k` at that point (the save-codec fix and
+  its own report update) were rebased onto the newly-merged `main` and
+  opened as a new, separate PR rather than reusing the already-merged #212.
+- Save-codec fix commit (rebased onto `main` post-merge):
+  `ee522e3ccd77223219e3d74509df2d0d4ddf4ce4` ("fix(save): migrate
+  matchingProposals/totalItExperienceMonths before strict save comparison
+  (Codex P1, PR #212)").
+- **Final HEAD**: this report's own rebased commit,
+  `ca7abfb59a6ce1dd6ef839e0349d9c4391b96afa`, plus one further commit
+  finalizing this cross-reference section (docs-only, no production/test
+  change).
+- PR: https://github.com/perusonao/smile_enjoy_story/pull/212 (**merged**
+  at `c78b67a`, before this fix) + this fix's own follow-up PR:
+  https://github.com/perusonao/smile_enjoy_story/pull/213.
 
 ## Codex P1 review fix — "Preserve known total experience in matching"
 
@@ -263,6 +280,55 @@ check.
 same-month id with an out-of-range slot (`project-4-999`) is rejected;
 every id genuinely in the current month's displayed pool still succeeds
 (confirming the fix doesn't over-restrict).
+
+## Second Codex P1 review fix — "Migrate the new fields before strict save comparison"
+
+**Finding:** `PublicDemoSaveCodec.fromJson` decodes a legacy save fine —
+`PublicDemoWorkflowState.fromJson`/`PublicDemoEngineerRuntime.fromJson`
+both supply backward-compatible defaults for the missing
+`matchingProposals`/`totalItExperienceMonths` keys (the two P1/P2 fixes
+above) — but the codec's own strict round-trip comparison then re-encodes
+the decoded aggregate and requires it to canonically equal the *original*
+raw payload, with only `runSeed` spliced in as a documented exception
+(`_withMigratedRunSeed`, SEEDED-RNG-REUSE-1). A save missing either new
+field would therefore re-encode with a key the original never had, fail
+that comparison, and `decode` would return `null` — silently discarding
+real player progress and starting a fresh game (`PublicDemoSaveService`'s
+own fallback behavior for any rejected save).
+
+**Verified by direct reproduction, not just reading the code:** built a
+legacy-shaped envelope (both fields removed) from a real encoded aggregate
+and ran it through the actual `PublicDemoSaveCodec().decode(...)` — it
+returned `null` before this fix.
+
+**Fix** (`public_demo_save_codec.dart`): two new splice helpers,
+`_withMigratedMatchingProposals` and
+`_withMigratedEngineerRuntimeExperience`, structurally mirroring
+`_withMigratedRunSeed` exactly — each patches the already-decoded,
+defaulted value into the comparison baseline, but *only* when the original
+raw payload doesn't already carry that key. A save that already has either
+field genuinely present still must match it exactly on the round trip;
+only a truly absent key is migrated. No change to `MatchingEngine
+.computeFit`, `_hasConsistentAuthorityFacts`, or any Finance/Month/Balance/
+HOME authority.
+
+**A pre-existing gap this investigation surfaced, deliberately NOT fixed
+here:** the identical bug already affects `interviewSessions`
+(CORE-GAMEPLAY Phase 3's own additive field) — a save missing that key is
+*also* wholesale-rejected by the strict codec today, entirely independent
+of this Phase 5 PR. Confirmed by the same direct-reproduction method.
+Not fixed in this PR to avoid widening it into an unrelated, already-merged
+phase's own regression; disclosed here and in "Known limitations" below as
+a follow-up candidate for whoever owns Save/persistence authority next.
+
+**Tests (2 new):** a legacy save missing both new fields (with
+`interviewSessions` still present, isolating exactly the two fields this
+fix targets) now decodes correctly, with every engineer's
+`totalItExperienceMonths` reproducing the same fallback
+`PublicDemoEngineerRuntime.fromJson` itself already computes; a save that
+already carries a real `matchingProposal` still round-trips it
+byte-for-byte (confirming the migration is opt-in-if-absent, never a
+blanket override).
 
 ## New files
 
@@ -561,8 +627,46 @@ Flutter SDK preinstalled).
 - `git diff --check`: clean (same incidental screenshot-PNG regeneration
   reverted before commit).
 
+### Second Codex P1 review fix (save-codec migration) — additional test results
+
+- New: 2 tests in `public_demo_save_codec_test.dart`'s own "Codex P1 fix
+  (PR #212)" group — see that fix's own "Tests" note above for what each
+  verifies.
+- Reproduction-before-fix: a throwaway probe (not committed) built a
+  legacy-shaped envelope from a real encoded aggregate and confirmed
+  `PublicDemoSaveCodec().decode(...)` returned `null` before the fix, and
+  a non-`null` aggregate with the correct field-level defaults after it —
+  the same probe also independently confirmed the pre-existing,
+  out-of-scope `interviewSessions` gap disclosed above.
+- `flutter analyze` (whole project, re-run after this fix): **No issues
+  found.**
+- Focused re-run: `public_demo_save_codec_test.dart` (7/7, including both
+  new), plus `public_demo_matching_test.dart`,
+  `public_demo_growth_engine_test.dart`,
+  `public_demo_recruitment_interview_test.dart` (re-verifies its own
+  existing `interviewSessions` legacy-migration test — that test exercises
+  `PublicDemoWorkflowState.fromJson` directly, not the full save codec, so
+  it could not have caught the codec-level gap this fix addresses; it
+  still passes unmodified),
+  `public_demo_recovery_aggregate_test.dart` — **69/69 green**.
+- Full suite re-run after this fix: `flutter test --concurrency=6` —
+  **1920 passed, 0 failed**.
+- `git diff --check`: clean (same incidental screenshot-PNG regeneration
+  reverted before commit).
+
 ## Known limitations
 
+- **The `interviewSessions` save-codec migration gap (CORE-GAMEPLAY Phase
+  3, pre-existing, discovered but not fixed by this PR)** — a save written
+  before Phase 3 added `PublicDemoWorkflowState.interviewSessions`, and
+  missing that key, is wholesale-rejected by `PublicDemoSaveCodec`'s strict
+  round-trip comparison today, exactly like the bug the second Codex P1 fix
+  above fixed for this Phase's own two fields — reproduced directly, not
+  merely suspected. Deliberately left unfixed here to avoid widening this
+  PR into an already-merged, unrelated phase's regression; whoever owns
+  Save/persistence authority next should apply the same
+  `_withMigratedRunSeed`-shaped splice this fix added for
+  `matchingProposals`/`totalItExperienceMonths`.
 - **A pre-fix, already-persisted experienced-hire save cannot recover its
   real total IT experience** — the Codex P1 fix above carries the value
   forward only from this commit onward; a save written before it (where
@@ -617,12 +721,24 @@ Flutter SDK preinstalled).
 ## Final verdict
 
 **PASS** — implementation complete, every Acceptance Criteria item verified,
-three Codex review findings (1×P1, 2×P2, across two review rounds)
-investigated (all confirmed true, none dismissed) and fixed with root-cause,
+four Codex review findings (2×P1, 2×P2, across three review rounds)
+investigated (all confirmed true — the second P1 by direct reproduction
+against the real codec — none dismissed) and fixed with root-cause,
 save-compatible corrections plus dedicated regression tests each time, zero
-regressions across the full 1918-test suite, `flutter analyze` clean,
-`git diff --check` clean. All three review threads replied to and resolved
-on PR #212.
+regressions across the full 1920-test suite, `flutter analyze` clean,
+`git diff --check` clean. All four review threads replied to and resolved
+(three on PR #212 before it merged; the fourth — the save-corruption fix —
+raised on #212 immediately after it merged, and landed via its own
+follow-up PR #213, since #212 could no longer be pushed to). A
+pre-existing, unrelated save-codec gap discovered during the second P1's
+investigation (`interviewSessions`) was disclosed rather than silently
+fixed (scope) or silently left unmentioned (transparency).
+
+**IMPORTANT — merge-timing note**: PR #212 merged at `c78b67a` before the
+save-corruption fix (this report's own "Second Codex P1 review fix"
+section) could be pushed to it. `main` briefly carried that bug between
+#212's merge and #213's merge — see "PR #212 merge race" above for the
+exact timeline and commit SHAs.
 
 ## Processing time
 
@@ -644,3 +760,10 @@ on PR #212.
   active window at under 15 minutes (P1-fix commit 16:29:19 UTC → this
   commit; the review itself took a few minutes to arrive, which is not
   processing time on this session's side).
+- Second Codex P1 review-fix update (save-codec migration): triggered by
+  another re-review after the P2×2 fixes landed; investigated with a direct
+  code reproduction (not just reading), fixed, re-ran the full suite, and
+  replied to/resolved the thread, all within the same continuous session —
+  commit timestamps put this update's own active window at roughly
+  10 minutes (P2×2-fix commit 16:51:xx UTC → this commit ~17:2x UTC, again
+  net of the review's own few-minute arrival delay).

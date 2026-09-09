@@ -110,6 +110,69 @@ void main() {
       expect(codec.fromJson(contradictory), isNull);
     },
   );
+
+  group('Codex P1 fix (PR #212): legacy saves survive the strict round-trip '
+      'despite new additive fields', () {
+    test('a save missing matchingProposals AND every engineerRuntime\'s '
+        'totalItExperienceMonths (a save written before CORE-GAMEPLAY '
+        'Phase 5) still decodes, rather than being wholesale rejected', () {
+      final encoded = codec.toJson(PublicDemoAggregate.initial());
+      final aggregate = (encoded['aggregate'] as Map<String, dynamic>);
+      final workflow = Map<String, dynamic>.from(
+        aggregate['workflow'] as Map,
+      )..remove('matchingProposals');
+      final state = Map<String, dynamic>.from(aggregate['state'] as Map);
+      state['engineerRuntimes'] = (state['engineerRuntimes'] as List)
+          .map(
+            (entry) =>
+                Map<String, dynamic>.from(entry as Map)
+                  ..remove('totalItExperienceMonths'),
+          )
+          .toList();
+      final legacy = {
+        ...encoded,
+        'aggregate': {...aggregate, 'workflow': workflow, 'state': state},
+      };
+
+      final restored = codec.fromJson(legacy);
+
+      expect(restored, isNotNull);
+      expect(restored!.workflow.matchingProposals, isEmpty);
+      for (final runtime in restored.state.engineerRuntimes) {
+        // The exact same fallback PublicDemoEngineerRuntime.fromJson itself
+        // already uses for a missing key — never a fabricated new number.
+        expect(
+          runtime.totalItExperienceMonths,
+          runtime.confirmedLanguages.contains(runtime.primaryLanguage)
+              ? (runtime.languageSkills[runtime.primaryLanguage]
+                        ?.actualExperienceMonths ??
+                    0)
+              : 0,
+        );
+      }
+    });
+
+    test('a save that already carries a real matchingProposal round-trips '
+        'it exactly — the migration only ever fires for an ABSENT key, '
+        'never overriding a genuinely-present one', () {
+      final base = PublicDemoAggregate.initial();
+      final candidate = base.projectCandidatesForMonth(4).first;
+      final withProposal = base.proposeMatch(
+        engineerId: 'eng-01',
+        projectId: candidate.id,
+      );
+
+      final restored = codec.decode(codec.encode(withProposal));
+
+      expect(restored, isNotNull);
+      expect(restored!.workflow.matchingProposals, hasLength(1));
+      expect(
+        restored.matchingProposalFor('eng-01')?.projectId,
+        candidate.id,
+      );
+      expect(codec.toJson(restored), codec.toJson(withProposal));
+    });
+  });
 }
 
 PublicDemoAggregate _advancedAggregate() {

@@ -1,7 +1,9 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:smile_enjoy_story/game/persistence/public_demo_save_codec.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_aggregate.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_assignment.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_interview.dart';
+import 'package:smile_enjoy_story/game/public_demo/public_demo_revenue.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_sales.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_workflow_state.dart';
 
@@ -156,13 +158,19 @@ void main() {
         applicants: const [],
         engineers: [genuineEngineer('eng-none')],
       );
-      expect(identical(workflow.endAssignment('eng-none'), workflow), isTrue);
+      expect(
+        identical(workflow.endAssignment('eng-none', month: 7), workflow),
+        isTrue,
+      );
     });
 
     test('no-op for an unknown engineer id entirely', () {
       final workflow = PublicDemoWorkflowState.initial();
       expect(
-        identical(workflow.endAssignment('does-not-exist'), workflow),
+        identical(
+          workflow.endAssignment('does-not-exist', month: 7),
+          workflow,
+        ),
         isTrue,
       );
     });
@@ -176,7 +184,10 @@ void main() {
           workflow.assignments.single.nextOrderStatus,
           PublicDemoNextOrderStatus.undecided,
         );
-        expect(identical(workflow.endAssignment('eng-01'), workflow), isTrue);
+        expect(
+          identical(workflow.endAssignment('eng-01', month: 7), workflow),
+          isTrue,
+        );
       },
     );
 
@@ -190,17 +201,23 @@ void main() {
           nextOrderStatus: PublicDemoNextOrderStatus.notOffered,
           replacementStage: PublicDemoReplacementStage.ordered,
         );
-        expect(identical(workflow.endAssignment('eng-01'), workflow), isTrue);
+        expect(
+          identical(workflow.endAssignment('eng-01', month: 7), workflow),
+          isTrue,
+        );
       },
     );
   });
 
   group(
-    'endAssignment: atomic end→available transition, exactly once',
+    'endAssignment: atomic end→available transition, month-aware '
+    '(Codex P1 fix, PR #215: must never shrink the CURRENT month\'s '
+    'assignedEngineerIds/Finance projection)',
     () {
       test(
-        'ends the assignment and releases the engineer to waiting '
-        'atomically — no intermediate off-roster-but-still-ordered state',
+        'month ≥ 7: the assignment row is removed immediately and the '
+        'engineer is released to waiting atomically — safe because this '
+        'row was already excluded from the *filtered* assignedEngineerIds',
         () {
           final workflow = orderedAssignedWorkflow(
             'eng-01',
@@ -208,7 +225,7 @@ void main() {
             'eng-01',
             nextOrderStatus: PublicDemoNextOrderStatus.notOffered,
           );
-          final ended = workflow.endAssignment('eng-01');
+          final ended = workflow.endAssignment('eng-01', month: 8);
 
           expect(ended.assignments, isEmpty);
           final engineer = ended.engineers.firstWhere(
@@ -219,47 +236,86 @@ void main() {
       );
 
       test(
-        'the engineer is never simultaneously "active" (present in '
-        'assignments) and "waiting" — before, during, or after ending',
+        'month < 7: the assignment row is deliberately LEFT IN PLACE '
+        '(would otherwise shrink this month\'s unfiltered '
+        'assignedEngineerIds — see endAssignment\'s own doc), while the '
+        'engineer\'s stage still resets to waiting immediately — "begin '
+        'searching for the next project during the current month" without '
+        'touching this month\'s Finance projection',
         () {
-          bool waitingAndActive(PublicDemoWorkflowState w, String id) {
-            final isActive = w.assignedEngineerIdsUnfiltered.contains(id);
-            final engineer = w.engineers.firstWhere((e) => e.id == id);
-            return isActive && engineer.stage == PublicDemoSalesStage.waiting;
-          }
-
-          final before = orderedAssignedWorkflow('eng-01').withAssignmentUpdate(
+          final workflow = orderedAssignedWorkflow(
+            'eng-01',
+          ).withAssignmentUpdate(
             'eng-01',
             nextOrderStatus: PublicDemoNextOrderStatus.notOffered,
           );
-          expect(waitingAndActive(before, 'eng-01'), isFalse);
-          final after = before.endAssignment('eng-01');
-          expect(waitingAndActive(after, 'eng-01'), isFalse);
+          final ended = workflow.endAssignment('eng-01', month: 6);
+
+          expect(ended.assignments, hasLength(1));
+          expect(ended.assignments.single.engineerId, 'eng-01');
+          final engineer = ended.engineers.firstWhere(
+            (candidate) => candidate.id == 'eng-01',
+          );
+          expect(engineer.stage, PublicDemoSalesStage.waiting);
           expect(
-            after.assignedEngineerIdsUnfiltered.contains('eng-01'),
-            isFalse,
+            ended.assignedEngineerIdsUnfiltered.contains('eng-01'),
+            isTrue,
+            reason: 'still counted toward the current month\'s headcount, '
+                'exactly like before ending',
           );
         },
       );
 
       test(
-        'ending is idempotent: a second call on the already-ended workflow '
-        'is a true no-op — an assignment can never be "ended" twice',
+        'assignedEngineerIds(month) itself never changes across the call, '
+        'in either branch — the whole point of the month-aware deferral',
         () {
-          final workflow = orderedAssignedWorkflow('eng-01')
-              .withAssignmentUpdate(
-                'eng-01',
-                nextOrderStatus: PublicDemoNextOrderStatus.notOffered,
-              )
-              .endAssignment('eng-01');
+          for (final month in [6, 7, 8]) {
+            final workflow = orderedAssignedWorkflow(
+              'eng-01',
+            ).withAssignmentUpdate(
+              'eng-01',
+              nextOrderStatus: PublicDemoNextOrderStatus.notOffered,
+            );
+            final before = workflow.assignedEngineerIds(month: month);
+            final ended = workflow.endAssignment('eng-01', month: month);
+            expect(
+              ended.assignedEngineerIds(month: month),
+              before,
+              reason: 'month $month: ending must never change this month\'s '
+                  'assigned-headcount projection',
+            );
+          }
+        },
+      );
 
-          expect(identical(workflow.endAssignment('eng-01'), workflow), isTrue);
+      test(
+        'ending is idempotent at every month: a second call at the same '
+        'month is a true no-op — an assignment can never be "ended" twice',
+        () {
+          for (final month in [6, 8]) {
+            final workflow = orderedAssignedWorkflow('eng-01')
+                .withAssignmentUpdate(
+                  'eng-01',
+                  nextOrderStatus: PublicDemoNextOrderStatus.notOffered,
+                )
+                .endAssignment('eng-01', month: month);
+
+            expect(
+              identical(
+                workflow.endAssignment('eng-01', month: month),
+                workflow,
+              ),
+              isTrue,
+              reason: 'month $month',
+            );
+          }
         },
       );
 
       test(
         'a different engineer\'s assignment is completely untouched by '
-        'ending eng-01\'s',
+        'ending eng-01\'s, at month ≥ 7',
         () {
           var workflow = PublicDemoWorkflowState(
             applicants: const [],
@@ -280,7 +336,7 @@ void main() {
             (a) => a.engineerId == 'eng-02',
           );
 
-          workflow = workflow.endAssignment('eng-01');
+          workflow = workflow.endAssignment('eng-01', month: 8);
 
           expect(
             workflow.assignments.where((a) => a.engineerId == 'eng-01'),
@@ -309,7 +365,7 @@ void main() {
                 'eng-01',
                 nextOrderStatus: PublicDemoNextOrderStatus.notOffered,
               )
-              .endAssignment('eng-01')
+              .endAssignment('eng-01', month: 8)
               .startSkillSheetReview('eng-01');
 
           final engineer = workflow.engineers.firstWhere(
@@ -329,7 +385,7 @@ void main() {
                 'eng-01',
                 nextOrderStatus: PublicDemoNextOrderStatus.notOffered,
               )
-              .endAssignment('eng-01');
+              .endAssignment('eng-01', month: 8);
           expect(workflow.assignments, isEmpty);
 
           workflow = workflow
@@ -353,6 +409,43 @@ void main() {
           expect(workflow.assignments.single.engineerId, 'eng-01');
         },
       );
+
+      test(
+        'a released-but-not-yet-removed (month < 7) row is safely upserted '
+        'in place by a later genuine re-order — never duplicated',
+        () {
+          var workflow = orderedAssignedWorkflow('eng-01')
+              .withAssignmentUpdate(
+                'eng-01',
+                nextOrderStatus: PublicDemoNextOrderStatus.notOffered,
+              )
+              .endAssignment('eng-01', month: 6);
+          expect(workflow.assignments, hasLength(1));
+
+          workflow = workflow
+              .startSkillSheetReview('eng-01')
+              .beginSelling('eng-01')
+              .introduceProject('eng-01')
+              .recordEngineerInterviewResult(
+                engineerId: 'eng-01',
+                type: PublicDemoInterviewType.partner,
+                actualCapability: 95,
+              )
+              .recordEngineerInterviewResult(
+                engineerId: 'eng-01',
+                type: PublicDemoInterviewType.client,
+                actualCapability: 95,
+              )
+              .recordOrder('eng-01')
+              .recoverLateYearAssignment('eng-01', month: 8);
+
+          expect(workflow.assignments, hasLength(1));
+          expect(
+            workflow.assignments.single.nextOrderStatus,
+            PublicDemoNextOrderStatus.accepted,
+          );
+        },
+      );
     },
   );
 
@@ -364,7 +457,9 @@ void main() {
     /// undecided/none defaults, matching [orderedAssignedWorkflow] above
     /// but at the full aggregate level (through `closeApril`/`closeMay`,
     /// exactly like public_demo_save_codec_test.dart's own
-    /// `_advancedAggregate` helper).
+    /// `_advancedAggregate` helper). Lands on `state.month == 6` (June) —
+    /// exactly the window [PublicDemoWorkflowState.endAssignment]'s
+    /// deferred-removal branch protects.
     PublicDemoAggregate assignedViaMay(String engineerId) {
       final aggregate = PublicDemoAggregate.initial()
           .startSkillSheetReview(engineerId)
@@ -384,10 +479,11 @@ void main() {
     }
 
     test(
-      're-projects engineersAssigned/engineersWaiting together with the '
-      'workflow change — never a stale count',
+      'in June (month 6), ending never changes engineersAssigned/'
+      'engineersWaiting at all — the row is deferred, not removed',
       () {
         var aggregate = assignedViaMay('eng-01');
+        expect(aggregate.state.month, 6);
         expect(aggregate.state.engineersAssigned, 1);
         expect(aggregate.state.engineersWaiting, 1);
 
@@ -395,6 +491,38 @@ void main() {
           'eng-01',
           nextOrderStatus: PublicDemoNextOrderStatus.notOffered,
         );
+        aggregate = aggregate.endAssignment('eng-01');
+
+        expect(aggregate.workflow.assignments, hasLength(1));
+        expect(aggregate.state.engineersAssigned, 1);
+        expect(aggregate.state.engineersWaiting, 1);
+        final engineer = aggregate.workflow.engineers.firstWhere(
+          (e) => e.id == 'eng-01',
+        );
+        expect(engineer.stage, PublicDemoSalesStage.waiting);
+      },
+    );
+
+    test(
+      'at month ≥ 7, ending removes the row and re-projects '
+      'engineersAssigned/engineersWaiting together — the count itself is '
+      'unchanged (this row was already excluded from the filtered set)',
+      () {
+        // Reaches July (month 7) through the real May→June→July close
+        // chain — never via recoverAssignment, which always sets
+        // replacementStage: ordered (a secured order endAssignment
+        // correctly refuses to end; see the "already secured" precondition
+        // test above).
+        var aggregate = assignedViaMay(
+          'eng-01',
+        ).closeJune(assignedInJuly: 0, monthlyExpenses: 0);
+        expect(aggregate.state.month, 7);
+        aggregate = aggregate.withAssignmentUpdate(
+          'eng-01',
+          nextOrderStatus: PublicDemoNextOrderStatus.notOffered,
+        );
+        expect(aggregate.state.engineersAssigned, 0);
+
         aggregate = aggregate.endAssignment('eng-01');
 
         expect(aggregate.workflow.assignments, isEmpty);
@@ -424,8 +552,8 @@ void main() {
     );
 
     test(
-      'ending never changes cash/pendingRevenue — Finance authority is not '
-      'duplicated here, only the roster/stage projection',
+      'ending never changes cash/pendingRevenue directly — Finance '
+      'authority is not duplicated here, only the roster/stage projection',
       () {
         var aggregate = assignedViaMay('eng-01');
         aggregate = aggregate.withAssignmentUpdate(
@@ -437,27 +565,64 @@ void main() {
 
         aggregate = aggregate.endAssignment('eng-01');
 
-        expect(aggregate.workflow.assignments, isEmpty);
         expect(aggregate.state.cash, cashBefore);
         expect(aggregate.state.pendingRevenue, pendingBefore);
       },
     );
 
     test(
-      'save/reload immediately after ending round-trips through the '
-      'aggregate JSON envelope without violating persistence invariants',
+      'Codex P1 regression (PR #215): ending in June, then closing June, '
+      'still books June\'s revenue for the released engineer — the '
+      'declined order concerns JULY, not June\'s already-earned billing',
       () {
         var aggregate = assignedViaMay('eng-01');
+        expect(aggregate.state.month, 6);
         aggregate = aggregate.withAssignmentUpdate(
           'eng-01',
           nextOrderStatus: PublicDemoNextOrderStatus.notOffered,
         );
         aggregate = aggregate.endAssignment('eng-01');
-        expect(aggregate.workflow.assignments, isEmpty);
 
-        final restored = PublicDemoAggregate.fromJson(aggregate.toJson());
-        expect(restored.workflow.assignments, isEmpty);
-        expect(restored.state.engineersAssigned, aggregate.state.engineersAssigned);
+        aggregate = aggregate.closeJune(
+          assignedInJuly: 0,
+          monthlyExpenses: 0,
+        );
+
+        expect(
+          aggregate.state.pendingRevenue,
+          PublicDemoRevenue.monthlyRevenueForAssignedCount(1),
+          reason: 'June\'s billing must still reflect the 1 engineer who '
+              'genuinely worked through June, not 0',
+        );
+      },
+    );
+
+    test(
+      'save/reload immediately after ending round-trips through the real '
+      'PublicDemoSaveCodec (Codex P1 regression, PR #215) — not merely '
+      'PublicDemoAggregate.fromJson, which bypasses '
+      '_hasConsistentAuthorityFacts entirely',
+      () {
+        const codec = PublicDemoSaveCodec();
+        for (final month in [6, 8]) {
+          var aggregate = month == 6
+              ? assignedViaMay('eng-01')
+              : (() {
+                  var a = publicDemoAggregateAtMonth(7);
+                  a = publicDemoAdvanceEngineerToOrdered(a, 'eng-01');
+                  return a.recoverAssignment('eng-01');
+                })();
+          aggregate = aggregate.withAssignmentUpdate(
+            'eng-01',
+            nextOrderStatus: PublicDemoNextOrderStatus.notOffered,
+          );
+          aggregate = aggregate.endAssignment('eng-01');
+
+          final restored = codec.decode(codec.encode(aggregate));
+
+          expect(restored, isNotNull, reason: 'month $month');
+          expect(codec.toJson(restored!), codec.toJson(aggregate));
+        }
       },
     );
   });

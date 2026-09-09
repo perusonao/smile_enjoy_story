@@ -945,16 +945,17 @@ class PublicDemoAggregate {
   /// [PublicDemoWorkflowState.assignedEngineerIds] (never a bare -1 delta),
   /// so [_validateForPersistence]'s month-≥-6 projection invariant always
   /// holds immediately after this call, exactly like every other
-  /// assignment-roster-changing command. Finance is untouched here, for the
-  /// same reason [recoverAssignment] leaves it untouched: an ended
-  /// assignment was already excluded from [PublicDemoWorkflowState
-  /// .assignedEngineerIds] for month ≥ 7 the moment its `nextOrderStatus`
-  /// became `notOffered` (never `accepted`, and `replacementStage` never
-  /// reached `ordered` — this method's own precondition), so no revenue was
-  /// ever booked for it after that point; ending it here changes no
-  /// already-recognized figure, only unblocks the engineer's own stage.
+  /// assignment-roster-changing command. Finance is untouched (`cash`/
+  /// `pendingRevenue` never change here): [PublicDemoWorkflowState
+  /// .endAssignment] itself already guarantees `assignedEngineerIds(month:
+  /// state.month)` — the exact set [PublicDemoRevenue
+  /// .monthlyRevenueForAssignedCount] is keyed on — reports identically
+  /// before and after this call (see that method's own doc for the
+  /// month-aware deferred-removal contract this depends on), so
+  /// re-projecting the count here can only ever confirm the same number,
+  /// never book or drop revenue.
   PublicDemoAggregate endAssignment(String engineerId) {
-    final nextWorkflow = workflow.endAssignment(engineerId);
+    final nextWorkflow = workflow.endAssignment(engineerId, month: state.month);
     if (identical(nextWorkflow, workflow)) return this;
     final assignedIds = nextWorkflow.assignedEngineerIds(month: state.month);
     return _copyWith(

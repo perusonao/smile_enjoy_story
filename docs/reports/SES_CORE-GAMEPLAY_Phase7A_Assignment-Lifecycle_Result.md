@@ -37,12 +37,18 @@ Reused existing authority rather than inventing a parallel lifecycle:
 | File | Change |
 |---|---|
 | `lib/game/public_demo/public_demo_assignment.dart` | Added `projectId` (identity field, additive to JSON, preserved through `copyWith`, threaded through `forOrderedEngineer`). |
-| `lib/game/public_demo/public_demo_workflow_state.dart` | `assignOrderedForMay`/`recoverLateYearAssignment` now thread `engineer.genuineInterviewProjectId` into new assignments; added `endAssignment(engineerId)`. |
+| `lib/game/public_demo/public_demo_workflow_state.dart` | `assignOrderedForMay`/`recoverLateYearAssignment` now thread `engineer.genuineInterviewProjectId` into new assignments; added `endAssignment(engineerId, {required int month})` — month-aware, deferred removal before month 7. |
+| `lib/game/public_demo/public_demo_sales.dart` | Added `PublicDemoEngineerSales.releaseFromAssignment()` — resets `stage` to `waiting` and genuinely clears `interviewRecord` (unlike `copyWith`). |
 | `lib/game/public_demo/public_demo_aggregate.dart` | Added `endAssignment(engineerId)` — re-projects `engineersAssigned`/`engineersWaiting`, mirrors `recoverAssignment`. |
 | `lib/game/persistence/public_demo_save_codec.dart` | Added `_withMigratedAssignmentProjectId` legacy-save splice; added the `projectId`/`interviewRecordProjectId` identity cross-check and a structural duplicate-`engineerId` rejection in `_hasConsistentAuthorityFacts`. |
 | `lib/ui/public_demo/public_demo_01_placeholder_screen.dart` | One new button ("契約終了して営業へ戻す") wired to `endAssignment`, shown only while `nextOrderStatus == notOffered && replacementStage != ordered` — the minimum truthful UI needed to exercise the new lifecycle command; no other visual change. |
 
 **Bug caught by the hardening pass itself:** the first `copyWith` implementation did not carry `projectId` forward, silently dropping it on every `recoverLateYearAssignment` upsert. Caught by the new focused tests before any PR review round, fixed in the same pass (`copyWith` now explicitly preserves `projectId`, matching every other identity field).
+
+**Two P1 bugs caught by Codex's automated PR review, both confirmed and fixed in the same pass** (per Issue #207's "一括Hardening" instruction — no iterative back-and-forth):
+
+1. **Save/reload after ending an assignment was silently rejected.** `endAssignment` reset `stage` to `waiting` but `PublicDemoEngineerSales.copyWith` cannot null an already-set `interviewRecord` (its `?? this.field` convention) — leaving stage=`waiting` with a still-present `interviewRecord`, a combination `PublicDemoSaveCodec._hasConsistentAuthorityFacts` correctly refuses to restore. Fixed with a dedicated `PublicDemoEngineerSales.releaseFromAssignment()` (constructs fresh, explicitly nulling `interviewRecord`) instead of `copyWith`. The original regression tests used `PublicDemoAggregate.fromJson` directly, which bypasses this exact check — new tests use the real `PublicDemoSaveCodec.decode`/`encode` round trip.
+2. **Ending an assignment in June could lose June's already-earned revenue.** `assignedEngineerIds` is intentionally *unfiltered* before month 7 (a June `notOffered` decision is about *July's* continuation, not June's own billing — see `assignedEngineerIdsUnfiltered`'s own doc), but the first `endAssignment` removed the row immediately regardless of month, prematurely shrinking `engineersAssigned` — and therefore `closeJune`'s revenue booking — for an engineer who genuinely worked all of June. Fixed by making `endAssignment` month-aware (`{required int month}`): the row is removed immediately only when doing so cannot change `assignedEngineerIds(month)` (true for month ≥ 7, since the row is already excluded from the *filtered* set by this method's own precondition); before month 7 the engineer's stage still resets to `waiting` immediately (satisfying "begin searching during the current month"), but the row itself is left in place — inert, and safely superseded in place by a later genuine re-order via `recoverLateYearAssignment`'s existing upsert, never duplicated.
 
 ## 5. Lifecycle state machine (as implemented)
 
@@ -100,7 +106,7 @@ Existing Finance/Month/Recovery/SaveCodec suites (all pre-existing tests under `
 ## 9. Tests
 
 New focused files:
-- `test/game/public_demo/public_demo_assignment_lifecycle_test.dart` (19 tests) — workflow/aggregate-level lifecycle invariants (real project identity threading, `endAssignment` preconditions/atomicity/idempotency, re-entry, Finance re-projection).
+- `test/game/public_demo/public_demo_assignment_lifecycle_test.dart` (23 tests) — workflow/aggregate-level lifecycle invariants (real project identity threading, `endAssignment` preconditions/atomicity/idempotency/month-awareness, re-entry, Finance re-projection, and dedicated regressions for both Codex P1 findings above — real `PublicDemoSaveCodec` round trip, and June revenue preservation through `closeJune`).
 - `test/game/public_demo/public_demo_assignment_lifecycle_save_codec_test.dart` (6 tests) — genuine round-trip, legacy migration, identity-mismatch rejection, duplicate-assignment rejection.
 - `test/game/public_demo/test_support/public_demo_sales_test_helpers.dart` — added `recordTestProjectInterviewPass` (project-bound counterpart to the existing `recordTestClientInterviewPass`).
 - `test/game/public_demo/public_demo_recovery_aggregate_test.dart` — updated one exact-key-set assertion for the new additive field.
@@ -108,8 +114,8 @@ New focused files:
 ## 10. CI status (this session)
 
 - `flutter analyze`: **0 issues** (whole repo).
-- `flutter test test/game/public_demo/ --concurrency=6`: **716/716 passed.**
-- `flutter test --concurrency=6` (full suite): **2026/2026 passed.**
+- `flutter test test/game/public_demo/ --concurrency=6`: **720/720 passed.**
+- `flutter test --concurrency=6` (full suite): **2030/2030 passed.**
 - `git diff --check`: clean (no whitespace errors).
 
 No repository CI workflow run was triggered from this session beyond the above local runs (same Flutter stable toolchain the repo pins via `.metadata`/`pubspec.yaml`).

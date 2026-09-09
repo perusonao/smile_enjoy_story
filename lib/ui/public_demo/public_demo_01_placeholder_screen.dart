@@ -3131,8 +3131,17 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
             // (replacementStage) mini-cycle below — once a replacement is
             // actually secured (`ordered`) this button no longer appears,
             // matching [PublicDemoWorkflowState.endAssignment]'s own
-            // precondition exactly.
-            if (a.replacementStage != PublicDemoReplacementStage.ordered)
+            // precondition exactly. Also gated on the engineer's own stage
+            // still being `ordered`: before month 7,
+            // [PublicDemoWorkflowState.endAssignment] deliberately leaves
+            // this row in place (to protect this month's Finance
+            // projection — see its own doc) after already releasing the
+            // engineer, so without this check the button would keep
+            // rendering, now a silent no-op, after a press already
+            // succeeded.
+            if (a.replacementStage != PublicDemoReplacementStage.ordered &&
+                _engineerById(a.engineerId)?.stage ==
+                    PublicDemoSalesStage.ordered)
               OutlinedButton(
                 key: Key('public-demo-assignment-end-${a.engineerId}'),
                 onPressed: () => endAssignment(i),

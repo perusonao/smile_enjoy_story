@@ -1003,22 +1003,48 @@ class PublicDemoWorkflowState {
   /// `nextOrderStatus == notOffered` (the current project's continuation
   /// was already explicitly declined via [PublicDemoAssignment
   /// .willOfferNextMonthFor] — this can never fire while a renewal is still
-  /// undecided/offered/accepted); and its `replacementStage !=
+  /// undecided/offered/accepted); its `replacementStage !=
   /// PublicDemoReplacementStage.ordered` (a replacement already secured
   /// through the existing mini-cycle is a continued, genuine assignment —
   /// ending it here would silently discard a real order the player already
-  /// won). Removing the assignment from [assignments] and resetting the
-  /// engineer's [PublicDemoSalesStage] to `waiting` happen atomically in
-  /// one [_copyWith] call: there is no intermediate, persistable state
-  /// where the engineer is off the roster yet still frozen at `ordered`
-  /// (which would otherwise permanently lock them out of
-  /// [startSkillSheetReview], a genuine dead end), nor one where the
-  /// assignment still exists yet the engineer already reports `waiting`.
-  /// Once applied, the assignment is gone — the engineer id is no longer in
-  /// [assignedEngineerIdsUnfiltered]/[assignedEngineerIds] at all, so a
-  /// second call finds no matching assignment and is a true no-op: an
-  /// engineer's contract can never be "ended" twice.
-  PublicDemoWorkflowState endAssignment(String engineerId) {
+  /// won); and the engineer is genuinely `ordered`
+  /// ([PublicDemoEngineerSales.releaseFromAssignment]'s own precondition —
+  /// see its doc for why this alone makes a second call a true no-op).
+  ///
+  /// [month] (Codex P1 fix, PR #215) is the current
+  /// [PublicDemoState.month] — required so this can tell whether removing
+  /// the row from [assignments] would change [assignedEngineerIds] for the
+  /// month still in progress. Before month 7, [assignedEngineerIds] is
+  /// [assignedEngineerIdsUnfiltered] — every assignment counts toward
+  /// *this* month's revenue regardless of `nextOrderStatus`, precisely
+  /// because a June `notOffered` decision is about JULY's continuation,
+  /// never June's own already-earned revenue (see
+  /// [assignedEngineerIdsUnfiltered]'s own doc). Removing the row
+  /// immediately in that window would silently shrink
+  /// [PublicDemoState.engineersAssigned] — and therefore
+  /// [PublicDemoRevenue.monthlyRevenueForAssignedCount] — for revenue this
+  /// engineer genuinely still earned this month (Codex P1, PR #215: a real
+  /// bug in an earlier version of this method, caught before merge). So the
+  /// row is removed immediately only when doing so changes nothing about
+  /// [assignedEngineerIds] for [month] — from month 7 on, this method's own
+  /// `nextOrderStatus`/`replacementStage` precondition above already
+  /// excludes it from the *filtered* [assignedEngineerIds], making removal
+  /// safe and redundant-data cleanup, never a revenue change. Before month
+  /// 7, the row is deliberately left in place — inert, and safely
+  /// superseded in place by a later genuine re-order via
+  /// [recoverLateYearAssignment]'s own upsert (never duplicated) — while
+  /// the engineer's stage reset below still happens immediately, exactly
+  /// satisfying the Issue's "begin searching for the next project during
+  /// the current month" requirement without touching this month's
+  /// Finance projection.
+  ///
+  /// Whichever branch applies, the roster/stage change is atomic in one
+  /// [_copyWith] call: there is no intermediate, persistable state where
+  /// the engineer is off the roster yet still frozen at `ordered` (which
+  /// would otherwise permanently lock them out of [startSkillSheetReview],
+  /// a genuine dead end), nor one where a *removed* row still exists
+  /// alongside a `waiting` engineer.
+  PublicDemoWorkflowState endAssignment(String engineerId, {required int month}) {
     final assignment = assignments
         .where((candidate) => candidate.engineerId == engineerId)
         .firstOrNull;
@@ -1027,18 +1053,28 @@ class PublicDemoWorkflowState {
         assignment.replacementStage == PublicDemoReplacementStage.ordered) {
       return this;
     }
-    if (engineers.every((engineer) => engineer.id != engineerId)) return this;
+    final engineer = engineers
+        .where((candidate) => candidate.id == engineerId)
+        .firstOrNull;
+    if (engineer == null || engineer.stage != PublicDemoSalesStage.ordered) {
+      return this;
+    }
+    final stillCountedThisMonth = assignedEngineerIds(
+      month: month,
+    ).contains(engineerId);
     return _copyWith(
-      assignments: [
-        for (final candidate in assignments)
-          if (candidate.engineerId != engineerId) candidate,
-      ],
+      assignments: stillCountedThisMonth
+          ? assignments
+          : [
+              for (final candidate in assignments)
+                if (candidate.engineerId != engineerId) candidate,
+            ],
       engineers: [
-        for (final engineer in engineers)
-          if (engineer.id == engineerId)
-            engineer.copyWith(stage: PublicDemoSalesStage.waiting)
+        for (final candidate in engineers)
+          if (candidate.id == engineerId)
+            candidate.releaseFromAssignment()
           else
-            engineer,
+            candidate,
       ],
     );
   }

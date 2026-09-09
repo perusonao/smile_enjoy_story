@@ -345,6 +345,43 @@ class PublicDemoEngineerSales {
           : null,
     );
   }
+
+  /// CORE-GAMEPLAY Phase 7A (Assignment Lifecycle): releases this engineer
+  /// back to the real Sales pipeline after their assignment genuinely ends
+  /// (the sole production caller is
+  /// [PublicDemoWorkflowState.endAssignment]). A no-op unless [stage] is
+  /// currently [PublicDemoSalesStage.ordered] — the only stage a real
+  /// assignment is ever created from — mirroring every other transition in
+  /// this class's own "required current stage" precondition style.
+  ///
+  /// Resets [stage] to `waiting` AND clears [interviewRecord] — unlike
+  /// [copyWith], which can never null a field it already carries (its own
+  /// `?? this.field` convention), leaving [interviewRecord] behind here
+  /// left a genuine client-interview-pass record sitting on an engineer no
+  /// longer at `clientInterviewPassed`/`ordered`, a combination
+  /// [PublicDemoSaveCodec._hasConsistentAuthorityFacts] correctly refuses
+  /// to restore (it can never come from any real interview command) — so a
+  /// save/reload immediately after ending an assignment was silently
+  /// discarded as corrupt (Codex P1, PR #215). The stale record is safe to
+  /// drop: it already served its one purpose (proving the now-ended
+  /// assignment's real project identity), and a later genuine re-interview
+  /// through [evaluateInterview]/[applyProjectInterviewResult] mints a
+  /// fresh one regardless.
+  PublicDemoEngineerSales releaseFromAssignment() {
+    if (stage != PublicDemoSalesStage.ordered) return this;
+    return PublicDemoEngineerSales(
+      id: id,
+      name: name,
+      summary: summary,
+      interviewProfile: interviewProfile,
+      stage: PublicDemoSalesStage.waiting,
+      lastInterviewScore: lastInterviewScore,
+      interviewRecord: null,
+      mental: mental,
+      trust: trust,
+      founderFollowUpMonth: founderFollowUpMonth,
+    );
+  }
 }
 
 const publicDemoInitialEngineers = <PublicDemoEngineerSales>[

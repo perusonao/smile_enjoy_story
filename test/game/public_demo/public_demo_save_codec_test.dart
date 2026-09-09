@@ -3,6 +3,7 @@ import 'package:smile_enjoy_story/game/persistence/public_demo_save_codec.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_aggregate.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_fiscal_close_id.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_interview.dart';
+import 'package:smile_enjoy_story/game/public_demo/public_demo_recruitment_medium.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_salary_offer.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_summer_bonus_plan.dart';
 
@@ -171,6 +172,83 @@ void main() {
         candidate.id,
       );
       expect(codec.toJson(restored), codec.toJson(withProposal));
+    });
+  });
+
+  group('PR #214 main-integration fix: legacy saves survive the strict '
+      'round-trip despite the interviewSessions/projectInterviewSessions '
+      'additive fields', () {
+    test('a save missing BOTH interviewSessions and '
+        'projectInterviewSessions (a save written before CORE-GAMEPLAY '
+        'Phase 3) still decodes, rather than being wholesale rejected', () {
+      final encoded = codec.toJson(PublicDemoAggregate.initial());
+      final aggregate = (encoded['aggregate'] as Map<String, dynamic>);
+      final workflow = Map<String, dynamic>.from(aggregate['workflow'] as Map)
+        ..remove('interviewSessions')
+        ..remove('projectInterviewSessions');
+      final legacy = {
+        ...encoded,
+        'aggregate': {...aggregate, 'workflow': workflow},
+      };
+
+      final restored = codec.fromJson(legacy);
+
+      expect(restored, isNotNull);
+      expect(restored!.workflow.interviewSessions, isEmpty);
+      expect(restored.workflow.projectInterviewSessions, isEmpty);
+    });
+
+    test('a save that already carries a real recruitment interviewSession '
+        'round-trips it exactly — the migration only ever fires for an '
+        'ABSENT key, never overriding a genuinely-present one', () {
+      var aggregate = PublicDemoAggregate.initial().closeApril(
+        monthlyExpenses: 0,
+      );
+      final recruited = aggregate.recruit(PublicDemoRecruitmentMedium.free);
+      expect(recruited.isSuccess, isTrue);
+      aggregate = recruited.aggregate!;
+      final applicantId = aggregate.workflow.applicants.first.id;
+      aggregate = aggregate.completeInterview(applicantId).aggregate;
+      aggregate = aggregate.startInterviewSession(applicantId);
+      expect(aggregate.workflow.interviewSessions, hasLength(1));
+
+      final restored = codec.decode(codec.encode(aggregate));
+
+      expect(restored, isNotNull);
+      expect(restored!.workflow.interviewSessions, hasLength(1));
+      expect(codec.toJson(restored), codec.toJson(aggregate));
+    });
+
+    test('a save that already carries a real projectInterviewSession '
+        'round-trips it exactly — the migration only ever fires for an '
+        'ABSENT key, never overriding a genuinely-present one', () {
+      var aggregate = PublicDemoAggregate.initial()
+          .startSkillSheetReview('eng-01')
+          .beginSelling('eng-01')
+          .introduceProject('eng-01')
+          .recordEngineerInterviewResult(
+            engineerId: 'eng-01',
+            type: PublicDemoInterviewType.partner,
+          );
+      final candidate = aggregate
+          .projectCandidatesForMonth(aggregate.state.month)
+          .first;
+      aggregate = aggregate.proposeMatch(
+        engineerId: 'eng-01',
+        projectId: candidate.id,
+      );
+      aggregate = aggregate.startProjectInterview('eng-01');
+      expect(aggregate.workflow.projectInterviewSessions, hasLength(1));
+
+      final restored = codec.decode(codec.encode(aggregate));
+
+      expect(restored, isNotNull);
+      expect(restored!.workflow.projectInterviewSessions, hasLength(1));
+      expect(
+        restored.projectInterviewSessionFor('eng-01')?.projectId,
+        candidate.id,
+      );
+      expect(codec.toJson(restored), codec.toJson(aggregate));
     });
   });
 }

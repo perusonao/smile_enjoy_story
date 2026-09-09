@@ -80,6 +80,19 @@ class PublicDemoSaveCodec {
       // legacy save — silently discarding real player progress. Both
       // splices are no-ops (return their input unchanged) once a save
       // genuinely already has these keys.
+      //
+      // PR #214 main-integration fix: the exact same class of gap was found
+      // to still apply, unfixed, to TWO more additive
+      // [PublicDemoWorkflowState] fields — [interviewSessions] (CORE-
+      // GAMEPLAY Phase 3, present since before Phase 5's own Codex P1 fix
+      // above but never itself spliced here) and [projectInterviewSessions]
+      // (CORE-GAMEPLAY Phase 6). Both were verified, before this fix, to
+      // make `fromJson` reject an otherwise-valid save missing either key
+      // outright (a legacy save predating Phase 3, or any save predating
+      // Phase 6) — exactly the same "reject the ENTIRE legacy save" failure
+      // mode this comment already documents for `matchingProposals`/
+      // `totalItExperienceMonths`. Spliced the same way, for the same
+      // reason.
       var baseline = _withMigratedRunSeed(json, aggregate.state.runSeed);
       baseline = _withMigratedMatchingProposals(
         baseline,
@@ -90,6 +103,18 @@ class PublicDemoSaveCodec {
       baseline = _withMigratedEngineerRuntimeExperience(
         baseline,
         aggregate.state.engineerRuntimes,
+      );
+      baseline = _withMigratedInterviewSessions(
+        baseline,
+        aggregate.workflow.interviewSessions
+            .map((session) => session.toJson())
+            .toList(),
+      );
+      baseline = _withMigratedProjectInterviewSessions(
+        baseline,
+        aggregate.workflow.projectInterviewSessions
+            .map((session) => session.toJson())
+            .toList(),
       );
       if (_canonicalJson(baseline) != _canonicalJson(toJson(aggregate))) {
         return null;
@@ -275,6 +300,52 @@ class PublicDemoSaveCodec {
       'aggregate': {
         ...aggregate,
         'workflow': {...workflow, 'matchingProposals': resolvedMatchingProposals},
+      },
+    };
+  }
+
+  /// Splices [resolvedInterviewSessions] (the already-decoded, defaulted
+  /// value — `[]` for a save predating CORE-GAMEPLAY Phase 3) into a copy of
+  /// [envelope]'s `aggregate.workflow.interviewSessions` only when that key
+  /// is absent there. Mirrors [_withMigratedMatchingProposals]'s own
+  /// shape/doc (PR #214 main-integration fix: this additive field predates
+  /// `matchingProposals` but was never itself spliced here until now).
+  static Map<String, dynamic> _withMigratedInterviewSessions(
+    Map<String, dynamic> envelope,
+    List<Map<String, dynamic>> resolvedInterviewSessions,
+  ) {
+    final aggregate = (envelope['aggregate'] as Map).cast<String, dynamic>();
+    final workflow = (aggregate['workflow'] as Map).cast<String, dynamic>();
+    if (workflow.containsKey('interviewSessions')) return envelope;
+    return {
+      ...envelope,
+      'aggregate': {
+        ...aggregate,
+        'workflow': {...workflow, 'interviewSessions': resolvedInterviewSessions},
+      },
+    };
+  }
+
+  /// Splices [resolvedProjectInterviewSessions] (the already-decoded,
+  /// defaulted value — `[]` for a save predating CORE-GAMEPLAY Phase 6)
+  /// into a copy of [envelope]'s
+  /// `aggregate.workflow.projectInterviewSessions` only when that key is
+  /// absent there. Mirrors [_withMigratedMatchingProposals]'s own shape/doc.
+  static Map<String, dynamic> _withMigratedProjectInterviewSessions(
+    Map<String, dynamic> envelope,
+    List<Map<String, dynamic>> resolvedProjectInterviewSessions,
+  ) {
+    final aggregate = (envelope['aggregate'] as Map).cast<String, dynamic>();
+    final workflow = (aggregate['workflow'] as Map).cast<String, dynamic>();
+    if (workflow.containsKey('projectInterviewSessions')) return envelope;
+    return {
+      ...envelope,
+      'aggregate': {
+        ...aggregate,
+        'workflow': {
+          ...workflow,
+          'projectInterviewSessions': resolvedProjectInterviewSessions,
+        },
       },
     };
   }

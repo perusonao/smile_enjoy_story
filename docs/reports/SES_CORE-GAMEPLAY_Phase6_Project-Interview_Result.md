@@ -1,13 +1,13 @@
 # SES CORE-GAMEPLAY Phase 6: Project Interview Gameplay — Result
 
-Status: **Implementation complete, Codex P1 review fix applied, `flutter analyze` clean, full test suite green (1947/1947)**
+Status: **Merged onto latest `main` (PR #213), a second save-codec gap found and fixed during integration, `flutter analyze` clean, full test suite green (1952/1952)**
 
 ## BASE SHA / branch / HEAD
 
-- Expected base per the task: `4994301314535186165ee8b45ad031b6a801fca5`.
-- Actual `origin/main` at session start (`git fetch origin` re-confirmed,
-  not trusted from repository metadata): **`4994301314535186165ee8b45ad031b6a801fca5`**
-  ("Merge PR #212: CORE-GAMEPLAY Phase 5 Matching Decision Gameplay") — matches
+- Expected base per the original task: `4994301314535186165ee8b45ad031b6a801fca5`.
+- Actual `origin/main` at initial session start (`git fetch origin`
+  re-confirmed, not trusted from repository metadata): **`4994301314535186165ee8b45ad031b6a801fca5`**
+  ("Merge PR #212: CORE-GAMEPLAY Phase 5 Matching Decision Gameplay") — matched
   the expectation exactly.
 - Branch: `claude/ses-phase-6-project-interview-vjxk32`. This branch's prior
   tip (`f4ca78f`, "Phase 0A/0B: SES domain models and random generators")
@@ -21,11 +21,35 @@ Status: **Implementation complete, Codex P1 review fix applied, `flutter analyze
   still unpushed, hence a stale intermediate SHA value this file itself
   once quoted here — `8b208ea...` is, and remains, the one that was
   actually pushed and reviewed).
-- **Final HEAD SHA (this update, Codex P1 fix):** `43e481cba23fc700fb31e48cd3b3a5ecee1957aa`
+- HEAD after the Codex P1 fix: `c0581fa36b8904252d1b7b22f5cc51901c830c34`
   ("fix(project-interview): bind resumed sessions to the current matching
-  proposal (Codex P1, PR #214)"). (A commit's hash covers its own tree, so
+  proposal (Codex P1, PR #214)") — the report's own SHA line at the time
+  quoted `43e481c...`, an intermediate value from before a same-session
+  amend; `c0581fa` is, and remains, the one actually pushed and reviewed.
+- **Expected `main` for this integration update:** `d07ef6b534c8f74b23e9e15583f89ea52a6bb898`
+  ("Merge PR #213: fix Phase 5 save migration compatibility") — re-confirmed
+  via a fresh `git fetch origin` as the actual `origin/main` tip, matching
+  the task's expectation exactly.
+- **Final HEAD SHA (this update, main integration + save-codec fix):**
+  `038369d8e83f9b18e0b8fdcfad9b0be794394451`
+  ("fix(save): migrate interviewSessions/projectInterviewSessions before
+  strict save comparison"). (A commit's hash covers its own tree, so
   amending this file after that hash was computed would change it again —
   this is the value actually pushed; not re-amended after this point.)
+
+## Main integration (PR #213 → PR #214)
+
+`git merge origin/main` from `c0581fa` produced a **clean merge, zero
+conflicts**: PR #213 touched only `lib/game/persistence/
+public_demo_save_codec.dart`, its test file, and the Phase 5 result
+report — none of which Phase 6 had touched — so no Phase 6 authority
+(including the Codex P1 fix from the previous update) needed to change to
+absorb it. The merge commit itself (`5c13dbf...`) is a pure merge, no
+manual resolution.
+
+**A second save-codec gap was found and fixed during this integration**
+(not a merge conflict — a latent bug the merge made newly relevant to
+verify): see the next section.
 
 ## Codex P1 review fix — "Bind resumed interviews to the proposed project"
 
@@ -108,6 +132,52 @@ group `Codex P1 fix (PR #214)`, 7 tests):
 
 All pre-existing Phase 6 tests (15 domain + 8 widget from the initial PR)
 continue to pass unmodified.
+
+## Save-codec gap found during main integration — "interviewSessions /
+## projectInterviewSessions never spliced into the strict-comparison baseline"
+
+**How this was found:** PR #213 (now on `main`) fixed `PublicDemoSaveCodec`
+so a legacy save missing `matchingProposals` or an `engineerRuntime`'s
+`totalItExperienceMonths` no longer gets wholesale-rejected by the strict
+round-trip comparison — both are spliced into the comparison baseline
+before the byte-for-byte check. This task's own checklist asked to
+specifically verify `projectInterviewSessions`/`interviewSessions` against
+exactly that same "`PublicDemoSaveCodec` strict round-trip" / "legacy save"
+concern, so — rather than only re-running the existing tests — a direct
+probe was written: build a fresh aggregate, encode it, strip the
+`interviewSessions` key from the decoded JSON, and call
+`PublicDemoSaveCodec.fromJson` on it directly. **Confirmed: it returned
+`null`** (the whole save rejected), and the identical probe for
+`projectInterviewSessions` **also returned `null`** — even though
+`PublicDemoWorkflowState.fromJson` itself already tolerates either key
+being absent (defaults to `[]`). This is the exact same failure mode PR
+#213 already documents and fixed for `matchingProposals`/
+`totalItExperienceMonths`, just never extended to these two additive
+session lists — `interviewSessions` (CORE-GAMEPLAY Phase 3) predates even
+`matchingProposals` and was apparently never covered by any prior fix;
+`projectInterviewSessions` is this Phase 6 PR's own field, carrying the
+identical gap from day one.
+
+**Fix** (`public_demo_save_codec.dart`): added
+`_withMigratedInterviewSessions`/`_withMigratedProjectInterviewSessions`,
+mirroring `_withMigratedMatchingProposals` exactly — each splices the
+already-decoded, defaulted session list into the comparison baseline only
+when its key is absent from the original envelope; a no-op once a save
+genuinely already carries it. No gameplay/domain authority was touched —
+purely a save-codec comparison-baseline fix, the same established pattern.
+
+**Verified fixed:** the same two probes now both return a real, non-null
+aggregate with the expected empty session lists. Three permanent regression
+tests were added to `public_demo_save_codec_test.dart`:
+
+1. A save missing **both** `interviewSessions` and `projectInterviewSessions`
+   (a save written before CORE-GAMEPLAY Phase 3) still decodes.
+2. A save that already carries a real recruitment `interviewSession`
+   round-trips it exactly — the migration only ever fires for an absent
+   key, never overriding a genuinely-present one.
+3. A save that already carries a real `projectInterviewSession` (with its
+   real `engineerId`/`projectId` binding intact) round-trips it exactly,
+   same non-override guarantee.
 
 ## Authority audit (READ-ONLY, before writing anything)
 
@@ -358,6 +428,22 @@ itself is unmodified.
   verbatim, never a fabricated cause). Verified by a widget test asserting
   no `%`/numeric-score text appears anywhere in the result phase.
 
+## Save-compatibility verification (this integration update)
+
+Every item this task asked to specifically confirm, and how:
+
+| Item | Verified how | Result |
+|---|---|---|
+| `matchingProposals` migration | PR #213's own splice, unmodified; re-ran its 2 existing tests | ✅ unaffected, still passing |
+| `totalItExperienceMonths` migration | PR #213's own splice, unmodified; re-ran its existing test | ✅ unaffected, still passing |
+| `projectInterviewSessions` | New splice added this update (see above) + 2 new tests (missing-key, real-session round-trip) | ✅ fixed and verified |
+| `interviewSessions` | New splice added this update (see above) + 2 new tests (missing-key, real-session round-trip) | ✅ fixed and verified |
+| `PublicDemoSaveCodec` strict round-trip | `_advancedAggregate()`'s existing full round-trip test, plus every new/existing test above | ✅ passing |
+| Legacy save | Combined missing-both-keys test + PR #213's own matchingProposals/totalItExperienceMonths legacy test | ✅ passing |
+| `engineerId + projectId` interview binding | Re-ran the full Codex P1 fix test group (7 tests) from the prior update — all still pass after the merge; the new save-codec test also asserts the restored session's `projectId` matches the real candidate's id | ✅ unaffected, still passing |
+| Sales slot atomicity | Re-ran the 0-slot regression tests (both the original pair and the Codex-P1-group's mid-interview-proposal-change variant) | ✅ unaffected, still passing |
+| Pass/fail continuation | Re-ran the pass→`recordOrder`→`ordered` and fail→`beginSelling` tests | ✅ unaffected, still passing |
+
 ## Tests
 
 New:
@@ -378,6 +464,9 @@ New:
   viewport/TextScaler regression across all 6 required combinations
   (390×844 / 360×800 × 1.0 / 1.3 / 2.0), each also driving one real
   follow-up tap (the densest on-screen content state) with zero exceptions.
+- `test/game/public_demo/public_demo_save_codec_test.dart` (3 new tests,
+  added this main-integration update): the `interviewSessions`/
+  `projectInterviewSessions` save-codec gap fix above.
 
 Updated:
 
@@ -385,11 +474,12 @@ Updated:
   the new additive schema key to the existing hardcoded key-set assertion
   (no assertion removed or loosened).
 
-Verification run (this update, after the Codex P1 fix):
+Verification run (this update, after the main integration + save-codec
+fix):
 
 ```
 flutter analyze            → No issues found!
-flutter test --concurrency=6 → 1947/1947 passed
+flutter test --concurrency=6 → 1952/1952 passed
 git diff --check           → clean (no whitespace errors)
 ```
 
@@ -438,5 +528,11 @@ investigation for a `ListView` sliver-virtualization edge case at
 360×800/TextScaler 2.0, resolved by switching the dialog's scrollable
 content to `SingleChildScrollView`).
 
-**This update (Codex P1 fix):** approximately 25 minutes, within the
+**Second update (Codex P1 fix):** approximately 25 minutes, within the
 15–30 minute estimate.
+
+**This update (main integration to PR #213 + save-codec fix):**
+approximately 30 minutes, within the 15–30 minute estimate's upper bound
+(the merge itself was immediate/conflict-free; the extra time went to
+discovering and fixing the `interviewSessions`/`projectInterviewSessions`
+save-codec gap and its regression tests).

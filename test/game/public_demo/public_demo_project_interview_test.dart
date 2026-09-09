@@ -330,4 +330,228 @@ void main() {
       expect(restored.toJson(), json);
     });
   });
+
+  group('Codex P1 fix (PR #214): a resumed session is always bound to the '
+      'currently proposed project', () {
+    test('1. the same engineer/project: an in-progress session is genuinely '
+        'resumed (not reset) on a second startProjectInterview call', () {
+      final aggregate = _withRealProposal(PublicDemoAggregate.initial(runSeed: 81));
+      final started = aggregate.startProjectInterview('eng-01');
+      var withProgress = started.chooseProjectInterviewFollowUp(
+        'eng-01',
+        PublicDemoProjectInterview.choicesFor(
+          started.projectInterviewSessionFor('eng-01')!,
+        ).first,
+      );
+      final resumed = withProgress.startProjectInterview('eng-01');
+      final resumedSession = resumed.projectInterviewSessionFor('eng-01')!;
+      // Genuinely the same session, not replaced: the follow-up already
+      // recorded above survives the resume.
+      expect(resumedSession.playerFollowUps, hasLength(1));
+      expect(
+        resumedSession.id,
+        withProgress.projectInterviewSessionFor('eng-01')!.id,
+      );
+    });
+
+    test('2. changing the matching proposal mid-interview: the stale '
+        'old-project session is never resumed against the new project — a '
+        'fresh session for the new project replaces it instead', () {
+      var aggregate = _advanceToPartnerPassed(
+        PublicDemoAggregate.initial(runSeed: 82),
+      );
+      final candidates = aggregate.projectCandidatesForMonth(
+        aggregate.state.month,
+      );
+      final oldProject = candidates[0];
+      final newProject = candidates[1];
+      expect(oldProject.id, isNot(equals(newProject.id)));
+
+      // Player proposes the old project, opens the interview, and answers
+      // one question (closing the dialog mid-interview corresponds to
+      // simply not calling concludeProjectInterview yet).
+      aggregate = aggregate.proposeMatch(
+        engineerId: 'eng-01',
+        projectId: oldProject.id,
+      );
+      aggregate = aggregate.startProjectInterview('eng-01');
+      final oldSession = aggregate.projectInterviewSessionFor('eng-01')!;
+      expect(oldSession.projectId, oldProject.id);
+      aggregate = aggregate.chooseProjectInterviewFollowUp(
+        'eng-01',
+        PublicDemoProjectInterview.choicesFor(oldSession).first,
+      );
+
+      // Player goes back to Matching and re-proposes a DIFFERENT project
+      // for the same engineer — proposeMatch replaces the proposal, per
+      // its own existing (unmodified) "at most one proposal per engineer"
+      // contract.
+      aggregate = aggregate.proposeMatch(
+        engineerId: 'eng-01',
+        projectId: newProject.id,
+      );
+      expect(
+        aggregate.workflow.matchingProposalFor('eng-01')!.projectId,
+        newProject.id,
+      );
+
+      // Reopening the interview must NOT resume the old, now-stale session.
+      aggregate = aggregate.startProjectInterview('eng-01');
+      final resumedSession = aggregate.projectInterviewSessionFor('eng-01')!;
+      expect(resumedSession.projectId, newProject.id);
+      // A genuinely fresh session for the new project — no leftover
+      // follow-up/answer state from the old, discarded one.
+      expect(resumedSession.playerFollowUps, isEmpty);
+      expect(resumedSession.id, isNot(equals(oldSession.id)));
+    });
+
+    test('save/reload preserves the project binding of an in-progress '
+        'session — a reload can never resume it against a different '
+        'project than the one it was persisted for', () {
+      var aggregate = _withRealProposal(PublicDemoAggregate.initial(runSeed: 83));
+      aggregate = aggregate.startProjectInterview('eng-01');
+      final originalProjectId =
+          aggregate.projectInterviewSessionFor('eng-01')!.projectId;
+
+      final restored = PublicDemoAggregate.fromJson(aggregate.toJson());
+      expect(
+        restored.projectInterviewSessionFor('eng-01')!.projectId,
+        originalProjectId,
+      );
+      // Reopening after reload resumes the same session rather than
+      // silently replacing it, since the (still current) proposal names
+      // the same project.
+      final resumed = restored.startProjectInterview('eng-01');
+      expect(
+        resumed.projectInterviewSessionFor('eng-01')!.id,
+        aggregate.projectInterviewSessionFor('eng-01')!.id,
+      );
+    });
+
+    test('conclude and failureReasons never mix a stale session with a '
+        'different current project', () {
+      var aggregate = _advanceToPartnerPassed(
+        PublicDemoAggregate.initial(runSeed: 84),
+      );
+      final candidates = aggregate.projectCandidatesForMonth(
+        aggregate.state.month,
+      );
+      final oldProject = candidates[0];
+      final newProject = candidates[1];
+
+      aggregate = aggregate.proposeMatch(
+        engineerId: 'eng-01',
+        projectId: oldProject.id,
+      );
+      aggregate = aggregate.startProjectInterview('eng-01');
+      // Answer every question for the OLD project, but never conclude —
+      // mirrors "closed the dialog right before finishing".
+      var session = aggregate.projectInterviewSessionFor('eng-01')!;
+      while (session.playerFollowUps.length < session.questions.length) {
+        final choice = PublicDemoProjectInterview.choicesFor(session).first;
+        aggregate = aggregate.chooseProjectInterviewFollowUp('eng-01', choice);
+        session = aggregate.projectInterviewSessionFor('eng-01')!;
+      }
+
+      // Re-propose a different project before concluding.
+      aggregate = aggregate.proposeMatch(
+        engineerId: 'eng-01',
+        projectId: newProject.id,
+      );
+
+      // concludeProjectInterview must not score the fully-answered OLD
+      // session against the NEW project: the stale, mismatched session is
+      // not concluded (it is a no-op — the engineer stays
+      // partnerInterviewPassed) rather than silently mixing old questions
+      // with the new project's fit.
+      final beforeConclude = _engineer(aggregate);
+      final afterConclude = aggregate.concludeProjectInterview('eng-01');
+      expect(_engineer(afterConclude).stage, beforeConclude.stage);
+      expect(
+        afterConclude.projectInterviewSessionFor('eng-01')!.completed,
+        isFalse,
+      );
+
+      // Reopening the interview instead replaces the stale session with a
+      // fresh one bound to the new project, which can then be concluded
+      // normally, and failureReasons always reads the current (new)
+      // project's own fit — never the stale one's.
+      final restarted = afterConclude.startProjectInterview('eng-01');
+      final newSession = restarted.projectInterviewSessionFor('eng-01')!;
+      expect(newSession.projectId, newProject.id);
+      final reasons = restarted.projectInterviewFailureReasonsFor('eng-01');
+      expect(
+        restarted.projectInterviewCandidateFor('eng-01')!.id,
+        newProject.id,
+      );
+      // Sanity: failureReasons resolves without throwing and stays within
+      // the known, truthful reason vocabulary even mid-flow.
+      const knownFragments = [
+        '技術経験', 'の経験不足', '実務経験年数', 'コミュニケーション評価', '日本語レベル', '他候補を優先',
+      ];
+      for (final reason in reasons) {
+        expect(knownFragments.any((f) => reason.contains(f)), isTrue);
+      }
+    });
+
+    test('normal pass/fail flow is unaffected when the proposal is never '
+        'changed mid-interview', () {
+      var aggregate = _withRealProposal(PublicDemoAggregate.initial(runSeed: 85));
+      aggregate = aggregate.startProjectInterview('eng-01');
+      var session = aggregate.projectInterviewSessionFor('eng-01')!;
+      while (session.playerFollowUps.length < session.questions.length) {
+        final choice = PublicDemoProjectInterview.choicesFor(session).first;
+        aggregate = aggregate.chooseProjectInterviewFollowUp('eng-01', choice);
+        session = aggregate.projectInterviewSessionFor('eng-01')!;
+      }
+      aggregate = aggregate.concludeProjectInterview('eng-01');
+      final finalSession = aggregate.projectInterviewSessionFor('eng-01')!;
+      expect(finalSession.completed, isTrue);
+      expect(finalSession.result, isNotNull);
+      expect(
+        _engineer(aggregate).stage,
+        anyOf(
+          PublicDemoSalesStage.clientInterviewPassed,
+          PublicDemoSalesStage.clientInterviewFailed,
+        ),
+      );
+    });
+
+    test('sales-slot behavior stays 0-slot even across a mid-interview '
+        'proposal change', () {
+      var aggregate = _advanceToPartnerPassed(
+        PublicDemoAggregate.initial(runSeed: 86),
+      );
+      final candidates = aggregate.projectCandidatesForMonth(
+        aggregate.state.month,
+      );
+      final slotsBefore = aggregate.state.salesUsed;
+
+      aggregate = aggregate.proposeMatch(
+        engineerId: 'eng-01',
+        projectId: candidates[0].id,
+      );
+      aggregate = aggregate.startProjectInterview('eng-01');
+      aggregate = aggregate.chooseProjectInterviewFollowUp(
+        'eng-01',
+        PublicDemoProjectInterview.choicesFor(
+          aggregate.projectInterviewSessionFor('eng-01')!,
+        ).first,
+      );
+      aggregate = aggregate.proposeMatch(
+        engineerId: 'eng-01',
+        projectId: candidates[1].id,
+      );
+      aggregate = aggregate.startProjectInterview('eng-01');
+      var session = aggregate.projectInterviewSessionFor('eng-01')!;
+      while (session.playerFollowUps.length < session.questions.length) {
+        final choice = PublicDemoProjectInterview.choicesFor(session).first;
+        aggregate = aggregate.chooseProjectInterviewFollowUp('eng-01', choice);
+        session = aggregate.projectInterviewSessionFor('eng-01')!;
+      }
+      aggregate = aggregate.concludeProjectInterview('eng-01');
+
+      expect(aggregate.state.salesUsed, slotsBefore);
+    });
+  });
 }

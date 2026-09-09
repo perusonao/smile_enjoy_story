@@ -1079,22 +1079,39 @@ class PublicDemoWorkflowState {
   }
 
   /// Starts [session] as the project-interview session for its own
-  /// [ClientInterviewSession.employeeId] — a no-op (resume) if an
-  /// incomplete session for that engineer already exists, mirroring
-  /// [startInterviewSession]'s own idempotency convention. Unlike that
-  /// method, a prior *completed* session for the same engineer (a past
-  /// pass/fail attempt) is replaced rather than blocking a new one: a
+  /// [ClientInterviewSession.employeeId] — a no-op (resume) only when an
+  /// incomplete session for that engineer **already exists for the same
+  /// [ClientInterviewSession.projectId]** — mirrors
+  /// [startInterviewSession]'s own idempotency convention, but additionally
+  /// keyed by project (Codex P1 fix, PR #214): resuming an incomplete
+  /// session purely by employee id was unsafe — if the player closed an
+  /// in-progress interview and then used the Matching screen to replace
+  /// that engineer's [PublicDemoMatchingProposal] with a *different*
+  /// project, the old session's questions/answers (built for the old
+  /// project) would otherwise be resumed and then scored against the new
+  /// project's fit/requirements by [chooseFollowUp]/[conclude] — old
+  /// questions and new-project scoring must never mix.
+  ///
+  /// A prior session for the same engineer is replaced (never resumed)
+  /// whenever it is already *completed* (a past pass/fail attempt — a
   /// failed project interview must be retryable after the engineer returns
   /// to selling and reaches `partnerInterviewPassed` again, for the same or
-  /// a newly proposed project — never a dead end.
+  /// a newly proposed project — never a dead end) or when it names a
+  /// *different* [ClientInterviewSession.projectId] than [session] (the
+  /// Codex P1 case above: the stale, project-mismatched session is safely
+  /// discarded in favor of this fresh one for the currently proposed
+  /// project, rather than either resuming it or leaving two sessions
+  /// around for the same engineer).
   PublicDemoWorkflowState startProjectInterviewSession(
     ClientInterviewSession session,
   ) {
-    final hasIncomplete = projectInterviewSessions.any(
+    final hasMatchingIncomplete = projectInterviewSessions.any(
       (existing) =>
-          existing.employeeId == session.employeeId && !existing.completed,
+          existing.employeeId == session.employeeId &&
+          existing.projectId == session.projectId &&
+          !existing.completed,
     );
-    if (hasIncomplete) return this;
+    if (hasMatchingIncomplete) return this;
     return _copyWith(
       projectInterviewSessions: [
         for (final existing in projectInterviewSessions)
@@ -1106,13 +1123,23 @@ class PublicDemoWorkflowState {
 
   /// Replaces the active (not yet completed) project-interview session for
   /// [engineerId] with [update]'s result — mirrors
-  /// [updateInterviewSession] exactly. A no-op when no such session exists.
+  /// [updateInterviewSession] exactly, plus a [projectId] match (Codex P1
+  /// fix, PR #214, defense in depth alongside [startProjectInterviewSession]
+  /// above): a no-op when no such session exists **for this exact
+  /// project**, so a stale session left over for a since-replaced proposal
+  /// can never be advanced against the wrong project even if some future
+  /// caller reached this without going through [startProjectInterviewSession]
+  /// first.
   PublicDemoWorkflowState updateProjectInterviewSession(
     String engineerId,
+    String projectId,
     ClientInterviewSession Function(ClientInterviewSession session) update,
   ) {
     final index = projectInterviewSessions.indexWhere(
-      (session) => session.employeeId == engineerId && !session.completed,
+      (session) =>
+          session.employeeId == engineerId &&
+          session.projectId == projectId &&
+          !session.completed,
     );
     if (index < 0) return this;
     final next = [...projectInterviewSessions];
@@ -1134,9 +1161,13 @@ class PublicDemoWorkflowState {
   ///
   /// A no-op unless: [engineerId] is currently at `partnerInterviewPassed`
   /// (the existing 0-slot client-interview stage this phase reuses as-is);
-  /// a genuine, started session exists for it; and every question in that
-  /// session has already received a player-chosen follow-up
-  /// ([PublicDemoProjectInterview.isReadyToConclude]) — i.e. the
+  /// a genuine, started session exists for it *for this exact [project]*
+  /// (Codex P1 fix, PR #214, defense in depth alongside
+  /// [startProjectInterviewSession]'s own doc — a session left over for a
+  /// since-replaced proposal must never be concluded against a different
+  /// project than the one it was actually interviewed for); and every
+  /// question in that session has already received a player-chosen
+  /// follow-up ([PublicDemoProjectInterview.isReadyToConclude]) — i.e. the
   /// interactive interview genuinely ran to its end, never a shortcut past
   /// the choice sequence.
   PublicDemoWorkflowState concludeProjectInterview({
@@ -1155,6 +1186,7 @@ class PublicDemoWorkflowState {
     final session = projectInterviewSessionFor(engineerId);
     if (session == null ||
         session.completed ||
+        session.projectId != project.id ||
         !PublicDemoProjectInterview.isReadyToConclude(session)) {
       return this;
     }

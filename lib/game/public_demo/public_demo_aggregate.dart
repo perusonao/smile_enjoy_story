@@ -728,7 +728,12 @@ class PublicDemoAggregate {
   /// Applies [followUp] to [engineerId]'s current interview question and
   /// advances the session — see [PublicDemoProjectInterview.chooseFollowUp].
   /// A no-op unless a real proposal/project/runtime/in-progress session all
-  /// resolve.
+  /// resolve **for this exact [candidate]** (Codex P1 fix, PR #214):
+  /// [candidate] always names the engineer's *current*
+  /// [PublicDemoMatchingProposal] project, and is passed through as the
+  /// [PublicDemoWorkflowState.updateProjectInterviewSession] `projectId`
+  /// match — a session left over for a since-replaced proposal (a
+  /// different project) is never advanced here.
   PublicDemoAggregate chooseProjectInterviewFollowUp(
     String engineerId,
     ClientInterviewFollowUp followUp,
@@ -739,6 +744,7 @@ class PublicDemoAggregate {
     return _copyWith(
       workflow: workflow.updateProjectInterviewSession(
         engineerId,
+        candidate.id,
         (session) => PublicDemoProjectInterview.chooseFollowUp(
           runSeed: runSeed,
           runtime: runtime,

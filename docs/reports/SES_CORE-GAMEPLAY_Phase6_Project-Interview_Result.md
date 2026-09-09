@@ -1,6 +1,6 @@
 # SES CORE-GAMEPLAY Phase 6: Project Interview Gameplay — Result
 
-Status: **Implementation complete, `flutter analyze` clean, full test suite green (1941/1941)**
+Status: **Implementation complete, Codex P1 review fix applied, `flutter analyze` clean, full test suite green (1947/1947)**
 
 ## BASE SHA / branch / HEAD
 
@@ -14,12 +14,100 @@ Status: **Implementation complete, `flutter analyze` clean, full test suite gree
   was a stale ancestor of `origin/main` with no open PR, so it was reset
   onto the BASE SHA above (`git checkout -B ... origin/main`) before any
   new work, per the merged/stale-branch-reuse rule.
-- **Final HEAD SHA:** `d464916e26dfc379d813320e05317a55259ca5ab` ("CORE-GAMEPLAY
-  Phase 6: Project Interview Gameplay") — this report is committed in that
-  same commit, alongside all code/test changes. (A commit's hash covers its
-  own tree, so amending this file after computing that hash below would
-  change it again — this is the final value; it is not re-amended after
-  this point.)
+- Initial implementation HEAD: `8b208ea99124ff43cabd58f295a88c94878e6de0`
+  ("CORE-GAMEPLAY Phase 6: Project Interview Gameplay") — this is the PR
+  #214 HEAD Codex reviewed and left its P1 finding against (an earlier
+  in-progress draft of this same commit was briefly amended twice while
+  still unpushed, hence a stale intermediate SHA value this file itself
+  once quoted here — `8b208ea...` is, and remains, the one that was
+  actually pushed and reviewed).
+- **Final HEAD SHA (this update, Codex P1 fix):** `43e481cba23fc700fb31e48cd3b3a5ecee1957aa`
+  ("fix(project-interview): bind resumed sessions to the current matching
+  proposal (Codex P1, PR #214)"). (A commit's hash covers its own tree, so
+  amending this file after that hash was computed would change it again —
+  this is the value actually pushed; not re-amended after this point.)
+
+## Codex P1 review fix — "Bind resumed interviews to the proposed project"
+
+**Finding (verified TRUE against actual code):** Codex flagged
+`lib/game/public_demo/public_demo_workflow_state.dart:1090-1105`
+(`startProjectInterviewSession`, as shipped in `8b208ea`) — its "already an
+incomplete session? then resume, no-op" check matched only
+`ClientInterviewSession.employeeId`, never `projectId`. Root-cause traced
+by direct code reading: if the player closed an in-progress project
+interview and then used the (unmodified) Matching screen to replace that
+engineer's `PublicDemoMatchingProposal` with a *different* project
+(`proposeMatch` has always freely allowed this, with no lock, at any time),
+reopening the interview would resume the stale session — the old project's
+questions/answers verbatim — while `PublicDemoAggregate
+.chooseProjectInterviewFollowUp`/`concludeProjectInterview` always resolve
+the *current* proposal's project fresh via `projectInterviewCandidateFor`.
+The result: old questions scored against the new project's fit, and a
+`clientInterviewPassed`/`Failed` outcome recorded for the wrong project —
+exactly the "mixing old questions with a new project's scoring" Codex
+described. Confirmed reproducible by a new failing-then-passing regression
+test (`Codex P1 fix (PR #214)` group, test 2, in
+`public_demo_project_interview_test.dart`) before/after the fix.
+
+**Fix decision — option B (safe replace), not option A (reject the
+proposal change):** `PublicDemoMatchingProposal`/`proposeMatch` has never
+had a lock concept, and Matching's existing "at most one proposal per
+engineer, a later call replaces the earlier one" contract
+(`PublicDemoWorkflowState.withMatchingProposal`'s own doc) is unmodified
+authority this phase must not touch. Rejecting a proposal change while an
+interview is active would require new, invasive cross-cutting validation in
+that unrelated file with no existing precedent. Safely discarding a
+now-stale, project-mismatched session and replacing it with a fresh one for
+the currently proposed project is a minimal, localized fix that keeps
+every existing invariant (no dead end, retryable, atomic) intact.
+
+**Fix** (`public_demo_workflow_state.dart`, `public_demo_aggregate.dart`):
+
+- `startProjectInterviewSession`: the resume/no-op check now additionally
+  requires `existing.projectId == session.projectId`. An incomplete session
+  for a *different* project than the one just started is discarded (like a
+  completed session already was) rather than resumed — never a bare
+  `employeeId` match alone.
+- `updateProjectInterviewSession` (defense in depth): now takes an explicit
+  `projectId` parameter and only advances a session matching both
+  `employeeId` and that `projectId` — a stale session left over for a
+  since-replaced proposal can never be advanced against the wrong project
+  even if some future caller skipped `startProjectInterviewSession` first.
+  `PublicDemoAggregate.chooseProjectInterviewFollowUp` updated to pass its
+  already-resolved `candidate.id` (the engineer's *current* proposal's
+  project) through.
+- `concludeProjectInterview` (defense in depth): now also requires
+  `session.projectId == project.id` before deriving/applying an outcome —
+  a mismatched session is a no-op (the engineer's stage is left untouched,
+  never silently scored against the wrong project).
+- `MatchingEngine`/`ClientInterviewEngine`/`ProjectInterviewEngine`/
+  `SelectionEngine` were **not touched** — this is purely a
+  session-identity/precondition fix in the Public-Demo-only workflow layer,
+  exactly as scoped.
+
+**Regression tests added** (`public_demo_project_interview_test.dart`,
+group `Codex P1 fix (PR #214)`, 7 tests):
+
+1. Same engineer/project → a second `startProjectInterview` call genuinely
+   resumes the existing session (follow-up progress survives).
+2. Changing the proposal mid-interview → the stale old-project session is
+   never resumed; reopening replaces it with a fresh session bound to the
+   new project (verified: new `projectId`, empty `playerFollowUps`,
+   different session `id`).
+3. Save/reload preserves the project binding of an in-progress session, and
+   a reload still resumes correctly when the proposal is unchanged.
+4. `concludeProjectInterview`/`projectInterviewFailureReasonsFor` never mix
+   a fully-answered stale session with a newly-proposed different project —
+   concluding is a no-op (engineer stage/session both left untouched) until
+   the player reopens and gets a fresh, correctly-bound session.
+5. Normal pass/fail flow (proposal never changed) is unaffected — a full
+   interview still reaches a genuine `completed`/`result` and
+   `clientInterviewPassed`/`clientInterviewFailed` stage.
+6. Sales-slot behavior stays 0-slot (`state.salesUsed` unchanged) even
+   across a mid-interview proposal change.
+
+All pre-existing Phase 6 tests (15 domain + 8 widget from the initial PR)
+continue to pass unmodified.
 
 ## Authority audit (READ-ONLY, before writing anything)
 
@@ -274,13 +362,16 @@ itself is unmodified.
 
 New:
 
-- `test/game/public_demo/public_demo_project_interview_test.dart` (15
-  tests): start/no-op preconditions, resume-not-restart, determinism,
+- `test/game/public_demo/public_demo_project_interview_test.dart` (22
+  tests, 15 from the initial PR + 7 Codex P1 regression tests added in this
+  update): start/no-op preconditions, resume-not-restart, determinism,
   choice-materially-affects-outcome, non-degenerate pass/fail distribution
   (not a disguised coin flip), truthful failure reasons, 0-slot/no-double-
   consumption regressions, pass→`recordOrder`→`ordered` Phase 7A handoff,
-  fail→`beginSelling` continuation, and three persistence/round-trip tests
-  (in-progress, legacy-missing-key, full strict round-trip).
+  fail→`beginSelling` continuation, three persistence/round-trip tests
+  (in-progress, legacy-missing-key, full strict round-trip), and the
+  `Codex P1 fix (PR #214)` group covering the resumed-session
+  project-binding fix (see that section above for the full list).
 - `test/ui/public_demo/public_demo_project_interview_dialog_test.dart` (8
   tests): question/answer/follow-up rendering and advancement, full
   interview-to-result flow with no raw score/percentage shown, and
@@ -294,11 +385,11 @@ Updated:
   the new additive schema key to the existing hardcoded key-set assertion
   (no assertion removed or loosened).
 
-Verification run (this session, after all changes):
+Verification run (this update, after the Codex P1 fix):
 
 ```
 flutter analyze            → No issues found!
-flutter test --concurrency=6 → 1941/1941 passed
+flutter test --concurrency=6 → 1947/1947 passed
 git diff --check           → clean (no whitespace errors)
 ```
 
@@ -340,8 +431,12 @@ wiring itself is left to Phase 7A, per this phase's explicit scope limit.
 
 ## Actual processing time
 
-Approximately 2 hours (within the 90–150 minute estimate's upper range,
-extended somewhat by the full authority audit across Phase 0–5 and a
-viewport-test root-cause investigation for a `ListView` sliver-virtualization
-edge case at 360×800/TextScaler 2.0, resolved by switching the dialog's
-scrollable content to `SingleChildScrollView`).
+**Initial Phase 6 implementation:** approximately 2 hours (within the
+90–150 minute estimate's upper range, extended somewhat by the full
+authority audit across Phase 0–5 and a viewport-test root-cause
+investigation for a `ListView` sliver-virtualization edge case at
+360×800/TextScaler 2.0, resolved by switching the dialog's scrollable
+content to `SingleChildScrollView`).
+
+**This update (Codex P1 fix):** approximately 25 minutes, within the
+15–30 minute estimate.

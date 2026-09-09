@@ -203,6 +203,12 @@ void main() {
         'nextOrderStatus',
         'replacementStage',
         'fieldEvaluation',
+        // CORE-GAMEPLAY Phase 7A: additive real-project-identity link --
+        // also unrelated to Recovery specifically, present on every
+        // assignment JSON since this phase (null here: this engineer's
+        // genuine record is the generic, project-agnostic path — see
+        // PublicDemoAssignment.projectId's own doc).
+        'projectId',
       });
     });
   });

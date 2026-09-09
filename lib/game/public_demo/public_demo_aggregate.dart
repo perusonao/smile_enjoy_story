@@ -935,6 +935,38 @@ class PublicDemoAggregate {
     );
   }
 
+  /// The single sanctioned way to end an assignment and release its
+  /// engineer back to the real Sales pipeline (CORE-GAMEPLAY Phase 7A —
+  /// see [PublicDemoWorkflowState.endAssignment]'s own doc for the full
+  /// precondition/atomicity contract this delegates to). Mirrors
+  /// [recoverAssignment]'s own re-projection pattern exactly: on success,
+  /// atomically re-projects [PublicDemoState.engineersAssigned]/
+  /// [engineersWaiting] from the resulting canonical
+  /// [PublicDemoWorkflowState.assignedEngineerIds] (never a bare -1 delta),
+  /// so [_validateForPersistence]'s month-≥-6 projection invariant always
+  /// holds immediately after this call, exactly like every other
+  /// assignment-roster-changing command. Finance is untouched (`cash`/
+  /// `pendingRevenue` never change here): [PublicDemoWorkflowState
+  /// .endAssignment] itself already guarantees `assignedEngineerIds(month:
+  /// state.month)` — the exact set [PublicDemoRevenue
+  /// .monthlyRevenueForAssignedCount] is keyed on — reports identically
+  /// before and after this call (see that method's own doc for the
+  /// month-aware deferred-removal contract this depends on), so
+  /// re-projecting the count here can only ever confirm the same number,
+  /// never book or drop revenue.
+  PublicDemoAggregate endAssignment(String engineerId) {
+    final nextWorkflow = workflow.endAssignment(engineerId, month: state.month);
+    if (identical(nextWorkflow, workflow)) return this;
+    final assignedIds = nextWorkflow.assignedEngineerIds(month: state.month);
+    return _copyWith(
+      state: state.copyWith(
+        engineersAssigned: assignedIds.length,
+        engineersWaiting: state.engineerCount - assignedIds.length,
+      ),
+      workflow: nextWorkflow,
+    );
+  }
+
   /// The single sanctioned way to decide a raise for [applicantId]
   /// (POST-12MONTH-1-FIX1 P1-1), via [PublicDemoRaiseTransaction] — reads
   /// [state] for the fiscal-year-completion guard, mutates only [workflow].

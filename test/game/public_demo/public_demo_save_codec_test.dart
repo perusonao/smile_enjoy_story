@@ -736,6 +736,277 @@ void main() {
       expect(codec.toJson(restored!), codec.toJson(aggregate));
     });
   });
+
+  group('Codex P2 fix (PR #214) "Reject duplicate proposals before '
+      'validating pass bindings": at most one matchingProposals entry per '
+      'engineerId', () {
+    test('engineer A: a duplicate (project B, then project A) is '
+        'rejected — not resolved by either last-write-wins (this lookup) '
+        'or first-match-wins (matchingProposalFor, what production code '
+        'actually calls)', () {
+      final encoded = codec.toJson(PublicDemoAggregate.initial());
+      final duplicated = _withMatchingProposal(
+        _withMatchingProposal(
+          encoded,
+          engineerId: 'eng-01',
+          projectId: 'project-B',
+        ),
+        engineerId: 'eng-01',
+        projectId: 'project-A',
+      );
+
+      expect(codec.fromJson(duplicated), isNull);
+    });
+
+    test('a duplicate entry for the same engineerId naming the SAME '
+        'project is rejected too — a second entry at all is unreachable '
+        'from withMatchingProposal, regardless of whether its project '
+        'happens to already match', () {
+      final encoded = codec.toJson(PublicDemoAggregate.initial());
+      final duplicated = _withMatchingProposal(
+        _withMatchingProposal(
+          encoded,
+          engineerId: 'eng-01',
+          projectId: 'project-A',
+        ),
+        engineerId: 'eng-01',
+        projectId: 'project-A',
+      );
+
+      expect(codec.fromJson(duplicated), isNull);
+    });
+
+    test('one proposal each for two different engineers restores '
+        'normally — the rejection is scoped to a genuine duplicate '
+        'engineerId, never to having more than one proposal in the save', () {
+      final encoded = codec.toJson(PublicDemoAggregate.initial());
+      final twoProposals = _withMatchingProposal(
+        _withMatchingProposal(
+          encoded,
+          engineerId: 'eng-01',
+          projectId: 'project-A',
+        ),
+        engineerId: 'eng-02',
+        projectId: 'project-B',
+      );
+
+      final restored = codec.fromJson(twoProposals);
+
+      expect(restored, isNotNull);
+      expect(restored!.matchingProposalFor('eng-01')?.projectId, 'project-A');
+      expect(restored.matchingProposalFor('eng-02')?.projectId, 'project-B');
+    });
+
+    test('a valid, genuine project-bound pass (single proposal, no '
+        'duplicate) still round-trips exactly', () {
+      var aggregate = PublicDemoAggregate.initial(runSeed: 1)
+          .startSkillSheetReview('eng-01')
+          .beginSelling('eng-01')
+          .introduceProject('eng-01')
+          .recordEngineerInterviewResult(
+            engineerId: 'eng-01',
+            type: PublicDemoInterviewType.partner,
+          );
+      final project = aggregate
+          .projectCandidatesForMonth(aggregate.state.month)
+          .first;
+      aggregate = aggregate.proposeMatch(
+        engineerId: 'eng-01',
+        projectId: project.id,
+      );
+      aggregate = aggregate.startProjectInterview('eng-01');
+      var session = aggregate.projectInterviewSessionFor('eng-01')!;
+      while (session.playerFollowUps.length < session.questions.length) {
+        aggregate = aggregate.chooseProjectInterviewFollowUp(
+          'eng-01',
+          session.currentQuestionIndex,
+          PublicDemoProjectInterview.choicesFor(session).first,
+        );
+        session = aggregate.projectInterviewSessionFor('eng-01')!;
+      }
+      aggregate = aggregate.concludeProjectInterview('eng-01');
+
+      final restored = codec.decode(codec.encode(aggregate));
+
+      expect(restored, isNotNull);
+      expect(codec.toJson(restored!), codec.toJson(aggregate));
+    });
+
+    test('a legacy save with no matchingProposals key at all still '
+        'decodes — this fix only ever rejects a genuine DUPLICATE entry, '
+        'never an absent list', () {
+      final encoded = codec.toJson(PublicDemoAggregate.initial());
+      final aggregate = encoded['aggregate'] as Map<String, dynamic>;
+      final workflow = Map<String, dynamic>.from(aggregate['workflow'] as Map)
+        ..remove('matchingProposals');
+      final legacy = {
+        ...encoded,
+        'aggregate': {...aggregate, 'workflow': workflow},
+      };
+
+      final restored = codec.fromJson(legacy);
+
+      expect(restored, isNotNull);
+      expect(restored!.workflow.matchingProposals, isEmpty);
+    });
+  });
+
+  group('Codex P2 fix (PR #214) "Validate restored accumulated interview '
+      'evaluation": recomputed via ClientInterviewEngine.evaluate, never '
+      'trusted as-stored', () {
+    PublicDemoAggregate readyInProgressAggregate({int runSeed = 1}) {
+      var aggregate = PublicDemoAggregate.initial(runSeed: runSeed)
+          .startSkillSheetReview('eng-01')
+          .beginSelling('eng-01')
+          .introduceProject('eng-01')
+          .recordEngineerInterviewResult(
+            engineerId: 'eng-01',
+            type: PublicDemoInterviewType.partner,
+          );
+      final project = aggregate
+          .projectCandidatesForMonth(aggregate.state.month)
+          .first;
+      aggregate = aggregate.proposeMatch(
+        engineerId: 'eng-01',
+        projectId: project.id,
+      );
+      aggregate = aggregate.startProjectInterview('eng-01');
+      final session = aggregate.projectInterviewSessionFor('eng-01')!;
+      // Answers just the FIRST question, leaving the session genuinely
+      // in-progress (not completed) with a real, non-zero
+      // accumulatedEvaluation to tamper with below.
+      aggregate = aggregate.chooseProjectInterviewFollowUp(
+        'eng-01',
+        session.currentQuestionIndex,
+        PublicDemoProjectInterview.choicesFor(session).first,
+      );
+      return aggregate;
+    }
+
+    Map<String, dynamic> withAccumulatedEvaluationPatch(
+      Map<String, dynamic> envelope,
+      Map<String, dynamic> evaluationPatch,
+    ) {
+      final aggregate = envelope['aggregate'] as Map<String, dynamic>;
+      final workflow = aggregate['workflow'] as Map<String, dynamic>;
+      final sessions = (workflow['projectInterviewSessions'] as List)
+          .map((entry) => Map<String, dynamic>.from(entry as Map))
+          .toList();
+      sessions[0] = {
+        ...sessions[0],
+        'accumulatedEvaluation': {
+          ...Map<String, dynamic>.from(
+            sessions[0]['accumulatedEvaluation'] as Map,
+          ),
+          ...evaluationPatch,
+        },
+      };
+      return {
+        ...envelope,
+        'aggregate': {
+          ...aggregate,
+          'workflow': {...workflow, 'projectInterviewSessions': sessions},
+        },
+      };
+    }
+
+    test('a tampered accumulatedEvaluation (an added POSITIVE delta) is '
+        'rejected', () {
+      final aggregate = readyInProgressAggregate();
+      final session = aggregate.projectInterviewSessionFor('eng-01')!;
+      final encoded = codec.toJson(aggregate);
+      final tampered = withAccumulatedEvaluationPatch(encoded, {
+        'technical': session.accumulatedEvaluation.technical + 5,
+      });
+
+      expect(codec.fromJson(tampered), isNull);
+    });
+
+    test('a tampered accumulatedEvaluation (a subtracted NEGATIVE delta) '
+        'is rejected', () {
+      final aggregate = readyInProgressAggregate();
+      final session = aggregate.projectInterviewSessionFor('eng-01')!;
+      final encoded = codec.toJson(aggregate);
+      final tampered = withAccumulatedEvaluationPatch(encoded, {
+        'credibility': session.accumulatedEvaluation.credibility - 5,
+      });
+
+      expect(codec.fromJson(tampered), isNull);
+    });
+
+    test('a genuine in-progress session (real, untampered '
+        'accumulatedEvaluation) round-trips exactly', () {
+      final aggregate = readyInProgressAggregate();
+
+      final restored = codec.decode(codec.encode(aggregate));
+
+      expect(restored, isNotNull);
+      expect(codec.toJson(restored!), codec.toJson(aggregate));
+    });
+
+    test('a genuine completed (concluded) session round-trips exactly', () {
+      var aggregate = readyInProgressAggregate();
+      var session = aggregate.projectInterviewSessionFor('eng-01')!;
+      while (session.playerFollowUps.length < session.questions.length) {
+        aggregate = aggregate.chooseProjectInterviewFollowUp(
+          'eng-01',
+          session.currentQuestionIndex,
+          PublicDemoProjectInterview.choicesFor(session).first,
+        );
+        session = aggregate.projectInterviewSessionFor('eng-01')!;
+      }
+      aggregate = aggregate.concludeProjectInterview('eng-01');
+
+      final restored = codec.decode(codec.encode(aggregate));
+
+      expect(restored, isNotNull);
+      expect(codec.toJson(restored!), codec.toJson(aggregate));
+    });
+
+    test('seeded interview outcome regression: a genuine pass/fail '
+        'derived through the normal chooseFollowUp/conclude path is '
+        'unaffected by this recomputation check', () {
+      var aggregate = PublicDemoAggregate.initial(runSeed: 1)
+          .startSkillSheetReview('eng-01')
+          .beginSelling('eng-01')
+          .introduceProject('eng-01')
+          .recordEngineerInterviewResult(
+            engineerId: 'eng-01',
+            type: PublicDemoInterviewType.partner,
+          );
+      final project = aggregate
+          .projectCandidatesForMonth(aggregate.state.month)
+          .first;
+      aggregate = aggregate.proposeMatch(
+        engineerId: 'eng-01',
+        projectId: project.id,
+      );
+      aggregate = aggregate.startProjectInterview('eng-01');
+      var session = aggregate.projectInterviewSessionFor('eng-01')!;
+      while (session.playerFollowUps.length < session.questions.length) {
+        aggregate = aggregate.chooseProjectInterviewFollowUp(
+          'eng-01',
+          session.currentQuestionIndex,
+          PublicDemoProjectInterview.choicesFor(session).first,
+        );
+        session = aggregate.projectInterviewSessionFor('eng-01')!;
+      }
+      aggregate = aggregate.concludeProjectInterview('eng-01');
+      final beforeEngineer = aggregate.workflow.engineers.firstWhere(
+        (e) => e.id == 'eng-01',
+      );
+
+      final restored = codec.decode(codec.encode(aggregate));
+
+      expect(restored, isNotNull);
+      final afterEngineer = restored!.workflow.engineers.firstWhere(
+        (e) => e.id == 'eng-01',
+      );
+      expect(afterEngineer.stage, beforeEngineer.stage);
+      expect(afterEngineer.lastInterviewScore, beforeEngineer.lastInterviewScore);
+      expect(codec.toJson(restored), codec.toJson(aggregate));
+    });
+  });
 }
 
 /// A minimal, hand-crafted completed `ClientInterviewSession` JSON entry for

@@ -1,7 +1,11 @@
 import 'dart:convert';
 
+import '../engine/client_interview_engine.dart';
+import '../models/client_interview.dart';
 import '../public_demo/public_demo_aggregate.dart';
 import '../public_demo/public_demo_engineer_runtime.dart';
+import '../public_demo/public_demo_matching_fit.dart';
+import '../public_demo/public_demo_rng.dart';
 
 /// Versioned, self-contained persistence envelope for Public Demo 0.1.
 ///
@@ -55,6 +59,27 @@ class PublicDemoSaveCodec {
       final aggregate = PublicDemoAggregate.fromJson(
         (json['aggregate'] as Map).cast<String, dynamic>(),
       );
+
+      // Codex P2 fix (PR #214) "Validate restored accumulated interview
+      // evaluation": [ClientInterviewSession.fromJson] casts
+      // `accumulatedEvaluation`'s five integers verbatim — a shape-valid
+      // save can carry ANY values there, and the strict round-trip
+      // comparison below only ever detects a value that decoding itself
+      // would normalize away, which this is not (any int round-trips
+      // byte-identical). [ClientInterviewEngine.finalRate] then trusts
+      // `session.accumulatedEvaluation.total.clamp(-15, 15)` as a genuine
+      // player-choice-derived adjustment to the pass/fail rate — a
+      // corrupted save could shift that by the full ±15 range without
+      // touching anything else this method already checks. Reusing
+      // [ClientInterviewEngine.evaluate] itself (never a second formula) to
+      // replay every recorded follow-up from the session's own
+      // authoritative `questions`/`employeeAnswers`/`playerFollowUps` closes
+      // this: a stored total that disagrees with what those facts actually
+      // produce did not come from any real [PublicDemoProjectInterview
+      // .chooseFollowUp] call.
+      if (!_hasConsistentProjectInterviewEvaluations(aggregate)) {
+        return null;
+      }
 
       // PublicDemoState's legacy decoder intentionally supplies defaults for
       // old normal-game data.  A Public Demo envelope must be stricter: this
@@ -134,6 +159,70 @@ class PublicDemoSaveCodec {
     } catch (_) {
       return null;
     }
+  }
+
+  /// Codex P2 fix (PR #214) "Validate restored accumulated interview
+  /// evaluation": recomputes each [ClientInterviewSession]'s
+  /// `accumulatedEvaluation` from its own authoritative
+  /// `questions`/`employeeAnswers`/`playerFollowUps` — via
+  /// [ClientInterviewEngine.evaluate], the exact same call
+  /// [PublicDemoProjectInterview.chooseFollowUp] itself makes, never a
+  /// second formula — and rejects the save if the recomputed total
+  /// disagrees with the stored one. Runs on the already-decoded
+  /// [aggregate] (not raw JSON, unlike [_hasConsistentAuthorityFacts]
+  /// above) because it needs real [Engineer]/[ClientInterviewSession]
+  /// values, not just their JSON shape.
+  ///
+  /// Every index this walks (`questions[i]`/`employeeAnswers[i]` for
+  /// `i < playerFollowUps.length`) is already guaranteed in-bounds by the
+  /// P2-1 structural checks in [_hasConsistentAuthorityFacts] (which always
+  /// runs first — see [fromJson]) — `employeeAnswers.length ==
+  /// currentQuestionIndex + 1` and `playerFollowUps.length` is either
+  /// `currentQuestionIndex` or, only once fully answered, `questions.length`
+  /// — so `playerFollowUps.length` never exceeds `employeeAnswers.length`
+  /// or `questions.length` in a save that reached this point.
+  static bool _hasConsistentProjectInterviewEvaluations(
+    PublicDemoAggregate aggregate,
+  ) {
+    for (final session in aggregate.workflow.projectInterviewSessions) {
+      if (session.playerFollowUps.isEmpty) continue;
+      final runtime = aggregate.state.runtimeForOrNull(session.employeeId);
+      if (runtime == null) return false;
+      final engineer = PublicDemoEngineerProjectFit.engineerFor(runtime);
+      final seed = PublicDemoRng.derivedSeed(
+        runSeed: aggregate.state.runSeed,
+        month: session.startedWeek,
+        namespace: PublicDemoRngNamespace.projectInterview,
+        identifier: '${session.employeeId}:${session.projectId}',
+      );
+      var recomputed = const ClientInterviewEvaluation();
+      for (var i = 0; i < session.playerFollowUps.length; i++) {
+        final outcome = ClientInterviewEngine.evaluate(
+          engineer,
+          session.questions[i],
+          session.employeeAnswers[i],
+          session.playerFollowUps[i],
+          seed,
+          session.id,
+        );
+        recomputed = recomputed.add(
+          technical: outcome.evaluation.technical,
+          experience: outcome.evaluation.experience,
+          communication: outcome.evaluation.communication,
+          credibility: outcome.evaluation.credibility,
+          clientFit: outcome.evaluation.clientFit,
+        );
+      }
+      final stored = session.accumulatedEvaluation;
+      if (recomputed.technical != stored.technical ||
+          recomputed.experience != stored.experience ||
+          recomputed.communication != stored.communication ||
+          recomputed.credibility != stored.credibility ||
+          recomputed.clientFit != stored.clientFit) {
+        return false;
+      }
+    }
+    return true;
   }
 
   /// Rejects combinations that are individually serializable but impossible
@@ -271,6 +360,28 @@ class PublicDemoSaveCodec {
         final proposalEngineerId = proposal['engineerId'];
         final proposalProjectId = proposal['projectId'];
         if (proposalEngineerId is! String || proposalProjectId is! String) {
+          return false;
+        }
+        // Codex P2 fix (PR #214) "Reject duplicate proposals before
+        // validating pass bindings": [PublicDemoWorkflowState
+        // .withMatchingProposal] always filters out any existing entry for
+        // `engineerId` before appending the new one — at most one proposal
+        // per engineer is the only shape any real command path can ever
+        // produce, exactly like [projectInterviewSessions]'s own
+        // one-per-employeeId invariant above. Building this lookup as a
+        // plain `Map` assignment silently let a SECOND, later entry for the
+        // same `engineerId` overwrite the first one here, while
+        // [PublicDemoWorkflowState.matchingProposalFor] (the one production
+        // code actually calls) returns the FIRST match instead — so a
+        // corrupted save with e.g. `[project B, project A]` would validate
+        // the pass record against A (this map's last-write) while runtime
+        // resolves B (the real first-match lookup), letting `recordOrder`
+        // proceed for the project the engineer was actually bound to (B)
+        // while this check believed A was cross-checked. A second entry for
+        // the same engineer is rejected outright rather than resolved by
+        // either "first wins" or "last wins" — neither can be produced by
+        // any real command path, so there is no correct value to prefer.
+        if (proposalProjectIdByEngineer.containsKey(proposalEngineerId)) {
           return false;
         }
         proposalProjectIdByEngineer[proposalEngineerId] = proposalProjectId;

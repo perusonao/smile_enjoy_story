@@ -61,7 +61,7 @@ Phase 7A's `PublicDemoWorkflowState.endAssignment` already guarantees `identical
 
 | Field | Source | Fabrication risk |
 |---|---|---|
-| `experienceMonths` | `assignment.monthsCredited` — see §3 | None: this is exactly the number of months `PublicDemoGrowthEngine` already credited under `source: assignment` for this exact assignment, never a calendar span. |
+| `experienceMonths` | `assignment.monthsCredited`, plus one still-pending month when the row survives `endAssignment` and this month's Growth hasn't run yet — see §3 and §9a's P1 fix | None: every component is either a month Growth already credited, or one Growth is already guaranteed to credit at the very next close — never a calendar span, never a guess. |
 | `projectName` | Resolved `Project.title` when `assignment.projectId` is genuine (Phase 6), else `assignment.projectName` (the real, already-persisted generic value, e.g. `新規開発支援`) | None: both are real, already-authoritative strings; never invented text. |
 | `industry` | Resolved `Project.industry` when `projectId` is genuine, else `null` | None: `null` when unknown, never guessed. |
 | `clientNameSnapshot` | Resolved `Client.name` when `projectId` is genuine, else `null` | None. |
@@ -197,6 +197,15 @@ No changes to `MatchingEngine`, HOME, Finance/balance code, or any SkillSheet UI
 - `flutter analyze`: **No issues found.**
 - `git diff --check`: clean (no whitespace errors).
 - `flutter test --concurrency=6` (full suite): **2040/2040 passing.** The first full run caught one pre-existing schema-lock-in test (`public_demo_recovery_aggregate_test.dart`'s "Recovery introduces no new save-schema keys" — an explicit enumeration of `PublicDemoAssignment`'s JSON keys) that needed updating to acknowledge the new additive `monthsCredited` key, following that test's own existing per-phase-field documentation convention (`// CORE-GAMEPLAY Phase 7A: ...` / now `Phase 7B: ...`). This is expected maintenance the test exists specifically to force, not a regression — the second full run passed clean.
+
+## 9a. Codex review round (PR #216)
+
+Two findings, both fixed and both re-verified against a real (not asserted) reproduction:
+
+- **P1 — stale `experienceMonths` when ending in June (month < 7).** `PublicDemoWorkflowState.endAssignment` deliberately leaves the ended row in place before month 7 (every assignment still counts toward that month's revenue/Growth regardless of `nextOrderStatus`), so the very next `closeApril`/`closeMay`/`closeJune` still credits the same, still-present row one more time before anything removes or supersedes it. The original writer read `assignment.monthsCredited` at `endAssignment` call time only, one month short of the truth the moment that close ran. Fixed: `endAssignment` now adds one still-pending month whenever the row genuinely survives the call (`nextWorkflow.assignments` still names the engineer — the same fact that branch's own atomic `_copyWith` just decided) and this month's Growth hasn't already been applied. From month 7 on the row is always removed immediately instead (this method's own precondition already excludes `notOffered` from that month's filtered `assignedEngineerIds`), so no adjustment is needed there. A reproduction test (`Codex P1 fix: ending in June...`) fails against the pre-fix code (`Expected: 2, Actual: 1`) and passes after.
+- **P2 — unbounded `monthsCredited` on restore.** `PublicDemoAssignment.fromJson` accepted any int for `monthsCredited` verbatim; a hand-edited/corrupted save could supply a negative value (silently suppressing the CareerHistory write via `endAssignment`'s own `<= 0` skip guard) or an implausibly large one (fabricating a career duration no real playthrough could produce). Fixed: `fromJson` now rejects (as malformed, matching this file's own `projectId`/`nextOrderStatus` convention) any present-but-out-of-range value — outside `[0, 12]`, the fiscal year's own full internal-month span (April–March) and therefore the genuine upper bound on how many months any single assignment could ever be credited for. Absent still defaults to `0` exactly as before.
+
+Both fixes are covered by new focused tests; the full suite (`flutter analyze`, `git diff --check`, `flutter test --concurrency=6`) was re-run clean after applying them — see §9's final line for the exact count.
 
 ## 10. Known limitations
 

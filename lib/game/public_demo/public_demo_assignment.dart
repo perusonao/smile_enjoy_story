@@ -146,6 +146,25 @@ class PublicDemoAssignment {
     if (projectId != null && projectId is! String) {
       throw const FormatException('Invalid assignment projectId');
     }
+    // Codex P2 fix (PR #216): a hand-edited/corrupted save could otherwise
+    // supply a negative `monthsCredited` (silently suppressing
+    // [PublicDemoAggregate.endAssignment]'s CareerHistory write via its own
+    // `<= 0` skip guard) or an implausibly large one (fabricating a career
+    // duration no real playthrough could ever produce). [_maxMonthsCredited]
+    // is the fiscal year's own full internal-month span (4-15 inclusive,
+    // 12 months) — the genuine upper bound on how many months any single
+    // assignment could ever be credited for, even if it were credited every
+    // month from April through March without interruption. Present-but-out-
+    // of-range is rejected as malformed, matching this file's own
+    // `projectId`/`nextOrderStatus` convention; absent still defaults to `0`
+    // exactly as before.
+    final monthsCreditedRaw = json['monthsCredited'];
+    if (monthsCreditedRaw != null &&
+        (monthsCreditedRaw is! int ||
+            monthsCreditedRaw < 0 ||
+            monthsCreditedRaw > _maxMonthsCredited)) {
+      throw const FormatException('Invalid assignment monthsCredited');
+    }
     return PublicDemoAssignment(
       engineerId: required<String>('engineerId'),
       engineerName: required<String>('engineerName'),
@@ -161,10 +180,17 @@ class PublicDemoAssignment {
       // before this field existed — `0` there, exactly reproducing "no
       // months credited yet under this field's own tracking" for a
       // pre-Phase-7B in-flight assignment (see [monthsCredited]'s own
-      // doc) rather than fabricating a retroactive figure.
-      monthsCredited: json['monthsCredited'] as int? ?? 0,
+      // doc) rather than fabricating a retroactive figure. Validated
+      // in-range above.
+      monthsCredited: monthsCreditedRaw as int? ?? 0,
     );
   }
+
+  /// See [fromJson]'s own `monthsCredited` validation doc: the fiscal
+  /// year's full internal-month span (4 through 15 inclusive), the
+  /// genuine upper bound on how many months any single assignment could
+  /// ever be credited for.
+  static const int _maxMonthsCredited = 12;
 
   /// Assignment fallback for any ordered employee, including a post-join hire.
   /// [projectId] (CORE-GAMEPLAY Phase 7A) is the real, genuine Phase 6

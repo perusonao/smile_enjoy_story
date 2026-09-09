@@ -175,8 +175,10 @@ void main() {
 
   group('endAssignment: CareerHistoryEntry writer (generic path)', () {
     test(
-      'writes exactly one truthful entry, tied to monthsCredited — never a '
-      'calendar span, never a second growth application',
+      'writes exactly one truthful entry, accounting for June\'s own still '
+      '-pending growth credit (the row survives at month < 7 — see the '
+      'Codex P1 fix test below) — never a calendar span, never a second '
+      'growth application',
       () {
         var aggregate = _genericAssignedAggregate('eng-01');
         expect(aggregate.state.month, 6);
@@ -199,8 +201,11 @@ void main() {
         expect(entry.projectName, assignment.projectName);
         expect(
           entry.experienceMonths,
-          1,
-          reason: 'exactly monthsCredited, not a calendar month span',
+          2,
+          reason: 'monthsCredited (1, from May) plus June\'s own still-'
+              'pending credit — the row survives this call (month < 7) so '
+              'the upcoming June close is already guaranteed to credit it '
+              'once more; never a calendar span',
         );
         expect(entry.languages, [runtime.primaryLanguage]);
         expect(
@@ -216,6 +221,44 @@ void main() {
           reason: 'ending an assignment records history but never '
               're-applies growth — no double accounting',
         );
+      },
+    );
+
+    test(
+      'Codex P1 fix: ending in June (month < 7, deferred-removal branch) '
+      'accounts for June\'s own still-pending growth credit — '
+      'PublicDemoWorkflowState.endAssignment deliberately retains the row '
+      'through June, and closeJune credits it one more time because June '
+      'revenue was genuinely earned, so the recorded experienceMonths must '
+      'already include that pending month, not just the pre-close count',
+      () {
+        var aggregate = _genericAssignedAggregate('eng-01');
+        expect(aggregate.state.month, 6);
+        expect(aggregate.workflow.assignments.single.monthsCredited, 1);
+
+        aggregate = aggregate.withAssignmentUpdate(
+          'eng-01',
+          nextOrderStatus: PublicDemoNextOrderStatus.notOffered,
+        );
+        aggregate = aggregate.endAssignment('eng-01');
+        // The row survives (Phase 7A's own deferred-removal contract) and
+        // will still be credited once more when June's own close runs.
+        expect(aggregate.workflow.assignments, hasLength(1));
+
+        aggregate = aggregate.closeJune(assignedInJuly: 0, monthlyExpenses: 0);
+
+        final runtime = aggregate.state.runtimeFor('eng-01');
+        expect(
+          runtime.careerHistory.single.experienceMonths,
+          2,
+          reason: 'June\'s own close genuinely credited a second month to '
+              'this same (still-present) assignment row — the recorded '
+              'entry must reflect it, never stay stuck at the pre-close '
+              'count',
+        );
+        // Still exactly one entry — closeJune must never write a second
+        // CareerHistoryEntry of its own.
+        expect(runtime.careerHistory, hasLength(1));
       },
     );
 
@@ -315,6 +358,58 @@ void main() {
           reason: 'a legacy in-flight assignment starts counting from 0 '
               'under this field, never a fabricated retroactive figure',
         );
+      },
+    );
+
+    test(
+      'Codex P2 fix: a corrupted/hand-edited monthsCredited outside the '
+      'genuine possible range is rejected, never silently accepted',
+      () {
+        const codec = PublicDemoSaveCodec();
+        final legacy = codec.toJson(_genericAssignedAggregate('eng-01'));
+        Map<String, dynamic> withMonthsCredited(Object? value) {
+          final aggregate = legacy['aggregate'] as Map<String, dynamic>;
+          final workflow = aggregate['workflow'] as Map<String, dynamic>;
+          final assignments = [
+            for (final raw in workflow['assignments'] as List)
+              if ((raw as Map<String, dynamic>)['engineerId'] == 'eng-01')
+                {...raw, 'monthsCredited': value}
+              else
+                raw,
+          ];
+          return {
+            ...legacy,
+            'aggregate': {
+              ...aggregate,
+              'workflow': {...workflow, 'assignments': assignments},
+            },
+          };
+        }
+
+        expect(
+          codec.fromJson(withMonthsCredited(-1)),
+          isNull,
+          reason: 'negative would silently suppress the CareerHistory '
+              'write via endAssignment\'s own <= 0 skip guard',
+        );
+        expect(
+          codec.fromJson(withMonthsCredited(999999)),
+          isNull,
+          reason: 'no real assignment can ever be credited for more than '
+              'the fiscal year\'s own 12-month span — an oversized value '
+              'would fabricate a career duration',
+        );
+        expect(
+          codec.fromJson(withMonthsCredited('1')),
+          isNull,
+          reason: 'wrong type entirely',
+        );
+        expect(
+          codec.fromJson(withMonthsCredited(12)),
+          isNotNull,
+          reason: 'the genuine upper bound itself is accepted, not rejected',
+        );
+        expect(codec.fromJson(legacy), isNotNull, reason: 'untouched');
       },
     );
   });

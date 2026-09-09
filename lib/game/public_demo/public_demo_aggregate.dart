@@ -981,11 +981,31 @@ class PublicDemoAggregate {
   /// real [PublicDemoAssignment.projectName] rather than nothing — a
   /// genuine domain fact, never fabricated here — but with no
   /// industry/client/technologies, exactly matching what is actually
-  /// known. Skips writing an entry entirely when `monthsCredited` is `0`:
-  /// an assignment that never earned a single month of real,
-  /// Growth-credited participation has no truthful "months of experience"
-  /// to record, and a `0か月` placeholder would only be clutter, never a
-  /// fact worth keeping.
+  /// known. Skips writing an entry entirely when the recorded
+  /// `experienceMonths` (below) is `0`: an assignment that never earned a
+  /// single month of real, Growth-credited participation has no truthful
+  /// "months of experience" to record, and a `0か月` placeholder would only
+  /// be clutter, never a fact worth keeping.
+  ///
+  /// Codex P1 fix (PR #216): before month 7, [PublicDemoWorkflowState
+  /// .endAssignment] deliberately LEAVES the ended row in place (see that
+  /// method's own doc) because every assignment still counts toward the
+  /// CURRENT month's revenue/Growth regardless of `nextOrderStatus` —
+  /// meaning the very next month-end close (`closeApril`/`closeMay`/
+  /// `closeJune`) will still credit this same, still-present row one more
+  /// time before anything ever removes or supersedes it. Reading
+  /// `ended.monthsCredited` alone at this point would freeze the recorded
+  /// entry one month short of the truth the moment that close runs. So
+  /// [experienceMonths] adds that one still-pending month whenever the
+  /// row genuinely survives this call (`nextWorkflow.assignments` still
+  /// names [engineerId] — the exact same fact that branch's own atomic
+  /// `_copyWith` just decided) and this month's Growth has not already
+  /// been applied (`state.growthAppliedMonths` — defensive: in every real
+  /// production sequence a surviving row implies month < 7, which always
+  /// precedes its own close). From month 7 on the row is always removed
+  /// immediately instead (this method's own precondition already excludes
+  /// `notOffered` from that month's filtered `assignedEngineerIds`), so
+  /// `ended.monthsCredited` is already final there — no adjustment needed.
   PublicDemoAggregate endAssignment(String engineerId) {
     final ended = workflow.assignments
         .where((assignment) => assignment.engineerId == engineerId)
@@ -993,7 +1013,16 @@ class PublicDemoAggregate {
     final nextWorkflow = workflow.endAssignment(engineerId, month: state.month);
     if (identical(nextWorkflow, workflow)) return this;
     final assignedIds = nextWorkflow.assignedEngineerIds(month: state.month);
-    final runtimes = ended == null || ended.monthsCredited <= 0
+    final rowSurvives = nextWorkflow.assignments.any(
+      (assignment) => assignment.engineerId == engineerId,
+    );
+    final hasPendingMonthCredit =
+        rowSurvives &&
+        !state.fiscalYearCompleted &&
+        !state.growthAppliedMonths.contains(state.month);
+    final experienceMonths =
+        (ended?.monthsCredited ?? 0) + (hasPendingMonthCredit ? 1 : 0);
+    final runtimes = ended == null || experienceMonths <= 0
         ? state.engineerRuntimes
         : [
             for (final runtime in state.engineerRuntimes)
@@ -1001,7 +1030,7 @@ class PublicDemoAggregate {
                 runtime.copyWith(
                   careerHistory: [
                     ...runtime.careerHistory,
-                    _careerHistoryEntryFor(ended, runtime),
+                    _careerHistoryEntryFor(ended, runtime, experienceMonths),
                   ],
                 )
               else
@@ -1021,14 +1050,20 @@ class PublicDemoAggregate {
   /// record. [assignment] is the just-ended [PublicDemoAssignment]
   /// (captured before [PublicDemoWorkflowState.endAssignment] removed or
   /// superseded it); [runtime] is that same engineer's current, pre-write
-  /// [PublicDemoEngineerRuntime]. [CareerHistoryEntry.languages] is always
-  /// exactly `[runtime.primaryLanguage]` — the one language
-  /// [PublicDemoGrowthEngine] actually grew during this assignment (see its
-  /// own doc), never [Project.requiredLanguages] verbatim, which can list a
-  /// language this engineer never personally worked in.
+  /// [PublicDemoEngineerRuntime]. [experienceMonths] is [endAssignment]'s
+  /// own already-adjusted figure — [assignment.monthsCredited] plus one
+  /// still-pending month when the row survives this call (see
+  /// [endAssignment]'s own doc for why `assignment.monthsCredited` alone
+  /// can be one short) — never re-derived here. [CareerHistoryEntry
+  /// .languages] is always exactly `[runtime.primaryLanguage]` — the one
+  /// language [PublicDemoGrowthEngine] actually grew during this
+  /// assignment (see its own doc), never [Project.requiredLanguages]
+  /// verbatim, which can list a language this engineer never personally
+  /// worked in.
   CareerHistoryEntry _careerHistoryEntryFor(
     PublicDemoAssignment assignment,
     PublicDemoEngineerRuntime runtime,
+    int experienceMonths,
   ) {
     final projectId = assignment.projectId;
     final candidate = projectId == null
@@ -1042,12 +1077,12 @@ class PublicDemoAggregate {
     return CareerHistoryEntry(
       id: 'career-${assignment.engineerId}-${projectId ?? 'generic'}-m${state.month}',
       projectName: projectName,
-      experienceMonths: assignment.monthsCredited,
+      experienceMonths: experienceMonths,
       languages: [runtime.primaryLanguage],
       technologies: project == null ? const [] : _technologiesFor(project),
       industry: project?.industry,
       clientNameSnapshot: candidate?.client.name,
-      summary: '$projectNameに${assignment.monthsCredited}か月間参画し、実務経験を積んだ。',
+      summary: '$projectNameに$experienceMonthsか月間参画し、実務経験を積んだ。',
     );
   }
 

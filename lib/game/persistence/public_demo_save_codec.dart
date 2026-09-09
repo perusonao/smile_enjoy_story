@@ -240,6 +240,68 @@ class PublicDemoSaveCodec {
     }
     final engineerIds = <String>{};
 
+    // Codex P2 fix (PR #214): "Validate restored passes against their
+    // proposals". A genuine Phase 6 pass (`interviewRecordProjectId !=
+    // null`) can only ever exist because [PublicDemoProjectInterview.start]
+    // read a real [PublicDemoMatchingProposal] for this exact engineer and
+    // interviewed for precisely that proposal's `projectId` —
+    // [PublicDemoWorkflowState.withMatchingProposal] then refuses to ever
+    // replace that proposal once the engineer reaches
+    // `clientInterviewPassed`/`ordered` (the Codex P1-2 fix's own "proposal
+    // lock"), so for any real save the two must always still agree. The
+    // proposal-lock check above only prevents a NEW mismatch from being
+    // produced going forward — it does nothing to stop a corrupted/
+    // hand-edited save from simply asserting `interviewRecordProjectId: A`
+    // on an engineer whose (equally hand-edited) `matchingProposals` entry
+    // still names a different, never-interviewed project `B`. Restoring
+    // such a save would let `recordOrder`/`projectInterviewCandidateFor`
+    // resolve project `B` for an engineer whose only real, derived
+    // authority fact is a pass on project `A` — exactly the
+    // never-interviewed-project handoff the runtime lock exists to
+    // prevent. Cross-checking both facts here, at restore time, closes the
+    // gap the runtime-only lock cannot: a corrupted save is rejected
+    // instead of silently resurrecting a broken authority chain.
+    final matchingProposalsRaw = workflow['matchingProposals'];
+    final proposalProjectIdByEngineer = <String, String>{};
+    if (matchingProposalsRaw != null) {
+      if (matchingProposalsRaw is! List) return false;
+      for (final entry in matchingProposalsRaw) {
+        if (entry is! Map) return false;
+        final proposal = entry.cast<String, dynamic>();
+        final proposalEngineerId = proposal['engineerId'];
+        final proposalProjectId = proposal['projectId'];
+        if (proposalEngineerId is! String || proposalProjectId is! String) {
+          return false;
+        }
+        proposalProjectIdByEngineer[proposalEngineerId] = proposalProjectId;
+      }
+    }
+    // A *completed* [ClientInterviewSession] is the other real, derived
+    // fact of which project this engineer was actually interviewed for
+    // (see [PublicDemoWorkflowState.concludeProjectInterview]'s own
+    // `session.projectId != project.id` guard) — cross-checked too, when
+    // present, exactly like the proposal above. Read defensively (not the
+    // full structural validation the dedicated block below already
+    // performs) since only `employeeId`/`projectId`/`completed` are needed
+    // here; a genuinely malformed entry is still rejected by that block
+    // regardless of what this lookup does with it.
+    final projectInterviewSessionsForCrossCheck =
+        workflow['projectInterviewSessions'];
+    final completedSessionProjectIdByEngineer = <String, String>{};
+    if (projectInterviewSessionsForCrossCheck is List) {
+      for (final entry in projectInterviewSessionsForCrossCheck) {
+        if (entry is! Map) continue;
+        final session = entry.cast<String, dynamic>();
+        if (session['completed'] != true) continue;
+        final sessionEmployeeId = session['employeeId'];
+        final sessionProjectId = session['projectId'];
+        if (sessionEmployeeId is String && sessionProjectId is String) {
+          completedSessionProjectIdByEngineer[sessionEmployeeId] =
+              sessionProjectId;
+        }
+      }
+    }
+
     for (final entry in engineersRaw) {
       if (entry is! Map) return false;
       final engineer = entry.cast<String, dynamic>();
@@ -298,6 +360,22 @@ class PublicDemoSaveCodec {
           month >= 5 &&
           !assignmentEngineerIds.contains(id)) {
         return false;
+      }
+      // Codex P2 fix (PR #214) "Validate restored passes against their
+      // proposals": having survived every check above, this is a genuine
+      // project-bound pass — its own recorded project must agree with both
+      // the (locked, never-replaceable-post-pass) proposal and, when one
+      // exists, the completed interview session, for this same engineer.
+      // Legacy generic-path records (`recordProjectId == null`) have no
+      // project to cross-check at all and are left exactly as before.
+      if (recordProjectId != null) {
+        if (proposalProjectIdByEngineer[id] != recordProjectId) return false;
+        final completedSessionProjectId =
+            completedSessionProjectIdByEngineer[id];
+        if (completedSessionProjectId != null &&
+            completedSessionProjectId != recordProjectId) {
+          return false;
+        }
       }
     }
 

@@ -1,6 +1,6 @@
 # SES CORE-GAMEPLAY Phase 6: Project Interview Gameplay — Result
 
-Status: **Merged onto latest `main` (PR #213); all Codex findings (P1-1/P1-2/P2, duplicate-follow-up P2, plus this update's malformed-session-restore P2-1 and dialog-launch-serialization P2-2) fixed; `flutter analyze` clean, full test suite green (1982/1982)**
+Status: **Phase 6 FINAL HARDENING complete. Merged onto latest `main` (PR #213); every Codex finding through this update (P1, P1-1, P1-2, P2 duplicate-follow-up, P2-1 malformed-session-restore, P2-2 dialog-launch-serialization, and this update's P2 proposal/pass authority-chain check) fixed; a full Final Hardening audit across session/engineer/project identity, async races, save/reload, and determinism found no further P0/P1 or integrity-breaking P2 — see "Final Hardening audit" below for scope and the two low-impact residuals recorded as Known Limitations; `flutter analyze` clean, full test suite green (1988/1988)**
 
 ## BASE SHA / branch / HEAD
 
@@ -51,15 +51,25 @@ Status: **Merged onto latest `main` (PR #213); all Codex findings (P1-1/P1-2/P2,
   reviewed and left the new "Reject malformed project-interview sessions
   during restore" (P2-1) and "Serialize project-interview dialog launches"
   (P2-2) findings against.
-- **Final HEAD SHA (this update, Codex P2-1/P2-2 fixes):**
-  `c34831dbf79be98196095a3445590f5dbd183d07` ("fix(project-interview):
-  validate restored sessions and serialize dialog launches (Codex P2-1/P2-2,
-  PR #214)"). Note: this hash is the value actually committed and pushed;
-  because this file documents its own commit's hash, the file's bytes at the
-  moment of that commit necessarily differ infinitesimally from what a
-  fresh re-hash would produce (the well-known self-reference limit for a
-  report that names its own SHA) -- this value is not re-amended after this
-  point and is the one used consistently in the PR reply and final response.
+- HEAD after the Codex P2-1/P2-2 fixes: `5e67f42d4dc47b1d66e20fa00e960c1a6ae12d27`
+  ("fix(project-interview): validate restored sessions and serialize dialog
+  launches (Codex P2-1/P2-2, PR #214)") — the report's own SHA line at the
+  time quoted `c34831d...`, an intermediate value from before a same-session
+  amend; `5e67f42` is, and remains, the one actually pushed and reviewed.
+  This is the HEAD Codex reviewed and left the new "Validate restored passes
+  against their proposals" P2 finding against — the one addressed, alongside
+  the FINAL HARDENING audit, by this update.
+- **Final HEAD SHA (this update, Codex P2 authority-chain fix + FINAL
+  HARDENING audit):** `700752f1bf61188cbaa0fefb0d188808fe92d4bf`
+  ("fix(project-interview): cross-check restored project-bound passes
+  against their proposal/session (Codex P2, PR #214) + Phase 6 Final
+  Hardening audit"). Note: this hash is the value actually committed and
+  pushed; because this file documents its own commit's hash, the file's
+  bytes at the moment of that commit necessarily differ infinitesimally
+  from what a fresh re-hash would produce (the well-known self-reference
+  limit for a report that names its own SHA) -- this value is not
+  re-amended after this point and is the one used consistently in the PR
+  reply and final response.
 
 ## Main integration (PR #213 → PR #214)
 
@@ -519,6 +529,142 @@ duplicate-follow-up) and all pre-existing tests (37 domain + 8 dialog
 widget tests) continue to pass unmodified; full suite after this update:
 1982/1982 (1972 prior + 8 new save-codec + 2 new widget).
 
+## Phase 6 FINAL HARDENING (this update)
+
+This update is designated the final Phase 6 hardening pass: one more
+Codex-flagged authority-chain gap fixed, followed by a one-time proactive
+audit across a fixed checklist of Phase 6 risk categories, rather than an
+open-ended commitment to keep chasing every future low-impact Codex
+finding on this phase indefinitely.
+
+### Codex P2 fix — "Validate restored passes against their proposals"
+
+**Finding (verified TRUE by direct code reading):** the proposal-lock fix
+(Codex P1-2) prevents the *runtime* from ever producing a new mismatch
+between a passed engineer's `interviewRecordProjectId` and their
+`matchingProposals` entry — but it does nothing to stop a corrupted or
+hand-edited save from simply asserting `interviewRecordProjectId: A` on an
+engineer whose `matchingProposals` entry (independently, in the same
+save) still names a different project `B`. `_hasConsistentAuthorityFacts`
+checked the record's own type, score, and engineer-id agreement, but never
+cross-referenced it against the proposal or completed session at all.
+Restoring such a save would resolve project `B` via
+`projectInterviewCandidateFor`/`recordOrder` for an engineer whose only
+real, derived fact is a pass on project `A` — reproducing exactly the
+never-interviewed-project handoff the runtime lock exists to prevent, this
+time via a corrupted save rather than a live `proposeMatch` call.
+
+**Fix (in `_hasConsistentAuthorityFacts`, additive to the existing
+per-engineer checks — no change to how any of those score/stage checks
+work):** for every engineer whose `interviewRecordProjectId` is non-null (a
+genuine, project-bound Phase 6 pass — the legacy generic-path case,
+`interviewRecordProjectId == null`, is untouched and still skips this
+entirely), two independent real, derived facts are now cross-checked
+against it:
+- The engineer's `matchingProposals` entry (built from
+  `workflow.matchingProposals`, the same list `matchingProposalFor` reads
+  in production) must exist and its `projectId` must equal
+  `interviewRecordProjectId` exactly. Starting a project interview at all
+  requires a real proposal for that engineer (`projectInterviewCandidateFor`
+  resolves it), so a genuine pass can never exist with no proposal, or a
+  proposal for a different project — this is a real, non-speculative
+  cross-check, not an over-restriction on real gameplay.
+- If a *completed* session exists for that engineer in
+  `workflow.projectInterviewSessions` (the other real, derived fact of
+  which project this engineer actually interviewed for, per
+  `concludeProjectInterview`'s own `session.projectId != project.id` guard),
+  its `projectId` must also equal `interviewRecordProjectId`.
+
+Neither check relies on, or is weakened by, the P2-1 structural-validity
+block for `projectInterviewSessions` (that block still runs independently
+and rejects its own class of corruption); the two are complementary.
+`MatchingEngine`, Finance/Month/Balance, HOME, and the Phase 7A lifecycle
+are untouched.
+
+**Tests** (`public_demo_save_codec_test.dart`, new group `Codex P2 fix (PR
+#214) "Validate restored passes against their proposals"`, 6 tests): record
+A + proposal B is rejected; record A + proposal A (the normal case)
+restores successfully; a project-bound record with no matching proposal at
+all is rejected; record A + a completed session for project B (proposal
+otherwise consistently A) is rejected; a legacy generic-path pass
+(`interviewRecordProjectId == null`) still round-trips with no proposal at
+all, proving the cross-check is scoped to project-bound passes only; a
+genuine end-to-end pass via real `proposeMatch` + a full interactive
+interview round-trips normally under the new check. Two pre-existing P1-1
+tests (score < 60 pass, score > 95 ceiling) were updated to include a
+matching proposal in their hand-crafted envelopes — required now that a
+project-bound record without one is itself rejected — so each test again
+isolates the one specific violation it was written to exercise, rather
+than incidentally also tripping the new cross-check.
+
+### Final Hardening audit — scope and findings
+
+Read (not modified except where a finding below required it) every Phase
+6-authoring file — `public_demo_project_interview.dart`,
+`public_demo_aggregate.dart`'s Phase 6 methods, `public_demo_sales.dart`'s
+`PublicDemoEngineerInterviewRecord`/`applyProjectInterviewResult`,
+`public_demo_workflow_state.dart`'s project-interview/matching-proposal
+sections, `public_demo_project_interview_dialog.dart`, the `客先面談`
+launch path in `public_demo_01_placeholder_screen.dart`, and
+`public_demo_save_codec.dart`'s `_hasConsistentAuthorityFacts` — against
+the task's fixed checklist:
+
+- **stale aggregate/state, duplicate/double execution, async race, dialog
+  reopen/dismiss/dispose:** re-verified the P2-2 launch-guard fix and
+  re-derived, from first principles this time, *why* no other Phase 6
+  action needs the same guard: `_recordEngineerOrder`/`ei()` (the generic
+  interview path) both call `_commitAggregate` — which synchronously
+  updates `_game` via `setState` and short-circuits identical no-op
+  results — as their very first statement, *before* any `await`. Their
+  underlying domain commands (`recordOrder`, `recordEngineerInterviewResult`)
+  are themselves idempotent precondition-gated transitions (a no-op once
+  the engineer has moved past the required stage). A rapid double-tap on
+  either therefore has its second call see the already-updated `_game`
+  synchronously and no-op — structurally the same reasoning that made
+  `_openProjectInterview` (mutation deferred until the dialog itself
+  closes, *after* an `await`) the one genuinely exploitable case, now
+  fixed. No other Phase 6 action shares that "await-before-commit" shape.
+- **malformed/corrupted save, session identity, engineer identity, project
+  identity, invalid indices/list lengths, completed/incomplete session
+  invariants, duplicate sessions:** covered by the pre-existing P2-1 fix
+  plus this update's new proposal/session cross-check; re-confirmed both
+  together reject every combination the checklist names without rejecting
+  any real command-path output (see the P2-1 and P2 test groups).
+- **proposal/pass/order authority chain, month/runtime boundary, retry
+  after failure:** re-traced the full chain by hand —
+  `proposeMatch`→`startProjectInterview`→`chooseFollowUp`→
+  `concludeProjectInterview`→`applyProjectInterviewResult`→`recordOrder` —
+  confirming a *failed* interview's session is always `completed`, so
+  `startProjectInterviewSession`'s replace-on-completed rule always
+  discards it for a genuinely fresh session on retry (new questions,
+  current-month capability), even when the retry re-proposes the very same
+  project; no residual stale state can leak from one attempt to the next.
+- **deterministic seeded outcome, sales-slot atomicity, legacy save
+  compatibility:** re-confirmed by re-running every existing regression
+  group for these (no new gap found; see Tests below for the full list
+  re-verified this update).
+
+**Two low-impact residuals found, deliberately NOT fixed this update** (per
+the task's own instruction not to extend Phase 6 indefinitely for low-impact
+P2/P3 — recorded as Known Limitations below instead):
+1. `_openProjectMatching` (Phase 5's `案件マッチング` entry point, unchanged
+   by Phase 6) uses a plain synchronous `Navigator.push` with no launch
+   guard — a rapid double-tap could push `PublicDemoProjectMatchingScreen`
+   twice, requiring an extra back-press. `onPropose` itself
+   (`proposeMatch`) is fully idempotent, so this is a UI-navigation nit, not
+   an authority/data-integrity issue — unlike `_openProjectInterview`,
+   nothing here can silently overwrite or lose a genuine result.
+2. `_hasConsistentAuthorityFacts` does not verify that every
+   `matchingProposals` entry's `engineerId` names a real engineer in the
+   same save. A fabricated proposal for a nonexistent id is inert (nothing
+   in production code looks up a proposal by an id that isn't also a real
+   engineer) rather than exploitable, so this is corruption-tolerance
+   hygiene, not a live gap.
+
+All prior Codex fixes and all pre-existing tests continue to pass
+unmodified. Full suite after this update: 1988/1988 (1982 prior + 6 new
+save-codec tests).
+
 ## Authority audit (READ-ONLY, before writing anything)
 
 Audited current `main` before designing anything new, per the task's
@@ -882,6 +1028,20 @@ No existing test was deleted, skipped, or weakened.
   for the same engineer within a single playthrough. Should a future phase
   add such a path, it would need to explicitly decide whether reaching
   `selling` again also clears the old `interviewRecord`.
+- (Final Hardening audit, this update) `_openProjectMatching`'s `案件
+  マッチング` entry point (Phase 5, unmodified by Phase 6) has no
+  double-launch guard — a rapid double-tap can push
+  `PublicDemoProjectMatchingScreen` twice, needing an extra back-press.
+  `proposeMatch` itself is fully idempotent, so this is a navigation nit,
+  not an authority/data-integrity issue; deliberately left unfixed as
+  low-impact per the task's own scope limit for this final hardening pass.
+- (Final Hardening audit, this update) `_hasConsistentAuthorityFacts` does
+  not verify every `matchingProposals` entry's `engineerId` names a real
+  engineer — a fabricated proposal for a nonexistent id decodes but is
+  inert (nothing in production code resolves a proposal by an id that
+  isn't also a real engineer). Corruption-tolerance hygiene, not a live
+  exploit path; deliberately left unfixed as low-impact for the same
+  reason.
 
 ## Phase 7A handoff
 

@@ -260,12 +260,16 @@ void main() {
         'any rate in ClientInterviewEngine.finalRate\'s own [5, 95] range, '
         'never only >= 60', () {
       final encoded = codec.toJson(PublicDemoAggregate.initial());
-      final withLowScorePass = _withEngineerZero(encoded, {
-        'stage': 'clientInterviewPassed',
-        'lastInterviewScore': 45,
-        'interviewRecordEngineerId': 'eng-01',
-        'interviewRecordProjectId': 'project-4-1',
-      });
+      final withLowScorePass = _withMatchingProposal(
+        _withEngineerZero(encoded, {
+          'stage': 'clientInterviewPassed',
+          'lastInterviewScore': 45,
+          'interviewRecordEngineerId': 'eng-01',
+          'interviewRecordProjectId': 'project-4-1',
+        }),
+        engineerId: 'eng-01',
+        projectId: 'project-4-1',
+      );
 
       final restored = codec.fromJson(withLowScorePass);
 
@@ -296,12 +300,21 @@ void main() {
         'rejected — the new stochastic path still has a real, bounded '
         'validity range, not an unconditional pass-through', () {
       final encoded = codec.toJson(PublicDemoAggregate.initial());
-      final withOutOfRangeScore = _withEngineerZero(encoded, {
-        'stage': 'clientInterviewPassed',
-        'lastInterviewScore': 96,
-        'interviewRecordEngineerId': 'eng-01',
-        'interviewRecordProjectId': 'project-4-1',
-      });
+      // A matching proposal for the same project is included so this test
+      // isolates the score-ceiling violation specifically — without it, the
+      // Codex P2 authority-chain cross-check below would also reject this
+      // envelope (no proposal at all for a project-bound pass), masking
+      // whether the score check itself still does its own job.
+      final withOutOfRangeScore = _withMatchingProposal(
+        _withEngineerZero(encoded, {
+          'stage': 'clientInterviewPassed',
+          'lastInterviewScore': 96,
+          'interviewRecordEngineerId': 'eng-01',
+          'interviewRecordProjectId': 'project-4-1',
+        }),
+        engineerId: 'eng-01',
+        projectId: 'project-4-1',
+      );
 
       expect(codec.fromJson(withOutOfRangeScore), isNull);
     });
@@ -564,6 +577,235 @@ void main() {
       expect(codec.toJson(restored), codec.toJson(aggregate));
     });
   });
+
+  group('Codex P2 fix (PR #214) "Validate restored passes against their '
+      'proposals": a project-bound pass must agree with its (locked) '
+      'proposal and, when present, its completed session', () {
+    test('record A + proposal B: restore is rejected — a corrupted save '
+        'cannot assert a pass on a project the proposal never actually '
+        'named', () {
+      final encoded = codec.toJson(PublicDemoAggregate.initial());
+      final mismatched = _withMatchingProposal(
+        _withEngineerZero(encoded, {
+          'stage': 'clientInterviewPassed',
+          'lastInterviewScore': 80,
+          'interviewRecordEngineerId': 'eng-01',
+          'interviewRecordProjectId': 'project-A',
+        }),
+        engineerId: 'eng-01',
+        projectId: 'project-B',
+      );
+
+      expect(codec.fromJson(mismatched), isNull);
+    });
+
+    test('record A + proposal A: restore succeeds — the normal, '
+        'internally-consistent case', () {
+      final encoded = codec.toJson(PublicDemoAggregate.initial());
+      final consistent = _withMatchingProposal(
+        _withEngineerZero(encoded, {
+          'stage': 'clientInterviewPassed',
+          'lastInterviewScore': 80,
+          'interviewRecordEngineerId': 'eng-01',
+          'interviewRecordProjectId': 'project-A',
+        }),
+        engineerId: 'eng-01',
+        projectId: 'project-A',
+      );
+
+      final restored = codec.fromJson(consistent);
+
+      expect(restored, isNotNull);
+      expect(
+        restored!.workflow.engineers
+            .firstWhere((e) => e.id == 'eng-01')
+            .genuineInterviewProjectId,
+        'project-A',
+      );
+    });
+
+    test('a project-bound pass with NO matching proposal at all is '
+        'rejected — starting a project interview itself requires a real '
+        'proposal, so a genuine pass can never exist without one', () {
+      final encoded = codec.toJson(PublicDemoAggregate.initial());
+      final noProposal = _withEngineerZero(encoded, {
+        'stage': 'clientInterviewPassed',
+        'lastInterviewScore': 80,
+        'interviewRecordEngineerId': 'eng-01',
+        'interviewRecordProjectId': 'project-A',
+      });
+
+      expect(codec.fromJson(noProposal), isNull);
+    });
+
+    test('record A + completed session for project B (proposal otherwise '
+        'consistently A): restore is still rejected — the completed '
+        'session is the other real, derived fact of which project this '
+        'engineer actually interviewed for', () {
+      final withProposal = _withMatchingProposal(
+        _withEngineerZero(codec.toJson(PublicDemoAggregate.initial()), {
+          'stage': 'clientInterviewPassed',
+          'lastInterviewScore': 80,
+          'interviewRecordEngineerId': 'eng-01',
+          'interviewRecordProjectId': 'project-A',
+        }),
+        engineerId: 'eng-01',
+        projectId: 'project-A',
+      );
+      final aggregate = withProposal['aggregate'] as Map<String, dynamic>;
+      final workflow = aggregate['workflow'] as Map<String, dynamic>;
+      final withStaleSession = {
+        ...withProposal,
+        'aggregate': {
+          ...aggregate,
+          'workflow': {
+            ...workflow,
+            'projectInterviewSessions': [_completedSessionJson('project-B')],
+          },
+        },
+      };
+
+      expect(codec.fromJson(withStaleSession), isNull);
+    });
+
+    test('legacy generic-path pass (interviewRecordProjectId == null) '
+        'still round-trips with no matching proposal at all — this '
+        'cross-check applies only to project-bound (Phase 6) passes', () {
+      var aggregate =
+          withLegacyFoundingApplicants(PublicDemoAggregate.initial())
+              .startSkillSheetReview('eng-01')
+              .beginSelling('eng-01')
+              .introduceProject('eng-01')
+              .recordEngineerInterviewResult(
+                engineerId: 'eng-01',
+                type: PublicDemoInterviewType.partner,
+              )
+              .recordEngineerInterviewResult(
+                engineerId: 'eng-01',
+                type: PublicDemoInterviewType.client,
+              );
+      expect(aggregate.workflow.matchingProposals, isEmpty);
+      expect(
+        aggregate.workflow.engineers.first.genuineInterviewProjectId,
+        isNull,
+      );
+
+      final restored = codec.decode(codec.encode(aggregate));
+
+      expect(restored, isNotNull);
+      expect(
+        restored!.workflow.engineers.first.genuineInterviewProjectId,
+        isNull,
+      );
+      expect(codec.toJson(restored), codec.toJson(aggregate));
+    });
+
+    test('a genuine end-to-end Phase 6 pass (real proposeMatch + '
+        'interview) round-trips normally — nothing a real command path '
+        'produces is ever rejected by this cross-check', () {
+      var aggregate = PublicDemoAggregate.initial(runSeed: 1)
+          .startSkillSheetReview('eng-01')
+          .beginSelling('eng-01')
+          .introduceProject('eng-01')
+          .recordEngineerInterviewResult(
+            engineerId: 'eng-01',
+            type: PublicDemoInterviewType.partner,
+          );
+      final project = aggregate
+          .projectCandidatesForMonth(aggregate.state.month)
+          .first;
+      aggregate = aggregate.proposeMatch(
+        engineerId: 'eng-01',
+        projectId: project.id,
+      );
+      aggregate = aggregate.startProjectInterview('eng-01');
+      var session = aggregate.projectInterviewSessionFor('eng-01')!;
+      while (session.playerFollowUps.length < session.questions.length) {
+        aggregate = aggregate.chooseProjectInterviewFollowUp(
+          'eng-01',
+          session.currentQuestionIndex,
+          PublicDemoProjectInterview.choicesFor(session).first,
+        );
+        session = aggregate.projectInterviewSessionFor('eng-01')!;
+      }
+      aggregate = aggregate.concludeProjectInterview('eng-01');
+
+      final restored = codec.decode(codec.encode(aggregate));
+
+      expect(restored, isNotNull);
+      expect(codec.toJson(restored!), codec.toJson(aggregate));
+    });
+  });
+}
+
+/// A minimal, hand-crafted completed `ClientInterviewSession` JSON entry for
+/// [projectId] — satisfies every structural invariant the Codex P2-1 fix's
+/// own validation block checks (non-empty questions, matching lengths, a
+/// genuine `result`), so a test using this exercises ONLY the P2
+/// authority-chain cross-check this group is about, never the unrelated
+/// P2-1 structural checks.
+Map<String, dynamic> _completedSessionJson(String projectId) => {
+  'id': 'public-demo-project-interview:eng-01:$projectId',
+  'applicationId': projectId,
+  'employeeId': 'eng-01',
+  'projectId': projectId,
+  'clientId': 'client-for-$projectId',
+  'startedWeek': 4,
+  'currentQuestionIndex': 0,
+  'questions': [
+    {
+      'category': 'technicalExperience',
+      'text': 'q',
+      'target': 't',
+      'mismatch': 0,
+    },
+  ],
+  'employeeAnswers': [
+    {'text': 'a', 'quality': 3, 'vague': false},
+  ],
+  'playerFollowUps': ['emphasizeTechnical'],
+  'interviewerReactions': ['reaction'],
+  'accumulatedEvaluation': {
+    'technical': 0,
+    'experience': 0,
+    'communication': 0,
+    'credibility': 0,
+    'clientFit': 0,
+  },
+  'completed': true,
+  'deepDiveOccurred': false,
+  'mismatchFailure': false,
+  'deepDiveText': null,
+  'result': 'passed',
+  'step': 'clientInterview',
+};
+
+/// Adds a `PublicDemoMatchingProposal` entry for `(engineerId, projectId)`
+/// to an already-encoded envelope's `workflow.matchingProposals` — mirrors
+/// [_withEngineerZero]'s own "shallow patch a nested map" shape.
+Map<String, dynamic> _withMatchingProposal(
+  Map<String, dynamic> source, {
+  required String engineerId,
+  required String projectId,
+  int decidedMonth = 1,
+}) {
+  final aggregate = source['aggregate'] as Map<String, dynamic>;
+  final workflow = aggregate['workflow'] as Map<String, dynamic>;
+  final proposals = ((workflow['matchingProposals'] as List?) ?? [])
+      .map((entry) => Map<String, dynamic>.from(entry as Map))
+      .toList()
+    ..add({
+      'engineerId': engineerId,
+      'projectId': projectId,
+      'decidedMonth': decidedMonth,
+    });
+  return {
+    ...source,
+    'aggregate': {
+      ...aggregate,
+      'workflow': {...workflow, 'matchingProposals': proposals},
+    },
+  };
 }
 
 /// Replaces fields on `workflow.engineers[0]` in an already-encoded

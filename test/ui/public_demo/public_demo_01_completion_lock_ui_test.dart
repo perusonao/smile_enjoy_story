@@ -4,6 +4,7 @@ import 'package:smile_enjoy_story/game/public_demo/public_demo_financial_status.
 import 'package:smile_enjoy_story/game/public_demo/public_demo_state.dart';
 import 'package:smile_enjoy_story/ui/public_demo/public_demo_01_placeholder_screen.dart';
 
+import 'public_demo_project_interview_test_helpers.dart';
 import 'public_demo_tab_test_helpers.dart';
 
 // POST-12MONTH-1 / FINANCE-FAILURE-1A+1B: once a terminal state is reached
@@ -98,7 +99,7 @@ void main() {
     await tapAndSettle(tester, '上位会社面談');
     await dismiss(tester);
     await tapAndSettle(tester, '客先面談');
-    await dismiss(tester);
+    await dismissClientInterview(tester);
     await tapAndSettle(tester, '受注');
     await dismiss(tester);
     // The month-close CTA is HOME's own monthly primary action.

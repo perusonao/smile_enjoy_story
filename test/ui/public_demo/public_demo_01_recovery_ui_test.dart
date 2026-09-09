@@ -37,6 +37,7 @@ import 'package:smile_enjoy_story/game/public_demo/public_demo_workflow_state.da
 import 'package:smile_enjoy_story/ui/public_demo/public_demo_01_placeholder_screen.dart';
 
 import 'public_demo_interview_test_helpers.dart';
+import 'public_demo_project_interview_test_helpers.dart';
 import 'public_demo_tab_test_helpers.dart';
 
 const _appId = 'recruitment-5-engineer-1';
@@ -144,7 +145,7 @@ Future<void> _sellFoundingEngineerAndCloseApril(WidgetTester tester) async {
   await _tapAndSettle(tester, '上位会社面談');
   await _dismiss(tester);
   await _tapAndSettle(tester, '客先面談');
-  await _dismiss(tester);
+  await dismissClientInterview(tester);
   await _tapAndSettle(tester, '受注');
   await _dismiss(tester);
   // The month-close CTA is HOME's own monthly primary action.
@@ -195,7 +196,7 @@ Future<void> _runAppOneSalesPipelineToOrdered(WidgetTester tester) async {
   await _tapAndSettle(tester, '上位会社面談');
   await _dismiss(tester);
   await _tapAndSettle(tester, '客先面談');
-  await _dismiss(tester);
+  await dismissClientInterview(tester);
   await _tapAndSettle(tester, '受注');
   await _dismiss(tester);
 }

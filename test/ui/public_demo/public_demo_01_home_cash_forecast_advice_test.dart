@@ -34,6 +34,7 @@ import 'package:smile_enjoy_story/game/public_demo/public_demo_state.dart';
 import 'package:smile_enjoy_story/ui/asset_paths.dart';
 import 'package:smile_enjoy_story/ui/public_demo/public_demo_01_placeholder_screen.dart';
 
+import 'public_demo_project_interview_test_helpers.dart';
 import 'public_demo_tab_test_helpers.dart';
 
 PublicDemoState currentState(WidgetTester tester) =>
@@ -143,7 +144,7 @@ Future<void> playApril(WidgetTester tester) async {
   await tapAndSettle(tester, '上位会社面談');
   await dismiss(tester);
   await tapAndSettle(tester, '客先面談');
-  await dismiss(tester);
+  await dismissClientInterview(tester);
   await tapAndSettle(tester, '受注');
   await dismiss(tester);
 }

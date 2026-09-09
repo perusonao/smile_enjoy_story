@@ -5,6 +5,7 @@ import 'package:smile_enjoy_story/game/public_demo/public_demo_growth_engine.dar
 import 'package:smile_enjoy_story/game/public_demo/public_demo_state.dart';
 import 'package:smile_enjoy_story/ui/public_demo/public_demo_01_placeholder_screen.dart';
 
+import 'public_demo_project_interview_test_helpers.dart';
 import 'public_demo_tab_test_helpers.dart';
 
 // 12MONTH-3-FIX1 P1-1: Public Demo 0.1's formally-adopted design decision is
@@ -96,7 +97,7 @@ void main() {
       await tapAndSettle(tester, '上位会社面談');
       await dismiss(tester);
       await tapAndSettle(tester, '客先面談');
-      await dismiss(tester);
+      await dismissClientInterview(tester);
       await tapAndSettle(tester, '受注');
       await dismiss(tester);
       // The month-close CTA is HOME's own monthly primary action.

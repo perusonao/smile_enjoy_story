@@ -1017,8 +1017,84 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
   void _beginSelling(String engineerId) =>
       _commitAggregate(_game.beginSelling(engineerId));
 
-  void _introduceProject(String engineerId) =>
-      _commitAggregate(_game.introduceProject(engineerId));
+  /// Issue #219 (Fresh Audit / Fix: 案件面談の通常プレイ到達性): before this
+  /// fix, `案件紹介` was a pure stage flip with no real project behind it —
+  /// [PublicDemoAggregate.projectInterviewCandidateFor] (the switch
+  /// `_startClientInterview` uses to decide whether `客先面談` opens the
+  /// real interactive Phase 6 mini-game, [PublicDemoProjectInterviewDialog],
+  /// or falls back to the pre-Phase-6 generic pass/fail dialog) only ever
+  /// resolves when a [PublicDemoMatchingProposal] already exists for this
+  /// engineer, and the only way to create one was to separately discover
+  /// and use the "案件を見る" Matching entry on 営業 — never part of the
+  /// game's own guided per-engineer flow (`スキルシート確認 → 営業開始 →
+  /// 案件紹介 → 上位会社面談 → 客先面談`) or any HOME recommended action. A
+  /// player who only ever follows that guided flow (exactly what
+  /// `public_demo_01_success_playthrough_test.dart` exercises) therefore
+  /// never sees the mini-game at all, even after genuinely passing both
+  /// interviews.
+  ///
+  /// `案件紹介` now genuinely introduces one of this month's real Phase 4
+  /// project candidates — [_bestFitProjectIdFor] picks the one this
+  /// engineer's own visible fit prospect (◎○△×, the exact same
+  /// [PublicDemoEngineerProjectFit] the Matching screen itself shows the
+  /// player) already ranks highest — via the same production
+  /// [PublicDemoAggregate.proposeMatch] authority the Matching screen's own
+  /// "提案する" button calls; no new formula, no fabricated result. A
+  /// player who never opens Matching now still has a real proposal by the
+  /// time they reach `partnerInterviewPassed`, so `客先面談` naturally opens
+  /// the real mini-game. This never overrides an existing proposal
+  /// ([matchingProposalFor] guard below), so a player who *did* use
+  /// Matching first keeps their own conscious pick untouched, and a
+  /// proposal [PublicDemoWorkflowState.withMatchingProposal] has already
+  /// locked (a genuine `clientInterviewPassed`) is never reachable here in
+  /// the first place ([introduceProject] itself requires `selling`, long
+  /// before that stage). A month with no real candidates at all (should not
+  /// happen — [PublicDemoSeededProjectGenerator] always offers a full slate
+  /// from April on) leaves this a no-op propose, exactly matching the old
+  /// pure-stage-flip behavior.
+  void _introduceProject(String engineerId) {
+    var next = _game;
+    if (next.matchingProposalFor(engineerId) == null) {
+      final bestProjectId = _bestFitProjectIdFor(engineerId);
+      if (bestProjectId != null) {
+        next = next.proposeMatch(
+          engineerId: engineerId,
+          projectId: bestProjectId,
+        );
+      }
+    }
+    _commitAggregate(next.introduceProject(engineerId));
+  }
+
+  /// The id of this month's real project candidate ([PublicDemoAggregate
+  /// .projectCandidatesForMonth]) whose visible fit prospect for
+  /// [engineerId] is highest — the same [PublicDemoEngineerProjectFit
+  /// .prospect] tier the Matching screen already renders per candidate, so
+  /// this picks nothing the player could not have picked themselves. `null`
+  /// only when [engineerId] has no runtime yet or this month genuinely
+  /// offers no candidates.
+  String? _bestFitProjectIdFor(String engineerId) {
+    final runtime = s.runtimeForOrNull(engineerId);
+    if (runtime == null) return null;
+    final candidates = _game.projectCandidatesForMonth(s.month);
+    if (candidates.isEmpty) return null;
+    var best = candidates.first;
+    var bestProspect = PublicDemoEngineerProjectFit.compute(
+      runtime: runtime,
+      project: best.project,
+    ).prospect;
+    for (final candidate in candidates.skip(1)) {
+      final prospect = PublicDemoEngineerProjectFit.compute(
+        runtime: runtime,
+        project: candidate.project,
+      ).prospect;
+      if (prospect.index < bestProspect.index) {
+        best = candidate;
+        bestProspect = prospect;
+      }
+    }
+    return best.id;
+  }
 
   void _reviewResume(String applicantId) =>
       _commitAggregate(_game.reviewResume(applicantId));

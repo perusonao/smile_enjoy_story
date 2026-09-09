@@ -12,7 +12,7 @@
 |---|---|---|
 | Implementation | Phase 7A implemented, hardened, tested, PR #215 opened | `6fd0dbe` |
 | P1 fix round 1 | Both Codex P1 findings root-caused and fixed, in the same session that opened the PR | `f00debb` |
-| P1 fix round 2 (this update) | Same 2 P1s: added the explicit regression coverage requested (next-month no-double-count, genuine-`projectId` survival) — no new fix was needed, both root causes were already corrected in round 1 and verified unchanged here | this report's own commit (see §14 for the final pushed HEAD) |
+| P1 fix round 2 (this update) | Same 2 P1s: added the explicit regression coverage requested (next-month no-double-count, genuine-`projectId` survival) — no new fix was needed, both root causes were already corrected in round 1 and verified unchanged here | see the final chat response for the exact pushed HEAD SHA |
 
 **Actual processing time (this round):** ~25 minutes (verify round-1 fixes still hold at current HEAD → add the two explicitly-requested regression tests → full verification → report/thread updates), within the 20–40 minute estimate.
 

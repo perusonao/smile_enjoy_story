@@ -2,9 +2,10 @@
 
 Issue: #235
 PR: https://github.com/perusonao/smile_enjoy_story/pull/236
-Status: **Phase B-1 implemented, Codex Broad Review P2 resolved, reconciled with latest
-`origin/main` (incl. merged PR #233/#234), tests green, Merge Ready (not merged — user
-merges manually)**
+Status: **Merge Ready — Codex Broad Review P2 resolved, reconciled with latest
+`origin/main` (incl. merged PR #233/#234), CI green (`validate`/`replay-unit`/`smoke-e2e`/
+`Public Demo only`/`Build Public Demo browser preview`, GitHub `mergeable_state: clean`),
+review thread resolved. Not merged — this session stops at Merge Ready per instruction.**
 Base at initial implementation: `origin/main` @
 `160b78ab972b00d787dc827620c23e1335144728`
 Base after reconcile: `origin/main` @ `d45e375d1be087a23fe041c1d21543f0833231ab`
@@ -267,10 +268,19 @@ in addition to the pre-existing sweeps in the original compensation-line test gr
 ## 10. Review thread resolution
 
 Thread `PRRT_kwDOT2htY86hH6dn` (Codex P2 "Use project-backed rates instead of always
-showing a dash") — replied with the fix summary and Fresh Authority Trace result, then
-marked resolved. No new Broad Review was requested (per instruction). No P0/P1 findings
-were surfaced by this round's own re-verification.
+showing a dash") — replied with the fix summary and Fresh Authority Trace result
+(`https://github.com/perusonao/smile_enjoy_story/pull/236#discussion_r3981228302`), then
+marked resolved via the GitHub API. No new Broad Review was requested (per instruction). No
+P0/P1 findings were surfaced by this round's own re-verification.
 
-## 11. PR
+## 11. CI
 
-https://github.com/perusonao/smile_enjoy_story/pull/236
+All checks on the final head (`6dc3977`) completed successfully: `replay-unit`, `Build
+Public Demo browser preview`, `Public Demo only`, `validate` (the full
+`flutter analyze`/`flutter test`/web-build gate), `smoke-e2e`. GitHub reports
+`mergeable_state: "clean"`.
+
+## 12. PR
+
+https://github.com/perusonao/smile_enjoy_story/pull/236 — **Merge Ready, not merged** (per
+instruction, this session stops here).

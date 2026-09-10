@@ -2248,12 +2248,57 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
   /// code path stays byte-for-byte untouched by this phase (HOME Freeze);
   /// both read the exact same authoritative facts (`engineer.stage`,
   /// [workflow.assignedEngineerIds]) and so can never disagree.
+  ///
+  /// Issue #231 FIRST-FUN-YEAR P1 Fresh Audit: [engineerStatus] alone
+  /// labels every still-`waiting` engineer identically ('待機'), even
+  /// though `PublicDemoEngineerRuntime.isReadyForFieldSales`
+  /// ([readyForFieldSales]) already, authoritatively, distinguishes the two
+  /// — this was exactly the "founding roster all reads the same in April"
+  /// comprehension gap the audit found: a fresh player could not tell 佐藤
+  /// (capability 78, ready) from 鈴木 (capability 52, not ready) without
+  /// scrolling to Section 2's per-engineer action card. This label now
+  /// states that same existing fact directly in the roster, still without
+  /// touching [engineerStatus] itself (HOME's [_officeStageStatusFor] and
+  /// the SkillSheet sheet's `statusLabel` keep reading the raw pipeline
+  /// stage, unchanged — HOME Freeze).
   String _currentEmployeeStatusLabel(PublicDemoEngineerSales engineer) {
     if (engineer.stage == PublicDemoSalesStage.ordered &&
         _currentlyAssignedEngineerIds.contains(engineer.id)) {
       return '参画中';
     }
+    if (engineer.stage == PublicDemoSalesStage.waiting) {
+      if (!readyForFieldSales(engineer.id)) return '研修が必要';
+      return _fieldSalesActionReachableThisMonth(engineer)
+          ? '営業可能'
+          : engineerStatus(engineer);
+    }
     return engineerStatus(engineer);
+  }
+
+  /// PR #233 Codex review (P2): [_currentEmployeeStatusLabel]'s '営業可能'
+  /// must only be shown in a month where `_employeeNextActionsSection`'s
+  /// `ec(i)` card — the only control that can actually start selling
+  /// (スキルシート確認/営業開始) — is reachable for THIS engineer; otherwise the
+  /// roster would name an action with no control anywhere on screen to take
+  /// it (a new dead end this Issue explicitly forbids). Mirrors `ec(i)`'s
+  /// own three render conditions in `_employeeNextActionsSection` exactly,
+  /// simplified using the facts already established by the `waiting`-stage
+  /// caller (never `ordered`, never currently assigned):
+  ///  * April (4): `ec(i)` always renders, for every engineer.
+  ///  * June (6): only for a later-joined hire still in the applicant→
+  ///    engineer funnel (`s.joinedApplicantIds`) — never a founding
+  ///    engineer, who has no June-specific `ec(i)` render site.
+  ///  * July-February (7-14, RECOVERY-LOOP-1): every still-waiting engineer.
+  ///  * May (5) and March (15): `ec(i)` is never rendered at all this
+  ///    screen, in any branch — so '営業可能' falls back to the plain,
+  ///    pre-existing [engineerStatus] label there instead.
+  /// '研修が必要' needs no such gating: `_employeeGrowthSection`'s internal-
+  /// training card is unconditionally reachable every month from May
+  /// through March (`s.month >= 5`), independently of `ec(i)`.
+  bool _fieldSalesActionReachableThisMonth(PublicDemoEngineerSales engineer) {
+    if (s.month == 4 || (s.month >= 7 && s.month <= 14)) return true;
+    if (s.month == 6) return s.joinedApplicantIds.contains(engineer.id);
+    return false;
   }
 
   String applicantStatus(PublicDemoApplicant a) => switch (a.stage) {
@@ -3996,6 +4041,28 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
                     beforeCapability: skill.beforeCapability,
                   ),
                 ],
+                // Issue #231 FIRST-FUN-YEAR P1 Fresh Audit: states the same
+                // reason [ec]'s own field-sales lock banner already gives
+                // (`実力 $threshold 以上が必要です（現在 $capability）`) right in
+                // the roster row, so "why does this employee need training"
+                // is visible without scrolling to Section 2 — reads only
+                // the same existing authority
+                // (`PublicDemoEngineerRuntime.fieldSalesCapabilityRequirement`
+                // / [capabilityFor]), never a new or duplicated threshold.
+                if (e.stage == PublicDemoSalesStage.waiting &&
+                    !readyForFieldSales(e.id))
+                  Padding(
+                    padding: const EdgeInsets.only(top: 2),
+                    child: Text(
+                      '営業には実力'
+                      '${PublicDemoEngineerRuntime.fieldSalesCapabilityRequirement}'
+                      '以上が必要（現在${capabilityFor(e.id)}）',
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ),
               ],
             ),
           ),
@@ -4030,6 +4097,20 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
     }
     if (s.trainingSelections.containsKey(e.id)) {
       return PublicDemoEmployeeStatusTone.training;
+    }
+    // Issue #231 FIRST-FUN-YEAR P1 Fresh Audit: mirrors
+    // [_currentEmployeeStatusLabel]'s own '営業可能'/'研修が必要' split for a
+    // still-`waiting` engineer, reading the same authoritative
+    // [readyForFieldSales] fact — never a second, independently-derived
+    // eligibility check. PR #233 Codex review (P2): also mirrors that same
+    // label's [_fieldSalesActionReachableThisMonth] month gate, so the tone
+    // never promises an action (readyForSales) in a month where no control
+    // can actually take it.
+    if (e.stage == PublicDemoSalesStage.waiting) {
+      if (!readyForFieldSales(e.id)) return PublicDemoEmployeeStatusTone.training;
+      return _fieldSalesActionReachableThisMonth(e)
+          ? PublicDemoEmployeeStatusTone.readyForSales
+          : PublicDemoEmployeeStatusTone.waiting;
     }
     return PublicDemoEmployeeStatusTone.waiting;
   }

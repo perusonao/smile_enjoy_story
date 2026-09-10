@@ -87,8 +87,10 @@ void main() {
   group('Section 1 (社員一覧・現在状態): waiting employee', () {
     testWidgets(
       'April: both founding engineers are waiting — the roster shows each '
-      'one, truthfully labeled 待機, and the 待機/参画中/合計 summary line '
-      'matches PublicDemoState.engineersWaiting/engineersAssigned',
+      'one, truthfully labeled by real field-sales readiness (Issue #231 '
+      'FIRST-FUN-YEAR P1: 佐藤=営業可能/鈴木=研修が必要, not both 待機), and '
+      'the 待機/参画中/合計 summary line matches '
+      'PublicDemoState.engineersWaiting/engineersAssigned',
       (tester) async {
         final aggregate = PublicDemoAggregate.initial();
         await pumpDemoWith(tester, aggregate);
@@ -108,15 +110,29 @@ void main() {
             ),
             findsOneWidget,
           );
-          expect(
-            find.descendant(
-              of: find.byKey(rosterRowKey(e.id)),
-              matching: find.text('待機'),
-            ),
-            findsOneWidget,
-            reason: '${e.id} is economically waiting with no assignment',
-          );
         }
+        // eng-01 (佐藤, founding capability 78) already clears the
+        // authoritative field-sales threshold (60); eng-02 (鈴木, 52) does
+        // not — see publicDemoInitialEngineerRuntimes /
+        // PublicDemoEngineerRuntime.fieldSalesCapabilityRequirement.
+        expect(
+          find.descendant(
+            of: find.byKey(rosterRowKey('eng-01')),
+            matching: find.text('営業可能'),
+          ),
+          findsOneWidget,
+          reason: 'eng-01 is economically waiting but already field-sales '
+              'ready',
+        );
+        expect(
+          find.descendant(
+            of: find.byKey(rosterRowKey('eng-02')),
+            matching: find.text('研修が必要'),
+          ),
+          findsOneWidget,
+          reason: 'eng-02 is economically waiting and below the field-sales '
+              'capability threshold',
+        );
 
         expect(
           find.text('待機 2・参画中 0・合計 2'),
@@ -155,10 +171,14 @@ void main() {
           findsNothing,
           reason: 'an assigned engineer must never show the stale label',
         );
+        // Issue #231 FIRST-FUN-YEAR P1: eng-02's founding capability (52)
+        // stays below the field-sales threshold at month 8 (no training was
+        // selected in this fixture), so the roster now truthfully reads
+        // 研修が必要 rather than the generic 待機 both engineers used to share.
         expect(
           find.descendant(
             of: find.byKey(rosterRowKey('eng-02')),
-            matching: find.text('待機'),
+            matching: find.text('研修が必要'),
           ),
           findsOneWidget,
         );

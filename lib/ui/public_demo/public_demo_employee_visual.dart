@@ -14,20 +14,32 @@ import 'package:flutter/material.dart';
 // PublicDemoAggregate/PublicDemoState itself, so it cannot invent a status,
 // a capability number, or a growth delta on its own.
 
-/// The 3 authoritative buckets a 社員タブ status badge can visually fall
+/// The authoritative buckets a 社員タブ status badge can visually fall
 /// into. This is a *coloring* concern only — the badge's own text always
 /// stays whatever the caller's authoritative status string already is
 /// (e.g. `engineerStatus`/`_currentEmployeeStatusLabel`'s '待機'/'参画中'/
-/// '営業中'/etc.); no new status vocabulary is introduced.
+/// '営業中'/'研修が必要'/'営業可能'/etc.); no new status vocabulary is
+/// introduced here — this enum only maps an existing label to a color.
 enum PublicDemoEmployeeStatusTone {
   /// Currently assigned to a project — the same fact
   /// `_currentlyAssignedEngineerIds` already backs.
   assigned,
 
-  /// This month's internal training is already selected
-  /// (`PublicDemoState.trainingSelections`) — a real, existing per-month
-  /// authoritative fact, not a new one.
+  /// Needs attention before the next step can happen: either this month's
+  /// internal training is already selected
+  /// (`PublicDemoState.trainingSelections`, a real, existing per-month
+  /// authoritative fact) OR — Issue #231 FIRST-FUN-YEAR P1 Fresh Audit — a
+  /// still-`waiting` engineer's own `PublicDemoEngineerRuntime
+  /// .isReadyForFieldSales` is genuinely `false` (below
+  /// `fieldSalesCapabilityRequirement`), which is exactly why training is
+  /// the recommended next action for them.
   training,
+
+  /// Issue #231 FIRST-FUN-YEAR P1: a still-`waiting` engineer whose own
+  /// `PublicDemoEngineerRuntime.isReadyForFieldSales` is genuinely `true` —
+  /// distinguishes "can start selling right now" from [assigned] (already
+  /// on a project) at a glance, without opening the SkillSheet.
+  readyForSales,
 
   /// Anything else on the waiting/selling/interviewing path.
   waiting,
@@ -56,6 +68,10 @@ class PublicDemoEmployeeStatusBadge extends StatelessWidget {
       PublicDemoEmployeeStatusTone.training => (
         const Color(0xFFFBE0DE),
         const Color(0xFFB3261E),
+      ),
+      PublicDemoEmployeeStatusTone.readyForSales => (
+        const Color(0xFFDCEBFB),
+        const Color(0xFF1155A6),
       ),
       PublicDemoEmployeeStatusTone.waiting => (
         const Color(0xFFFFF0CC),

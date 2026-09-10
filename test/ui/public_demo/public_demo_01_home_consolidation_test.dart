@@ -311,11 +311,22 @@ void main() {
             'status cards are on HOME now',
       );
       await switchPublicDemoTab(tester, PublicDemoTab.employees);
+      // Issue #231 FIRST-FUN-YEAR P1 Fresh Audit: the 社員 tab's own roster
+      // badge no longer restates the generic 待機 — it now states real
+      // field-sales readiness (`PublicDemoEngineerRuntime
+      // .isReadyForFieldSales`) directly, so April's two founding engineers
+      // read differently from one another (佐藤=営業可能, 鈴木=研修が必要)
+      // instead of sharing one uninformative label. See
+      // `public_demo_employee_ui_phase1_test.dart`'s own coverage of this
+      // roster row text.
       expect(
         find.text('待機'),
-        findsNWidgets(2),
-        reason: 'April\'s two waiting engineers\' own badges, on 社員',
+        findsNothing,
+        reason: 'the roster no longer shares one generic label between a '
+            'field-sales-ready and a not-yet-ready waiting engineer',
       );
+      expect(find.text('営業可能'), findsOneWidget);
+      expect(find.text('研修が必要'), findsOneWidget);
       await switchPublicDemoTab(tester, PublicDemoTab.home);
     });
 

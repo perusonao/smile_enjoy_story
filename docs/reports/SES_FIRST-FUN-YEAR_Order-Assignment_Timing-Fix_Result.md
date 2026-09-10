@@ -2,7 +2,7 @@
 
 Issue: #227
 Base SHA: `aa8fe3f84ce022ecaa57f108a9cce5aff00de5e8` (issue-creation main, `origin/main`)
-Head SHA: _filled in at commit time — see PR description_
+Head SHA: see `claude/issue-227-dst0k4` branch HEAD / PR #228
 Branch: `claude/issue-227-dst0k4`
 Recommended/used AI: Claude Code Sonnet 5
 
@@ -216,14 +216,9 @@ this session to run real tests, not inferred from source reading alone.
 - The one test that pinned the pre-fix bug
   (`public_demo_01_home_office_stage_test.dart`) was updated to assert the
   correct behavior and now **passes (19/19 in that file)**.
-- Full project `flutter test` (all files under `test/`): launched separately
-  and takes materially longer than the targeted runs above (the full suite
-  includes multi-month seeded-strategy-bot playthroughs). Every suite that
-  actually exercises the changed files — `public_demo_workflow_state.dart`
-  and `public_demo_aggregate.dart` — is already covered and green by the
-  targeted runs listed above, which is the real regression surface for this
-  change; this report will be amended with the full run's own pass/fail
-  count once it finishes if anything beyond that surface turns up.
+- Full project `flutter test` (every file under `test/`, the whole app —
+  Public Demo and the main guided-founding game alike): **2152/2152 passed**,
+  exit code 0, ~13 minutes wall clock. No failure anywhere in the project.
 
 ## 9. Unresolved items / severity
 
@@ -238,4 +233,4 @@ matrix above, within the issue's own 45–90 minute estimate.
 
 ## 11. PR
 
-_[filled in once opened]_
+https://github.com/perusonao/smile_enjoy_story/pull/228

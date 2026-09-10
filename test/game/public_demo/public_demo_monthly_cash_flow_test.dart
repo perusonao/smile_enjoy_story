@@ -488,4 +488,62 @@ void main() {
       expect(loaded.latestMonthlyCashFlow, isNull);
     });
   });
+
+  group('14. netIncome (SES ISSUE-232 Phase A §5.2)', () {
+    test('equals revenue - totalOutflow, a pure derived read', () {
+      final start = fixture(
+        month: 8,
+        cash: 2000000,
+        pendingRevenue: 500000,
+        engineersAssigned: 2,
+      );
+      final flow = PublicDemoMonthlyClose.closeOrdinaryMonth(
+        state: start,
+        monthlyExpenses: 800000,
+      ).state.latestMonthlyCashFlow!;
+      expect(flow.netIncome, flow.revenue - flow.totalOutflow);
+    });
+
+    test('diverges from netCashMovement when revenue has not been '
+        'collected as cash yet (last month\'s receivables were 0)', () {
+      // April has no prior-month receivables to collect (cashReceived ==
+      // 0), so this month's own newly recognized revenue is entirely
+      // uncollected: netIncome (revenue-based) and netCashMovement
+      // (cash-based) must genuinely differ, proving netIncome is not
+      // silently just an alias for the existing cash figure.
+      final start = fixture(
+        month: 4,
+        cash: 1000000,
+        pendingRevenue: 0,
+        engineersAssigned: 1,
+      );
+      final flow = PublicDemoMonthlyClose.closeApril(
+        state: start,
+        monthlyExpenses: 800000,
+        orderedEngineers: 0,
+      ).state.latestMonthlyCashFlow!;
+      expect(flow.cashReceived, 0);
+      expect(flow.revenue, greaterThan(0));
+      expect(flow.netIncome, isNot(flow.netCashMovement));
+      expect(flow.netIncome, flow.revenue - flow.totalOutflow);
+    });
+
+    test('never persisted: absent from toJson, and fromJson round-trip '
+        'still derives the same value', () {
+      final start = fixture(
+        month: 4,
+        cash: 1000000,
+        pendingRevenue: 0,
+        engineersAssigned: 1,
+      );
+      final flow = PublicDemoMonthlyClose.closeApril(
+        state: start,
+        monthlyExpenses: 800000,
+        orderedEngineers: 0,
+      ).state.latestMonthlyCashFlow!;
+      expect(flow.toJson().containsKey('netIncome'), isFalse);
+      final reloaded = PublicDemoMonthlyCashFlow.fromJson(flow.toJson());
+      expect(reloaded.netIncome, flow.netIncome);
+    });
+  });
 }

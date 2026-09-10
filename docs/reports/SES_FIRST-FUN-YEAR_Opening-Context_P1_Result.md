@@ -171,9 +171,7 @@ flutter test <new focused tests, 3 files>           → 23 tests passed
   test/game/public_demo_opening_marker_test.dart      (7)
   test/ui/public_demo/public_demo_01_opening_context_test.dart (14)
   test/app/ses_app_opening_marker_test.dart           (2)
-flutter test (full suite)                           → <filled in after the
-                                                         final background run
-                                                         completes>
+flutter test (full suite)                           → 2170 tests passed, 0 failed
 ```
 
 No pre-existing test was modified. Four unrelated screenshot PNGs under

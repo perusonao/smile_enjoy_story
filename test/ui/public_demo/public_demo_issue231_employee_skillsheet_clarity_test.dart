@@ -173,6 +173,127 @@ void main() {
       },
     );
 
+    group('PR #233 Codex review (P2): 営業可能 must not be shown in a month '
+        'with no actual sales-flow control to act on it', () {
+      testWidgets(
+        'May (month 5): eng-01 is genuinely ready but still waiting — no '
+        'ec(i) card renders in May for any engineer, so the roster falls '
+        'back to the plain 待機 label/tone instead of naming an unreachable '
+        'action',
+        (tester) async {
+          final aggregate = publicDemoAggregateAtMonth(5);
+          expect(
+            aggregate.state.runtimeForOrNull('eng-01')!.isReadyForFieldSales,
+            isTrue,
+          );
+
+          await _pumpDemoWith(tester, aggregate);
+
+          expect(
+            find.descendant(
+              of: find.byKey(_rosterRowKey('eng-01')),
+              matching: find.text('待機'),
+            ),
+            findsOneWidget,
+          );
+          expect(
+            find.descendant(
+              of: find.byKey(_rosterRowKey('eng-01')),
+              matching: find.text('営業可能'),
+            ),
+            findsNothing,
+          );
+        },
+      );
+
+      testWidgets(
+        'March (month 15): eng-01 is genuinely ready but still waiting — '
+        'ec(i) never renders in March either, so the roster still reads '
+        '待機, never 営業可能, for the entire remainder of the fiscal year',
+        (tester) async {
+          final aggregate = publicDemoAggregateAtMonth(15);
+          expect(aggregate.state.month, 15);
+          expect(
+            aggregate.state.runtimeForOrNull('eng-01')!.isReadyForFieldSales,
+            isTrue,
+          );
+
+          await _pumpDemoWith(tester, aggregate);
+
+          expect(
+            find.descendant(
+              of: find.byKey(_rosterRowKey('eng-01')),
+              matching: find.text('待機'),
+            ),
+            findsOneWidget,
+          );
+          expect(
+            find.descendant(
+              of: find.byKey(_rosterRowKey('eng-01')),
+              matching: find.text('営業可能'),
+            ),
+            findsNothing,
+          );
+        },
+      );
+
+      testWidgets(
+        'June (month 6): a founding engineer (never in joinedApplicantIds) '
+        'gets no June-specific ec(i) render site either — still 待機, not '
+        '営業可能',
+        (tester) async {
+          final aggregate = publicDemoAggregateAtMonth(6);
+          expect(
+            aggregate.state.runtimeForOrNull('eng-01')!.isReadyForFieldSales,
+            isTrue,
+          );
+          expect(aggregate.workflow.applicants.any(
+            (a) => a.id == 'eng-01',
+          ), isFalse);
+
+          await _pumpDemoWith(tester, aggregate);
+
+          expect(
+            find.descendant(
+              of: find.byKey(_rosterRowKey('eng-01')),
+              matching: find.text('待機'),
+            ),
+            findsOneWidget,
+          );
+          expect(
+            find.descendant(
+              of: find.byKey(_rosterRowKey('eng-01')),
+              matching: find.text('営業可能'),
+            ),
+            findsNothing,
+          );
+        },
+      );
+
+      testWidgets(
+        'July (month 8, inside the RECOVERY-LOOP-1 window): the same '
+        'still-waiting, ready eng-01 now DOES read 営業可能 — proving the '
+        'gate is month/reachability-specific, not a blanket suppression',
+        (tester) async {
+          final aggregate = publicDemoAggregateAtMonth(8);
+          expect(
+            aggregate.state.runtimeForOrNull('eng-01')!.isReadyForFieldSales,
+            isTrue,
+          );
+
+          await _pumpDemoWith(tester, aggregate);
+
+          expect(
+            find.descendant(
+              of: find.byKey(_rosterRowKey('eng-01')),
+              matching: find.text('営業可能'),
+            ),
+            findsOneWidget,
+          );
+        },
+      );
+    });
+
     test(
       'save/reload (PublicDemoSaveCodec round trip) preserves the same '
       'readiness fact the roster label is derived from — no UI-local state '

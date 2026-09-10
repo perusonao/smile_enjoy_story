@@ -84,18 +84,26 @@ Full targeted runs (all green, exit code 0):
 
 Final confirmation run — `test/game/public_demo` + `test/ui/public_demo` + `test/widget_test.dart` together, after both fixes above — **1389 tests, all passed, exit code 0.**
 
-## 5. 360x800 / 390x844 verification
+## 5. Post-PR review fix (Codex P2 — dead-end month gap)
+
+PR #233's automated Codex review found a real defect (P2) in the first push: `_currentEmployeeStatusLabel` showed `営業可能` for any still-`waiting`, ready engineer in **every** month, but `_employeeNextActionsSection`'s `ec(i)` card — the only control that can actually start selling (`スキルシート確認`/`営業開始`) — only renders in April (unconditionally), June (only for a later-joined hire still in the applicant→engineer funnel), and July–February (RECOVERY-LOOP-1). **May (5) and March (15) never render it at all**, and June never renders it for a founding engineer. A ready-but-still-waiting engineer entering one of those months (e.g. a player who does not act on 佐藤's April card before closing the month, or 鈴木 crossing the threshold exactly entering March) would have read `営業可能` in the roster with no control anywhere on screen to act on it — a new, narrower dead end of exactly the kind Issue #231's own verification matrix forbids.
+
+**Fix**: added `_fieldSalesActionReachableThisMonth(engineer)`, mirroring `ec(i)`'s three render conditions exactly (simplified using the facts already established by the `waiting`-stage caller — never `ordered`, never currently assigned). `_currentEmployeeStatusLabel`/`_employeeStatusTone` now show `営業可能`/`readyForSales` only when this holds; otherwise they fall back to the original, pre-existing `engineerStatus`/`.waiting` (i.e. `待機`) — never a fabricated new label. `研修が必要` needed no equivalent gating: `_employeeGrowthSection`'s internal-training card is unconditionally reachable every month from May through March (`s.month >= 5`), independently of `ec(i)`, so recommending training is never a dead end.
+
+Added 4 new regression tests to `public_demo_issue231_employee_skillsheet_clarity_test.dart` covering exactly the scenarios Codex named: May, March, and June (founding engineer) all correctly fall back to `待機`; July (inside the RECOVERY-LOOP-1 window) still correctly reads `営業可能`, proving the gate is reachability-specific, not a blanket suppression. `flutter analyze` clean; every previously-passing suite (§4's table, full `test/game/public_demo` + `test/ui/public_demo` + `test/widget_test.dart`) re-run green after this fix.
+
+## 6. 360x800 / 390x844 verification
 
 The existing `public_demo_employee_ui_phase1_test.dart` and `public_demo_employee_visual_complete_test.dart` viewport suites (360x800 and 390x844, TextScaler 1.0/1.3/2.0) already exercise the exact fixture (`oneAssignedOneWaitingAtMonth(8)`) whose roster now renders the new reason caption for 鈴木 (still not ready at month 8 in that fixture) — all of these passed unmodified after the change, including at TextScaler 2.0, with no `RenderFlex`/overflow exception and the roster row `Rect` staying within `[0, size.width]`. No new viewport-specific test was needed since the existing suite already covers the new content at both target sizes.
 
-## 6. Authority / persistence impact
+## 7. Authority / persistence impact
 
 * **Authority**: zero new domain rules. Every new/changed line reads `PublicDemoEngineerRuntime.isReadyForFieldSales`/`actualCapability`/`fieldSalesCapabilityRequirement` — the exact same authority `ec(i)`'s pre-existing lock banner already read — through the exact same pre-existing `capabilityFor`/`readyForFieldSales` helpers. No UI-local eligibility formula, no duplicated `60`/`78`/`52` literal in production code (only in tests, matching this codebase's own established convention for asserting against known founding data).
 * **Persistence**: no field added to `PublicDemoEngineerRuntime`, `PublicDemoEngineerSales`, `PublicDemoState`, or `PublicDemoWorkflowState`; `PublicDemoSaveCodec.schemaVersion` unchanged (`1`). Confirmed via a new encode/decode round-trip test (§4.3).
 * **HOME**: untouched. `_officeStageStatusFor`/HOME's Office Stage strip, HOME's KPI tiles, and `home_recommended_action.dart`'s design table are all unmodified — verified by the (now-updated) `public_demo_01_home_consolidation_test.dart` HOME-side assertions, which are unchanged and still passing.
 * **Sales/Recruitment/Finance/monthly-close**: untouched (no file under `lib/game/public_demo/` was edited).
 
-## 7. Verification matrix (Issue #231 §Verification matrix)
+## 8. Verification matrix (Issue #231 §Verification matrix)
 
 | Item | Result |
 |---|---|
@@ -111,15 +119,15 @@ The existing `public_demo_employee_ui_phase1_test.dart` and `public_demo_employe
 | April→May progression regression | `publicDemoAggregateAtMonth`/RECOVERY-LOOP-1 fixtures (which chain real `closeApril`/`closeMay` calls) pass unmodified across the full suite run |
 | Finance/Recruitment/Assignment/monthly-close state mutation | None — no file under `lib/game/public_demo/` was edited |
 
-## 8. Unresolved / Known Limitations
+## 9. Unresolved / Known Limitations
 
 * The SkillSheet-confirm hard gate itself is unchanged (kept, with evidence — §2). If a future Fresh Audit of HOME's Recommended Action design authority and the Cash Advisor decides to also revisit that pipeline, this report's §2 evidence and the specific authorities it names (`home_recommended_action.dart`'s design table, `PublicDemoCashAdviceSelector`) are the starting point.
 * `実力` as the player-facing term for capability is left unchanged (Issue #231 makes this optional — "必要なら"). Fresh Audit found it already appears consistently, always alongside the concrete threshold/current numbers (never bare), and is not duplicated elsewhere with a different term.
 
-## 9. Actual elapsed time
+## 10. Actual elapsed time
 
-Approximately 1.5 hours (Fresh Audit + implementation + focused/new tests + two full-suite regression runs + report), within Issue #231's own 1.5–2.5h estimate. Excludes CI wait time. Includes one-time setup cost of installing a matching Flutter 3.44.8 SDK in this session's environment (none was preinstalled).
+Approximately 2 hours (Fresh Audit + implementation + focused/new tests + three full-suite regression runs + the post-PR Codex-review fix (§5) + report), within Issue #231's own 1.5–2.5h estimate. Excludes CI wait time. Includes the one-time setup cost of installing a matching Flutter 3.44.8 SDK in this session's environment (none was preinstalled).
 
-## 10. PR
+## 11. PR
 
 https://github.com/perusonao/smile_enjoy_story/pull/233

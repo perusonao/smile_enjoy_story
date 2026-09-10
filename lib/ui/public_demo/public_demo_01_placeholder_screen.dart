@@ -2267,9 +2267,38 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
       return '参画中';
     }
     if (engineer.stage == PublicDemoSalesStage.waiting) {
-      return readyForFieldSales(engineer.id) ? '営業可能' : '研修が必要';
+      if (!readyForFieldSales(engineer.id)) return '研修が必要';
+      return _fieldSalesActionReachableThisMonth(engineer)
+          ? '営業可能'
+          : engineerStatus(engineer);
     }
     return engineerStatus(engineer);
+  }
+
+  /// PR #233 Codex review (P2): [_currentEmployeeStatusLabel]'s '営業可能'
+  /// must only be shown in a month where `_employeeNextActionsSection`'s
+  /// `ec(i)` card — the only control that can actually start selling
+  /// (スキルシート確認/営業開始) — is reachable for THIS engineer; otherwise the
+  /// roster would name an action with no control anywhere on screen to take
+  /// it (a new dead end this Issue explicitly forbids). Mirrors `ec(i)`'s
+  /// own three render conditions in `_employeeNextActionsSection` exactly,
+  /// simplified using the facts already established by the `waiting`-stage
+  /// caller (never `ordered`, never currently assigned):
+  ///  * April (4): `ec(i)` always renders, for every engineer.
+  ///  * June (6): only for a later-joined hire still in the applicant→
+  ///    engineer funnel (`s.joinedApplicantIds`) — never a founding
+  ///    engineer, who has no June-specific `ec(i)` render site.
+  ///  * July-February (7-14, RECOVERY-LOOP-1): every still-waiting engineer.
+  ///  * May (5) and March (15): `ec(i)` is never rendered at all this
+  ///    screen, in any branch — so '営業可能' falls back to the plain,
+  ///    pre-existing [engineerStatus] label there instead.
+  /// '研修が必要' needs no such gating: `_employeeGrowthSection`'s internal-
+  /// training card is unconditionally reachable every month from May
+  /// through March (`s.month >= 5`), independently of `ec(i)`.
+  bool _fieldSalesActionReachableThisMonth(PublicDemoEngineerSales engineer) {
+    if (s.month == 4 || (s.month >= 7 && s.month <= 14)) return true;
+    if (s.month == 6) return s.joinedApplicantIds.contains(engineer.id);
+    return false;
   }
 
   String applicantStatus(PublicDemoApplicant a) => switch (a.stage) {
@@ -4073,11 +4102,15 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
     // [_currentEmployeeStatusLabel]'s own '営業可能'/'研修が必要' split for a
     // still-`waiting` engineer, reading the same authoritative
     // [readyForFieldSales] fact — never a second, independently-derived
-    // eligibility check.
+    // eligibility check. PR #233 Codex review (P2): also mirrors that same
+    // label's [_fieldSalesActionReachableThisMonth] month gate, so the tone
+    // never promises an action (readyForSales) in a month where no control
+    // can actually take it.
     if (e.stage == PublicDemoSalesStage.waiting) {
-      return readyForFieldSales(e.id)
+      if (!readyForFieldSales(e.id)) return PublicDemoEmployeeStatusTone.training;
+      return _fieldSalesActionReachableThisMonth(e)
           ? PublicDemoEmployeeStatusTone.readyForSales
-          : PublicDemoEmployeeStatusTone.training;
+          : PublicDemoEmployeeStatusTone.waiting;
     }
     return PublicDemoEmployeeStatusTone.waiting;
   }

@@ -6,7 +6,7 @@ BASE SHA: `6943b673f1a1bd4d7c1dcd7c9abf4e12cb1b624f` (origin/main, PR #228 merge
 
 Branch: `claude/issue-229-t8lr5n`
 
-FINAL HEAD SHA: _filled in after commit — see the PR for the authoritative value._
+FINAL HEAD SHA: `b512daf6cb27f3367fac2c82687bc566406736ec`
 
 ## 0. Branch note
 
@@ -223,4 +223,4 @@ session's single continuous work pass.
 
 ## 11. PR
 
-_Filled in after the PR is opened — see the PR itself for the URL._
+https://github.com/perusonao/smile_enjoy_story/pull/230

@@ -217,6 +217,16 @@ Result Reportは履歴・証拠であり、この文書の代わりにはしな�
 
 ## Update history
 
+### 2026-09-10（Issue #229完了 — Public Demo Opening Context Package A / governing plan sync）
+
+- **Issue #229を実装完了（PR #230、Package Aのみ）。** #225 Human Replayで発見されたPublic Demo初回プレイのOpening理解ギャップ（目的・初期資金・毎月の固定支出・売上ゼロを継続した場合の倒産リスクを理解しないまま4月の通常操作に入ってしまう）のうち、Package A（Opening Context画面の追加）を実装した。`PublicDemo01PlaceholderScreen`に、ブラウザ単位で一度だけ表示するOpening Context画面（目的・初期資金・毎月の固定費・倒産リスク・最初にすること + 既存のひよりナビゲーター紹介 + 「4月の経営を始める」CTA）を追加し、表示済み状態は新規の`PublicDemoOpeningMarker`（`SharedPreferences`、既存save schemaとは完全に独立したisolated key）で管理する。画面に表示する金額（初期資金¥4,000,000・月次固定費¥800,000）はいずれもcopyへハードコードせず、既存のFinance/Payroll authority（`PublicDemoState.aprilStart().cash` / `PublicDemoSalary.baselineMonthlyExpenses`）からそのまま取得している。Finance/Sales/Employee/月次決算のauthorityおよびsave schema（`schemaVersion`）は変更していない。
+  - 既存の約80件のPublic Demo widget testとPlaywright e2e suiteへの影響を避けるため、`PublicDemoOpeningMarker`の既定コンストラクタはinert（常に「表示済み」）とし、実プレイヤーの入口（`main.dart`）でのみ`.persistent()`を明示的に使用する設計とした（既存の`?e2e=1`と同じ分岐でe2e specファイルは無編集）。詳細は`docs/reports/SES_FIRST-FUN-YEAR_Opening-Context_P1_Result.md`§4を参照。
+  - Package B（初期社員＋SkillSheet導線、SkillSheet hard gate変更、Employee画面再設計等）は本Issueの対象外のまま未着手。
+  - `flutter analyze`（プロジェクト全体）No issues、変更ファイルを直接カバーする対象suite群（`test/game/public_demo` 842件、`test/ui/public_demo` 522件、`test/widget_test.dart` 11件、新規focused test 3ファイル23件）、プロジェクト全体`flutter test`（2170件）いずれもgreen。
+  - 詳細・authority trace・persistence/replay検証マトリクス・テスト証跡は`docs/reports/SES_FIRST-FUN-YEAR_Opening-Context_P1_Result.md`を参照。PR: https://github.com/perusonao/smile_enjoy_story/pull/230 。
+- **本エントリはCurrent execution order・Prioritized backlog tableの構成自体は変更しない。** 本修正はPrioritized backlog表のP3「Public Demo UX仕上げ」枠（3〜6h、「初見でも基本ループを理解できる」）のうちPackage A分の消化として記録する — First Fun Yearの実行順（Visual Complete系列 → April→March human replay）自体は本エントリ以前と同じ。production code/tests/workflowは本docs-only追記で変更していない。
+- 本エントリはPR #230のCodex Review P1（「governing plan（本文書）が#229完了を反映しておらず、以降の優先順位判断を誤らせ得る」）への対応。
+
 ### 2026-09-10（Issue #227完了 — 受注翌月Assignment materializeのP1修正 / governing plan sync）
 
 - **Issue #227を実装完了（PR #228）。** #225 Human Replay → #226 Focused Audit（verdict: A — REAL P0/P1 PROGRESSION DEFECT）で発見された、First Fun Year本体の進行整合性に関わるP1回帰を修正した: 4月に真正受注（`engineer.stage == ordered`かつ真正なPhase 6面談合格）したエンジニアの`PublicDemoAssignment`が、5月中は一切存在せず、5月の月次決算（`closeMay`）が実行されて初めて生成されていた — 受注の1か月後ではなく2か月後の参画になっていた。社員/オフィスタブの状態表示・研修可否・参画中案件カードはいずれも`workflow.assignments`/`assignedEngineerIds`を読むため、既に正しかった売上側の`engineersAssigned`カウンタと5月中ずっと不整合を起こしていた。

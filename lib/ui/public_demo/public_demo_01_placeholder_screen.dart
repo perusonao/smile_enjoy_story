@@ -28,6 +28,7 @@ import '../../game/public_demo/public_demo_financial_status.dart';
 import '../../game/public_demo/public_demo_raise.dart';
 import '../../game/public_demo/public_demo_summer_bonus_plan.dart';
 import '../../game/public_demo/public_demo_workflow_state.dart';
+import '../../game/persistence/public_demo_opening_marker.dart';
 import '../../game/persistence/public_demo_save_service.dart';
 import '../../presentation/home/models/home_dashboard_display_data.dart';
 import '../../presentation/home/models/home_office_stage_display.dart';
@@ -39,6 +40,7 @@ import '../asset_paths.dart';
 import '../theme.dart';
 import '../widgets/labels.dart';
 import 'public_demo_event_dialog.dart';
+import 'public_demo_opening_context_screen.dart';
 import 'public_demo_accounting_visual.dart';
 import 'public_demo_candidate_skill_sheet_sheet.dart';
 import 'public_demo_cash_shortage_card.dart';
@@ -189,11 +191,20 @@ class PublicDemo01PlaceholderScreen extends StatefulWidget {
     super.key,
     this.buildInfo,
     this.saveService = const PublicDemoSaveService(),
+    this.openingMarker = const PublicDemoOpeningMarker(),
     this.debugSeed,
   });
 
   final BuildInfo? buildInfo;
   final PublicDemoSaveService saveService;
+
+  /// FIRST-FUN-YEAR P1 (Issue #229): tracks whether this browser has already
+  /// dismissed the Opening Context screen. Defaults to the inert
+  /// [PublicDemoOpeningMarker] — see that class's own doc for why every
+  /// existing widget test that constructs this screen directly keeps
+  /// landing on HOME unchanged; `main.dart` (the real entry point) passes
+  /// [PublicDemoOpeningMarker.persistent] explicitly.
+  final PublicDemoOpeningMarker openingMarker;
 
   /// QA/E2E/test-only [PublicDemoState.runSeed] override for a brand-new
   /// playthrough (SEEDED-RNG-REUSE-1), mirroring [GameController
@@ -252,6 +263,15 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
   bool _isRestoring = true;
   bool _isRestarting = false;
 
+  /// FIRST-FUN-YEAR P1 (Issue #229): true while the Opening Context screen
+  /// should replace HOME — a brand-new playthrough (no restored save) whose
+  /// [widget.openingMarker] has not yet recorded a dismissal. Never true
+  /// while [_isRestoring] (see [_restoreAggregate], the only place both are
+  /// ever set together) and always resolved through the exact same
+  /// [_resolveShowOpening] both the boot path and restart use, so neither
+  /// path can disagree about what "not yet seen" means.
+  bool _showOpening = false;
+
   /// Codex P2-2 fix (PR #214): true from the moment [_openProjectInterview]
   /// is entered until its dialog route (however it ends — a genuine
   /// pass/fail commit, the player dismissing it, or this widget being
@@ -299,12 +319,36 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
     } catch (_) {
       restored = null;
     }
+    final showOpening = await _resolveShowOpening(hasRestoredSave: restored != null);
     if (!mounted) return;
     setState(() {
       _game =
           restored ?? PublicDemoAggregate.initial(runSeed: widget.debugSeed);
       _isRestoring = false;
+      _showOpening = showOpening;
     });
+  }
+
+  /// Dismisses the Opening Context and records the dismissal
+  /// (best-effort — see [PublicDemoOpeningMarker.markSeen]) so a later
+  /// reload of this same fresh session does not show it again.
+  void _acknowledgeOpeningContext() {
+    if (!mounted) return;
+    setState(() => _showOpening = false);
+    unawaited(widget.openingMarker.markSeen());
+  }
+
+  /// The single place [_showOpening] is ever computed — both
+  /// [_restoreAggregate] (boot) and [_restartGame] resolve it through this
+  /// exact method, so neither path can disagree about what "not yet seen"
+  /// means. A restored save ([hasRestoredSave]) always means this browser
+  /// has real prior progress — the Opening Context never shows for it, even
+  /// if [widget.openingMarker] itself has no record (e.g. a save from before
+  /// this screen existed). Only a genuinely fresh state (no restored save)
+  /// ever consults the marker.
+  Future<bool> _resolveShowOpening({required bool hasRestoredSave}) async {
+    if (hasRestoredSave) return false;
+    return !(await widget.openingMarker.hasSeenOpening());
   }
 
   /// Serializes all storage operations in aggregate commit order. Capturing
@@ -1451,6 +1495,16 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
       );
       return;
     }
+    // FIRST-FUN-YEAR P1 (Issue #229): a restart is a brand-new playthrough,
+    // so it clears any recorded Opening Context dismissal too — for the
+    // inert default [PublicDemoOpeningMarker] both calls are no-ops and
+    // `hasSeenOpening` still resolves `true`, so `_showOpening` stays false
+    // exactly as before this screen existed (every existing restart test
+    // keeps passing unmodified); the real persisted marker instead shows the
+    // Opening Context again on the next fresh playthrough.
+    await widget.openingMarker.clear();
+    final showOpening = await _resolveShowOpening(hasRestoredSave: false);
+    if (!mounted) return;
     setState(() {
       // A fresh runSeed every time (SEEDED-RNG-REUSE-1): "4月からもう一度"
       // is a brand-new playthrough, never a replay of the abandoned one's
@@ -1461,6 +1515,7 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
       // triggered from the bankruptcy terminal card (already on HOME) or
       // from the Menu tab's test-only restart control.
       _selectedTabIndex = _homeTabIndex;
+      _showOpening = showOpening;
     });
     _resetMonthScroll();
   }
@@ -5057,6 +5112,18 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
 
   @override
   Widget build(BuildContext c) {
+    // FIRST-FUN-YEAR P1 (Issue #229): the Opening Context replaces HOME
+    // entirely (no AppBar/bottom nav) until dismissed — never true while
+    // [_isRestoring] (both are only ever set together, in
+    // [_restoreAggregate]/[_restartGame]), so this never races the restore
+    // spinner above.
+    if (_showOpening) {
+      return PublicDemoOpeningContextScreen(
+        startingCash: PublicDemoState.aprilStart().cash,
+        monthlyFixedCost: PublicDemoSalary.baselineMonthlyExpenses,
+        onStart: _acknowledgeOpeningContext,
+      );
+    }
     final navigatorAdvice = _compactedForShortage(
       navigatorAdviceFor(_recommendedActionSlot),
     );

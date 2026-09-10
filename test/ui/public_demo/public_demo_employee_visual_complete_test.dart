@@ -169,9 +169,11 @@ void main() {
     );
 
     testWidgets(
-      'August: an assigned engineer\'s badge tone differs from a waiting '
-      'one\'s (color only — the label text is still the exact, unchanged '
-      '_currentEmployeeStatusLabel string)',
+      'August: an assigned engineer\'s badge tone differs from a still-'
+      'waiting, not-yet-field-sales-ready one\'s (Issue #231 FIRST-FUN-YEAR '
+      'P1: the waiting badge now reads 研修が必要, not the generic 待機, '
+      'because eng-02\'s founding capability genuinely never reached the '
+      'threshold in this fixture)',
       (tester) async {
         final aggregate = oneAssignedOneWaitingAtMonth(8);
         await pumpDemoWith(tester, aggregate);
@@ -190,8 +192,8 @@ void main() {
         );
         expect(assignedBadge.label, '参画中');
         expect(assignedBadge.tone, PublicDemoEmployeeStatusTone.assigned);
-        expect(waitingBadge.label, '待機');
-        expect(waitingBadge.tone, PublicDemoEmployeeStatusTone.waiting);
+        expect(waitingBadge.label, '研修が必要');
+        expect(waitingBadge.tone, PublicDemoEmployeeStatusTone.training);
       },
     );
   });

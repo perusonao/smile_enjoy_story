@@ -217,6 +217,16 @@ Result Reportは履歴・証拠であり、この文書の代わりにはしな�
 
 ## Update history
 
+### 2026-09-10（Issue #231 Package B完了 — Initial Employee / SkillSheet Gate Clarity / governing plan sync）
+
+- **Issue #231（Package B）を実装完了。** #225 Human Replay → Package A（#229、PR #230、mainへ統合済み）に続く次P1として、初回4月に佐藤健（founding capability 78、営業可能）と鈴木葵（52、研修が必要）を社員タブの社員一覧（Section 1）だけで見分けられるようにした。Fresh Auditの結果、`_currentEmployeeStatusLabel`/`engineerStatus`が待機中の社員全員を一律「待機」と表示しており、既存authority（`PublicDemoEngineerRuntime.isReadyForFieldSales`/`fieldSalesCapabilityRequirement`=60、Section 2の既存lock bannerが既に読んでいた値と同一）が社員一覧側に一切反映されていなかったことが判明した。
+  - `_currentEmployeeStatusLabel`/`_employeeStatusTone`が同じ既存authorityから「営業可能」/「研修が必要」を導出するよう変更し（新規`PublicDemoEmployeeStatusTone.readyForSales`を追加）、研修が必要な社員の社員一覧行にはSection 2のlock bannerと同一authorityを再利用した理由キャプション（例:「営業には実力60以上が必要（現在52）」）を追加した。`engineerStatus`自体・HOME側の`_officeStageStatusFor`・SkillSheet sheetの`statusLabel`は無変更（HOME Freeze維持）。
+  - SkillSheet確認hard gate（`waiting→skillSheet→selling`）はFresh Auditの結果、read-onlyではあるがHOME Recommended Action設計authority（`home_recommended_action.dart`のP2帯）とCash Advisor（`PublicDemoCashAdviceSelector`）に組み込まれておりPackage Bのスコープ外であるため、**弱化/削除せず維持**（維持理由はResult Report参照）。
+  - Sales/Employee/Recruitment/Finance/月次決算/HOME/save schema（`schemaVersion`=1）はいずれも無変更。
+  - `flutter analyze`（プロジェクト全体）No issues、既存テスト3件（「待機中の社員全員が同じ表示」を前提としていたassertion）を更新、新規focused test 1ファイル3件を追加、`test/game/public_demo`+`test/ui/public_demo`+`test/widget_test.dart`（1389件）いずれもgreen。
+  - 詳細・authority trace・gate維持理由・テスト証跡は`docs/reports/SES_FIRST-FUN-YEAR_Initial-Employee-SkillSheet-Clarity_P1_Result.md`を参照。PR: https://github.com/perusonao/smile_enjoy_story/pull/233 。
+- **本エントリはCurrent execution order・Prioritized backlog tableの構成自体は変更しない。** 本修正はPrioritized backlog表のP3「Public Demo UX仕上げ」枠（3〜6h、「初見でも基本ループを理解できる」）のうちPackage B分の消化として記録する — First Fun Yearの実行順（Visual Complete系列 → April→March human replay）自体は本エントリ以前と同じ。production code以外のtests/workflowも本エントリの対象範囲（Employee tab presentation）に限定される。
+
 ### 2026-09-10（Issue #229完了 — Public Demo Opening Context Package A / governing plan sync）
 
 - **Issue #229を実装完了（PR #230、Package Aのみ）。** #225 Human Replayで発見されたPublic Demo初回プレイのOpening理解ギャップ（目的・初期資金・毎月の固定支出・売上ゼロを継続した場合の倒産リスクを理解しないまま4月の通常操作に入ってしまう）のうち、Package A（Opening Context画面の追加）を実装した。`PublicDemo01PlaceholderScreen`に、ブラウザ単位で一度だけ表示するOpening Context画面（目的・初期資金・毎月の固定費・倒産リスク・最初にすること + 既存のひよりナビゲーター紹介 + 「4月の経営を始める」CTA）を追加し、表示済み状態は新規の`PublicDemoOpeningMarker`（`SharedPreferences`、既存save schemaとは完全に独立したisolated key）で管理する。画面に表示する金額（初期資金¥4,000,000・月次固定費¥800,000）はいずれもcopyへハードコードせず、既存のFinance/Payroll authority（`PublicDemoState.aprilStart().cash` / `PublicDemoSalary.baselineMonthlyExpenses`）からそのまま取得している。Finance/Sales/Employee/月次決算のauthorityおよびsave schema（`schemaVersion`）は変更していない。

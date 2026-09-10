@@ -217,6 +217,16 @@ Result Reportは履歴・証拠であり、この文書の代わりにはしな�
 
 ## Update history
 
+### 2026-09-10（Issue #227完了 — 受注翌月Assignment materializeのP1修正 / governing plan sync）
+
+- **Issue #227を実装完了（PR #228）。** #225 Human Replay → #226 Focused Audit（verdict: A — REAL P0/P1 PROGRESSION DEFECT）で発見された、First Fun Year本体の進行整合性に関わるP1回帰を修正した: 4月に真正受注（`engineer.stage == ordered`かつ真正なPhase 6面談合格）したエンジニアの`PublicDemoAssignment`が、5月中は一切存在せず、5月の月次決算（`closeMay`）が実行されて初めて生成されていた — 受注の1か月後ではなく2か月後の参画になっていた。社員/オフィスタブの状態表示・研修可否・参画中案件カードはいずれも`workflow.assignments`/`assignedEngineerIds`を読むため、既に正しかった売上側の`engineersAssigned`カウンタと5月中ずっと不整合を起こしていた。
+  - **修正**: `PublicDemoAggregate.closeApril()`が、`closeMay()`が既に使っていた既存のドメイン権威`PublicDemoWorkflowState.assignOrderedForMay()`をそのまま呼ぶようにした（新しい割当式は追加していない）。同メソッド自体は、1シーズンに1回だけ呼ばれる前提の「毎回全ロスターを再構築する」実装から、既存エントリ（`nextOrderStatus`/`replacementStage`/`fieldEvaluation`/`projectId`/`monthsCredited`）を保持する冪等なupsertへ変更した — 4月→5月で2回目の呼び出しが発生するようになったため、これをしないと5月中の決定が5月決算時に無言で破棄される回帰を新たに生んでいた。
+  - 次順序CTA（「7月分の発注を確認」）のタイミング早期化、6月以降（6月→7月・7月以降）の受注→参画タイミング、save/reload・リトライ冪等性・真正projectId保持は、いずれも既存の月ゲート・別機構（`recoverLateYearAssignment`等）により無影響であることをコードレベルで確認済み。
+  - `flutter analyze`（プロジェクト全体）No issues、変更ファイルを直接カバーする対象suite群（workflow state/aggregate/monthly close/month guard/persistence/save codec、#220・#222・#224回帰含む）、プロジェクト全体`flutter test`（2152件）いずれもgreen。
+  - 詳細・root cause・before/after状態遷移表・テスト証跡は`docs/reports/SES_FIRST-FUN-YEAR_Order-Assignment_Timing-Fix_Result.md`を参照。PR: https://github.com/perusonao/smile_enjoy_story/pull/228 。
+- **本エントリはCurrent execution order・Prioritized backlog tableの構成自体は変更しない。** 本修正はPrioritized backlog表のP0「年間進行Blocker修正」枠（1件0.5〜3h）の消化として記録する — First Fun Yearの実行順（Visual Complete系列 → April→March human replay）自体は本エントリ以前と同じ。production code/tests/workflowは本docs-only追記で変更していない。
+- 本エントリはPR #228のCodex Review P1（「governing plan（本文書）が#227完了を反映しておらず、以降の優先順位判断を誤らせ得る」）への対応。
+
 ### 2026-09-08（CORE-GAMEPLAY Phase 4.5完了 — Recruitment/SkillSheet authority是正）
 
 - **CORE-GAMEPLAY Phase 4.5を実施。** Phase 5（Matching）着手前の必須是正として、Phase 1-4完了時点で残っていたRecruitment/SkillSheet周りの authority 不整合を修正した（`docs/reports/SES_CORE-GAMEPLAY_Phase4.5_Recruitment-SkillSheet_Result.md`）:

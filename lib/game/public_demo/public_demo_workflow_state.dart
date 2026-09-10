@@ -960,47 +960,81 @@ class PublicDemoWorkflowState {
   /// applicant — see `joinAndKeepOnly`'s own doc for exactly the
   /// join-failure case.
   /// Reproduces exactly the roster the pre-cutover widget computed inline.
+  ///
+  /// Issue #227 P1: [PublicDemoAggregate.closeApril] now also calls this —
+  /// a genuine April order must materialize its assignment entering May,
+  /// not sit un-assigned until June — so this can no longer unconditionally
+  /// rebuild every entry from scratch on each call the way a true one-shot
+  /// May-only builder could. An engineer/applicant that already has an
+  /// entry on [assignments] (built by an earlier call this same method
+  /// made, e.g. April's) keeps that exact entry — `nextOrderStatus`,
+  /// `replacementStage`, `fieldEvaluation`, `projectId`, and
+  /// `monthsCredited` all carried forward untouched — rather than being
+  /// silently reset to a fresh [PublicDemoAssignment]'s defaults; only an
+  /// engineer/applicant with no existing entry yet gets a newly-built one.
+  /// The eligibility SET is still recomputed from current stage facts on
+  /// every call, exactly as before: an entry whose engineer/applicant no
+  /// longer qualifies is still dropped, and this is still the only way an
+  /// entry is ever added.
   PublicDemoWorkflowState assignOrderedForMay() {
+    PublicDemoAssignment? existingAssignmentFor(String engineerId) =>
+        assignments
+            .where((assignment) => assignment.engineerId == engineerId)
+            .firstOrNull;
+
     final nextAssignments = [
       for (final engineer in engineers)
         if (engineer.stage == PublicDemoSalesStage.ordered &&
             engineer.hasGenuineInterviewRecord)
-          // CORE-GAMEPLAY Phase 7A: a genuine, project-bound Phase 6 pass
-          // always produces an assignment tied to that exact real project —
-          // never the founding-engineer template/generic placeholder, even
-          // when one exists for this engineer id, so the real project
-          // identity Phase 6 already earned is never silently discarded.
-          if (engineer.genuineInterviewProjectId case final projectId?)
-            PublicDemoAssignment.forOrderedEngineer(
-              engineerId: engineer.id,
-              engineerName: engineer.name,
-              humanity: engineer.interviewProfile.humanity,
-              projectId: projectId,
-            )
-          else
-            publicDemoInitialAssignments
-                    .where(
-                      (assignment) => assignment.engineerId == engineer.id,
-                    )
-                    .firstOrNull ??
-                PublicDemoAssignment.forOrderedEngineer(
-                  engineerId: engineer.id,
-                  engineerName: engineer.name,
-                  humanity: engineer.interviewProfile.humanity,
-                ),
+          existingAssignmentFor(engineer.id) ??
+              _freshOrderedAssignment(engineer),
       for (final applicant in applicants)
         if (applicant.stage == PublicDemoApplicantStage.juneOrdered &&
             applicant.hasJoined)
-          PublicDemoAssignment(
-            engineerId: applicant.id,
-            engineerName: applicant.name,
-            projectName: '新規開発支援',
-            deliveryPressure: 50,
-            budgetHealth: 70,
-            humanity: 70,
-          ),
+          existingAssignmentFor(applicant.id) ??
+              PublicDemoAssignment(
+                engineerId: applicant.id,
+                engineerName: applicant.name,
+                projectName: '新規開発支援',
+                deliveryPressure: 50,
+                budgetHealth: 70,
+                humanity: 70,
+              ),
     ];
     return _withAssignments(nextAssignments);
+  }
+
+  /// Builds a brand new [PublicDemoAssignment] for [engineer] from this
+  /// workflow's own authoritative facts — extracted from
+  /// [assignOrderedForMay] so it composes with that method's `??` reuse of
+  /// an already-existing entry (an `if`/`case` collection element, the
+  /// original inline shape, cannot itself appear as the right-hand side of
+  /// `??`).
+  ///
+  /// CORE-GAMEPLAY Phase 7A: a genuine, project-bound Phase 6 pass always
+  /// produces an assignment tied to that exact real project — never the
+  /// founding-engineer template/generic placeholder, even when one exists
+  /// for this engineer id, so the real project identity Phase 6 already
+  /// earned is never silently discarded.
+  PublicDemoAssignment _freshOrderedAssignment(
+    PublicDemoEngineerSales engineer,
+  ) {
+    if (engineer.genuineInterviewProjectId case final projectId?) {
+      return PublicDemoAssignment.forOrderedEngineer(
+        engineerId: engineer.id,
+        engineerName: engineer.name,
+        humanity: engineer.interviewProfile.humanity,
+        projectId: projectId,
+      );
+    }
+    return publicDemoInitialAssignments
+            .where((assignment) => assignment.engineerId == engineer.id)
+            .firstOrNull ??
+        PublicDemoAssignment.forOrderedEngineer(
+          engineerId: engineer.id,
+          engineerName: engineer.name,
+          humanity: engineer.interviewProfile.humanity,
+        );
   }
 
   /// The single domain-owned way to commit a late-year (internal month

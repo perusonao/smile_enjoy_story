@@ -111,9 +111,24 @@ class PublicDemoMonthlyReportSnapshot {
     // reading a single already-named authority, which Issue #232's
     // authority rules ("UI/adapter独自の gameplay threshold/判定を作らな
     // い") rule out for this phase.
+    //
+    // PR #234 Codex P1: `stage == juneOrdered` alone is not enough —
+    // [PublicDemoApplicant.join] mints a [PublicDemoJoinRecord] without
+    // ever clearing `stage` back off `juneOrdered` (that stage is the
+    // applicant's permanent "won this June order" identity, not a
+    // pending-join flag — see [PublicDemoApplicant.hasJoined]'s own doc).
+    // So an applicant who already joined in a prior close still carries
+    // `stage == juneOrdered` forever after, and reading the stage alone
+    // would re-announce an already-completed join as still "next month's"
+    // in every later month's snapshot. [hasJoined] is the existing,
+    // already-named authority for "has this applicant actually joined
+    // yet" (WORKFLOW-STATE-1AB FIX2 P1-4) — reused verbatim here, not a
+    // new judgment — so only a genuinely still-pending juneOrdered
+    // applicant is reported.
     final confirmedJoins = <String>{
       for (final applicant in workflow.applicants)
-        if (applicant.stage == PublicDemoApplicantStage.juneOrdered)
+        if (applicant.stage == PublicDemoApplicantStage.juneOrdered &&
+            !applicant.hasJoined)
           applicant.id,
     };
 
@@ -150,10 +165,14 @@ class PublicDemoMonthlyReportSnapshot {
   /// is not [PublicDemoMonthlyReportStatus.ready].
   final List<PublicDemoEngineerSales> waitingEngineers;
 
-  /// Applicant ids currently at
-  /// [PublicDemoApplicantStage.juneOrdered] — confirmed to join next
-  /// month. Empty when [status] is not
-  /// [PublicDemoMonthlyReportStatus.ready].
+  /// Applicant ids currently at [PublicDemoApplicantStage.juneOrdered]
+  /// who have **not yet** joined ([PublicDemoApplicant.hasJoined] false) —
+  /// confirmed to join next month, but not yet. `juneOrdered` alone is not
+  /// enough: it is the applicant's permanent "won this June order"
+  /// identity and stays set forever after a real join too, so a caller
+  /// reading the stage alone would keep re-announcing an already-joined
+  /// applicant as still pending in every later month's snapshot. Empty
+  /// when [status] is not [PublicDemoMonthlyReportStatus.ready].
   final Set<String> confirmedNextMonthJoinApplicantIds;
 
   /// True only when [status] is [PublicDemoMonthlyReportStatus.ready] —

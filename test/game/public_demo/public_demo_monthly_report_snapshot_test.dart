@@ -3,6 +3,7 @@ import 'package:smile_enjoy_story/game/public_demo/public_demo_aggregate.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_fiscal_close_id.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_interview.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_monthly_report_snapshot.dart';
+import 'package:smile_enjoy_story/game/public_demo/public_demo_recruitment.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_recruitment_medium.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_salary_offer.dart';
 
@@ -243,6 +244,182 @@ void main() {
         closedMonth: 4,
       );
       expect(snapshot.confirmedNextMonthJoinApplicantIds, isEmpty);
+    });
+
+    test(
+      // PR #234 Codex P1: juneOrdered stage survives a genuine join
+      // (PublicDemoApplicant.join never clears it — it is the applicant's
+      // permanent "won this June order" identity, not a pending-join
+      // flag), so hasJoined must gate this field or an already-joined
+      // applicant would be reported as still "next month's" join.
+      'an applicant who has already joined is excluded, even though '
+      'stage stays juneOrdered forever after',
+      () {
+        var aggregate = PublicDemoAggregate.initial(runSeed: 1)
+            .recruit(PublicDemoRecruitmentMedium.engineer)
+            .aggregate!
+            .closeApril(monthlyExpenses: 800000); // -> May
+        final applicantId = aggregate.workflow.applicants.first.id;
+        aggregate = aggregate.completeInterview(applicantId).aggregate;
+        final applicant = aggregate.workflow.applicants.firstWhere(
+          (a) => a.id == applicantId,
+        );
+        final offer = PublicDemoSalaryOffer(
+          requestedMonthlySalary: applicant.requestedMonthlySalary,
+          offeredMonthlySalary: applicant.requestedMonthlySalary,
+          acceptanceScore: 100,
+          motivationDelta: 0,
+          trustDelta: 0,
+        );
+        aggregate = aggregate.acceptOffer(
+          applicantId: applicantId,
+          offer: offer,
+          fiscalCloseId: PublicDemoFiscalCloseId.forMonth(
+            aggregate.state.month,
+          ),
+        );
+        aggregate = aggregate
+            .beginPreEntrySkillSheet(applicantId)
+            .beginPreEntrySelling(applicantId)
+            .introducePreEntryProject(applicantId)
+            .recordPreEntryPartnerInterviewResult(applicantId)
+            .recordPreEntryClientInterviewResult(applicantId)
+            .recordJuneOrder(applicantId);
+
+        final closed = aggregate.closeMay(week: 9, monthlyExpenses: 800000);
+        final joinedApplicant = closed.workflow.applicants.firstWhere(
+          (a) => a.id == applicantId,
+        );
+        // Confirms the fixture: the stage really does stay juneOrdered
+        // after a genuine join — the exact condition the fix guards.
+        expect(joinedApplicant.stage, PublicDemoApplicantStage.juneOrdered);
+        expect(joinedApplicant.hasJoined, isTrue);
+
+        final snapshot = PublicDemoMonthlyReportSnapshot.fromAggregate(
+          closed,
+          closedMonth: 5,
+        );
+
+        expect(
+          snapshot.confirmedNextMonthJoinApplicantIds,
+          isNot(contains(applicantId)),
+        );
+        expect(snapshot.confirmedNextMonthJoinApplicantIds, isEmpty);
+      },
+    );
+
+    test(
+      'a later month\'s snapshot does not re-announce a completed join',
+      () {
+        var aggregate = PublicDemoAggregate.initial(runSeed: 1)
+            .recruit(PublicDemoRecruitmentMedium.engineer)
+            .aggregate!
+            .closeApril(monthlyExpenses: 800000);
+        final applicantId = aggregate.workflow.applicants.first.id;
+        aggregate = aggregate.completeInterview(applicantId).aggregate;
+        final applicant = aggregate.workflow.applicants.firstWhere(
+          (a) => a.id == applicantId,
+        );
+        final offer = PublicDemoSalaryOffer(
+          requestedMonthlySalary: applicant.requestedMonthlySalary,
+          offeredMonthlySalary: applicant.requestedMonthlySalary,
+          acceptanceScore: 100,
+          motivationDelta: 0,
+          trustDelta: 0,
+        );
+        aggregate = aggregate.acceptOffer(
+          applicantId: applicantId,
+          offer: offer,
+          fiscalCloseId: PublicDemoFiscalCloseId.forMonth(
+            aggregate.state.month,
+          ),
+        );
+        aggregate = aggregate
+            .beginPreEntrySkillSheet(applicantId)
+            .beginPreEntrySelling(applicantId)
+            .introducePreEntryProject(applicantId)
+            .recordPreEntryPartnerInterviewResult(applicantId)
+            .recordPreEntryClientInterviewResult(applicantId)
+            .recordJuneOrder(applicantId);
+
+        // June's own close, two months after the join — the report for
+        // June must not still call this applicant a "next month" join.
+        final june = aggregate
+            .closeMay(week: 9, monthlyExpenses: 800000)
+            .closeJune(assignedInJuly: 0, monthlyExpenses: 800000);
+        expect(
+          june.workflow.applicants
+              .firstWhere((a) => a.id == applicantId)
+              .stage,
+          PublicDemoApplicantStage.juneOrdered,
+        );
+
+        final snapshot = PublicDemoMonthlyReportSnapshot.fromAggregate(
+          june,
+          closedMonth: 6,
+        );
+
+        expect(
+          snapshot.confirmedNextMonthJoinApplicantIds,
+          isNot(contains(applicantId)),
+        );
+      },
+    );
+
+    test('save/reload does not change the judgment', () {
+      var aggregate = PublicDemoAggregate.initial(runSeed: 1)
+          .recruit(PublicDemoRecruitmentMedium.engineer)
+          .aggregate!
+          .closeApril(monthlyExpenses: 800000);
+      final applicantId = aggregate.workflow.applicants.first.id;
+      aggregate = aggregate.completeInterview(applicantId).aggregate;
+      final applicant = aggregate.workflow.applicants.firstWhere(
+        (a) => a.id == applicantId,
+      );
+      final offer = PublicDemoSalaryOffer(
+        requestedMonthlySalary: applicant.requestedMonthlySalary,
+        offeredMonthlySalary: applicant.requestedMonthlySalary,
+        acceptanceScore: 100,
+        motivationDelta: 0,
+        trustDelta: 0,
+      );
+      aggregate = aggregate.acceptOffer(
+        applicantId: applicantId,
+        offer: offer,
+        fiscalCloseId: PublicDemoFiscalCloseId.forMonth(aggregate.state.month),
+      );
+      aggregate = aggregate
+          .beginPreEntrySkillSheet(applicantId)
+          .beginPreEntrySelling(applicantId)
+          .introducePreEntryProject(applicantId)
+          .recordPreEntryPartnerInterviewResult(applicantId)
+          .recordPreEntryClientInterviewResult(applicantId)
+          .recordJuneOrder(applicantId);
+
+      // Before join: reload must still report the pending join.
+      final beforeJoinReloaded = PublicDemoAggregate.fromJson(
+        aggregate.toJson(),
+      );
+      final beforeJoinSnapshot = PublicDemoMonthlyReportSnapshot.fromAggregate(
+        beforeJoinReloaded,
+        closedMonth: 4,
+      );
+      expect(
+        beforeJoinSnapshot.confirmedNextMonthJoinApplicantIds,
+        contains(applicantId),
+      );
+
+      // After join: reload must still exclude the now-joined applicant.
+      final closed = aggregate.closeMay(week: 9, monthlyExpenses: 800000);
+      final afterJoinReloaded = PublicDemoAggregate.fromJson(closed.toJson());
+      final afterJoinSnapshot = PublicDemoMonthlyReportSnapshot.fromAggregate(
+        afterJoinReloaded,
+        closedMonth: 5,
+      );
+      expect(
+        afterJoinSnapshot.confirmedNextMonthJoinApplicantIds,
+        isNot(contains(applicantId)),
+      );
     });
   });
 

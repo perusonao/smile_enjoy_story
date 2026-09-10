@@ -217,6 +217,15 @@ Result Reportは履歴・証拠であり、この文書の代わりにはしな�
 
 ## Update history
 
+### 2026-09-10（Issue #232 Phase A完了 — Monthly Management Report Result Snapshot / authority adapter / governing plan sync）
+
+- **Issue #232のPhase Aのみを実装完了。** Fresh Audit（`docs/reports/SES_FIRST-FUN-YEAR_Monthly-Management-Report_Fresh-Audit.md`）のGO判定（Phase A/Phase Bの2分割推奨）に従い、月末の月次結果を安全に取得するための**read-only Result Snapshot / authority adapterのみ**を実装した。`PublicDemoMonthlyCashFlow.netIncome`（`revenue - totalOutflow`、1行の非永続derived getter）と、`PublicDemoMonthlyReportSnapshot.fromAggregate`（`PublicDemoState.latestMonthlyCashFlow`/`PublicDemoWorkflowState.assignedEngineerIds`を読むだけの新規クラス、close/commandを一切呼ばず、stale month mismatchを型レベルでガード）を追加した。
+  - **Phase B（月末Management Report Dialog/UI、`public_demo_01_placeholder_screen.dart`への統合）は本エントリの対象外・未実装のまま。** 「月次結果・経営フィードバック改善」（Prioritized backlog表P1、「前月比・収支理由・危険要因が次の判断につながる」）のうち、本エントリはその**土台となるauthority adapterの消化のみ**であり、このP1項目自体は未完了のまま残る。Dialog/UIはPhase B（別Issue/別タスクとして今後着手）で扱う。
+  - Finance/Payroll/Recruitment/Assignment/月次決算/HOME/save schema（`schemaVersion`）はいずれも無変更。月内delta（今月の応募数・面談数・新規受注数）はFresh Auditで確認された既存authorityのGAP（発生月を示す永続フィールドが存在しない）のため、Phase Aでは実装していない。
+  - `flutter analyze`（プロジェクト全体）No issues、新規focused test 1ファイル14件（`public_demo_monthly_report_snapshot_test.dart`）+ 既存`public_demo_monthly_cash_flow_test.dart`への追加3件、プロジェクト全体`flutter test`いずれもgreen。
+  - 詳細・authority trace・snapshot設計・テスト証跡は`docs/reports/SES_FIRST-FUN-YEAR_Monthly-Management-Report_PhaseA_Result.md`を参照。PR: https://github.com/perusonao/smile_enjoy_story/pull/234 。
+- **本エントリはCurrent execution order・Prioritized backlog tableの構成自体は変更しない。** 本修正はPrioritized backlog表のP1「月次結果・経営フィードバック改善」枠（2〜4h）のうち、Phase A（authority adapterのみ）分の部分消化として記録する — この項目自体は未完了（Phase B待ち）であり、表の行は「完了」に変更していない。First Fun Yearの実行順（Visual Complete系列 → April→March human replay）自体は本エントリ以前と同じ。
+
 ### 2026-09-10（Issue #231 Package B完了 — Initial Employee / SkillSheet Gate Clarity / governing plan sync）
 
 - **Issue #231（Package B）を実装完了。** #225 Human Replay → Package A（#229、PR #230、mainへ統合済み）に続く次P1として、初回4月に佐藤健（founding capability 78、営業可能）と鈴木葵（52、研修が必要）を社員タブの社員一覧（Section 1）だけで見分けられるようにした。Fresh Auditの結果、`_currentEmployeeStatusLabel`/`engineerStatus`が待機中の社員全員を一律「待機」と表示しており、既存authority（`PublicDemoEngineerRuntime.isReadyForFieldSales`/`fieldSalesCapabilityRequirement`=60、Section 2の既存lock bannerが既に読んでいた値と同一）が社員一覧側に一切反映されていなかったことが判明した。

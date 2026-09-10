@@ -10,6 +10,7 @@ import 'app/game_scope.dart';
 import 'app/nav_scope.dart';
 import 'app/public_demo_session_marker.dart';
 import 'game/game.dart';
+import 'game/persistence/public_demo_opening_marker.dart';
 import 'game/persistence/public_demo_save_service.dart';
 import 'game/persistence/save_service.dart';
 import 'ui/main_shell.dart';
@@ -53,6 +54,19 @@ void main() {
         debugSeed: debugSeed,
         saveService: SaveService.forExperience(experience),
       ),
+      // FIRST-FUN-YEAR P1 (Issue #229): the persisted Opening Context marker
+      // is opt-out, not opt-in, for exactly the one existing QA/E2E flag
+      // above — every real player's URL, and every curated CI smoke/heavy
+      // Playwright spec (all of which already navigate through `?e2e=1`,
+      // see e2e/helpers/public-demo-player.ts's own `PUBLIC_DEMO_PATH`),
+      // stay on opposite sides of this without needing any e2e spec edited.
+      // A genuinely fresh e2e run would otherwise see the same Opening
+      // Context a genuinely fresh player does and then immediately try to
+      // interact with HOME — exactly the interactive-on-first-load contract
+      // those specs already assert.
+      openingMarker: launchParams['e2e'] == '1'
+          ? const PublicDemoOpeningMarker()
+          : const PublicDemoOpeningMarker.persistent(),
     ),
   );
 }
@@ -62,10 +76,19 @@ class SesApp extends StatelessWidget {
     super.key,
     required this.controller,
     this.experience = AppExperience.development,
+    this.openingMarker = const PublicDemoOpeningMarker.persistent(),
   });
 
   final GameController controller;
   final AppExperience experience;
+
+  /// Threaded straight through to [PublicDemo01PlaceholderScreen] — see
+  /// [PublicDemoOpeningMarker]'s own doc for why this defaults to
+  /// [PublicDemoOpeningMarker.persistent] here (every real/e2e entry point
+  /// goes through this constructor) while that screen's own bare default
+  /// stays the inert marker (every widget test that constructs it directly
+  /// instead).
+  final PublicDemoOpeningMarker openingMarker;
   final ValueNotifier<int> _tabIndex = ValueNotifier(0);
 
   @override
@@ -78,7 +101,10 @@ class SesApp extends StatelessWidget {
           title: 'S.E.S. - Smile. Enjoy. Story.',
           debugShowCheckedModeBanner: false,
           theme: SesTheme.build(),
-          home: _GameRoot(experience: experience),
+          home: _GameRoot(
+            experience: experience,
+            openingMarker: openingMarker,
+          ),
         ),
       ),
     );
@@ -102,9 +128,10 @@ class SesApp extends StatelessWidget {
 /// check (`PublicDemo01PlaceholderScreen._restoreAggregate`, exercised by
 /// every real playthrough this session ran).
 class _GameRoot extends StatefulWidget {
-  const _GameRoot({required this.experience});
+  const _GameRoot({required this.experience, required this.openingMarker});
 
   final AppExperience experience;
+  final PublicDemoOpeningMarker openingMarker;
 
   @override
   State<_GameRoot> createState() => _GameRootState();
@@ -169,7 +196,17 @@ class _GameRootState extends State<_GameRoot> {
           );
         }
         if (_resolvedExperience == AppExperience.publicDemo01) {
-          return const PhoneFrame(child: PublicDemo01PlaceholderScreen());
+          // FIRST-FUN-YEAR P1 (Issue #229): [widget.openingMarker] is
+          // [SesApp]'s own persisted-by-default marker, except under `?e2e=1`
+          // (see `main()`'s own doc) — see [PublicDemoOpeningMarker]'s doc
+          // for why every existing widget test constructing
+          // [PublicDemo01PlaceholderScreen] directly instead keeps its inert
+          // default, unaffected by this.
+          return PhoneFrame(
+            child: PublicDemo01PlaceholderScreen(
+              openingMarker: widget.openingMarker,
+            ),
+          );
         }
         if (controller.showStartChoice) {
           return const PhoneFrame(child: StartChoiceScreen());

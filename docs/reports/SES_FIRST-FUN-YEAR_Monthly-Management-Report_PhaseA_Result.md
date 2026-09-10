@@ -11,7 +11,7 @@ Status: **Implemented — Phase A only (Result Snapshot / authority adapter, no 
 | Original base `origin/main` SHA | `160b78ab972b00d787dc827620c23e1335144728` (PR #234's original base, confirmed against Issue #232's own recorded SHA) |
 | Latest `origin/main` SHA at this update | `2abbef854d54597139830869195acbb7064f1616` (PR #233 "Package B — Initial Employee/SkillSheet Gate Clarity" merged) |
 | Branch | `claude/github-issue-232-phase-a-a45c49` — same branch as PR #234's initial submission, **not** a new PR. Merged forward to latest `origin/main` (`git merge`, no rebase/force-push) after re-fetching. Repository default branch was **not** used at any point. |
-| Final HEAD SHA (this update) | see §8/final answer — updated after this update's commits are pushed |
+| Final HEAD SHA (this update) | `5e39fa23c5a6c21279afee006c39107f291213c4` |
 | Scope (unchanged from initial submission) | Phase A only: Result Snapshot + `netIncome`-equivalent derived getter + focused domain tests. **No Dialog/UI**, no in-month delta, no Finance/Payroll/Recruitment/Assignment/monthly-close change, no save-schema change, no Phase B. |
 
 ## 1. Fresh authority trace

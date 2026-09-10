@@ -82,7 +82,7 @@ Full targeted runs (all green, exit code 0):
 | `test/game/public_demo` + `test/ui/public_demo` (full) | Full run 1 (before the two fixes above): 1376 tests, 2 failed — both diagnosed and fixed (§4 above), neither caused by this change's own logic (both were pre-existing test assertions that literally encoded "every waiting engineer reads 待機", the exact assumption this fix intentionally changes; the `success_playthrough` one also needed re-scoping to the 社員コンディション card so its own, unrelated "no raw morale/trust number" intent kept working). Full re-run after both fixes: all previously-failing files green (35/35, §4 table above). |
 | `test/widget_test.dart` | 11/11 passed |
 
-Final confirmation run — `test/game/public_demo` + `test/ui/public_demo` + `test/widget_test.dart` together, after both fixes above — **1389 tests, all passed, exit code 0.**
+Final confirmation run — `test/game/public_demo` + `test/ui/public_demo` + `test/widget_test.dart` together, after both fixes above — **1389 tests, all passed, exit code 0.** After the post-PR Codex-review fix (§5, which adds 4 more regression tests), this same full suite was re-run once more: **1393 tests, all passed, exit code 0.**
 
 ## 5. Post-PR review fix (Codex P2 — dead-end month gap)
 

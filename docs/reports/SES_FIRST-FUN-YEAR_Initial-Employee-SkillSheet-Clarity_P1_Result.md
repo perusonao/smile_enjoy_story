@@ -8,7 +8,7 @@ BASE SHA: `160b78ab972b00d787dc827620c23e1335144728` (origin/main at task start 
 
 Branch: `claude/ses-first-fun-year-package-b-14y2qi`
 
-FINAL HEAD SHA: _(filled in after commit — see the commit this report ships with)_
+FINAL HEAD SHA: `2ff324e819d849347fd8558af65d0aa39e7ef388` (the commit carrying all code/test/report changes below; the PR may carry one small additional docs-only commit filling in the PR URL itself)
 
 ## 1. Goal
 

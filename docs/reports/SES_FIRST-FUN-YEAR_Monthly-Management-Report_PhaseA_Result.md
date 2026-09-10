@@ -138,7 +138,7 @@ Approximately 2 hours of active session time (investigation/authority trace, des
 
 ## 8. PR
 
-<!-- PR URL inserted after `create_pull_request` -->
+https://github.com/perusonao/smile_enjoy_story/pull/234
 
 ---
 

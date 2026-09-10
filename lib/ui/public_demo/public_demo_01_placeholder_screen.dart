@@ -15,6 +15,7 @@ import '../../game/public_demo/public_demo_matching_fit.dart';
 import '../../game/public_demo/public_demo_month_guard.dart';
 import '../../game/public_demo/public_demo_month_label.dart';
 import '../../game/public_demo/public_demo_monthly_growth.dart';
+import '../../game/public_demo/public_demo_project_generator.dart';
 import '../../game/public_demo/public_demo_recovery.dart';
 import '../../game/public_demo/public_demo_recruitment.dart';
 import '../../game/public_demo/public_demo_recruitment_medium.dart';
@@ -3987,11 +3988,44 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
   /// (colored only — the text is still the exact
   /// [_currentEmployeeStatusLabel] every existing roster test already
   /// asserts), and — when a runtime exists — a capability progress bar for
-  /// the employee's confirmed primary skill. All values are read verbatim
-  /// from authoritative Public Demo state; nothing is computed or invented
-  /// here.
+  /// the employee's confirmed primary skill, plus a compensation line
+  /// (経験年数・月給・単金).
+  ///
+  /// SES ISSUE-235 PHASE B-1: adds the 経験年数/月給/単金 line below the
+  /// existing skill bar so the card compares "人材価値・コスト・現在状態" at a
+  /// glance, per the Fresh Audit
+  /// (`docs/reports/SES_FIRST-FUN-YEAR_Employee-Roster-Management-Data_Fresh-Audit.md`).
+  /// Every value here is read verbatim from existing authority — nothing is
+  /// computed or invented:
+  ///  * 経験年数 — [PublicDemoEngineerRuntime.totalItExperienceMonths] via the
+  ///    same [_primarySkillDisplayFor] runtime lookup the skill bar already
+  ///    uses, formatted with the app's existing [formatExperience].
+  ///  * 月給 — [PublicDemoSalary.currentMonthlySalaryFor], the same accessor
+  ///    the payroll total is built from; `null` (should not occur for any
+  ///    engineer already in [PublicDemoWorkflowState.engineers], but never
+  ///    assumed) renders as '—' rather than a fabricated amount.
+  ///  * 単金 (current-assignment unit price) — PR #236 Codex Broad Review P2
+  ///    fix: a genuinely currently-assigned engineer's real project unit
+  ///    price, resolved by [_currentUnitPriceDisplayFor] from
+  ///    [PublicDemoAssignment.projectId] through
+  ///    [PublicDemoSeededProjectGenerator.regenerate] — the exact same
+  ///    `(runSeed, projectId)` resolution
+  ///    [PublicDemoAggregate]'s own `_industryByEngineerId`/`endAssignment`
+  ///    already use for this same assignment→project lookup, never a
+  ///    second, independently-derived one. A waiting employee, a
+  ///    legacy/generic assignment with no `projectId`, or an id that
+  ///    (should not happen, but never assumed) fails to resolve all render
+  ///    `—` — never [PublicDemoRevenue.ratePerAssignedEngineer]'s flat
+  ///    company-wide constant, never a fabricated/derived number.
   Widget _employeeRosterCard(PublicDemoEngineerSales e) {
     final skill = _primarySkillDisplayFor(e.id);
+    final experienceMonths = s.runtimeForOrNull(e.id)?.totalItExperienceMonths;
+    final monthlySalary = PublicDemoSalary.currentMonthlySalaryFor(
+      e.id,
+      applicants: workflow.applicants,
+      month: s.month,
+    );
+    final unitPriceDisplay = _currentUnitPriceDisplayFor(e.id);
     return Container(
       key: Key('public-demo-employee-roster-row-${e.id}'),
       margin: const EdgeInsets.only(bottom: 6),
@@ -4063,6 +4097,21 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
                       ),
                     ),
                   ),
+                const SizedBox(height: 4),
+                Text(
+                  [
+                    if (experienceMonths != null)
+                      '経験 ${formatExperience(experienceMonths)}',
+                    '月給 ${monthlySalary == null ? '—' : '${monthlySalary ~/ 10000}万円'}',
+                    '単金 ${unitPriceDisplay ?? '—'}',
+                  ].join(' ｜ '),
+                  key: Key('public-demo-employee-roster-compensation-${e.id}'),
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
               ],
             ),
           ),
@@ -4085,6 +4134,41 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
         ],
       ),
     );
+  }
+
+  /// PR #236 Codex Broad Review P2 fix: the real per-project 単金 for
+  /// [engineerId]'s *current* assignment, or `null` (rendered as `—`,
+  /// never a guessed number) when none can be safely resolved.
+  ///
+  /// Deliberately gated on [_currentlyAssignedEngineerIds] first — not on
+  /// [_assignmentForOrNull] alone — because
+  /// [PublicDemoWorkflowState.endAssignment]'s own doc records that an
+  /// ended assignment row is sometimes deliberately LEFT IN PLACE rather
+  /// than removed (never revenue-affecting, but still visible to a plain
+  /// `workflow.assignments` scan); without this gate, a no-longer-assigned
+  /// engineer could show a stale project's rate as if they were still
+  /// earning it. Once genuinely currently assigned, resolves
+  /// [PublicDemoAssignment.projectId] through
+  /// [PublicDemoSeededProjectGenerator.regenerate] — the exact same
+  /// `(runSeed, projectId)` derivation
+  /// [PublicDemoAggregate._industryByEngineerId] and `.endAssignment`'s own
+  /// [CareerHistoryEntry] already use for this identical lookup, so this
+  /// never becomes a second, independently-derived resolution that could
+  /// drift from theirs. `projectId == null` (the legacy/generic,
+  /// project-agnostic assignment path) and a `regenerate` miss (should not
+  /// happen for a real projectId, but never assumed) both fall through to
+  /// `null` — never [PublicDemoRevenue.ratePerAssignedEngineer]'s flat
+  /// company-wide constant, and never a recomputed/derived substitute.
+  String? _currentUnitPriceDisplayFor(String engineerId) {
+    if (!_currentlyAssignedEngineerIds.contains(engineerId)) return null;
+    final projectId = _assignmentForOrNull(engineerId)?.projectId;
+    if (projectId == null) return null;
+    final candidate = PublicDemoSeededProjectGenerator.regenerate(
+      runSeed: s.runSeed,
+      projectId: projectId,
+    );
+    if (candidate == null) return null;
+    return '${candidate.monthlyRate ~/ 10000}万円';
   }
 
   /// [PublicDemoEmployeeStatusTone] for [e] — a pure coloring read of the

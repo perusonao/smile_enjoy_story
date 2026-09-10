@@ -42,8 +42,11 @@ re-verified together (see §7 "Known limitations").
 - Base: `origin/main` @ `160b78ab972b00d787dc827620c23e1335144728` (explicitly fetched at
   session start; this SHA is identical to Phase A's own audited SHA — no commits landed on
   `origin/main` between the audit and this implementation).
-- Head: see the commit this report ships with (`git log -1 --format=%H`), pushed to
-  `claude/ses-issue-235-phase-b1-upu7vj`.
+- Head: `1141c04db2947c58408627acfe27f2f34e6a4090` (the implementation commit — code,
+  focused test, Fresh Audit doc carry-forward, SSOT sync), pushed to
+  `claude/ses-issue-235-phase-b1-upu7vj`. This report may be amended by one further
+  docs-only commit on the same branch/PR (filling in the PR URL below) — check the PR's
+  actual head SHA for the final value if this report was read before that follow-up commit.
 
 ## 2. What changed
 
@@ -191,4 +194,4 @@ not visual inspection.
 
 ## 8. PR
 
-<!-- FILLED IN AFTER PUSH -->
+https://github.com/perusonao/smile_enjoy_story/pull/236

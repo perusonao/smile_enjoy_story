@@ -66,6 +66,19 @@ class PublicDemoMonthlyCashFlow {
 
   int get netCashMovement => closingCash - openingCash;
 
+  /// Accounting-style net income for this closed month — [revenue] newly
+  /// recognized this month minus [totalOutflow], not [netCashMovement]
+  /// (SES ISSUE-232 Phase A §5.2). This intentionally differs from
+  /// [netCashMovement]: cash movement reflects [cashReceived] (last
+  /// month's [receivables] settling now) against this month's outflow,
+  /// while [netIncome] compares this month's own newly-recognized
+  /// [revenue] against this month's own outflow, so the two figures
+  /// diverge exactly to the extent this month's revenue hasn't been
+  /// collected as cash yet. A pure read-only derived value over already-
+  /// computed fields — no new fact is recorded, and no persisted field is
+  /// added ([toJson]/[fromJson] are unchanged).
+  int get netIncome => revenue - totalOutflow;
+
   Map<String, dynamic> toJson() => {
     'month': month,
     'openingCash': openingCash,

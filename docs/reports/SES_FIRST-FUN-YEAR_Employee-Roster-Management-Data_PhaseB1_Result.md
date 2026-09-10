@@ -1,197 +1,276 @@
 # SES FIRST-FUN-YEAR P1: Employee Roster Management Data — Phase B-1 Result
 
 Issue: #235
-Status: **Phase B-1 implemented, tests green, ready for review**
-Base: `origin/main` (fetched explicitly, default branch NOT used)
-Base SHA: `160b78ab972b00d787dc827620c23e1335144728`
+PR: https://github.com/perusonao/smile_enjoy_story/pull/236
+Status: **Phase B-1 implemented, Codex Broad Review P2 resolved, reconciled with latest
+`origin/main` (incl. merged PR #233/#234), tests green, Merge Ready (not merged — user
+merges manually)**
+Base at initial implementation: `origin/main` @
+`160b78ab972b00d787dc827620c23e1335144728`
+Base after reconcile: `origin/main` @ `d45e375d1be087a23fe041c1d21543f0833231ab`
 
 ## 0. Current status
 
-Phase B-1 is implemented, tested, and pushed. The 社員一覧 (`_employeeRosterCard`,
-`lib/ui/public_demo/public_demo_01_placeholder_screen.dart`) now shows, per employee, a
-compact compensation line — 経験年数 (experience) ・ 月給 (monthly salary) ・ 単金
-(unit price) — below the existing name/status-badge row and skill capability bar. All
-three values are read from pre-existing, already-tested authority; no new domain rule, no
-save-schema change, and no UI-local placeholder/guessed value was added. 単金 reads `—`
-for every employee, assigned or not, because — as Phase A's Fresh Audit found — no
-per-employee/per-assignment unit-price authority exists anywhere in this repository.
+Phase B-1 is implemented, reconciled with the latest `origin/main`, and pushed. The
+社員一覧 (`_employeeRosterCard`, `lib/ui/public_demo/public_demo_01_placeholder_screen.dart`)
+shows, per employee, a compact compensation line — 経験年数 (experience) ・ 月給 (monthly
+salary) ・ 単金 (unit price) — below the existing name/status-badge row, PR #233's own
+sales-readiness reason caption, and the skill capability bar.
+
+This report supersedes its own first version (written against the pre-reconcile base SHA
+`160b78a`). Since that version, one Codex Broad Review P2 finding was fixed (単金 now shows
+a real project rate when one is safely resolvable — see §3), and the branch was reconciled
+with `origin/main` after PR #233 (Package B) and PR #234 (Monthly Report Phase A) both
+merged ahead of this PR.
 
 ## 0.1 Next action
 
-Human review of this PR, then merge. Phase B-2 (年齢/性別, product decision required
-first) and Phase B-3 (単金 real per-employee authority, product decision required first)
-remain independent, unstarted follow-ups per the issue's own §7 split — neither is part of
-this Phase B-1 scope.
-
-If PR #233 (Issue #231 Package B — the roster's own 営業可能/研修が必要 captions) merges
-before this PR, this branch should be rebased onto it and the two cards' line order/overflow
-re-verified together (see §7 "Known limitations").
+Human review and merge of PR #236. This session does not merge it. Phase B-2 (年齢/性別,
+product decision required first) remains an independent, unstarted follow-up per the
+issue's own §7 split.
 
 ## 0.2 Actual elapsed time / Revised ETA
 
-- Actual elapsed time for this session (Phase A carry-forward + Phase B-1 implementation,
-  tests, docs, SSOT sync): a single continuous session, well within the issue's own P1
-  sizing (Phase A was previously audited in ~6–7 minutes in a separate session; Phase B-1
-  itself — a presentation-only, no-schema-change change — took a small fraction of a
-  standard AI processing-time budget unit per the governing plan's sizing table).
-- Revised ETA: none — Phase B-1 is complete. Phase B-2/B-3 remain unestimated pending their
-  own product decisions (Fresh Audit §5.1/§5.2/§5.3), unchanged from Phase A's own estimate.
+- Actual elapsed time, this reconcile+fix session: a single continuous session — Fresh
+  Authority Trace for the Codex finding, the fix itself, a `git merge origin/main` conflict
+  resolution (two files), an expanded focused test file, full-suite re-verification, and
+  this report/SSOT/PR-body update.
+- Revised ETA: none — this reconcile+fix round is complete. Phase B-2 (年齢/性別) remains
+  unestimated pending its own product decision, unchanged from Phase A's own estimate.
 
 ## 1. Base / Head
 
-- Base: `origin/main` @ `160b78ab972b00d787dc827620c23e1335144728` (explicitly fetched at
-  session start; this SHA is identical to Phase A's own audited SHA — no commits landed on
-  `origin/main` between the audit and this implementation).
-- Head: `1141c04db2947c58408627acfe27f2f34e6a4090` (the implementation commit — code,
-  focused test, Fresh Audit doc carry-forward, SSOT sync), pushed to
-  `claude/ses-issue-235-phase-b1-upu7vj`. This report may be amended by one further
-  docs-only commit on the same branch/PR (filling in the PR URL below) — check the PR's
-  actual head SHA for the final value if this report was read before that follow-up commit.
+- Base at initial Phase B-1 implementation: `origin/main` @
+  `160b78ab972b00d787dc827620c23e1335144728`.
+- Base at this reconcile: `origin/main` @ `d45e375d1be087a23fe041c1d21543f0833231ab`
+  (post PR #234 merge; confirmed via `git fetch origin` at the start of this round — no
+  further commits had landed on `origin/main` beyond this SHA at reconcile time).
+- Original PR #236 HEAD (pre-reconcile): `29055c6b7471f1957b6d6efa090e8b3174675e06`.
+- Final HEAD: see the commit this report ships with (`git log -1 --format=%H` on
+  `claude/ses-issue-235-phase-b1-upu7vj`) — a `git merge origin/main` merge commit plus the
+  Codex P2 fix, test expansion, and this doc update, all as one push.
 
-## 2. What changed
+## 2. Reconcile result
 
-One production file, one new focused test file, the Fresh Audit doc carried forward from
-its own (unmerged, PR-less) audit branch, and this Result Report / SSOT sync:
+`git merge origin/main` (not a rebase — this repo's own convention for reconciling a
+feature branch with an updated base once other work has already merged ahead of it, per
+prior branches in this history, e.g. "Merge origin/main (PR #233 Package B) into Phase A
+branch"). Two conflicts, both resolved by keeping both sides' additions (never dropping
+either PR's work):
+
+- `lib/ui/public_demo/public_demo_01_placeholder_screen.dart` — `_employeeRosterCard()`:
+  PR #233's not-ready reason-caption `Text` block (`if (e.stage == waiting &&
+  !readyForFieldSales(e.id)) ...`) and this PR's compensation-line `Text` block both kept,
+  in that order (reason caption directly under the skill bar, compensation line last).
+- `docs/decisions/SES_DEVELOPMENT-PRIORITY_2026-09-02.md` — Update history: this PR's own
+  entry (revised in place, see §7 below) kept at the top, followed by the pre-existing
+  entries for Issue #232 Phase A (PR #234) and Issue #231 Package B (PR #233) unchanged.
+
+No other file conflicted. `mergeable_state` on the PR was `dirty` before this push (per the
+task's own report) — expected to read `clean`/mergeable after this push.
+
+## 3. Codex P2 resolution
+
+**Finding**: "Use project-backed rates instead of always showing a dash"
+(`https://github.com/perusonao/smile_enjoy_story/pull/236#discussion_r3980381437`,
+`chatgpt-codex-connector`, thread `PRRT_kwDOT2htY86hH6dn`) — for an engineer genuinely
+assigned through the Phase 5/6 matching flow, `PublicDemoAssignment.projectId` identifies
+the real project and is resolvable via `PublicDemoSeededProjectGenerator.regenerate`; the
+original Phase B-1 implementation rendered `単金 —` unconditionally, hiding that
+authoritative rate.
+
+### Fresh Authority Trace (against `origin/main` @ `d45e375`)
+
+Re-verified against the current `origin/main`, not assumed from the review comment alone:
+
+- `PublicDemoAssignment.projectId` (`lib/game/public_demo/public_demo_assignment.dart`) —
+  confirmed present, `String?`, "the real Phase 4/5/6 `Project` id this assignment actually
+  represents ... when it was created from a genuine, project-bound Phase 6 project-interview
+  pass ... `null` for every assignment created before this field existed, and for one still
+  built from the generic, project-agnostic interview path."
+- `PublicDemoSeededProjectGenerator.regenerate({required int runSeed, required String
+  projectId})` (`lib/game/public_demo/public_demo_project_generator.dart`) — confirmed:
+  "Recovers the exact candidate a given `projectId` ... represents, purely from `(runSeed,
+  projectId)` — no save-data dependency ... Returns `null` for an id this generator did not
+  mint." Already used for exactly this resolution shape by
+  `PublicDemoAggregate._industryByEngineerId` (feeds Growth's per-engineer industry) and by
+  `PublicDemoAggregate.endAssignment`'s `CareerHistoryEntry` writer — this is not a new
+  resolution path, it is a third caller of an existing one.
+- `PublicDemoProjectCandidate.monthlyRate` (`int get monthlyRate => project.monthlyRate;`,
+  same file) — confirmed present and reads straight through to the real `Project`, not a
+  second/derived figure.
+- Cross-checked `PublicDemoSaveCodec._hasConsistentAuthorityFacts`
+  (`lib/game/persistence/public_demo_save_codec.dart`) — confirmed it cross-checks every
+  non-null `assignments[*].projectId` against the corresponding engineer's own
+  `interviewRecord.projectId`, and migrates a pre-existing-field-less legacy save's
+  `projectId` to an explicit `null` (never leaves a dangling/malformed string). This means:
+  any non-null `projectId` that legitimately reaches the roster card via a real save is, by
+  construction, resolvable — the "cannot resolve" branch is defensive-only, mirroring the
+  identical pattern `_industryByEngineerId` already uses (see §5 unresolved-item note).
+
+**Verdict: the finding is correct on current `origin/main`.** Fixed.
+
+### Fix
+
+- New private helper `_currentUnitPriceDisplayFor(String engineerId)` on the roster screen
+  State, gated on three conditions, all of which must hold before any real rate is shown:
+  1. `_currentlyAssignedEngineerIds.contains(engineerId)` — the exact same authoritative
+     "currently assigned" fact the status badge/label already reads. Checked *before*
+     looking at any assignment row, because `PublicDemoWorkflowState.endAssignment`'s own
+     doc records that an ended assignment's row is sometimes deliberately left in place
+     rather than removed — a bare `workflow.assignments` scan alone could otherwise show a
+     stale project's rate for someone no longer actually earning it.
+  2. `_assignmentForOrNull(engineerId)?.projectId` is non-null (the existing lookup already
+     used by the SkillSheet sheet for the same engineer's "current assignment").
+  3. `PublicDemoSeededProjectGenerator.regenerate(runSeed: s.runSeed, projectId: projectId)`
+     resolves to a non-null candidate.
+- Only when all three hold: `単金 ${candidate.monthlyRate ~/ 10000}万円`. Otherwise (waiting,
+  generic/legacy assignment with no `projectId`, or an unresolvable id): `単金 —`.
+- **Never** `PublicDemoRevenue.ratePerAssignedEngineer` (the flat ¥600,000/month
+  per-headcount constant) is shown as an individual employee's rate, at any point.
+- No new data model, no `PublicDemoAssignment`/save-schema field, no Finance/Revenue
+  formula change — purely a new *read* of three pieces of authority that already existed
+  and were already used elsewhere in this exact combination.
+
+## 4. Unit-rate authority trace (summary table)
+
+| Case | Authority read | Result |
+|---|---|---|
+| Genuinely assigned, real Phase 5/6 project-bound assignment | `PublicDemoAssignment.projectId` → `PublicDemoSeededProjectGenerator.regenerate` → `PublicDemoProjectCandidate.monthlyRate` | Real project rate (e.g. `単金 60万円`) |
+| Waiting (not assigned) | `_currentlyAssignedEngineerIds` does not contain the id | `単金 —` |
+| Genuinely assigned, generic/legacy assignment (`projectId == null`) — e.g. Recovery-assigned via the pre-Phase-5/6 sales pipeline | `PublicDemoAssignment.projectId` is `null` | `単金 —` |
+| Genuinely assigned, `projectId` set but unresolvable (defensive-only; not reachable via any legitimate save — see §3's `_hasConsistentAuthorityFacts` note) | `PublicDemoSeededProjectGenerator.regenerate` returns `null` | `単金 —`, no crash |
+
+## 5. Package B compatibility
+
+PR #233 (Issue #231 Package B) merged into `origin/main` on 2026-09-10 23:23 JST (merge
+commit `2abbef854d54597139830869195acbb7064f1616`) — **before** this reconcile, so the
+"PR #233 not yet merged" note in this report's and the PR's original text is now stale and
+has been corrected throughout (see §2's reconcile-conflict resolution and the SSOT update).
+
+Verified by test (see §6) that, on the same roster row:
+
+- 氏名, PR #233's own 参画状況 badge (営業可能/研修が必要/参画中/待機) and its not-ready
+  reason caption (`営業には実力60以上が必要（現在52）` for eng-02 in the fresh-April
+  fixture), スキル (capability bar), 経験年数, 月給, and 単金 all render together with no
+  dropped text and no overflow, at 360x800/390x844 × TextScaler 1.0/1.3.
+- `_currentEmployeeStatusLabel`, `_employeeStatusTone`, `readyForFieldSales`,
+  `_fieldSalesActionReachableThisMonth`-gated Section 2 clarity (`営業準備OK` / the
+  not-ready lock banner) are all read verbatim, unmodified by this reconcile or the Codex
+  fix.
+
+## 6. What changed (cumulative, vs. `origin/main` @ `160b78a`)
 
 - `lib/ui/public_demo/public_demo_01_placeholder_screen.dart` — `_employeeRosterCard()`
-  only. Added a `Text` row (key
-  `public-demo-employee-roster-compensation-<engineerId>`) rendering
-  `経験 <formatExperience> ｜ 月給 <amount>万円 ｜ 単金 —`, reading:
-  - `s.runtimeForOrNull(e.id)?.totalItExperienceMonths` (経験年数) — the exact runtime
-    lookup the existing skill bar already makes; formatted with the app's existing
-    `formatExperience()` (`lib/ui/widgets/labels.dart`), reused verbatim, not reimplemented.
-  - `PublicDemoSalary.currentMonthlySalaryFor(e.id, applicants: workflow.applicants, month:
-    s.month)` (月給) — the same accessor `bonusEligibleMonthlySalaryTotal` is built from;
-    `null` (should not occur for any roster-listed engineer, but never assumed) renders as
-    `—`, never a fabricated amount.
-  - 単金: a literal `'単金 —'` — there is no field to read (Fresh Audit §2 row 8), so this
-    is not a computed value at all, truthfully constant until Phase B-3 adds real
-    per-employee/per-assignment authority.
-  - No existing widget, key, section, eligibility check, or the name/skill/status-badge
-    content was touched.
-- `test/ui/public_demo/public_demo_employee_roster_phase_b1_test.dart` (new) — 9
-  `testWidgets` blocks / 12 executed test cases (see §5).
-- `docs/reports/SES_FIRST-FUN-YEAR_Employee-Roster-Management-Data_Fresh-Audit.md` (new to
-  `origin/main`) — Phase A's own audit, carried forward verbatim from its own separate,
-  PR-less audit branch (commit `a2d62ad`, 2026-09-10T14:03Z) so this document — which the
-  issue itself and this Phase B-1 both depend on — is actually part of `origin/main`'s
-  history rather than only existing on a branch nobody merged.
-- `docs/decisions/SES_DEVELOPMENT-PRIORITY_2026-09-02.md` — one new Update history entry
-  (2026-09-10, Issue #235 Phase A + Phase B-1) recording status, scope, and the Package B
-  (PR #233, still open as of this base SHA) regression note. `Current execution order` /
-  `Prioritized backlog` table structure unchanged, per the doc's own convention for
-  same-track incremental entries.
+  plus the new `_currentUnitPriceDisplayFor` helper. Adds:
+  - 経験年数/月給 line items (unchanged from the original Phase B-1 implementation): read
+    from `s.runtimeForOrNull(e.id)?.totalItExperienceMonths` /
+    `PublicDemoSalary.currentMonthlySalaryFor`.
+  - 単金 (this round's fix): real project rate when genuinely resolvable, `—` otherwise —
+    see §3/§4.
+  - No existing widget/key/section/eligibility check was touched; PR #233's own reason
+    caption block is unmodified, just re-ordered to sit above the new compensation line.
+- `test/ui/public_demo/public_demo_employee_roster_phase_b1_test.dart` — expanded from 12
+  to 20 test cases (see §6.1 below).
+- `docs/reports/SES_FIRST-FUN-YEAR_Employee-Roster-Management-Data_Fresh-Audit.md` —
+  unchanged from the original Phase B-1 push (Phase A's audit, carried forward).
+- `docs/decisions/SES_DEVELOPMENT-PRIORITY_2026-09-02.md` — the Issue #235 Update history
+  entry rewritten in place (see §7) to record the Codex P2 fix and the corrected PR #233
+  merge status; no other entry's text changed (the merge brought in PR #233/#234's own
+  entries verbatim).
+- This Result Report — rewritten (see header) to reflect the reconcile and fix.
 
-No file under `lib/game/`, `lib/presentation/home/`, or any Finance/Assignment/
-Sales/Recruitment/save-codec file was touched. `schemaVersion` stays `1`.
+No file under `lib/game/public_demo/public_demo_revenue.dart`,
+`public_demo_salary_finance.dart`, any Assignment/save-codec file, `lib/presentation/home/`,
+or any Sales/Recruitment file was touched by this round. `schemaVersion` stays `1`. No new
+gameplay threshold was introduced.
 
-## 3. Authority used for each displayed field
+### 6.1 Focused test file — 20 cases, all green
 
-| Field | Authority | New field/computation? |
-|---|---|---|
-| 氏名 | `PublicDemoEngineerSales.name` (already displayed pre-Phase-B-1) | No — unchanged |
-| スキル | `s.runtimeForOrNull(id)` → `PublicDemoEngineerRuntime.primaryLanguage`/`.actualCapability` via existing `_primarySkillDisplayFor` (already displayed) | No — unchanged |
-| 参画状況 | `_currentlyAssignedEngineerIds`/`s.trainingSelections` via existing `_currentEmployeeStatusLabel`/`_employeeStatusTone` (already displayed) | No — unchanged |
-| 経験年数 | `PublicDemoEngineerRuntime.totalItExperienceMonths`, formatted with existing `formatExperience()` | No — new **display**, existing authority/formatter reused verbatim |
-| 月給 | `PublicDemoSalary.currentMonthlySalaryFor(employeeId, applicants:, month:)` | No — new **display**, existing accessor reused verbatim |
-| 単金 | **None exists.** Literal `'—'` for every employee, per Fresh Audit §2 row 8 / §5.3 — displaying `PublicDemoRevenue.ratePerAssignedEngineer` (¥600,000 flat) as if it were a per-employee negotiated rate was explicitly rejected as a misrepresentation, per the issue's own instruction | N/A — not computed; the absence itself is the truthful display |
-| 年齢 | Not implemented (issue scope) | N/A |
-| 性別 | Not implemented (issue scope) | N/A |
+- founding employee: compensation line reads existing authority (unchanged from original).
+- recruited employee: applicant-sourced salary/experience (unchanged from original).
+- **単金: waiting employee shows "—"** (new, explicit).
+- **単金: legacy/generic assignment (`projectId == null`) shows "—"** (renamed/clarified
+  from the original "waiting vs assigned" test; now explicitly asserts
+  `assignment.projectId == null` as fixture sanity).
+- **単金: project-backed assignment shows the real project rate** (new) — a genuine eng-01
+  assignment built through the real Phase 5 matching (`proposeMatch`) → Phase 6 project
+  interview (`startProjectInterview`/`chooseProjectInterviewFollowUp`/
+  `concludeProjectInterview`) → `recordOrder` → April/May close flow (scanning a bounded
+  seed range for a genuine client-interview pass, mirroring
+  `public_demo_career_history_writer_test.dart`'s own `_genuineAssignedAggregate`
+  technique), asserting the card shows the exact
+  `PublicDemoSeededProjectGenerator.regenerate(...).monthlyRate`, and that this value is
+  never the flat ¥600,000 constant.
+- **単金: project-backed — save/reload** (new): the same genuine fixture, round-tripped
+  through `PublicDemoSaveCodec`, shows the identical rate after reload.
+- **単金: an unresolvable project id never crashes, always falls back to "—"** (new) — a
+  direct-call test pinning `PublicDemoSeededProjectGenerator.regenerate` returning `null`
+  (not throwing) for a malformed/unminted id — the exact guard
+  `_currentUnitPriceDisplayFor` depends on. See §3's note on why a full UI-level round trip
+  for this exact case cannot be constructed through the legitimate save codec.
+- salary display / experience display / skill display (unchanged from original).
+- **Package B (営業可能/研修が必要 caption) coexistence** (rewritten from the original
+  "regression" test, which had noted PR #233 was unmerged — it now is) — asserts 営業可能
+  (eng-01)/研修が必要 + reason caption (eng-02) render together with the compensation line
+  on the same row, plus a new 360x800/390x844 × TextScaler 1.0/1.3 overflow sweep for this
+  combined card content.
+- save/reload (general, unchanged from original).
+- 360x800/390x844 × TextScaler 1.0/1.3 overflow (unchanged from original).
 
-No UI-local threshold, placeholder, or duplicated status-deriving switch was added. No
-second experience/salary formatter was created.
+## 7. Tests (full verification, this round)
 
-## 4. UX
+Environment note: no Flutter SDK was preinstalled in this session's container (same as the
+original Phase B-1 session); the same locally-installed Flutter 3.44.9 (stable, matching
+this repo's CI `subosito/flutter-action` pin) was reused.
 
-360x800 / 390x844 prioritized, per the issue. The roster card stays at 3 content rows:
-1) name + status badge (unchanged), 2) skill capability bar (unchanged, shown only when a
-runtime exists), 3) the new 経験/月給/単金 line. Example (eng-01, fresh April):
+- `flutter analyze` (whole project, post-reconcile+fix): **No issues found.**
+- New focused test file (expanded): **20/20 green.**
+- Existing roster suites, unmodified, re-run against the merged tree:
+  `public_demo_employee_ui_phase1_test.dart` + `public_demo_employee_visual_complete_test.dart`
+  + `public_demo_issue231_employee_skillsheet_clarity_test.dart` (PR #233's own dedicated
+  suite, now present after the merge): **42/42 green.**
+- `test/ui/public_demo/` (full suite): **560/560 green** (up from 533 pre-reconcile,
+  reflecting PR #233's own new test files brought in by the merge, plus this round's own
+  8 additional focused cases).
+- `test/game/public_demo/` (full domain suite, sanity check — no domain file touched):
+  **858/858 green** (up from 842 pre-reconcile, reflecting PR #234's own new
+  `public_demo_monthly_report_snapshot_test.dart` suite brought in by the merge).
+- `git diff --check`: clean, no whitespace errors, after the merge-conflict resolution.
 
-```text
-佐藤 健                                    待機
-Java 78
-経験 3 年 ｜ 月給 30万円 ｜ 単金 —
-```
+## 8. Visual verification
 
-SkillSheet detail (career history, certifications, per-tech experience breakdown) is not
-pulled into the card — the existing "スキルシートを見る" icon button (unchanged) remains
-the route to `PublicDemoSkillSheetSheet`.
+360x800/390x844 × TextScaler 1.0/1.3 verified via `tester.getRect()` bounds assertions
+(never visual/screenshot inspection, consistent with the original Phase B-1 round) — this
+round adds a dedicated sweep for the combined card (name + 営業可能/研修が必要 badge +
+reason caption + skill bar + compensation line) in the "Package B coexistence" group (§6.1),
+in addition to the pre-existing sweeps in the original compensation-line test group and in
+`public_demo_employee_ui_phase1_test.dart`'s own suite (which also exercises TextScaler 2.0).
 
-## 5. Tests
+## 9. Known limitations / Unresolved items
 
-Environment note: no Flutter SDK was preinstalled in this session's container; Flutter
-3.44.9 (stable, matching this repo's own CI `subosito/flutter-action` pin) was downloaded
-and installed locally to run the commands below.
+1. **単金's "cannot resolve" branch is defensive-only, not reachable via any legitimate
+   save.** `PublicDemoSaveCodec._hasConsistentAuthorityFacts` guarantees any non-null
+   `projectId` reaching the roster card is consistent with a real matching
+   proposal/interview record, so `PublicDemoSeededProjectGenerator.regenerate` returning
+   `null` in production would require data this codec already refuses to load. The branch
+   is kept anyway (mirroring `_industryByEngineerId`'s identical defensive pattern) and is
+   tested directly at the function level (§6.1) rather than through an unconstructible
+   UI-level round trip.
+2. **年齡・性別 remain unimplemented**, per the issue's own instruction — unchanged from
+   the original Phase B-1 round; Fresh Audit §5.1/§5.2 already recorded the minimal-extension
+   proposals and the open product question for a future Phase B-2.
+3. This PR is **not merged** — per this task's explicit instruction, the session stops at
+   Merge Ready (green tests, resolved review thread, reconciled with latest `origin/main`)
+   and does not merge.
 
-- `flutter analyze` (whole project): **No issues found.**
-- New focused test file, `test/ui/public_demo/public_demo_employee_roster_phase_b1_test.dart`
-  — 12 test cases, all green:
-  - founding employee (eng-01): compensation line reads existing authority verbatim,
-    単金 `—`.
-  - recruited employee: a genuinely hired applicant (via real
-    `recruit`/`completeInterview`/`acceptOffer` commands) shows their own
-    applicant-sourced salary/experience, not eng-01/eng-02's founding literals.
-  - waiting vs. assigned (eng-01 genuinely Recovery-assigned 参画中, eng-02 待機): both
-    read 単金 `—` — assigned status does not fabricate a rate, and the flat ¥600,000
-    constant never leaks onto the card as a per-employee figure.
-  - salary display: eng-01 (30万円) / eng-02 (25万円) — distinct, not duplicated.
-  - experience display: eng-01 (`formatExperience(36)`) / eng-02 (`formatExperience(24)`)
-    — distinct, not duplicated.
-  - skill display: the existing capability bar keeps rendering alongside the new line
-    (not replaced by it).
-  - Package B (営業可能/研修が必要 caption) regression: see §7 — asserts the
-    pre-existing Section 2 sales-readiness clarity (営業準備OK / lock banner) this
-    issue's regression rule protects is unaffected.
-  - save/reload: `PublicDemoSaveCodec().encode()`/`.decode()` round trip, re-pumped —
-    exact same compensation text as the pre-save aggregate.
-  - 360x800 / 390x844 × TextScaler 1.0/1.3: no overflow exception; both the roster row
-    and the new compensation-line `Text` stay within the screen's left/right bounds.
-- Existing roster suites re-run unmodified and still green:
-  `test/ui/public_demo/public_demo_employee_ui_phase1_test.dart` (18 tests, including its
-  own 360x800/390x844 × TextScaler 1.0/1.3/2.0 overflow suite) and
-  `test/ui/public_demo/public_demo_employee_visual_complete_test.dart` (17 tests) — 35
-  tests total, all green, confirming the new line did not disturb any pre-existing
-  key/text/layout assertion (including the pre-existing TextScaler 2.0 coverage those
-  suites already carry).
-- `test/game/public_demo/` (full domain suite, unaffected by this UI-only change,
-  run as a sanity check): **842 tests, all green.**
-- `test/ui/public_demo/` (full Public Demo UI suite, includes the two suites and the new
-  focused file counted above): **533 tests, all green.**
-- `git diff --check`: clean, no whitespace errors.
+## 10. Review thread resolution
 
-## 6. Visual verification
+Thread `PRRT_kwDOT2htY86hH6dn` (Codex P2 "Use project-backed rates instead of always
+showing a dash") — replied with the fix summary and Fresh Authority Trace result, then
+marked resolved. No new Broad Review was requested (per instruction). No P0/P1 findings
+were surfaced by this round's own re-verification.
 
-360x800 and 390x844 (issue's prioritized breakpoints) were verified via the new focused
-test file's own overflow assertions (rect bounds check on both the roster row and the new
-compensation-line text, at TextScaler 1.0 and 1.3) plus the pre-existing
-`public_demo_employee_ui_phase1_test.dart` suite's own 360x800/390x844 × TextScaler
-1.0/1.3/2.0 sweep, which now also renders the new line without exception. No manual
-screenshot capture was performed in this text-only environment; all visual-bounds claims
-above are backed by `tester.getRect()` assertions against the actual rendered widget tree,
-not visual inspection.
-
-## 7. Known limitations / Unresolved items
-
-1. **Package B (PR #233) was not merged into `origin/main` as of this Phase B-1's base
-   SHA.** The issue's regression rule ("既存Package Bの「営業可能」「研修が必要」理由
-   captionは維持してください") assumes this feature already exists on `origin/main`; it
-   does not, as of `160b78ab972b00d787dc827620c23e1335144728` (confirmed via the GitHub
-   API at implementation time — PR #233 state: `open`, `merged: false`, base SHA identical
-   to this Phase B-1's own base). There is therefore nothing on this base to regress; the
-   requirement is vacuously satisfied. If PR #233 merges first, this branch needs a rebase
-   and a fresh combined visual check (both new lines on the same card, no combined
-   overflow) — flagged here rather than silently assumed safe.
-2. **単金 is always `—` in Phase B-1.** This is not a partial implementation bug — it is
-   the truthful, audited state of the domain: no employee, in any state, has a
-   per-employee/per-assignment unit-price fact anywhere in this repository today. Phase
-   B-3 (Fresh Audit §5.3/§7) is the follow-up that would give this field real, varying
-   values, and requires an explicit product decision (persist the order-time candidate
-   rate vs. display the flat company-wide constant, honestly labeled) before it can start.
-3. **年齢・性別 remain unimplemented**, per the issue's own instruction — Fresh Audit
-   §5.1/§5.2 already recorded the minimal-extension proposals and the open product
-   question (whether 性別 should be displayed at all, given the domain's deliberate
-   gender-blind design) for a future Phase B-2, not decided here.
-
-## 8. PR
+## 11. PR
 
 https://github.com/perusonao/smile_enjoy_story/pull/236

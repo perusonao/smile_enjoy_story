@@ -15,6 +15,7 @@ import '../../game/public_demo/public_demo_matching_fit.dart';
 import '../../game/public_demo/public_demo_month_guard.dart';
 import '../../game/public_demo/public_demo_month_label.dart';
 import '../../game/public_demo/public_demo_monthly_growth.dart';
+import '../../game/public_demo/public_demo_project_generator.dart';
 import '../../game/public_demo/public_demo_recovery.dart';
 import '../../game/public_demo/public_demo_recruitment.dart';
 import '../../game/public_demo/public_demo_recruitment_medium.dart';
@@ -2248,12 +2249,57 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
   /// code path stays byte-for-byte untouched by this phase (HOME Freeze);
   /// both read the exact same authoritative facts (`engineer.stage`,
   /// [workflow.assignedEngineerIds]) and so can never disagree.
+  ///
+  /// Issue #231 FIRST-FUN-YEAR P1 Fresh Audit: [engineerStatus] alone
+  /// labels every still-`waiting` engineer identically ('待機'), even
+  /// though `PublicDemoEngineerRuntime.isReadyForFieldSales`
+  /// ([readyForFieldSales]) already, authoritatively, distinguishes the two
+  /// — this was exactly the "founding roster all reads the same in April"
+  /// comprehension gap the audit found: a fresh player could not tell 佐藤
+  /// (capability 78, ready) from 鈴木 (capability 52, not ready) without
+  /// scrolling to Section 2's per-engineer action card. This label now
+  /// states that same existing fact directly in the roster, still without
+  /// touching [engineerStatus] itself (HOME's [_officeStageStatusFor] and
+  /// the SkillSheet sheet's `statusLabel` keep reading the raw pipeline
+  /// stage, unchanged — HOME Freeze).
   String _currentEmployeeStatusLabel(PublicDemoEngineerSales engineer) {
     if (engineer.stage == PublicDemoSalesStage.ordered &&
         _currentlyAssignedEngineerIds.contains(engineer.id)) {
       return '参画中';
     }
+    if (engineer.stage == PublicDemoSalesStage.waiting) {
+      if (!readyForFieldSales(engineer.id)) return '研修が必要';
+      return _fieldSalesActionReachableThisMonth(engineer)
+          ? '営業可能'
+          : engineerStatus(engineer);
+    }
     return engineerStatus(engineer);
+  }
+
+  /// PR #233 Codex review (P2): [_currentEmployeeStatusLabel]'s '営業可能'
+  /// must only be shown in a month where `_employeeNextActionsSection`'s
+  /// `ec(i)` card — the only control that can actually start selling
+  /// (スキルシート確認/営業開始) — is reachable for THIS engineer; otherwise the
+  /// roster would name an action with no control anywhere on screen to take
+  /// it (a new dead end this Issue explicitly forbids). Mirrors `ec(i)`'s
+  /// own three render conditions in `_employeeNextActionsSection` exactly,
+  /// simplified using the facts already established by the `waiting`-stage
+  /// caller (never `ordered`, never currently assigned):
+  ///  * April (4): `ec(i)` always renders, for every engineer.
+  ///  * June (6): only for a later-joined hire still in the applicant→
+  ///    engineer funnel (`s.joinedApplicantIds`) — never a founding
+  ///    engineer, who has no June-specific `ec(i)` render site.
+  ///  * July-February (7-14, RECOVERY-LOOP-1): every still-waiting engineer.
+  ///  * May (5) and March (15): `ec(i)` is never rendered at all this
+  ///    screen, in any branch — so '営業可能' falls back to the plain,
+  ///    pre-existing [engineerStatus] label there instead.
+  /// '研修が必要' needs no such gating: `_employeeGrowthSection`'s internal-
+  /// training card is unconditionally reachable every month from May
+  /// through March (`s.month >= 5`), independently of `ec(i)`.
+  bool _fieldSalesActionReachableThisMonth(PublicDemoEngineerSales engineer) {
+    if (s.month == 4 || (s.month >= 7 && s.month <= 14)) return true;
+    if (s.month == 6) return s.joinedApplicantIds.contains(engineer.id);
+    return false;
   }
 
   String applicantStatus(PublicDemoApplicant a) => switch (a.stage) {
@@ -3958,17 +4004,19 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
   ///    the payroll total is built from; `null` (should not occur for any
   ///    engineer already in [PublicDemoWorkflowState.engineers], but never
   ///    assumed) renders as '—' rather than a fabricated amount.
-  ///  * 単金 (current-assignment unit price) — the Fresh Audit confirmed
-  ///    **no per-employee/per-assignment unit-price authority exists**
-  ///    anywhere in the repo (`PublicDemoAssignment` carries no rate field);
-  ///    the only revenue-facing rate,
-  ///    [PublicDemoRevenue.ratePerAssignedEngineer], is a flat company-wide
-  ///    constant, not any individual employee's negotiated rate, so display
-  ///    it as such would misrepresent it as a per-employee fact. This is
-  ///    Phase B-3's decision (issue #235 §5.3/§7), not Phase B-1's — so
-  ///    every employee, assigned or not, truthfully reads 単金 '—' until a
-  ///    real per-employee rate field exists. Never a recomputed/guessed
-  ///    number.
+  ///  * 単金 (current-assignment unit price) — PR #236 Codex Broad Review P2
+  ///    fix: a genuinely currently-assigned engineer's real project unit
+  ///    price, resolved by [_currentUnitPriceDisplayFor] from
+  ///    [PublicDemoAssignment.projectId] through
+  ///    [PublicDemoSeededProjectGenerator.regenerate] — the exact same
+  ///    `(runSeed, projectId)` resolution
+  ///    [PublicDemoAggregate]'s own `_industryByEngineerId`/`endAssignment`
+  ///    already use for this same assignment→project lookup, never a
+  ///    second, independently-derived one. A waiting employee, a
+  ///    legacy/generic assignment with no `projectId`, or an id that
+  ///    (should not happen, but never assumed) fails to resolve all render
+  ///    `—` — never [PublicDemoRevenue.ratePerAssignedEngineer]'s flat
+  ///    company-wide constant, never a fabricated/derived number.
   Widget _employeeRosterCard(PublicDemoEngineerSales e) {
     final skill = _primarySkillDisplayFor(e.id);
     final experienceMonths = s.runtimeForOrNull(e.id)?.totalItExperienceMonths;
@@ -3977,6 +4025,7 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
       applicants: workflow.applicants,
       month: s.month,
     );
+    final unitPriceDisplay = _currentUnitPriceDisplayFor(e.id);
     return Container(
       key: Key('public-demo-employee-roster-row-${e.id}'),
       margin: const EdgeInsets.only(bottom: 6),
@@ -4026,13 +4075,35 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
                     beforeCapability: skill.beforeCapability,
                   ),
                 ],
+                // Issue #231 FIRST-FUN-YEAR P1 Fresh Audit: states the same
+                // reason [ec]'s own field-sales lock banner already gives
+                // (`実力 $threshold 以上が必要です（現在 $capability）`) right in
+                // the roster row, so "why does this employee need training"
+                // is visible without scrolling to Section 2 — reads only
+                // the same existing authority
+                // (`PublicDemoEngineerRuntime.fieldSalesCapabilityRequirement`
+                // / [capabilityFor]), never a new or duplicated threshold.
+                if (e.stage == PublicDemoSalesStage.waiting &&
+                    !readyForFieldSales(e.id))
+                  Padding(
+                    padding: const EdgeInsets.only(top: 2),
+                    child: Text(
+                      '営業には実力'
+                      '${PublicDemoEngineerRuntime.fieldSalesCapabilityRequirement}'
+                      '以上が必要（現在${capabilityFor(e.id)}）',
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ),
                 const SizedBox(height: 4),
                 Text(
                   [
                     if (experienceMonths != null)
                       '経験 ${formatExperience(experienceMonths)}',
                     '月給 ${monthlySalary == null ? '—' : '${monthlySalary ~/ 10000}万円'}',
-                    '単金 —',
+                    '単金 ${unitPriceDisplay ?? '—'}',
                   ].join(' ｜ '),
                   key: Key('public-demo-employee-roster-compensation-${e.id}'),
                   style: TextStyle(
@@ -4065,6 +4136,41 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
     );
   }
 
+  /// PR #236 Codex Broad Review P2 fix: the real per-project 単金 for
+  /// [engineerId]'s *current* assignment, or `null` (rendered as `—`,
+  /// never a guessed number) when none can be safely resolved.
+  ///
+  /// Deliberately gated on [_currentlyAssignedEngineerIds] first — not on
+  /// [_assignmentForOrNull] alone — because
+  /// [PublicDemoWorkflowState.endAssignment]'s own doc records that an
+  /// ended assignment row is sometimes deliberately LEFT IN PLACE rather
+  /// than removed (never revenue-affecting, but still visible to a plain
+  /// `workflow.assignments` scan); without this gate, a no-longer-assigned
+  /// engineer could show a stale project's rate as if they were still
+  /// earning it. Once genuinely currently assigned, resolves
+  /// [PublicDemoAssignment.projectId] through
+  /// [PublicDemoSeededProjectGenerator.regenerate] — the exact same
+  /// `(runSeed, projectId)` derivation
+  /// [PublicDemoAggregate._industryByEngineerId] and `.endAssignment`'s own
+  /// [CareerHistoryEntry] already use for this identical lookup, so this
+  /// never becomes a second, independently-derived resolution that could
+  /// drift from theirs. `projectId == null` (the legacy/generic,
+  /// project-agnostic assignment path) and a `regenerate` miss (should not
+  /// happen for a real projectId, but never assumed) both fall through to
+  /// `null` — never [PublicDemoRevenue.ratePerAssignedEngineer]'s flat
+  /// company-wide constant, and never a recomputed/derived substitute.
+  String? _currentUnitPriceDisplayFor(String engineerId) {
+    if (!_currentlyAssignedEngineerIds.contains(engineerId)) return null;
+    final projectId = _assignmentForOrNull(engineerId)?.projectId;
+    if (projectId == null) return null;
+    final candidate = PublicDemoSeededProjectGenerator.regenerate(
+      runSeed: s.runSeed,
+      projectId: projectId,
+    );
+    if (candidate == null) return null;
+    return '${candidate.monthlyRate ~/ 10000}万円';
+  }
+
   /// [PublicDemoEmployeeStatusTone] for [e] — a pure coloring read of the
   /// same two authoritative facts the roster/badge text already uses:
   /// current assignment ([_currentlyAssignedEngineerIds]) and this month's
@@ -4075,6 +4181,20 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
     }
     if (s.trainingSelections.containsKey(e.id)) {
       return PublicDemoEmployeeStatusTone.training;
+    }
+    // Issue #231 FIRST-FUN-YEAR P1 Fresh Audit: mirrors
+    // [_currentEmployeeStatusLabel]'s own '営業可能'/'研修が必要' split for a
+    // still-`waiting` engineer, reading the same authoritative
+    // [readyForFieldSales] fact — never a second, independently-derived
+    // eligibility check. PR #233 Codex review (P2): also mirrors that same
+    // label's [_fieldSalesActionReachableThisMonth] month gate, so the tone
+    // never promises an action (readyForSales) in a month where no control
+    // can actually take it.
+    if (e.stage == PublicDemoSalesStage.waiting) {
+      if (!readyForFieldSales(e.id)) return PublicDemoEmployeeStatusTone.training;
+      return _fieldSalesActionReachableThisMonth(e)
+          ? PublicDemoEmployeeStatusTone.readyForSales
+          : PublicDemoEmployeeStatusTone.waiting;
     }
     return PublicDemoEmployeeStatusTone.waiting;
   }

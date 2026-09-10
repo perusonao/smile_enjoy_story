@@ -2,15 +2,23 @@
 // (経験年数/月給/単金) added to `_employeeRosterCard`, per the Fresh Audit
 // (`docs/reports/SES_FIRST-FUN-YEAR_Employee-Roster-Management-Data_Fresh-Audit.md`)
 // and the issue's own Phase B-1 scope: 氏名/月給/スキル/経験年数/参画状況 wired
-// onto the card via pre-existing authority, no save-schema change, and 単金
-// truthfully reading '—' for every employee (no per-employee/per-assignment
-// unit-price authority exists anywhere in the repo — confirmed by the audit).
+// onto the card via pre-existing authority, no save-schema change.
+//
+// PR #236 Codex Broad Review P2 fix ("Use project-backed rates instead of
+// always showing a dash"): 単金 now shows the real project rate
+// (PublicDemoSeededProjectGenerator.regenerate(...).monthlyRate) for a
+// genuinely currently-assigned engineer whose PublicDemoAssignment carries a
+// real, resolvable projectId, and truthfully falls back to '—' for a waiting
+// employee, a legacy/generic assignment with no projectId, or an
+// unresolvable id — never PublicDemoRevenue.ratePerAssignedEngineer's flat
+// company-wide constant, never a guessed number.
 //
 // Every fixture below is built by chaining the same real domain commands the
 // existing roster suites (`public_demo_employee_ui_phase1_test.dart`,
-// `public_demo_employee_visual_complete_test.dart`) already use — never a
-// hand-built/UI-driven fixture — so no test here can pass by asserting a
-// value this app does not actually compute.
+// `public_demo_employee_visual_complete_test.dart`,
+// `public_demo_career_history_writer_test.dart`'s own genuine-project-pass
+// technique) already use — never a hand-built/UI-driven fixture — so no test
+// here can pass by asserting a value this app does not actually compute.
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -18,7 +26,11 @@ import 'package:smile_enjoy_story/game/persistence/public_demo_save_codec.dart';
 import 'package:smile_enjoy_story/game/persistence/public_demo_save_service.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_aggregate.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_fiscal_close_id.dart';
+import 'package:smile_enjoy_story/game/public_demo/public_demo_interview.dart';
+import 'package:smile_enjoy_story/game/public_demo/public_demo_project_generator.dart';
+import 'package:smile_enjoy_story/game/public_demo/public_demo_project_interview.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_recruitment_medium.dart';
+import 'package:smile_enjoy_story/game/public_demo/public_demo_sales.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_salary.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_salary_offer.dart';
 import 'package:smile_enjoy_story/ui/public_demo/public_demo_01_placeholder_screen.dart';
@@ -125,6 +137,78 @@ PublicDemoAggregate _hireApplicant(
   return (aggregate: aggregate, recruitedId: recruitedEngineer.id);
 }
 
+/// Advances eng-01 to `partnerInterviewPassed` via the real sales pipeline
+/// (mirrors `public_demo_career_history_writer_test.dart`'s own
+/// `_advanceToPartnerPassed`).
+PublicDemoAggregate _advanceToPartnerPassed(PublicDemoAggregate aggregate) {
+  var next = aggregate.startSkillSheetReview('eng-01');
+  next = next.beginSelling('eng-01');
+  next = next.introduceProject('eng-01');
+  return next.recordEngineerInterviewResult(
+    engineerId: 'eng-01',
+    type: PublicDemoInterviewType.partner,
+  );
+}
+
+/// Records a real Phase 5 matching proposal for eng-01 against this month's
+/// first genuine project candidate.
+PublicDemoAggregate _withRealProposal(PublicDemoAggregate aggregate) {
+  var next = _advanceToPartnerPassed(aggregate);
+  final project = next.projectCandidatesForMonth(next.state.month).first;
+  return next.proposeMatch(engineerId: 'eng-01', projectId: project.id);
+}
+
+/// Runs eng-01's Phase 6 project interview to its real, formula-derived
+/// conclusion (mirrors `public_demo_career_history_writer_test.dart`'s own
+/// `_runInterviewToConclusion`).
+PublicDemoAggregate _runInterviewToConclusion(PublicDemoAggregate aggregate) {
+  aggregate = aggregate.startProjectInterview('eng-01');
+  var session = aggregate.projectInterviewSessionFor('eng-01')!;
+  while (session.playerFollowUps.length < session.questions.length) {
+    final choice = PublicDemoProjectInterview.choicesFor(session).first;
+    aggregate = aggregate.chooseProjectInterviewFollowUp(
+      'eng-01',
+      session.currentQuestionIndex,
+      choice,
+    );
+    session = aggregate.projectInterviewSessionFor('eng-01')!;
+  }
+  return aggregate.concludeProjectInterview('eng-01');
+}
+
+/// A genuine, project-bound eng-01 assignment, assigned through the real
+/// Phase 4/5/6/7A April→May flow — never a fabricated workflow. Scans a
+/// bounded, deterministic seed range for one where the real formulas
+/// produce a client-interview pass (mirrors
+/// `public_demo_career_history_writer_test.dart`'s own
+/// `_genuineAssignedAggregate`, reproduced here since that helper is
+/// private to its own file). Returns `null` if no seed in range passes —
+/// callers should treat that as a fixture problem, not silently skip the
+/// assertion.
+({PublicDemoAggregate aggregate, String projectId})? genuineProjectBackedFixture({
+  int maxSeed = 40,
+}) {
+  for (var seed = 0; seed < maxSeed; seed++) {
+    var aggregate = _withRealProposal(PublicDemoAggregate.initial(runSeed: seed));
+    final projectId = aggregate.workflow.matchingProposalFor('eng-01')!.projectId;
+    aggregate = _runInterviewToConclusion(aggregate);
+    final engineer = aggregate.workflow.engineers.firstWhere(
+      (e) => e.id == 'eng-01',
+    );
+    if (engineer.stage != PublicDemoSalesStage.clientInterviewPassed) continue;
+    aggregate = aggregate.recordOrder('eng-01');
+    aggregate = aggregate.closeApril(monthlyExpenses: 0);
+    aggregate = aggregate.closeMay(week: 9, monthlyExpenses: 0);
+    final assignment = aggregate.workflow.assignments
+        .where((a) => a.engineerId == 'eng-01')
+        .firstOrNull;
+    if (assignment?.projectId == projectId) {
+      return (aggregate: aggregate, projectId: projectId);
+    }
+  }
+  return null;
+}
+
 const _targetSizes = <Size>[Size(360, 800), Size(390, 844)];
 
 void main() {
@@ -195,12 +279,39 @@ void main() {
     );
   });
 
-  group('waiting vs assigned: 単金 stays "—" regardless of 参画状況', () {
+  group('単金: waiting employee shows "—"', () {
     testWidgets(
-      'August: eng-01 is genuinely 参画中 (Recovery-assigned) and eng-02 is '
-      '待機 — both still truthfully read 単金 "—", never a guessed/flat rate',
+      'April, both founding engineers waiting: 単金 is "—" for both — '
+      'nobody is assigned, so there is nothing to resolve a rate from',
+      (tester) async {
+        final aggregate = PublicDemoAggregate.initial();
+        await pumpDemoWith(tester, aggregate);
+
+        expect(compensationTextFor(tester, 'eng-01'), contains('単金 —'));
+        expect(compensationTextFor(tester, 'eng-02'), contains('単金 —'));
+      },
+    );
+  });
+
+  group('単金: legacy/generic assignment (projectId == null) shows "—"', () {
+    testWidgets(
+      'August: eng-01 is genuinely 参画中 via the generic sales pipeline + '
+      'Recovery (`publicDemoAdvanceEngineerToOrdered`/`recoverAssignment` — '
+      'never routed through Phase 5 matching/Phase 6 project interview, so '
+      'the resulting PublicDemoAssignment.projectId is null) — 単金 still '
+      'truthfully reads "—", never PublicDemoRevenue.ratePerAssignedEngineer '
+      'or any other guessed number; eng-02 stays 待機 and also reads "—"',
       (tester) async {
         final aggregate = oneAssignedOneWaitingAtMonth(8);
+        expect(
+          aggregate.workflow.assignments
+              .firstWhere((a) => a.engineerId == 'eng-01')
+              .projectId,
+          isNull,
+          reason:
+              'fixture sanity: the generic pipeline + Recovery never binds '
+              'a real project id',
+        );
         await pumpDemoWith(tester, aggregate);
 
         expect(
@@ -215,9 +326,9 @@ void main() {
           compensationTextFor(tester, 'eng-01'),
           contains('単金 —'),
           reason:
-              'assigned but no per-employee/per-assignment rate authority '
-              'exists — must not display PublicDemoRevenue.ratePerAssignedEngineer '
-              'or any other guessed number as this employee\'s unit price',
+              'assigned, but this assignment has no projectId — must not '
+              'display PublicDemoRevenue.ratePerAssignedEngineer or any '
+              'other guessed number as this employee\'s unit price',
         );
         expect(compensationTextFor(tester, 'eng-02'), contains('単金 —'));
         // Never a fabricated flat rate leaking onto the card as if it were
@@ -225,6 +336,110 @@ void main() {
         expect(compensationTextFor(tester, 'eng-01'), isNot(contains('60万')));
       },
     );
+  });
+
+  group('単金: project-backed assignment shows the real project rate', () {
+    testWidgets(
+      'a genuinely currently-assigned eng-01, assigned through the real '
+      'Phase 5 matching → Phase 6 project interview → order → April/May '
+      'close flow, shows the exact PublicDemoSeededProjectGenerator '
+      '.regenerate(...).monthlyRate for their real project — not '
+      'PublicDemoRevenue.ratePerAssignedEngineer\'s flat ¥600,000 constant',
+      (tester) async {
+        final fixture = genuineProjectBackedFixture();
+        expect(
+          fixture,
+          isNotNull,
+          reason:
+              'fixture sanity: at least one seed in range must produce a '
+              'genuine client-interview pass',
+        );
+        final aggregate = fixture!.aggregate;
+        final candidate = PublicDemoSeededProjectGenerator.regenerate(
+          runSeed: aggregate.state.runSeed,
+          projectId: fixture.projectId,
+        )!;
+        // Sanity: the real rate is never the flat per-headcount constant by
+        // construction coincidence — if it were, the test below would pass
+        // even with the old always-'—' (or a hypothetical always-flat-rate)
+        // implementation, silently.
+        expect(candidate.monthlyRate, isNot(600000));
+
+        await pumpDemoWith(tester, aggregate);
+
+        expect(
+          find.descendant(
+            of: find.byKey(rosterRowKey('eng-01')),
+            matching: find.text('参画中'),
+          ),
+          findsOneWidget,
+          reason: 'fixture sanity: eng-01 is genuinely assigned',
+        );
+        expect(
+          compensationTextFor(tester, 'eng-01'),
+          contains('単金 ${candidate.monthlyRate ~/ 10000}万円'),
+        );
+        expect(
+          compensationTextFor(tester, 'eng-01'),
+          isNot(contains('単金 —')),
+        );
+        // Never the flat per-headcount constant either.
+        expect(compensationTextFor(tester, 'eng-01'), isNot(contains('60万')));
+      },
+    );
+
+    testWidgets(
+      'save/reload: the project-backed 単金 survives a round trip unchanged',
+      (tester) async {
+        final fixture = genuineProjectBackedFixture();
+        expect(fixture, isNotNull);
+        final aggregate = fixture!.aggregate;
+        final candidate = PublicDemoSeededProjectGenerator.regenerate(
+          runSeed: aggregate.state.runSeed,
+          projectId: fixture.projectId,
+        )!;
+
+        const codec = PublicDemoSaveCodec();
+        final decoded = codec.decode(codec.encode(aggregate));
+        expect(decoded, isNotNull, reason: 'fixture sanity: round trip must decode');
+
+        await pumpDemoWith(tester, decoded!);
+
+        expect(
+          compensationTextFor(tester, 'eng-01'),
+          contains('単金 ${candidate.monthlyRate ~/ 10000}万円'),
+        );
+      },
+    );
+  });
+
+  group('単金: an unresolvable project id never crashes, always falls back '
+      'to "—"', () {
+    // A full round trip through PublicDemoSaveCodec cannot construct this
+    // case: `_hasConsistentAuthorityFacts` cross-checks every non-null
+    // `PublicDemoAssignment.projectId` against the same engineer's own
+    // `interviewRecord.projectId`, and a save missing the field entirely is
+    // migrated to an explicit `null` (never a dangling/malformed string) —
+    // see `public_demo_save_codec.dart`'s own migration doc. So any
+    // non-null `projectId` that legitimately reaches this card is
+    // guaranteed resolvable by construction; this test instead pins the
+    // exact guard `_currentUnitPriceDisplayFor` depends on
+    // (`PublicDemoSeededProjectGenerator.regenerate` returning `null` for
+    // an id it did not mint — already covered at the domain level by
+    // `public_demo_seeded_project_generator_test.dart`'s own "regenerate()
+    // returns null for an id this generator did not mint"), so the roster
+    // card's own defensive `if (candidate == null) return null;` fallback
+    // is demonstrably reachable-and-safe, not merely assumed.
+    test('PublicDemoSeededProjectGenerator.regenerate returns null (not a '
+        'thrown exception) for a malformed/unminted id', () {
+      expect(
+        PublicDemoSeededProjectGenerator.regenerate(
+          runSeed: 0,
+          projectId: 'not-a-real-project-id',
+        ),
+        isNull,
+      );
+    });
   });
 
   group('salary display', () {
@@ -286,24 +501,53 @@ void main() {
     );
   });
 
-  group('Package B (営業可能/研修が必要 caption) regression', () {
+  group('Package B (営業可能/研修が必要 caption) coexistence', () {
     testWidgets(
-      'April: Section 2\'s existing sales-readiness clarity '
-      '(営業準備OK / the not-ready lock banner) — the same clarity feature '
-      'this issue\'s regression rule protects — still renders unchanged '
-      'alongside the new roster compensation line',
+      'April: 氏名/参画状況(営業可能・研修が必要・理由caption)/スキル/経験年数/'
+      '月給/単金 all coexist on the same roster row without dropping any '
+      'existing text — eng-01 (ready) reads 営業可能, eng-02 (not ready) '
+      'reads 研修が必要 plus its existing reason caption, and Section 2\'s '
+      '営業準備OK/lock banner clarity this issue\'s regression rule protects '
+      'still renders unchanged',
       (tester) async {
         final aggregate = PublicDemoAggregate.initial();
         await pumpDemoWith(tester, aggregate);
 
-        // NOTE: PR #233 (Issue #231 Package B), which adds the roster's own
-        // 営業可能/研修が必要 badge text this issue names, is not yet merged
-        // into origin/main as of this Phase B-1's base SHA (confirmed via
-        // the GitHub API at implementation time) — so there is no such
-        // roster-card text on this base to regress. This asserts the
-        // pre-existing Section 2 sales-readiness clarity (営業準備OK / the
-        // not-yet-ready lock banner) — the feature #233 itself extends —
-        // is untouched by Phase B-1's compensation line.
+        // eng-01 (founding capability 78) is ready for field sales —
+        // PR #233's own `_currentEmployeeStatusLabel` split.
+        expect(
+          find.descendant(
+            of: find.byKey(rosterRowKey('eng-01')),
+            matching: find.text('営業可能'),
+          ),
+          findsOneWidget,
+        );
+        // eng-02 (founding capability 52, below the 60 threshold) is not —
+        // both the badge label and PR #233's own reason caption line.
+        expect(
+          find.descendant(
+            of: find.byKey(rosterRowKey('eng-02')),
+            matching: find.text('研修が必要'),
+          ),
+          findsOneWidget,
+        );
+        expect(
+          find.descendant(
+            of: find.byKey(rosterRowKey('eng-02')),
+            matching: find.textContaining('営業には実力'),
+          ),
+          findsOneWidget,
+          reason:
+              'PR #233\'s own not-ready reason caption must still render '
+              'alongside Phase B-1\'s compensation line, not be displaced '
+              'by it',
+        );
+        // Phase B-1's own compensation line is still present on both rows.
+        expect(compensationTextFor(tester, 'eng-01'), contains('月給 30万円'));
+        expect(compensationTextFor(tester, 'eng-02'), contains('月給 25万円'));
+
+        // Section 2's own, independent sales-readiness clarity (unchanged
+        // by either PR) still renders.
         expect(find.text('営業準備OK'), findsOneWidget);
         expect(
           find.byKey(const Key('public-demo-field-sales-lock-eng-02')),
@@ -311,6 +555,46 @@ void main() {
         );
       },
     );
+
+    for (final size in _targetSizes) {
+      for (final textScale in [1.0, 1.3]) {
+        testWidgets(
+          '${size.width.toInt()}x${size.height.toInt()} / textScale '
+          '$textScale: eng-01 (営業可能) and eng-02 (研修が必要 + reason '
+          'caption + compensation line) both render with no overflow',
+          (tester) async {
+            tester.view.physicalSize = size;
+            tester.view.devicePixelRatio = 1.0;
+            addTearDown(tester.view.reset);
+
+            final aggregate = PublicDemoAggregate.initial();
+            await tester.pumpWidget(
+              MaterialApp(
+                home: MediaQuery(
+                  data: MediaQueryData(
+                    size: size,
+                    textScaler: TextScaler.linear(textScale),
+                  ),
+                  child: PublicDemo01PlaceholderScreen(
+                    saveService: _FixedSaveService(aggregate),
+                  ),
+                ),
+              ),
+            );
+            await tester.pumpAndSettle();
+            await switchPublicDemoTab(tester, PublicDemoTab.employees);
+
+            expect(tester.takeException(), isNull);
+
+            for (final id in ['eng-01', 'eng-02']) {
+              final rowRect = tester.getRect(find.byKey(rosterRowKey(id)));
+              expect(rowRect.left, greaterThanOrEqualTo(0.0));
+              expect(rowRect.right, lessThanOrEqualTo(size.width));
+            }
+          },
+        );
+      }
+    }
   });
 
   group('save/reload: compensation line survives a round trip', () {

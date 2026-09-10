@@ -224,7 +224,7 @@ Result Reportは履歴・証拠であり、この文書の代わりにはしな�
   - SkillSheet確認hard gate（`waiting→skillSheet→selling`）はFresh Auditの結果、read-onlyではあるがHOME Recommended Action設計authority（`home_recommended_action.dart`のP2帯）とCash Advisor（`PublicDemoCashAdviceSelector`）に組み込まれておりPackage Bのスコープ外であるため、**弱化/削除せず維持**（維持理由はResult Report参照）。
   - Sales/Employee/Recruitment/Finance/月次決算/HOME/save schema（`schemaVersion`=1）はいずれも無変更。
   - `flutter analyze`（プロジェクト全体）No issues、既存テスト3件（「待機中の社員全員が同じ表示」を前提としていたassertion）を更新、新規focused test 1ファイル3件を追加、`test/game/public_demo`+`test/ui/public_demo`+`test/widget_test.dart`（1389件）いずれもgreen。
-  - 詳細・authority trace・gate維持理由・テスト証跡は`docs/reports/SES_FIRST-FUN-YEAR_Initial-Employee-SkillSheet-Clarity_P1_Result.md`を参照。
+  - 詳細・authority trace・gate維持理由・テスト証跡は`docs/reports/SES_FIRST-FUN-YEAR_Initial-Employee-SkillSheet-Clarity_P1_Result.md`を参照。PR: https://github.com/perusonao/smile_enjoy_story/pull/233 。
 - **本エントリはCurrent execution order・Prioritized backlog tableの構成自体は変更しない。** 本修正はPrioritized backlog表のP3「Public Demo UX仕上げ」枠（3〜6h、「初見でも基本ループを理解できる」）のうちPackage B分の消化として記録する — First Fun Yearの実行順（Visual Complete系列 → April→March human replay）自体は本エントリ以前と同じ。production code以外のtests/workflowも本エントリの対象範囲（Employee tab presentation）に限定される。
 
 ### 2026-09-10（Issue #229完了 — Public Demo Opening Context Package A / governing plan sync）

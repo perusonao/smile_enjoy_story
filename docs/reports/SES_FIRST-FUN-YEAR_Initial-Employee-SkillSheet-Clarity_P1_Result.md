@@ -122,4 +122,4 @@ Approximately 1.5 hours (Fresh Audit + implementation + focused/new tests + two 
 
 ## 10. PR
 
-_(filled in after push)_
+https://github.com/perusonao/smile_enjoy_story/pull/233

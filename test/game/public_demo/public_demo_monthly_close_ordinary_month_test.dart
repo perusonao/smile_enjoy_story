@@ -48,8 +48,8 @@ void main() {
       expect(result.closedMonth, 8);
       // cash: +500,000 (old pending) - 800,000 (expenses) = -300,000
       expect(result.cashAfter, 2000000 + 500000 - 800000);
-      // new pending: 1 assigned x 500,000
-      expect(result.state.pendingRevenue, 500000);
+      // new pending: 1 assigned x 600,000
+      expect(result.state.pendingRevenue, 600000);
       expect(result.state.month, 9);
       expect(result.state.salesUsed, 0);
     });
@@ -75,13 +75,13 @@ void main() {
       expect(afterSeptember.isClosed, isTrue);
       expect(afterSeptember.closedMonth, 9);
       expect(afterSeptember.state.month, 10);
-      // September's old pending (August's just-booked 500,000) settles once;
-      // September's own 1-assigned revenue (500,000) books as new pending.
+      // September's old pending (August's just-booked 600,000) settles once;
+      // September's own 1-assigned revenue (600,000) books as new pending.
       expect(
         afterSeptember.cashAfter,
-        afterAugust.state.cash + 500000 - 800000,
+        afterAugust.state.cash + 600000 - 800000,
       );
-      expect(afterSeptember.state.pendingRevenue, 500000);
+      expect(afterSeptember.state.pendingRevenue, 600000);
     });
   });
 
@@ -127,8 +127,8 @@ void main() {
       expect(publicDemoMonthLabel(result.state.month), '1月');
       // cash: +500,000 (December's old pending) - 800,000 (expenses)
       expect(result.cashAfter, 3000000 + 500000 - 800000);
-      // January's new pending: 2 assigned x 500,000
-      expect(result.state.pendingRevenue, 1000000);
+      // January's new pending: 2 assigned x 600,000
+      expect(result.state.pendingRevenue, 1200000);
     });
   });
 
@@ -150,9 +150,9 @@ void main() {
       expect(result.closedMonth, 15);
       // cash: +1,000,000 (old pending) - 800,000 (expenses)
       expect(result.cashAfter, 4000000 + 1000000 - 800000);
-      // March's own revenue (2 assigned x 500,000) stays pending: Public
+      // March's own revenue (2 assigned x 600,000) stays pending: Public
       // Demo ends before the 30-day site would collect it.
-      expect(result.state.pendingRevenue, 1000000);
+      expect(result.state.pendingRevenue, 1200000);
       expect(result.state.month, 15);
       expect(result.state.fiscalYearCompleted, isTrue);
     });

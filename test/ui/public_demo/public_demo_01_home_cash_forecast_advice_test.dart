@@ -272,12 +272,18 @@ PublicDemoAggregate _orderApplicant(
 /// require: excluding `app-01` must not just suppress the CTA outright —
 /// it must fall through to this genuinely-eligible engineer.
 ///
-/// The `+100000` on April's `monthlyExpenses` is a caller-supplied number
-/// (this parameter is never cross-checked against the real formula — every
-/// existing aggregate-level test fixture picks its own), chosen only so
-/// the real, unmodified `PublicDemoCashForecast` genuinely projects a
-/// shortage a few months out while `financialStatus` is still confirmed
-/// `normal` — asserted explicitly below rather than assumed.
+/// The extra one-time amount added to April's `monthlyExpenses` is a
+/// caller-supplied number (this parameter is never cross-checked against the
+/// real formula — every existing aggregate-level test fixture picks its
+/// own), chosen only so the real, unmodified `PublicDemoCashForecast`
+/// genuinely projects a shortage a few months out while `financialStatus` is
+/// still confirmed `normal` — asserted explicitly below rather than assumed.
+/// Issue #223 (FIRST-FUN-YEAR Seeded Balance Fix) raised
+/// `PublicDemoRevenue.ratePerAssignedEngineer` (500,000 -> 600,000), which
+/// narrows app-01's own monthly deficit once assigned (a smaller structural
+/// gap to close) — bumped from +100,000 to +900,000 so the same 3-month
+/// forecast window (`PublicDemoCashForecast.defaultMonthsAhead`) still
+/// projects a real crossing to negative under the new rate.
 PublicDemoAggregate _buildJuneJoinMismatchAggregate({
   String? secondApplicantId,
 }) {
@@ -288,7 +294,7 @@ PublicDemoAggregate _buildJuneJoinMismatchAggregate({
       .startSkillSheetReview('eng-02')
       .beginSelling('eng-02');
   aggregate = aggregate.closeApril(
-    monthlyExpenses: PublicDemoSalary.baselineMonthlyExpenses + 100000,
+    monthlyExpenses: PublicDemoSalary.baselineMonthlyExpenses + 900000,
   );
 
   aggregate = _orderApplicant(aggregate, 'app-01');

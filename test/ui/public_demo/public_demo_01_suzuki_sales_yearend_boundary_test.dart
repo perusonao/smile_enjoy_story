@@ -9,30 +9,32 @@
 // extend the sales window into March (no balance/domain/save change, no
 // widened Finding B scope).
 //
-// This test drives Suzuki (eng-02, capability 52) to exactly 59 by October,
-// leaves her untrained through November-January so she is still 59 entering
-// February, and proves:
+// This test drives Suzuki (eng-02, capability 52) to exactly 58 by June
+// (three real trainings — April, May, June), leaves her untrained through
+// July-January so she is still 58 entering February, and proves:
 //  - the lock banner, shown in February, states the truthful "no more
 //    chances this fiscal year" fact instead of Finding B's forward-looking
 //    promise, which would be false here;
-//  - training in February (her 8th selection) still raises her to exactly
+//  - training in February (her 4th selection) still raises her to exactly
 //    60 at month-end, same as every other month (growth rate untouched);
 //  - March genuinely offers no route back — no lock banner, no
 //    スキルシート確認 — confirming the corrected copy is honest about the
 //    boundary rather than the sales window having been silently extended.
 //
+// Issue #223 (FIRST-FUN-YEAR Seeded Balance Fix) tuning raised
+// PublicDemoGrowthEngine's internal-training rate (+1/month -> +2/month for
+// Suzuki's own growthPotential), so only 3 trainings (not the pre-tuning 7)
+// are needed before the 4th, February one crosses the 60 threshold — training
+// her every month April-July, as the pre-tuning version of this test did,
+// would cross the threshold by August, months before the February boundary
+// this test exists to probe, so July's own training step was dropped.
+//
 // Hiring 斎藤拓也 (seed 9's first `engineer`-medium candidate) in May,
 // mirroring public_demo_01_success_playthrough_test.dart's own May block, is
 // not
 // Finding B behavior — it exists purely so this playthrough carries enough
-// Revenue to stay solvent through February's own training charge. A
-// single-founding-engineer playthrough (public_demo_01_assignment_
-// carryforward_test.dart's own contract) has essentially zero cash margin
-// left entering February even with no extra spending at all — this test's
-// own probe confirmed baseline cash is exactly ¥0 entering February — so
-// the 7 extra ¥30,000 training charges this scenario needs before February
-// would otherwise trip `isFinanciallyRestricted` a month early and block
-// the very training this test exists to prove is not month-blocked.
+// Revenue to stay solvent through every training charge, including
+// February's.
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -127,16 +129,6 @@ Future<void> _closeMonth(WidgetTester tester, String closeLabel) async {
   await dismissMonthGuardIfPresent(tester);
 }
 
-/// Trains Suzuki this month, then closes via [closeLabel].
-Future<void> _trainSuzukiAndCloseMonth(
-  WidgetTester tester,
-  String closeLabel,
-) async {
-  await switchPublicDemoTab(tester, PublicDemoTab.employees);
-  await tapFinder(tester, find.byKey(_trainingActionKey));
-  await _closeMonth(tester, closeLabel);
-}
-
 /// Decides and accepts every still-undecided July continuation on 営業 —
 /// both Sato's and Takahashi's assignments are undecided simultaneously
 /// entering June, so the generic `決定→受注` pair is repeated once per
@@ -193,7 +185,7 @@ void main() {
       await dismissMonthGuardIfPresent(tester);
       await dismissDialog(tester, '確認');
       expect(find.text('1年目 5月'), findsOneWidget);
-      expect(currentState(tester).runtimeFor(_suzukiId).actualCapability, 53);
+      expect(currentState(tester).runtimeFor(_suzukiId).actualCapability, 54);
 
       // ---- May: recruit via 求人媒体, then hire and sell 斎藤拓也 (seed 9's
       // first `engineer`-medium candidate), mirroring
@@ -235,7 +227,7 @@ void main() {
       await dismissMonthGuardIfPresent(tester);
       await dismissDialog(tester, '確認'); // 入社・初参画！
       expect(find.text('1年目 6月'), findsOneWidget);
-      expect(currentState(tester).runtimeFor(_suzukiId).actualCapability, 54);
+      expect(currentState(tester).runtimeFor(_suzukiId).actualCapability, 56);
 
       // ---- June: accept both Sato's and Takahashi's July continuations
       // (Revenue for the rest of this playthrough) and take June's
@@ -247,12 +239,14 @@ void main() {
       await tapAndSettle(tester, '6月を終了して7月へ');
       await dismissMonthGuardIfPresent(tester);
       expect(find.text('1年目 7月'), findsOneWidget);
-      expect(currentState(tester).runtimeFor(_suzukiId).actualCapability, 55);
+      expect(currentState(tester).runtimeFor(_suzukiId).actualCapability, 58);
 
-      // ---- July: train, then close past the mandatory (default "none")
-      // summer bonus decision.
-      await switchPublicDemoTab(tester, PublicDemoTab.employees);
-      await tapFinder(tester, find.byKey(_trainingActionKey));
+      // ---- July: deliberately leave her untrained from here — at Issue
+      // #223's tuned +2/month internal-training rate, three trainings
+      // (April/May/June) already reach 58, one training short of the
+      // threshold; a fourth now would cross it in August, months before the
+      // February boundary this test exists to probe. Still close past the
+      // mandatory (default "none") summer bonus decision.
       await switchPublicDemoTab(tester, PublicDemoTab.home);
       await tapAndSettle(tester, '7月を終了して8月へ');
       await tester.tap(find.byKey(const Key('public-demo-summer-bonus-none')));
@@ -260,21 +254,18 @@ void main() {
       await tapAndSettle(tester, '7月を終了して8月へ');
       await dismissMonthGuardIfPresent(tester);
       expect(find.text('1年目 8月'), findsOneWidget);
-      expect(currentState(tester).runtimeFor(_suzukiId).actualCapability, 56);
+      expect(currentState(tester).runtimeFor(_suzukiId).actualCapability, 58);
 
-      // ---- August-October: three more ordinary-month trainings reach
-      // exactly 59 by October's close — one short of the threshold,
-      // deliberately.
-      await _trainSuzukiAndCloseMonth(tester, '8月を終了して翌月へ');
+      // ---- August-January: six more ordinary-month closes, still
+      // deliberately untrained. She stays at 58 entering February — the
+      // exact boundary scenario Codex named, now reached via three real
+      // trainings (April/May/June) instead of the pre-Issue-#223 seven.
+      await _closeMonth(tester, '8月を終了して翌月へ');
       expect(find.text('1年目 9月'), findsOneWidget);
-      await _trainSuzukiAndCloseMonth(tester, '9月を終了して翌月へ');
+      await _closeMonth(tester, '9月を終了して翌月へ');
       expect(find.text('1年目 10月'), findsOneWidget);
-      await _trainSuzukiAndCloseMonth(tester, '10月を終了して翌月へ');
+      await _closeMonth(tester, '10月を終了して翌月へ');
       expect(find.text('1年目 11月'), findsOneWidget);
-      expect(currentState(tester).runtimeFor(_suzukiId).actualCapability, 59);
-
-      // ---- November-January: deliberately leave her untrained. She stays
-      // at 59 entering February — the exact boundary scenario Codex named.
       await _closeMonth(tester, '11月を終了して翌月へ');
       expect(find.text('1年目 12月'), findsOneWidget);
       await _closeMonth(tester, '12月を終了して翌月へ');
@@ -282,7 +273,7 @@ void main() {
       await _closeMonth(tester, '1月を終了して翌月へ');
       expect(find.text('1年目 2月'), findsOneWidget);
       final suzukiInFebruary = currentState(tester).runtimeFor(_suzukiId);
-      expect(suzukiInFebruary.actualCapability, 59);
+      expect(suzukiInFebruary.actualCapability, 58);
       expect(suzukiInFebruary.isReadyForFieldSales, isFalse);
 
       // ---- February (internal month 14,
@@ -337,11 +328,12 @@ void main() {
       await dismissMonthGuardIfPresent(tester);
       expect(find.text('1年目 3月'), findsOneWidget);
 
-      // ---- March: growth applied exactly as every other month — 8
-      // trainings total (April, May, June, July, August, September,
-      // October, February) x +1/month = 52 + 8 = 60, exactly the
-      // threshold — but this build's sales window (RECOVERY-LOOP-1,
-      // through February) does not extend here. No lock banner (it only
+      // ---- March: growth applied exactly as every other month — 4
+      // trainings total (April, May, June, February) x +2/month (Issue
+      // #223 FIRST-FUN-YEAR Seeded Balance Fix tuning) = 52 + 8 = 60,
+      // exactly the threshold — but this build's sales window
+      // (RECOVERY-LOOP-1, through February) does not extend here. No lock
+      // banner (it only
       // ever renders inside `ec(...)`, which `_buildEmployeesTab` never
       // calls for month 15) and no スキルシート確認 button either — the
       // scoped fix corrects the copy's honesty, it does not add the route

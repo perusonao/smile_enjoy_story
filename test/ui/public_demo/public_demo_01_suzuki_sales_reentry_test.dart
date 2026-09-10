@@ -4,7 +4,8 @@
 // `public_demo_01_suzuki_sales_lock_test.dart` never actually proves,
 // because that test trains Suzuki (eng-02, capability 52) exactly once (in
 // April) and then only drives the game forward to July, never far enough for
-// one +1/month `internalTraining` gain to cross
+// one +2/month `internalTraining` gain (Issue #223 FIRST-FUN-YEAR Seeded
+// Balance Fix tuning: 1.2 -> 2.0) to cross
 // `fieldSalesCapabilityRequirement` (60). This file trains her every month —
 // starting with the May training card Finding B adds (see
 // `public_demo_01_placeholder_screen.dart`'s `_buildEmployeesTab`, the
@@ -143,8 +144,11 @@ void main() {
     expect(find.text('1年目 5月'), findsOneWidget);
     expect(
       currentState(tester).runtimeFor(_suzukiId).actualCapability,
-      53,
-      reason: 'April training applies its +1 at month-end close',
+      54,
+      reason:
+          'April training applies its +2 at month-end close (Issue #223 '
+          'FIRST-FUN-YEAR Seeded Balance Fix: internal-training rate 1.2 '
+          '-> 2.0)',
     );
 
     // ---- May: Finding B's own fix. Before it, nothing on this tab
@@ -169,7 +173,7 @@ void main() {
     await switchPublicDemoTab(tester, PublicDemoTab.home);
     await _trainSuzukiAndCloseMonth(tester, '5月を終了して6月へ');
     expect(find.text('1年目 6月'), findsOneWidget);
-    expect(currentState(tester).runtimeFor(_suzukiId).actualCapability, 54);
+    expect(currentState(tester).runtimeFor(_suzukiId).actualCapability, 56);
 
     // ---- June: accept July's continuation for Sato (Revenue funds the
     // rest of this playthrough's training spend — see
@@ -188,11 +192,15 @@ void main() {
     await switchPublicDemoTab(tester, PublicDemoTab.home);
     await _trainSuzukiAndCloseMonth(tester, '6月を終了して7月へ');
     expect(find.text('1年目 7月'), findsOneWidget);
-    expect(currentState(tester).runtimeFor(_suzukiId).actualCapability, 55);
+    expect(currentState(tester).runtimeFor(_suzukiId).actualCapability, 58);
 
     // ---- July: train, then close past the mandatory (default "none")
     // summer bonus decision — mirrors
     // `public_demo_01_fiscal_year_progression_test.dart`'s own July step.
+    // This is the fourth straight monthly training (April/May/June/July)
+    // — and, at Issue #223's tuned +2/month internal-training rate, the
+    // one that closes exactly on the threshold (52 + 4 x (+2/month) = 60),
+    // four months sooner than the pre-tuning +1/month rate's eight.
     await switchPublicDemoTab(tester, PublicDemoTab.employees);
     await tapFinder(tester, find.byKey(_trainingActionKey));
     await switchPublicDemoTab(tester, PublicDemoTab.home);
@@ -202,41 +210,15 @@ void main() {
     await tapAndSettle(tester, '7月を終了して8月へ');
     await dismissMonthGuardIfPresent(tester);
     expect(find.text('1年目 8月'), findsOneWidget);
-    expect(currentState(tester).runtimeFor(_suzukiId).actualCapability, 56);
-
-    // ---- August-October: three more ordinary-month trainings. Still
-    // below the threshold, so still no スキルシート確認 for her yet — the
-    // corrected lock banner never claimed a specific month, and this is
-    // exactly why: reaching the threshold takes real, repeated play.
-    await _trainSuzukiAndCloseMonth(tester, '8月を終了して翌月へ');
-    expect(find.text('1年目 9月'), findsOneWidget);
-    expect(currentState(tester).runtimeFor(_suzukiId).actualCapability, 57);
-    await switchPublicDemoTab(tester, PublicDemoTab.employees);
-    expect(actionButton('スキルシート確認'), findsNothing);
-    expect(find.byKey(_lockKey), findsOneWidget);
-
-    await switchPublicDemoTab(tester, PublicDemoTab.home);
-    await _trainSuzukiAndCloseMonth(tester, '9月を終了して翌月へ');
-    expect(find.text('1年目 10月'), findsOneWidget);
-    expect(currentState(tester).runtimeFor(_suzukiId).actualCapability, 58);
-
-    await _trainSuzukiAndCloseMonth(tester, '10月を終了して翌月へ');
-    expect(find.text('1年目 11月'), findsOneWidget);
-    expect(currentState(tester).runtimeFor(_suzukiId).actualCapability, 59);
-
-    // ---- November: the eighth and final training closes exactly on the
-    // threshold (52 + 8 x (+1/month) = 60).
-    await _trainSuzukiAndCloseMonth(tester, '11月を終了して翌月へ');
-    expect(find.text('1年目 12月'), findsOneWidget);
-    final suzukiInDecember = currentState(tester).runtimeFor(_suzukiId);
+    final suzukiInAugust = currentState(tester).runtimeFor(_suzukiId);
     expect(
-      suzukiInDecember.actualCapability,
+      suzukiInAugust.actualCapability,
       PublicDemoEngineerRuntime.fieldSalesCapabilityRequirement,
     );
-    expect(suzukiInDecember.isReadyForFieldSales, isTrue);
+    expect(suzukiInAugust.isReadyForFieldSales, isTrue);
 
-    // ---- December: the causal loop's payoff. No rule changed to make
-    // this happen — `_buildEmployeesTab`'s existing July-February
+    // ---- August: the causal loop's payoff. No rule changed to make this
+    // happen — `_buildEmployeesTab`'s existing July-February
     // `ec(i, showTrainingCard: false)` loop already re-renders every
     // still-`waiting`, unassigned engineer every month in that window;
     // it simply never had a ready Suzuki to render for before. The lock

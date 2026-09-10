@@ -50,7 +50,7 @@ void main() {
       expect(result.state.pendingRevenue, 0);
     });
 
-    test('2. pending 0, assigned 1 -> cash +0, new pending 500,000', () {
+    test('2. pending 0, assigned 1 -> cash +0, new pending 600,000', () {
       final start = fixture(
         cash: 1000000,
         pendingRevenue: 0,
@@ -62,11 +62,11 @@ void main() {
         orderedEngineers: 0,
       );
       expect(result.cashAfter, 1000000);
-      expect(result.state.pendingRevenue, 500000);
+      expect(result.state.pendingRevenue, 600000);
     });
 
     test(
-      '3. pending 500,000, assigned 1 -> cash +500,000, new pending 500,000',
+      '3. pending 500,000, assigned 1 -> cash +500,000, new pending 600,000',
       () {
         final start = fixture(
           cash: 1000000,
@@ -79,12 +79,12 @@ void main() {
           orderedEngineers: 0,
         );
         expect(result.cashAfter, 1500000);
-        expect(result.state.pendingRevenue, 500000);
+        expect(result.state.pendingRevenue, 600000);
       },
     );
 
     test(
-      '4. pending 500,000, assigned 2 -> cash +500,000, new pending 1,000,000',
+      '4. pending 500,000, assigned 2 -> cash +500,000, new pending 1,200,000',
       () {
         final start = fixture(
           cash: 1000000,
@@ -97,7 +97,7 @@ void main() {
           orderedEngineers: 0,
         );
         expect(result.cashAfter, 1500000);
-        expect(result.state.pendingRevenue, 1000000);
+        expect(result.state.pendingRevenue, 1200000);
       },
     );
 
@@ -113,7 +113,7 @@ void main() {
         monthlyExpenses: 0,
         orderedEngineers: 0,
       );
-      expect(result.state.pendingRevenue, 1500000);
+      expect(result.state.pendingRevenue, 1800000);
       expect(result.cashAfter, 1000000);
     });
 
@@ -144,7 +144,7 @@ void main() {
         orderedEngineers: 0,
       );
       expect(firstClose.cashAfter, 1500000);
-      expect(firstClose.state.pendingRevenue, 500000);
+      expect(firstClose.state.pendingRevenue, 600000);
 
       // Second call targets May (month already advanced past April), so the
       // underlying transition's own guard makes it a no-op — and therefore
@@ -157,7 +157,7 @@ void main() {
       expect(secondClose.status, PublicDemoMonthlyCloseStatus.notApplicable);
       expect(secondClose.state, same(firstClose.state));
       expect(secondClose.state.cash, 1500000);
-      expect(secondClose.state.pendingRevenue, 500000);
+      expect(secondClose.state.pendingRevenue, 600000);
     });
   });
 
@@ -173,7 +173,7 @@ void main() {
       );
 
       // 4->5 close: no cash Revenue increase (pending was 0); assigned=1
-      // books 500,000 as May's pending. Post-close engineersAssigned is
+      // books 600,000 as May's pending. Post-close engineersAssigned is
       // driven to 2 via orderedEngineers, matching "5月: assigned=2".
       final afterApril = PublicDemoMonthlyClose.closeApril(
         state: april,
@@ -181,11 +181,11 @@ void main() {
         orderedEngineers: 2,
       );
       expect(afterApril.cashAfter, 3000000 - 800000);
-      expect(afterApril.state.pendingRevenue, 500000);
+      expect(afterApril.state.pendingRevenue, 600000);
       expect(afterApril.state.engineersAssigned, 2);
 
-      // 5->6 close: April's 500,000 pending settles into cash; May's
-      // assigned=2 books 1,000,000 as June's pending.
+      // 5->6 close: April's 600,000 pending settles into cash; May's
+      // assigned=2 books 1,200,000 as June's pending.
       final afterMay = PublicDemoMonthlyClose.closeMay(
         state: afterApril.state,
         workflow: PublicDemoWorkflowState.initial(),
@@ -193,8 +193,8 @@ void main() {
         acceptedHires: 0,
         hiredWithOrders: 0,
       );
-      expect(afterMay.cashAfter, afterApril.cashAfter + 500000 - 800000);
-      expect(afterMay.state.pendingRevenue, 1000000);
+      expect(afterMay.cashAfter, afterApril.cashAfter + 600000 - 800000);
+      expect(afterMay.state.pendingRevenue, 1200000);
     });
   });
 
@@ -218,7 +218,7 @@ void main() {
       // value (2 -> 7): the close itself adds 5 newly-ordered hires.
       expect(result.state.engineersAssigned, 7);
       // Revenue must still reflect the pre-close snapshot (2), not 7.
-      expect(result.state.pendingRevenue, 1000000);
+      expect(result.state.pendingRevenue, 1200000);
     });
   });
 
@@ -279,8 +279,8 @@ void main() {
       expect(result.state.summerBonusPaid, isTrue);
       expect(result.state.summerBonusPaidAmount, 550000);
       expect(result.cashAfter, 1500000 - 1350000);
-      // July's assigned=1 books 500,000 as August's pending.
-      expect(result.state.pendingRevenue, 500000);
+      // July's assigned=1 books 600,000 as August's pending.
+      expect(result.state.pendingRevenue, 600000);
     });
 
     test('Issue #133 fixture: none closes July at -210,000 and a retry is '

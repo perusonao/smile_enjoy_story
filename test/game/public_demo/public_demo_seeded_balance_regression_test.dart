@@ -395,49 +395,36 @@ void main() {
     // after the Codex P1 fix (PR #218: monthlyExpenses now recomputed every
     // month from the real, authoritative joinedApplicants roster) — every
     // figure here changed from the pre-fix version of this file, because
-    // the pre-fix numbers never actually deducted a May hire's salary. A
-    // future balance change to Phase 7A/7B/Recovery/Growth/Finance is
-    // expected to change these numbers again; when it does, re-run
+    // the pre-fix numbers never actually deducted a May hire's salary.
+    //
+    // Re-measured again for Issue #223 (FIRST-FUN-YEAR Seeded Balance Fix):
+    // PublicDemoRevenue.ratePerAssignedEngineer (500,000 -> 600,000) and
+    // PublicDemoGrowthEngine's internal-training rate (1.2 -> 2.0) both
+    // change every figure below — 6 of the 7 required seeds now reach March
+    // with this bot's own single ("always recruit once in May, train any
+    // under-threshold waiting engineer, accept every generic-path order")
+    // policy, up from 1 of 7 before this Issue's tuning. See
+    // docs/reports/SES_FIRST-FUN-YEAR_Seeded-Balance-Fix_Result.md for the
+    // full before/after rationale and the additional Balanced/Growth/Poor-
+    // decisions strategy comparison this Issue's new
+    // `PublicDemoStrategyBot` harness provides. A future balance change to
+    // Phase 7A/7B/Recovery/Growth/Finance is expected to change these
+    // numbers again; when it does, re-run
     // `tool/simulate_public_demo_seeded_balance.dart` and this file
     // together and update both intentionally, never one without
     // re-examining the other.
     const expected = {
-      0: (
-        reachedMarch: false,
-        terminal: PublicDemoFinancialStatus.bankruptcy,
-        joinedInMay: 1,
-        finalCash: -1140000,
-      ),
-      1: (
-        reachedMarch: false,
-        terminal: PublicDemoFinancialStatus.bankruptcy,
-        joinedInMay: 2,
-        finalCash: -720000,
-      ),
-      42: (
-        reachedMarch: false,
-        terminal: PublicDemoFinancialStatus.bankruptcy,
-        joinedInMay: 2,
-        finalCash: -960000,
-      ),
-      13: (reachedMarch: true, terminal: null, joinedInMay: 1, finalCash: 1560000),
-      666: (
-        reachedMarch: false,
-        terminal: PublicDemoFinancialStatus.bankruptcy,
-        joinedInMay: 1,
-        finalCash: -1240000,
-      ),
-      315: (
-        reachedMarch: false,
-        terminal: PublicDemoFinancialStatus.bankruptcy,
-        joinedInMay: 2,
-        finalCash: -790000,
-      ),
+      0: (reachedMarch: true, terminal: null, joinedInMay: 1, finalCash: 920000),
+      1: (reachedMarch: true, terminal: null, joinedInMay: 2, finalCash: 2370000),
+      42: (reachedMarch: true, terminal: null, joinedInMay: 2, finalCash: 1770000),
+      13: (reachedMarch: true, terminal: null, joinedInMay: 1, finalCash: 6280000),
+      666: (reachedMarch: true, terminal: null, joinedInMay: 1, finalCash: 480000),
+      315: (reachedMarch: true, terminal: null, joinedInMay: 2, finalCash: 2930000),
       2147483000: (
         reachedMarch: false,
         terminal: PublicDemoFinancialStatus.bankruptcy,
         joinedInMay: 2,
-        finalCash: -1660000,
+        finalCash: -720000,
       ),
     };
 
@@ -480,34 +467,26 @@ void main() {
       }
     });
 
-    test('Suzuki (eng-02) has a >=6-month no-order streak in every required '
-        'seed, and the full structural 8-month minimum (April-November) '
-        'wherever the company survives long enough to show it — a '
-        'CONFIRMED VIOLATION of the issue\'s own "5か月連続no-orderは実質的に '
-        '禁止" guardrail either way, and seed-INDEPENDENT (Suzuki\'s path '
+    test('Suzuki (eng-02) has exactly a 4-month no-order streak in every '
+        'required seed — Issue #223\'s internal-training-rate fix (1.2 -> '
+        '2.0, see PublicDemoGrowthEngine) RESOLVES the previously-confirmed '
+        'violation of the issue\'s own "5か月連続no-orderは実質的に禁止" '
+        'guardrail (every required seed used to show >=6, and up to the '
+        'full 8-month structural minimum). Seed-INDEPENDENT (Suzuki\'s path '
         'never touches the seeded project/recruitment generators at all — '
-        'only the deterministic training-growth formula). After the Codex '
-        'P1 fix (real May-hire payroll deduction), most required seeds now '
-        'go bankrupt before month 12 — see the result report — which '
-        'TRUNCATES the observed streak below the true 8-month structural '
-        'minimum for those seeds (the company simply does not survive long '
-        'enough to keep counting). Locked per-seed rather than a single '
-        'flat 8, unlike the pre-fix version of this test. See the result '
-        'report for the root-cause analysis and recommended follow-up.', () {
-      const expectedStreak = {
-        0: 7, // bankrupt month 10 — truncated below the 8-month structural minimum.
-        1: 6, // bankrupt month 9 — truncated.
-        42: 6, // bankrupt month 9 — truncated.
-        13: 8, // reaches March — the full, untruncated structural minimum.
-        666: 7, // bankrupt month 10 — truncated.
-        315: 7, // bankrupt month 10 — truncated.
-        2147483000: 6, // bankrupt month 9 — truncated.
-      };
+        'only the deterministic training-growth formula: growthPotential:4 '
+        '-> +2 capability/month -> exactly 4 monthly training purchases '
+        'crosses the 52->60 field-sales bar), and now uniform across every '
+        'required seed because every one of them also reaches March (see '
+        'the required-seed table above) — the streak is never truncated by '
+        'an early bankruptcy for this bot\'s policy anymore. See '
+        'docs/reports/SES_FIRST-FUN-YEAR_Seeded-Balance-Fix_Result.md for '
+        'the full before/after analysis.', () {
       for (final seed in requiredSeeds) {
         final result = PublicDemoSeededPlaythroughBot.run(seed);
         expect(
           result.longestNoOrderStreak('eng-02'),
-          expectedStreak[seed],
+          4,
           reason: 'seed $seed',
         );
       }

@@ -1,6 +1,7 @@
 // PLAYTEST-BLOCKER-1A regression coverage:
 //
-// A. February close may successfully transition into March cash shortage.
+// A. September's close may successfully transition into October cash
+//    shortage; October's close then commits bankruptcy.
 // B. After bankruptcy:
 //    - terminal state is visibly communicated (bankruptcy card)
 //    - unusable month-close CTA is absent
@@ -11,6 +12,27 @@
 // The domain-level terminal guard (monthly-close is a no-op after
 // bankruptcy) is already covered by public_demo_financial_status_test.dart
 // (test X) and is not re-derived here.
+//
+// Issue #223 (FIRST-FUN-YEAR Seeded Balance Fix) tuning
+// (`PublicDemoRevenue.ratePerAssignedEngineer` 500,000 -> 600,000) means a
+// single continuous Sato assignment carried past June — this file's
+// original fixture — no longer reaches cashShortage/bankruptcy by March at
+// all (see `public_demo_01_assignment_carryforward_test.dart`'s own class
+// doc for that now-successful trajectory). Rather than re-engineer an
+// increasingly contrived amount of wasted discretionary spend just to force
+// the same March-specific boundary, this file now drives a genuine,
+// unmodified zero-revenue trajectory instead (nobody is ever hired or
+// assigned — Revenue never books anything) — the exact same trajectory
+// `public_demo_seeded_balance_regression_test.dart`'s own "static
+// guardrail" test locks: baseline cash survives through August, closing
+// September produces cashShortage (entering October), and closing October
+// produces bankruptcy (entering November, isCloseBlocked). This is still a
+// real, unmodified production trajectory (never a fabricated state) and
+// still exercises everything PLAYTEST-BLOCKER-1A actually cares about — an
+// actual cashShortage state, then a real close that commits bankruptcy —
+// just via an ordinary-month close rather than the March fiscal-year close
+// specifically (that distinct code path stays covered by
+// public_demo_financial_status_test.dart's own March-specific cases).
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -20,7 +42,6 @@ import 'package:smile_enjoy_story/game/public_demo/public_demo_financial_status.
 import 'package:smile_enjoy_story/game/public_demo/public_demo_state.dart';
 import 'package:smile_enjoy_story/ui/public_demo/public_demo_01_placeholder_screen.dart';
 
-import 'public_demo_project_interview_test_helpers.dart';
 import 'public_demo_tab_test_helpers.dart';
 
 // ---------------------------------------------------------------------------
@@ -57,15 +78,38 @@ Future<void> _tapAndSettle(WidgetTester tester, String text) async {
   await tester.pumpAndSettle();
   await tester.tap(finder.first);
   await _settle(tester);
-  if (text == 'スキルシート確認') {
-    await tester.tap(find.widgetWithText(FilledButton, '内容を確認'));
-    await tester.pumpAndSettle();
-  }
 }
 
-Future<void> _dismiss(WidgetTester tester) async {
-  await tester.tap(find.widgetWithText(FilledButton, '確認'));
-  await tester.pumpAndSettle();
+/// Dismisses every dialog a month-close attempt can pause on, in whatever
+/// order they actually appear, before the caller's next real widget
+/// interaction — the real production sequence is: the Month Guard warning
+/// (only when a real, already-legal action is genuinely outstanding — see
+/// [dismissMonthGuardIfPresent]'s own doc), then, only once that proceeds,
+/// whatever real one-time event dialog this exact month-close transition
+/// fires (e.g. April->May's own real "採用は求人媒体から始まります" guidance,
+/// a genuine `PublicDemoEventDialog`, not a fabricated one) — this zero-
+/// engagement fixture (nobody is ever hired, sold, or trained all year)
+/// leaves every such recommendation outstanding every month, so both kinds
+/// of dialog are real and expected here, in contrast to the
+/// `public_demo_01_assignment_carryforward_test.dart` family's engaged
+/// fixtures, which mostly only ever see the Month Guard warning.
+Future<void> _dismissAnyMonthCloseDialogs(WidgetTester tester) async {
+  for (var i = 0; i < 5; i++) {
+    final guard = find.byKey(
+      const Key('public-demo-month-guard-warning-dialog'),
+    );
+    if (guard.evaluate().isNotEmpty) {
+      await dismissMonthGuardIfPresent(tester);
+      continue;
+    }
+    final confirm = find.widgetWithText(FilledButton, '確認');
+    if (confirm.evaluate().isNotEmpty) {
+      await tester.tap(confirm.first);
+      await tester.pumpAndSettle();
+      continue;
+    }
+    break;
+  }
 }
 
 Future<void> _scrollToTop(WidgetTester tester) async {
@@ -76,71 +120,41 @@ Future<void> _scrollToTop(WidgetTester tester) async {
   }
 }
 
-/// Drives a no-hire playthrough from April to the point just before
-/// the first ordinary-month close that would produce bankruptcy.
+/// Drives a genuine, unmodified zero-revenue playthrough (nobody is ever
+/// hired or assigned) from April through the close that commits bankruptcy
+/// — see this file's own class doc for the exact trajectory and why this
+/// replaced the pre-Issue-#223 "single continuous Sato assignment" fixture.
 ///
-/// Path: April → May (no hire) → June (Sato continues) → July (no bonus)
-/// → ordinary closes through February → March close (cashShortage) →
-/// fiscal-year close (bankruptcy).
-///
-/// Returns after the March close has committed and the tester is
-/// settled on the post-bankruptcy screen.
-Future<void> _driveToNovemberBankruptcy(WidgetTester tester) async {
-  // April: advance Sato to receive the May order. The employee
-  // sales-progression card is on 社員 now (PUBLIC-DEMO-HOME-UI-3B).
-  await switchPublicDemoTab(tester, PublicDemoTab.employees);
-  await _tapAndSettle(tester, 'スキルシート確認');
-  await _tapAndSettle(tester, '営業開始');
-  await _tapAndSettle(tester, '案件紹介');
-  await _tapAndSettle(tester, '上位会社面談');
-  await _dismiss(tester);
-  await _tapAndSettle(tester, '客先面談');
-  await dismissClientInterview(tester);
-  await _tapAndSettle(tester, '受注');
-  await _dismiss(tester);
-  // The month-close CTA is HOME's own monthly primary action.
-  await switchPublicDemoTab(tester, PublicDemoTab.home);
-  await _tapAndSettle(tester, '4月を終了して5月へ');
-  await _dismiss(tester);
-
-  // May: no additional hiring. Issue #168: neither pre-seeded applicant's
-  // résumé is reviewed and recruitment media is never used this month — a
-  // genuine outstanding Month Guard candidate, dismissed the same way; it
-  // does not change this fixture's own no-hire trajectory.
-  await _tapAndSettle(tester, '5月を終了して6月へ');
-  await dismissMonthGuardIfPresent(tester);
-
-  // June: accept July continuation for Sato (only assignment) — the
-  // assignment (project continuation) pipeline is on 営業.
-  await switchPublicDemoTab(tester, PublicDemoTab.sales);
-  await _tapAndSettle(tester, '7月分の発注を確認');
-  await _tapAndSettle(tester, '受注する');
-  await switchPublicDemoTab(tester, PublicDemoTab.home);
-  await _tapAndSettle(tester, '6月を終了して7月へ');
+/// Returns after October's close has committed and the tester is settled on
+/// the post-bankruptcy screen.
+Future<void> _driveToBankruptcy(WidgetTester tester) async {
+  for (final label in [
+    '4月を終了して5月へ',
+    '5月を終了して6月へ',
+    '6月を終了して7月へ',
+  ]) {
+    await _tapAndSettle(tester, label);
+    await _dismissAnyMonthCloseDialogs(tester);
+  }
 
   // July: choose no bonus.
   await _tapAndSettle(tester, '7月を終了して8月へ');
   await tester.tap(find.byKey(const Key('public-demo-summer-bonus-none')));
   await tester.pumpAndSettle();
   await _tapAndSettle(tester, '7月を終了して8月へ');
+  await _dismissAnyMonthCloseDialogs(tester);
 
-  // Close August through January; February closes into March shortage.
+  // August (cash reaches exactly 0, still normal), September (cashShortage),
+  // October (bankruptcy).
   for (final label in [
     '8月を終了して翌月へ',
     '9月を終了して翌月へ',
     '10月を終了して翌月へ',
-    '11月を終了して翌月へ',
-    '12月を終了して翌月へ',
-    '1月を終了して翌月へ',
-    '2月を終了して翌月へ',
   ]) {
     await _tapAndSettle(tester, label);
+    await _dismissAnyMonthCloseDialogs(tester);
   }
-  // After '2月を終了して翌月へ', state.month == 15, financialStatus == cashShortage.
-
-  // March's fiscal-year close produces bankruptcy.
-  await _tapAndSettle(tester, '3月を終了して第1期を完了');
-  // After this close: state.month == 15, financialStatus == bankruptcy.
+  // After '10月を終了して翌月へ': state.month == 11, financialStatus == bankruptcy.
 }
 
 // ---------------------------------------------------------------------------
@@ -149,74 +163,52 @@ Future<void> _driveToNovemberBankruptcy(WidgetTester tester) async {
 
 void main() {
   group('PLAYTEST-BLOCKER-1A', () {
-    testWidgets('A. February close (→March) transitions into cashShortage; '
-        'the March fiscal-year close commits bankruptcy', (tester) async {
+    testWidgets('A. September close (→October) transitions into '
+        'cashShortage; the October close commits bankruptcy', (tester) async {
       await tester.pumpWidget(
         const MaterialApp(home: PublicDemo01PlaceholderScreen(debugSeed: 9)),
       );
 
-      // Drive to just before the November close. The employee
-      // sales-progression card is on 社員.
-      await switchPublicDemoTab(tester, PublicDemoTab.employees);
-      await _tapAndSettle(tester, 'スキルシート確認');
-      await _tapAndSettle(tester, '営業開始');
-      await _tapAndSettle(tester, '案件紹介');
-      await _tapAndSettle(tester, '上位会社面談');
-      await _dismiss(tester);
-      await _tapAndSettle(tester, '客先面談');
-      await dismissClientInterview(tester);
-      await _tapAndSettle(tester, '受注');
-      await _dismiss(tester);
-      await switchPublicDemoTab(tester, PublicDemoTab.home);
-      await _tapAndSettle(tester, '4月を終了して5月へ');
-      await _dismiss(tester);
-      // Issue #168: neither pre-seeded applicant's résumé is reviewed and
-      // recruitment media is never used this month — a genuine outstanding
-      // Month Guard candidate, dismissed the same way.
-      await _tapAndSettle(tester, '5月を終了して6月へ');
-      await dismissMonthGuardIfPresent(tester);
-      await switchPublicDemoTab(tester, PublicDemoTab.sales);
-      await _tapAndSettle(tester, '7月分の発注を確認');
-      await _tapAndSettle(tester, '受注する');
-      await switchPublicDemoTab(tester, PublicDemoTab.home);
-      await _tapAndSettle(tester, '6月を終了して7月へ');
+      for (final label in [
+        '4月を終了して5月へ',
+        '5月を終了して6月へ',
+        '6月を終了して7月へ',
+      ]) {
+        await _tapAndSettle(tester, label);
+        await _dismissAnyMonthCloseDialogs(tester);
+      }
       await _tapAndSettle(tester, '7月を終了して8月へ');
       await tester.tap(find.byKey(const Key('public-demo-summer-bonus-none')));
       await tester.pumpAndSettle();
       await _tapAndSettle(tester, '7月を終了して8月へ');
-      for (final label in [
-        '8月を終了して翌月へ',
-        '9月を終了して翌月へ',
-        '10月を終了して翌月へ',
-        '11月を終了して翌月へ',
-        '12月を終了して翌月へ',
-        '1月を終了して翌月へ',
-      ]) {
-        await _tapAndSettle(tester, label);
-      }
+      await _dismissAnyMonthCloseDialogs(tester);
+      await _tapAndSettle(tester, '8月を終了して翌月へ');
+      await _dismissAnyMonthCloseDialogs(tester);
 
-      // February close → March: cashShortage.
-      await _tapAndSettle(tester, '2月を終了して翌月へ');
+      // September close → October: cashShortage.
+      await _tapAndSettle(tester, '9月を終了して翌月へ');
+      await _dismissAnyMonthCloseDialogs(tester);
       var state = _currentState(tester);
-      expect(state.month, 15);
+      expect(state.month, 10);
       expect(
         state.financialStatus,
         PublicDemoFinancialStatus.cashShortage,
         reason:
-            'February close with deficit produces cashShortage entering March',
+            'September close with deficit produces cashShortage entering October',
       );
       expect(state.isCloseBlocked, isFalse);
       expect(state.cash, isNegative);
 
-      // March fiscal-year close: bankruptcy.
-      await _tapAndSettle(tester, '3月を終了して第1期を完了');
+      // October close: bankruptcy.
+      await _tapAndSettle(tester, '10月を終了して翌月へ');
+      await _dismissAnyMonthCloseDialogs(tester);
       state = _currentState(tester);
-      expect(state.month, 15);
+      expect(state.month, 11);
       expect(
         state.financialStatus,
         PublicDemoFinancialStatus.bankruptcy,
         reason:
-            'March close while in cashShortage with negative result → bankruptcy',
+            'October close while in cashShortage with negative result → bankruptcy',
       );
       expect(state.isCloseBlocked, isTrue);
       expect(state.isFinanciallyTerminal, isTrue);
@@ -227,7 +219,7 @@ void main() {
       await tester.pumpWidget(
         const MaterialApp(home: PublicDemo01PlaceholderScreen(debugSeed: 9)),
       );
-      await _driveToNovemberBankruptcy(tester);
+      await _driveToBankruptcy(tester);
 
       final state = _currentState(tester);
       expect(state.financialStatus, PublicDemoFinancialStatus.bankruptcy);
@@ -245,7 +237,7 @@ void main() {
 
       // B2: the legacy no-op close button is absent.
       expect(
-        find.text('3月を終了して第1期を完了'),
+        find.text('10月を終了して翌月へ'),
         findsNothing,
         reason:
             'month-close CTA must not be shown when it cannot execute '
@@ -268,46 +260,23 @@ void main() {
         const MaterialApp(home: PublicDemo01PlaceholderScreen(debugSeed: 9)),
       );
 
-      // Drive to cashShortage state (after February close → March). The
-      // employee sales-progression card is on 社員.
-      await switchPublicDemoTab(tester, PublicDemoTab.employees);
-      await _tapAndSettle(tester, 'スキルシート確認');
-      await _tapAndSettle(tester, '営業開始');
-      await _tapAndSettle(tester, '案件紹介');
-      await _tapAndSettle(tester, '上位会社面談');
-      await _dismiss(tester);
-      await _tapAndSettle(tester, '客先面談');
-      await dismissClientInterview(tester);
-      await _tapAndSettle(tester, '受注');
-      await _dismiss(tester);
-      await switchPublicDemoTab(tester, PublicDemoTab.home);
-      await _tapAndSettle(tester, '4月を終了して5月へ');
-      await _dismiss(tester);
-      // Issue #168: neither pre-seeded applicant's résumé is reviewed and
-      // recruitment media is never used this month — a genuine outstanding
-      // Month Guard candidate, dismissed the same way.
-      await _tapAndSettle(tester, '5月を終了して6月へ');
-      await dismissMonthGuardIfPresent(tester);
-      await switchPublicDemoTab(tester, PublicDemoTab.sales);
-      await _tapAndSettle(tester, '7月分の発注を確認');
-      await _tapAndSettle(tester, '受注する');
-      await switchPublicDemoTab(tester, PublicDemoTab.home);
-      await _tapAndSettle(tester, '6月を終了して7月へ');
+      for (final label in [
+        '4月を終了して5月へ',
+        '5月を終了して6月へ',
+        '6月を終了して7月へ',
+      ]) {
+        await _tapAndSettle(tester, label);
+        await _dismissAnyMonthCloseDialogs(tester);
+      }
       await _tapAndSettle(tester, '7月を終了して8月へ');
       await tester.tap(find.byKey(const Key('public-demo-summer-bonus-none')));
       await tester.pumpAndSettle();
       await _tapAndSettle(tester, '7月を終了して8月へ');
-      for (final label in [
-        '8月を終了して翌月へ',
-        '9月を終了して翌月へ',
-        '10月を終了して翌月へ',
-        '11月を終了して翌月へ',
-        '12月を終了して翌月へ',
-        '1月を終了して翌月へ',
-      ]) {
-        await _tapAndSettle(tester, label);
-      }
-      await _tapAndSettle(tester, '2月を終了して翌月へ');
+      await _dismissAnyMonthCloseDialogs(tester);
+      await _tapAndSettle(tester, '8月を終了して翌月へ');
+      await _dismissAnyMonthCloseDialogs(tester);
+      await _tapAndSettle(tester, '9月を終了して翌月へ');
+      await _dismissAnyMonthCloseDialogs(tester);
 
       final state = _currentState(tester);
       expect(state.financialStatus, PublicDemoFinancialStatus.cashShortage);
@@ -393,7 +362,7 @@ void main() {
       await tester.pumpWidget(
         const MaterialApp(home: PublicDemo01PlaceholderScreen(debugSeed: 9)),
       );
-      await _driveToNovemberBankruptcy(tester);
+      await _driveToBankruptcy(tester);
 
       final bankruptState = _currentState(tester);
       expect(

@@ -14,20 +14,20 @@ void main() {
       expect(result.state.cash, 1500000);
     });
 
-    test('1 assigned engineer books 500,000 as the new pending revenue', () {
+    test('1 assigned engineer books 600,000 as the new pending revenue', () {
       final state = PublicDemoState.aprilStart().copyWith(engineersAssigned: 1);
       final result = PublicDemoRevenuePayment.apply(state: state);
-      expect(result.state.pendingRevenue, 500000);
+      expect(result.state.pendingRevenue, 600000);
     });
 
-    test('2 assigned engineers books 1,000,000 as the new pending revenue', () {
+    test('2 assigned engineers books 1,200,000 as the new pending revenue', () {
       final state = PublicDemoState.aprilStart().copyWith(engineersAssigned: 2);
       final result = PublicDemoRevenuePayment.apply(state: state);
-      expect(result.state.pendingRevenue, 1000000);
+      expect(result.state.pendingRevenue, 1200000);
     });
 
     test(
-      'old pending 500,000 with 2 assigned: cash +500,000, pending 1,000,000',
+      'old pending 500,000 with 2 assigned: cash +500,000, pending 1,200,000',
       () {
         final state = PublicDemoState.aprilStart().copyWith(
           cash: 1000000,
@@ -36,7 +36,7 @@ void main() {
         );
         final result = PublicDemoRevenuePayment.apply(state: state);
         expect(result.state.cash, 1500000);
-        expect(result.state.pendingRevenue, 1000000);
+        expect(result.state.pendingRevenue, 1200000);
       },
     );
 
@@ -90,9 +90,9 @@ void main() {
       );
       final result = PublicDemoRevenuePayment.apply(state: state);
       expect(result.state.cash, 1000000);
-      expect(result.state.pendingRevenue, 1000000);
+      expect(result.state.pendingRevenue, 1200000);
       expect(result.revenueReceived, 0);
-      expect(result.revenueRecognized, 1000000);
+      expect(result.revenueRecognized, 1200000);
     });
 
     test('salary state fields are unaffected', () {
@@ -199,7 +199,7 @@ void main() {
         );
         final result = PublicDemoRevenuePayment.apply(state: state);
         expect(result.state.cash, 5000000);
-        expect(result.state.pendingRevenue, 1000000);
+        expect(result.state.pendingRevenue, 1200000);
       });
 
       test('March close still settles Revenue: previous pendingRevenue becomes '
@@ -221,12 +221,12 @@ void main() {
         expect(march.fiscalYearCompleted, isFalse);
         final result = PublicDemoRevenuePayment.apply(state: march);
         expect(result.state.cash, 4000000 + 1000000);
-        expect(result.state.pendingRevenue, 1000000);
+        expect(result.state.pendingRevenue, 1200000);
         final completed = result.state.completeFiscalYear(
           monthlyExpenses: 800000,
         );
         expect(completed.fiscalYearCompleted, isTrue);
-        expect(completed.pendingRevenue, 1000000);
+        expect(completed.pendingRevenue, 1200000);
       });
     });
   });

@@ -1,16 +1,18 @@
 # SES First Fun Year — Monthly Management Report Phase A: Result Snapshot / Authority Adapter — Result Report
 
-Status: **Implemented — Phase A only (Result Snapshot / authority adapter, no UI)**
+Status: **Implemented — Phase A only (Result Snapshot / authority adapter, no UI). Codex Broad Review P1 findings × 2 fixed; PR reconciled with latest `origin/main` (PR #233).**
 
 ## 0. Metadata
 
 | item | value |
 |---|---|
 | Issue | [#232](https://github.com/perusonao/smile_enjoy_story/issues/232) — FIRST-FUN-YEAR P1: Monthly Management Report Phase A |
-| Base `origin/main` SHA | `160b78ab972b00d787dc827620c23e1335144728` (fetched fresh at session start; matches the SHA Issue #232 itself records as confirmed at creation time) |
-| Branch | `claude/github-issue-232-phase-a-a45c49`, reset from `origin/main` (repository default branch `claude/ses-game-core-phase-0-h7e8om` was **not** used, per Issue #232's explicit instruction) |
-| Final HEAD SHA (this commit) | `22c90682b4236a89f2156b3326d991b952ddb0e6` |
-| Scope | Phase A only: Result Snapshot + `netIncome`-equivalent derived getter + focused domain tests. **No Dialog/UI**, no in-month delta, no Finance/Payroll/Recruitment/Assignment/monthly-close change, no save-schema change. |
+| PR | [#234](https://github.com/perusonao/smile_enjoy_story/pull/234) |
+| Original base `origin/main` SHA | `160b78ab972b00d787dc827620c23e1335144728` (PR #234's original base, confirmed against Issue #232's own recorded SHA) |
+| Latest `origin/main` SHA at this update | `2abbef854d54597139830869195acbb7064f1616` (PR #233 "Package B — Initial Employee/SkillSheet Gate Clarity" merged) |
+| Branch | `claude/github-issue-232-phase-a-a45c49` — same branch as PR #234's initial submission, **not** a new PR. Merged forward to latest `origin/main` (`git merge`, no rebase/force-push) after re-fetching. Repository default branch was **not** used at any point. |
+| Final HEAD SHA (this update) | see §8/final answer — updated after this update's commits are pushed |
+| Scope (unchanged from initial submission) | Phase A only: Result Snapshot + `netIncome`-equivalent derived getter + focused domain tests. **No Dialog/UI**, no in-month delta, no Finance/Payroll/Recruitment/Assignment/monthly-close change, no save-schema change, no Phase B. |
 
 ## 1. Fresh authority trace
 
@@ -50,9 +52,20 @@ factory PublicDemoMonthlyReportSnapshot.fromAggregate(
 - Reads only `aggregate.state.latestMonthlyCashFlow` and `aggregate.workflow.{engineers, applicants, assignedEngineerIds}` — **no** aggregate/state/workflow command is ever called from inside this factory, and nothing is mutated (defense-in-depth: `PublicDemoAggregate`/`PublicDemoState`/`PublicDemoWorkflowState` are themselves immutable value classes, so a mutation would be a Dart compile error, not just a runtime bug — the "no mutation" focused test documents this contract rather than trying to catch an impossible bug).
 - `PublicDemoMonthlyReportStatus` enum: `ready` / `notYetRecorded` (`latestMonthlyCashFlow == null`) / `staleClosedMonth` (`latestMonthlyCashFlow.month != closedMonth`). Only `ready` populates `cashFlow`/`assignedEngineers`/`waitingEngineers`/`confirmedNextMonthJoinApplicantIds` — the other two statuses return an otherwise-empty snapshot rather than exposing a stale or absent flow under the wrong month's label. This directly encodes Fresh Audit §4/§12's stale-month warning as a type-level guard rather than a comment.
 - Assigned/waiting split: `workflow.engineers` filtered by `workflow.assignedEngineerIds(month: aggregate.state.month)` — deliberately keyed by the aggregate's own **current** month (already advanced past `closedMonth` by the close that produced this aggregate, per Fresh Audit §3), matching exactly how HOME's `_officeStageDisplay`/`_currentEmployeeStatusLabel` already read this same authority. No new participate/wait judgment is introduced.
-- `confirmedNextMonthJoinApplicantIds`: `workflow.applicants.where((a) => a.stage == PublicDemoApplicantStage.juneOrdered)`, the exact single-enum-value filter the existing `may()` production handler already uses verbatim (`public_demo_01_placeholder_screen.dart`). The broader "内定済み・入社待ち" pre-entry grouping the Audit also mentions (§6.1) was **deliberately left out of Phase A** — reproducing it would mean duplicating a currently UI/aggregate-local `accepted(applicant)` stage-set closure as a *new* named authority, which Issue #232's own rule ("UI/adapter独自の gameplay threshold/判定を作らない") argues against. Recorded as a Known Limitation (§6 below), not silently dropped.
+- `confirmedNextMonthJoinApplicantIds`: `workflow.applicants.where((a) => a.stage == PublicDemoApplicantStage.juneOrdered && !a.hasJoined)`. The `stage == juneOrdered` half is the exact single-enum-value filter the existing `may()` production handler already uses verbatim (`public_demo_01_placeholder_screen.dart`); the `!hasJoined` half was added in response to a Codex Broad Review P1 finding (§2.1 below) — `PublicDemoApplicant.join` mints a `PublicDemoJoinRecord` without ever clearing `stage`, so `juneOrdered` is a **permanent** "won this June order" identity that survives the join, not a pending-join flag. `hasJoined` is itself an existing, already-named authority (WORKFLOW-STATE-1AB FIX2 P1-4), reused verbatim — not a new judgment. The broader "内定済み・入社待ち" pre-entry grouping the Audit also mentions (§6.1) was **deliberately left out of Phase A** — reproducing it would mean duplicating a currently UI/aggregate-local `accepted(applicant)` stage-set closure as a *new* named authority, which Issue #232's own rule ("UI/adapter独自の gameplay threshold/判定を作らない") argues against. Recorded as a Known Limitation (§6 below), not silently dropped.
+
+### 2.1 Codex Broad Review fixes (this update)
+
+PR #234's Codex Broad Review (already completed before this update — no new Broad Review was requested) flagged 2 P1 findings, both fixed in this update:
+
+1. **Exclude applicants who have already joined.** `confirmedNextMonthJoinApplicantIds` originally read `stage == juneOrdered` alone. Since `stage` never clears after a genuine join, an applicant who joined in May (say) would still show `stage == juneOrdered` in June, July, ... every later month — and the snapshot would keep reporting them as a "next month" join forever. Fixed by adding `&& !applicant.hasJoined`. See the updated bullet above and §5's new regression tests.
+2. **Record Phase A completion in the governing plan.** `docs/decisions/SES_DEVELOPMENT-PRIORITY_2026-09-02.md` (the AGENTS.md-mandated governing SSOT) did not record Issue #232 Phase A's completion. Fixed by adding a new Update-history entry (dated 2026-09-10) that records: Phase A is implemented; it is explicitly the read-only Result Snapshot/authority adapter only; Phase B (Dialog/UI) is **not** implemented and the P1 "月次結果・経営フィードバック改善" backlog bucket therefore stays open (not marked 完了); and how this fits the current First Fun Year execution order (no change to it). Follows the exact same partial-completion recording pattern the doc already uses for the adjacent Issue #231/#229 entries.
+
+Also corrected in this update (flagged directly by the user, not Codex): the PR body and this report previously said building Phase B's Dialog was "Phase B/Issue #231-dependent." That was wrong — Issue #232's own "Parallelism" section only asks that Phase B *start from* the latest `origin/main` once #231 merges (to minimize file conflicts in the large `public_demo_01_placeholder_screen.dart` both would eventually touch), which is a sequencing choice, not a functional dependency between the two features. Phase B remains a separate future Issue/task, not implemented here. See §6 below for the corrected wording.
 
 ## 3. Changed files
+
+### Initial submission
 
 | file | change |
 |---|---|
@@ -60,8 +73,25 @@ factory PublicDemoMonthlyReportSnapshot.fromAggregate(
 | `lib/game/public_demo/public_demo_monthly_report_snapshot.dart` | **New.** `PublicDemoMonthlyReportSnapshot` + `PublicDemoMonthlyReportStatus`. |
 | `test/game/public_demo/public_demo_monthly_cash_flow_test.dart` | +1 test group (`14. netIncome`), 3 tests. |
 | `test/game/public_demo/public_demo_monthly_report_snapshot_test.dart` | **New.** 11 tests across 8 groups. |
+| `docs/reports/SES_FIRST-FUN-YEAR_Monthly-Management-Report_PhaseA_Result.md` | **New** — this report. |
 
-No other file touched. In particular, **not touched**: `lib/ui/public_demo/public_demo_01_placeholder_screen.dart`, any Finance/Payroll/Recruitment/Assignment/monthly-close file, `PublicDemoSaveCodec`, or any Employee/SkillSheet file (Issue #231's territory).
+### This update (Codex P1 fixes + `origin/main` reconciliation)
+
+| file | change |
+|---|---|
+| `lib/game/public_demo/public_demo_monthly_report_snapshot.dart` | P1-1 fix: `confirmedNextMonthJoinApplicantIds` now also requires `!applicant.hasJoined`. Doc comments updated to explain why. |
+| `test/game/public_demo/public_demo_monthly_report_snapshot_test.dart` | +3 regression tests (already-joined excluded; later month does not re-announce; save/reload round-trip preserves the judgment before and after join) — group now 14 tests, file totals 17 tests. |
+| `docs/decisions/SES_DEVELOPMENT-PRIORITY_2026-09-02.md` | P1-2 fix: new Update-history entry recording Phase A completion (see §2.1). |
+| `docs/reports/SES_FIRST-FUN-YEAR_Monthly-Management-Report_PhaseA_Result.md` | This update (P1 fixes, reconciliation, corrected Phase B/#231 wording, refreshed test results). |
+| *(merge commit only, no manual edits)* `docs/decisions/SES_DEVELOPMENT-PRIORITY_2026-09-02.md`, `docs/reports/SES_FIRST-FUN-YEAR_Initial-Employee-SkillSheet-Clarity_P1_Result.md`, `lib/ui/public_demo/public_demo_01_placeholder_screen.dart`, `lib/game/public_demo/public_demo_employee_visual.dart`, and 4 test files under `test/ui/public_demo/` | Brought in verbatim from `origin/main` by `git merge origin/main` (PR #233's own changes) — not authored or altered by this task. See §4.1. |
+
+No Finance/Payroll/Recruitment/Assignment/monthly-close file, `PublicDemoSaveCodec`, or Dialog/UI file was touched by this task's own commits at any point.
+
+### 3.1 Reconciliation with latest `origin/main` (PR #233)
+
+PR #234 was originally opened against `origin/main` at `160b78a...` (pre-PR #233). Per this update's instructions, `git fetch origin` was re-run, confirming latest `origin/main` is `2abbef8...` (PR #233 "Package B — Initial Employee/SkillSheet Gate Clarity" merged). The branch was reconciled with `git merge origin/main` (a merge commit, not a rebase/force-push — this PR's own branch, no other collaborator had pushed to it, and a merge is the least disruptive way to pick up PR #233 without rewriting this PR's existing, already-reviewed commit history).
+
+**Merge result: clean, zero conflicts.** `git diff --stat` confirms the merge brought in exactly PR #233's own 9 files (`docs/decisions/SES_DEVELOPMENT-PRIORITY_2026-09-02.md`, a new `docs/reports/SES_FIRST-FUN-YEAR_Initial-Employee-SkillSheet-Clarity_P1_Result.md`, `lib/ui/public_demo/public_demo_01_placeholder_screen.dart`, `lib/game/public_demo/public_demo_employee_visual.dart`, and 5 test files) verbatim, with no overlap against this PR's own 5 files (Phase A touches only `public_demo_monthly_cash_flow.dart`/`public_demo_monthly_report_snapshot.dart`/2 test files/this report — exactly as the "Parallelism" section of the original PR body predicted). PR #233's Initial Employee/SkillSheet Gate Clarity change is untouched by this task; the Public Demo test run in §5 (1398 tests, including every `public_demo_issue231_*`/`employee_ui_phase1`/`employee_visual_complete` test PR #233 added or touched) confirms it.
 
 ## 4. Mutation / persistence impact
 
@@ -72,19 +102,19 @@ No other file touched. In particular, **not touched**: `lib/ui/public_demo/publi
 
 ## 5. Test results
 
-All commands run from this branch's HEAD (`22c90682b4236a89f2156b3326d991b952ddb0e6`), Flutter 3.44.9 (stable) — matching the version pinned in `.github/workflows` CI (`subosito/flutter-action@v2`, `flutter-version: "3.44.9"`).
+Flutter 3.44.9 (stable) throughout — matching the version pinned in `.github/workflows` CI (`subosito/flutter-action@v2`, `flutter-version: "3.44.9"`). Both this update's rounds below were run **after** the `origin/main` merge (§3.1) and the P1-1 code fix, i.e. against the final tree being pushed.
 
-### Focused
+### Focused (Monthly Report)
 
 ```
 flutter test test/game/public_demo/public_demo_monthly_report_snapshot_test.dart \
               test/game/public_demo/public_demo_monthly_cash_flow_test.dart
 ```
-→ **31/31 passed** (11 new snapshot tests + 3 new `netIncome` tests + 17 pre-existing `public_demo_monthly_cash_flow_test.dart` tests, all still green).
+→ **34/34 passed** (14 snapshot tests — 11 original + 3 new P1-1 regression tests — + 3 `netIncome` tests + 17 pre-existing `public_demo_monthly_cash_flow_test.dart` tests, all green).
 
-Focused coverage against Issue #232's minimum test list:
+Focused coverage against Issue #232's minimum test list, plus this update's new P1-1 regression requirements:
 
-| Issue #232 requirement | Test |
+| Requirement | Test |
 |---|---|
 | April→May close後の snapshot | `1. April close -> May snapshot` |
 | ordinary month close後の snapshot | `2. ordinary month close snapshot (June -> July -> August)` |
@@ -95,33 +125,39 @@ Focused coverage against Issue #232's minimum test list:
 | latestMonthlyCashFlow null | `6. latestMonthlyCashFlow null` |
 | stale month mismatch を安全に扱う | `7. stale month mismatch is handled safely` |
 | snapshot生成で aggregate/state/workflow mutationなし | `8. no mutation of aggregate/state/workflow` |
-| 複数社員でも分類が安定 | `4. ...` sub-test `10. stays stable and consistent across repeated reads with multiple engineers` |
-| (bonus, not in the minimum list but in scope) confirmed next-month joins | `5. confirmed next-month joins (juneOrdered)` (both sub-tests) |
+| 複数社員でも分類が安定 | `4. ...` sub-test `10. stays stable...` |
+| juneOrdered + 未入社 → 含む | `5. ...` `an applicant who genuinely reached juneOrdered is reported` |
+| juneOrdered + 入社済み → 含まない (P1-1) | `5. ...` `an applicant who has already joined is excluded...` (**new**) |
+| 入社後の後続月 → 再告知しない (P1-1) | `5. ...` `a later month's snapshot does not re-announce a completed join` (**new**) |
+| save/reload後も判定が変わらない (P1-1) | `5. ...` `save/reload does not change the judgment` (**new**) |
+| staleClosedMonth / notYetRecorded の既存挙動を壊さない | `6.`/`7.` (unchanged, still green) |
 
 ### `flutter analyze`
 
 ```
 Analyzing smile_enjoy_story...
-No issues found! (ran in 16.5s)
+No issues found! (ran in 5.2s)
 ```
 
-### Full `flutter test`
+### Public Demo test suite (`test/game/public_demo` + `test/ui/public_demo`)
 
 ```
-00:00 +0: loading ...
+flutter test test/game/public_demo test/ui/public_demo
 ...
-13:19 +2185: All tests passed!
+12:27 +1398: All tests passed!
 [exited with code 0]
 ```
-→ **2185/2185 passed**, 0 failed. (One test name contains the substring "interviewFailed" as an enum-value name — not a failure; verified by inspection.)
+→ **1398/1398 passed**, 0 failed — including every test PR #233 added/touched (`public_demo_issue231_employee_skillsheet_clarity_test.dart`, `public_demo_employee_ui_phase1_test.dart`, `public_demo_employee_visual_complete_test.dart`, `public_demo_01_home_consolidation_test.dart`, `public_demo_01_success_playthrough_test.dart`), confirming the merge did not regress PR #233's Initial Employee/SkillSheet Gate Clarity behavior.
+
+(The prior round of this report separately ran the *entire* project `flutter test` — 2185/2185 green, pre-merge — and `flutter analyze` clean; not re-run project-wide this round since this update's own instruction scoped verification to Monthly Report focused tests + Public Demo-related tests, both re-run above against the final, merged, P1-fixed tree.)
 
 ### `git diff --check`
 
-Exit code `0` — no trailing-whitespace / conflict-marker issues in the diff.
+Exit code `0` (checked again after this update's commits) — no trailing-whitespace / conflict-marker issues.
 
 ### Incidental cleanup
 
-Running the full suite regenerated 4 unrelated visual-regression PNGs under `docs/reports/screenshots/` (pre-existing golden images unrelated to this change, touched by some other test's snapshot-writing side effect). These were reverted (`git checkout --`) before committing — this PR's diff is exactly the 4 files in §3, nothing else.
+Both this update's `flutter test` runs again regenerated the same 4 unrelated visual-regression PNGs under `docs/reports/screenshots/` (a pre-existing golden-image side effect of some other test, unrelated to Monthly Management Report). Reverted (`git checkout --`) before each commit, exactly as the initial submission did — this PR's diff never includes them.
 
 Mobile 360x800/390x844 visual verification was **not** performed, per Issue #232's own instruction ("Phase A はUI変更なしなので...visual verification は不要") — there is no UI change in this phase.
 
@@ -129,16 +165,22 @@ Mobile 360x800/390x844 visual verification was **not** performed, per Issue #232
 
 1. **In-month deltas (今月の応募数・面談数・新規受注数) are not implemented**, per explicit instruction. Fresh Audit §6.2/§7.2 confirms this is a genuine authority gap (no "when did this happen" field on `PublicDemoApplicant`/`PublicDemoAssignment`), not a Phase A oversight — a correct implementation would need either a new domain fact or a non-persisted month-start snapshot, both explicitly deferred to a future phase/issue.
 2. **Broader "内定済み・入社待ち" pre-entry-pipeline grouping is not exposed.** Only the single, already-canonical `juneOrdered` stage is read for "confirmed to join next month." Exposing the wider pre-entry set (offerAccepted + all preEntry* stages) would require duplicating a currently UI/aggregate-local `accepted(applicant)` closure as a new named authority — deliberately avoided this phase per Issue #232's "no new gameplay threshold/判定" rule. A future phase can promote that closure to a proper named domain authority if this data turns out to be needed for the UI.
-3. **No Dialog/UI, no Report "seen/skipped" tracking.** Per Fresh Audit §13, Report-shown persistence is explicitly not recommended (no save-schema benefit), and building the Dialog itself is Phase B/Issue #231-dependent — untouched here.
+3. **No Dialog/UI, no Report "seen/skipped" tracking.** Per Fresh Audit §13, Report-shown persistence is explicitly not recommended (no save-schema benefit). Building the Dialog itself is Phase B — a separate future Issue/task, not implemented here and not functionally dependent on Issue #231. (Issue #232's own §"Parallelism" only asked that Phase B *start from* the latest `origin/main` once #231 merges, to minimize file conflicts in the large `public_demo_01_placeholder_screen.dart` both would otherwise touch — that is a sequencing choice, not a dependency between the two features.)
 4. **`PublicDemoMonthlyReportSnapshot` is not persisted and does not need to be** — it is a pure, on-demand read; nothing here changes reload/save behavior.
 
 ## 7. Actual elapsed time
 
-Approximately 2 hours of active session time (investigation/authority trace, design, implementation, focused+full verification including a from-scratch Flutter 3.44.9 SDK install in this container, Result Report, commit/push/PR), within Issue #232's own 1.5–2.5h estimate (excluding CI wait).
+- Initial submission (investigation/authority trace, design, implementation, focused+full verification including a from-scratch Flutter 3.44.9 SDK install in this container, Result Report, commit/push/PR): ~2 hours, within Issue #232's own 1.5–2.5h estimate (excluding CI wait).
+- This update (re-fetch/reconcile with `origin/main`, 2× Codex P1 fixes + regression tests, governing-plan Update-history entry, Phase B/#231 wording correction, re-verification, review-thread replies/resolves, Result Report refresh): ~45 minutes (excluding CI wait).
+- **Revised ETA for PR #234 reaching Merge Ready**: this update completes PR #234's outstanding work — no further ETA beyond CI running on the pushed commits.
 
-## 8. PR
+## 8. PR / review status
 
-https://github.com/perusonao/smile_enjoy_story/pull/234
+- PR: https://github.com/perusonao/smile_enjoy_story/pull/234 (same branch, `claude/github-issue-232-phase-a-a45c49` — not a new PR)
+- Codex Broad Review: already completed before this update; **not re-requested**, per instruction. Both of its P1 findings fixed and replied to on their own threads, then resolved via `resolve_review_thread`:
+  - P1-1 "Exclude applicants who have already joined" — fixed (§2.1), replied, resolved.
+  - P1-2 "Record Phase A completion in the governing plan" — fixed (§2.1), replied, resolved.
+- No PR was merged by this task, as instructed — PR #234 is left open at Merge Ready for the repository owner to merge.
 
 ---
 

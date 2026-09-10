@@ -434,8 +434,9 @@ void main() {
       expect(member.status, '翌月参画予定');
     });
 
-    testWidgets('once May\'s close actually assigns that engineer, the Office '
-        'Stage shows the truthful 参画中, never the stale 翌月参画予定', (
+    testWidgets('once April\'s close actually assigns that engineer, the '
+        'Office Stage shows the truthful 参画中 throughout May, never the '
+        'stale 翌月参画予定', (
       tester,
     ) async {
       await pumpDemoAt(tester);
@@ -444,11 +445,12 @@ void main() {
         tester,
       ).engineers.firstWhere((e) => e.name == '佐藤 健').id;
 
-      // `assignOrderedForMay` — the call that actually builds the assignment
-      // roster for an engineer won in April — runs inside `closeMay` (May's
-      // own close), not `closeApril`; see `PublicDemoAggregate.closeMay`'s
-      // own doc. So April's close alone is not enough: the engineer is still
-      // truthfully un-assigned through the whole of May.
+      // Issue #227 P1: `assignOrderedForMay` — the call that actually
+      // builds the assignment roster for an engineer won in April — now
+      // also runs inside `closeApril` (April's own close), the same
+      // authority `closeMay` already used; see
+      // `PublicDemoAggregate.closeApril`'s own doc. So the engineer is
+      // truthfully assigned the moment May begins, not only from June.
       await tapAndSettle(tester, '4月を終了して5月へ');
       await dismiss(tester);
       expect(currentState(tester).month, 5);
@@ -456,9 +458,16 @@ void main() {
         currentWorkflow(
           tester,
         ).assignedEngineerIds(month: 5).contains(satoId),
-        isFalse,
-        reason: 'assignOrderedForMay has not run yet in May itself',
+        isTrue,
+        reason: 'assignOrderedForMay ran inside closeApril, so May opens '
+            'with the assignment already in place',
       );
+
+      final mayMember = stageDisplay(
+        tester,
+      ).members.firstWhere((m) => m.id == satoId);
+      expect(mayMember.status, '参画中');
+      expect(mayMember.status, isNot('翌月参画予定'));
 
       await tapAndSettle(tester, '5月を終了して6月へ');
       await dismissMonthGuardIfPresent(tester);
@@ -468,7 +477,7 @@ void main() {
       expect(
         workflow.assignedEngineerIds(month: 6).contains(satoId),
         isTrue,
-        reason: 'assignOrderedForMay has now built the assignment, in June',
+        reason: 'the assignment survives May\'s own close untouched',
       );
       expect(
         workflow.engineers.firstWhere((e) => e.id == satoId).stage,

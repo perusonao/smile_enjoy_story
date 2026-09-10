@@ -1188,7 +1188,8 @@ class PublicDemoAggregate {
   // Month-end transitions
   // ---------------------------------------------------------------------
 
-  /// Closes April (state-only; workflow is not part of April's transition).
+  /// Closes April (finance side; see below for the one workflow write this
+  /// now also makes).
   ///
   /// FINANCE-FAILURE-1A+1B §5: the pre-AR-idempotency guard below runs
   /// before Growth, AR, salary, or cash are touched at all — a retry once
@@ -1196,6 +1197,26 @@ class PublicDemoAggregate {
   /// (fiscal year completed or a terminal financial status reached), is a
   /// complete no-op returning this exact aggregate, never a partial
   /// mutation. Every other month-end command below follows the same shape.
+  ///
+  /// Issue #227 P1: also materializes a genuine April order's assignment
+  /// here, via [PublicDemoWorkflowState.assignOrderedForMay] — the same
+  /// domain authority [closeMay] already used, never a second assignment
+  /// formula. Before this fix that call ran only inside [closeMay], so an
+  /// engineer who genuinely won an April order (real `ordered` stage plus a
+  /// genuine interview record) sat with no [PublicDemoAssignment] at all
+  /// through the whole of May: Employee/Office status, training
+  /// eligibility, and the active-project view all read
+  /// [PublicDemoWorkflowState.assignments]/`assignedEngineerIds` — none of
+  /// them agreed with the separate `engineersAssigned` revenue counter,
+  /// which already counted this engineer correctly. Calling it here instead
+  /// means May opens with that assignment already in place — no separate
+  /// revenue/growth/payroll effect, since [orderedEngineers] below (and
+  /// therefore [PublicDemoState.advanceToMay]'s own revenue projection)
+  /// already read the identical `ordered`-stage fact before this fix, and
+  /// [assignOrderedForMay] itself only ever reads engineer/applicant stage
+  /// facts to decide the roster — it does not touch cash, growth, or
+  /// payroll. [assignOrderedForMay]'s own doc covers why a later call in
+  /// [closeMay] no longer discards this one's work.
   PublicDemoAggregate closeApril({required int monthlyExpenses}) {
     if (state.month != 4 || state.isCloseBlocked) return this;
     final grown = _closeGrowth(const {});
@@ -1205,7 +1226,7 @@ class PublicDemoAggregate {
         monthlyExpenses: monthlyExpenses,
         orderedEngineers: workflow.orderedEngineerCount,
       ).state,
-      workflow: grown.workflow,
+      workflow: grown.workflow.assignOrderedForMay(),
     );
   }
 

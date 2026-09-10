@@ -9,9 +9,24 @@
 class PublicDemoRevenue {
   const PublicDemoRevenue._();
 
-  /// ¥/assigned engineer/month. A provisional balance value from REVENUE-0's
-  /// research (§16) — REVENUE-6 owns tuning it, not this constant's callers.
-  static const int ratePerAssignedEngineer = 500000;
+  /// ¥/assigned engineer/month. Originally a provisional balance value from
+  /// REVENUE-0's research (§16, 500,000).
+  ///
+  /// Issue #223 (FIRST-FUN-YEAR Seeded Balance Fix) Fresh Audit tuning:
+  /// raised 500,000 -> 600,000 (+20%). At 500,000, margin per assigned
+  /// engineer (rate minus salary) was too thin relative to the cash-flow lag
+  /// a new hire's own salary/recruitment cost creates before that hire is
+  /// ever actually assigned (interview + pre-entry pipeline months) — every
+  /// seeded strategy that hired at all (Balanced, Growth) bankrupted more
+  /// often than the no-hire Conservative baseline, the opposite of "早期採用
+  /// に将来売上を増やす合理的メリットがある" (see the Result report's
+  /// authoritative-economy and tuning-rationale sections for the full
+  /// before/after seed comparison). Combined with the
+  /// [PublicDemoGrowthEngine] internal-training-rate fix, this makes the
+  /// Balanced strategy reliably completable while Growth/Poor-decisions stay
+  /// genuinely risky — see
+  /// `docs/reports/SES_FIRST-FUN-YEAR_Seeded-Balance-Fix_Result.md`.
+  static const int ratePerAssignedEngineer = 600000;
 
   /// Revenue booked for one month from [assignedCount] assigned engineers.
   ///

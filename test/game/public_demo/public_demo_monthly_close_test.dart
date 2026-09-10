@@ -156,10 +156,10 @@ void main() {
       expectStateEquivalent(legacy, result.state, checkMoney: false);
       // REVENUE-4: mayState() carries engineersAssigned=1 from April's order
       // into May, so this close's pre-transition snapshot books May's
-      // revenue (1 * 500,000) as the new pending balance. start.pendingRevenue
+      // revenue (1 * 600,000) as the new pending balance. start.pendingRevenue
       // was 0, so nothing is collectible into cash yet (30-day site).
       expect(result.cashAfter, legacy.cash);
-      expect(result.state.pendingRevenue, 500000);
+      expect(result.state.pendingRevenue, 600000);
     });
 
     test('wrong month is a no-op on both paths', () {
@@ -396,7 +396,7 @@ void main() {
       expectStateEquivalent(legacy, result.state, checkMoney: false);
       // REVENUE-4 snapshot: juneState() carries engineersAssigned=2 into
       // June (1 from April's order + 1 hired-with-order in May), so June's
-      // revenue books at 2 * 500,000 even though this same close overwrites
+      // revenue books at 2 * 600,000 even though this same close overwrites
       // engineersAssigned down to 1 for July via assignedInJuly. juneState()
       // was built through the raw advanceToX chain (no Revenue involved),
       // so start.pendingRevenue is still 0 here — nothing collectible into
@@ -405,7 +405,7 @@ void main() {
       expect(start.engineersAssigned, 2);
       expect(start.pendingRevenue, 0);
       expect(result.cashAfter, legacy.cash);
-      expect(result.state.pendingRevenue, 1000000);
+      expect(result.state.pendingRevenue, 1200000);
     });
 
     test('wrong month is a no-op on both paths', () {

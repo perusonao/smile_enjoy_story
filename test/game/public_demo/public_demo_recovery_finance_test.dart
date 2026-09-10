@@ -85,7 +85,7 @@ void main() {
       'unaffected by Recovery existing on the same class', () {
     // No engineer is ever Recovered here — this is a pure regression
     // sanity check that PublicDemoRevenue itself is untouched.
-    expect(PublicDemoRevenue.monthlyRevenueForAssignedCount(2), 1000000);
-    expect(PublicDemoRevenue.ratePerAssignedEngineer, 500000);
+    expect(PublicDemoRevenue.monthlyRevenueForAssignedCount(2), 1200000);
+    expect(PublicDemoRevenue.ratePerAssignedEngineer, 600000);
   });
 }

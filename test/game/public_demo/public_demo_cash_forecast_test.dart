@@ -83,9 +83,9 @@ void main() {
           workflow: _emptyWorkflow(),
         );
         expect(result.months.first.cashReceived, 500000);
-        expect(result.months.first.revenueRecognized, 1000000);
+        expect(result.months.first.revenueRecognized, 1200000);
         // Next month collects what THIS month recognized, not before.
-        expect(result.months[1].cashReceived, 1000000);
+        expect(result.months[1].cashReceived, 1200000);
       },
     );
 
@@ -384,9 +384,9 @@ void main() {
           // May recognizes revenue for the now-confirmed 1 assigned
           // engineer — the bug this fix closes: previously this stayed 0
           // because engineersAssigned was frozen at April's pre-close value.
-          expect(result.months[1].revenueRecognized, 500000);
+          expect(result.months[1].revenueRecognized, 600000);
           // June collects exactly what May recognized (30-day site lag).
-          expect(result.months[2].cashReceived, 500000);
+          expect(result.months[2].cashReceived, 600000);
         },
       );
 
@@ -481,7 +481,7 @@ void main() {
             workflow: workflow,
             monthsAhead: 2,
           );
-          expect(result.months[1].revenueRecognized, 1000000); // 2 * 500,000
+          expect(result.months[1].revenueRecognized, 1200000); // 2 * 600,000
         },
       );
     },

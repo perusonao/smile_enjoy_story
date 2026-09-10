@@ -25,7 +25,7 @@ void main() {
     });
 
     test('normal one-hire route reaches fiscal completion with a positive '
-        '¥600,000 March cash buffer', () {
+        '¥2,500,000 March cash buffer', () {
       // This is the reasonable PLAYTEST-BALANCE-1A route, not a
       // survival-optimized scenario: one founder wins an initial order,
       // one May applicant is hired at the requested salary and also wins an
@@ -128,26 +128,33 @@ void main() {
         monthlyCashCheckpoints[month] = aggregate.state.cash;
       }
 
+      // Issue #223 (FIRST-FUN-YEAR Seeded Balance Fix) Fresh Audit tuning:
+      // PublicDemoRevenue.ratePerAssignedEngineer 500,000 -> 600,000 raises
+      // every checkpoint from June onward (both eng-01 and the May hire are
+      // assigned starting June) by +100,000/assigned-engineer/month relative
+      // to the pre-tuning figures this fixture used to lock — see
+      // docs/reports/SES_FIRST-FUN-YEAR_Seeded-Balance-Fix_Result.md for the
+      // full before/after rationale.
       expect(monthlyCashCheckpoints, {
         'April': 3100000,
         'May': 2300000,
-        'June': 1680000,
-        'July': 1560000,
-        'August': 1440000,
-        'September': 1320000,
-        'October': 1200000,
-        'November': 1080000,
-        'December': 960000,
-        'January': 840000,
-        'February': 720000,
-        'March': 600000,
+        'June': 1780000,
+        'July': 1860000,
+        'August': 1940000,
+        'September': 2020000,
+        'October': 2100000,
+        'November': 2180000,
+        'December': 2260000,
+        'January': 2340000,
+        'February': 2420000,
+        'March': 2500000,
       });
       final minimumCashBuffer = monthlyCashCheckpoints.values.reduce(
         (lowest, cash) => cash < lowest ? cash : lowest,
       );
-      expect(minimumCashBuffer, 600000);
+      expect(minimumCashBuffer, 1780000);
       expect(aggregate.state.cash, greaterThan(0));
-      expect(aggregate.state.cash, 600000);
+      expect(aggregate.state.cash, 2500000);
       expect(aggregate.state.fiscalYearCompleted, isTrue);
       expect(aggregate.state.financialStatus, PublicDemoFinancialStatus.normal);
     });

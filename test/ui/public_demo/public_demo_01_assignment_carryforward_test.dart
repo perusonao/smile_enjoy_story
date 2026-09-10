@@ -18,15 +18,21 @@ import 'public_demo_tab_test_helpers.dart';
 // before this fix, Growth kept crediting "assignment" growth to an engineer
 // Revenue had already stopped counting as assigned). That agreement is a
 // pure workflow/employment fact, independent of financial status, so it
-// still holds all the way through the close that produces BANKRUPTCY below.
+// still holds all the way through March's own fiscal-year-completing close
+// below.
 //
-// FINANCE-FAILURE-1A+1B: with only Sato billable (500,000/month Revenue)
+// FINANCE-FAILURE-1A+1B / Issue #223 (FIRST-FUN-YEAR Seeded Balance Fix):
+// with only Sato billable (600,000/month Revenue, this issue's own tuning)
 // against the founding team's fixed 800,000/month payroll+overhead, this
-// playthrough has a real structural deficit and — under the approved
-// contract — reaches CASH SHORTAGE (closing February) and then BANKRUPTCY
-// (closing March). See public_demo_01_completion_lock_ui_test.dart's own class doc
-// for the identical trajectory (same setup: one order, carried forward once
-// in June).
+// playthrough still runs at a real, negative structural margin per month —
+// but the tuned rate now leaves enough buffer that this single-assignment
+// trajectory completes the fiscal year successfully (`normal`,
+// `fiscalYearCompleted`) instead of reaching cashShortage/bankruptcy the
+// way it did before this issue. See
+// `public_demo_01_completion_lock_ui_test.dart`'s own class doc for a
+// fixture with the same setup (one order, carried forward once in June)
+// that still reaches a genuine terminal state, via extra real discretionary
+// spend that fixture's own test needs.
 //
 // `s` (unlike the enclosing `_S` state class) is not library-private, so it
 // can be read directly off the widget's State for precise assertions
@@ -81,8 +87,8 @@ void main() {
   testWidgets(
     'a July-accepted assignment carries forward with Revenue and Growth '
     'agreeing on the same assigned headcount every ordinary month '
-    '(12MONTH-3-FIX1 P1-1 contract), through the close that reaches '
-    'bankruptcy and the terminal guard afterward (FINANCE-FAILURE-1A+1B)',
+    '(12MONTH-3-FIX1 P1-1 contract), through the close that completes the '
+    'fiscal year and the terminal guard afterward (FINANCE-FAILURE-1A+1B)',
     (tester) async {
       await tester.pumpWidget(
         const MaterialApp(home: PublicDemo01PlaceholderScreen(debugSeed: 9)),
@@ -151,9 +157,9 @@ void main() {
         reason: 'F (August): Revenue count == Growth assignment-source count',
       );
 
-      // D: Revenue settled once for July's assignment (500,000/assigned
+      // D: Revenue settled once for July's assignment (600,000/assigned
       // engineer), carried as this month's pending balance.
-      expect(state.pendingRevenue, 500000, reason: 'D (August)');
+      expect(state.pendingRevenue, 600000, reason: 'D (August)');
 
       await tapAndSettle(tester, '8月を終了して翌月へ');
 
@@ -179,14 +185,14 @@ void main() {
         state.engineersAssigned,
         reason: 'F (September)',
       );
-      expect(state.pendingRevenue, 500000, reason: 'D (September)');
+      expect(state.pendingRevenue, 600000, reason: 'D (September)');
 
-      // Close the remaining ordinary months up through the close that
-      // produces BANKRUPTCY (closing March) — see this file's class doc.
-      // The carry-forward/Revenue-Growth-agreement contract under test holds
-      // through every one of these, including the bankruptcy-producing close
-      // itself: it is a real, committed transaction (AR/expenses/cash all
-      // settle, month still advances), not a rollback.
+      // Close the remaining ordinary months up through March's own
+      // fiscal-year-completing close — see this file's class doc. The
+      // carry-forward/Revenue-Growth-agreement contract under test holds
+      // through every one of these, including March's own close itself: it
+      // is a real, committed transaction (AR/expenses/cash all settle),
+      // not a rollback.
       const remainingCloses = [
         '9月を終了して翌月へ',
         '10月を終了して翌月へ',
@@ -213,18 +219,21 @@ void main() {
         );
       }
       expect(state.month, 15);
-      expect(state.fiscalYearCompleted, isFalse);
+      expect(state.fiscalYearCompleted, isTrue);
       expect(
         state.financialStatus,
-        PublicDemoFinancialStatus.bankruptcy,
+        PublicDemoFinancialStatus.normal,
         reason:
-            'closing March is the second consecutive negative-cash '
-            'close, so this fiscal year is already bankrupt',
+            'Issue #223 (FIRST-FUN-YEAR Seeded Balance Fix) tuning raised '
+            'Revenue enough that this single-assignment trajectory now '
+            'completes the fiscal year successfully instead of going '
+            'bankrupt — see this file\'s class doc',
       );
 
-      // G (PLAYTEST-BLOCKER-1A + FINANCE-FAILURE-1A+1B): once bankrupt the
-      // month-close button is hidden, not a silent no-op — the player sees
-      // the terminal card and restart, not an inert button. The domain-level
+      // G (PLAYTEST-BLOCKER-1A + FINANCE-FAILURE-1A+1B): once the fiscal
+      // year is complete the month-close button is hidden, not a silent
+      // no-op — [PublicDemoState.isCloseBlocked] covers fiscal completion
+      // and either terminal financial status identically. The domain-level
       // guard (§22/23 test X — no duplicate AR, no duplicate expenses, no
       // false fiscal success) is proven by public_demo_financial_status_test
       // .dart and is not re-derived here.
@@ -232,7 +241,7 @@ void main() {
         find.text('3月を終了して第1期を完了'),
         findsNothing,
         reason:
-            'month-close CTA must be hidden after bankruptcy '
+            'month-close CTA must be hidden once fiscalYearCompleted '
             '(PLAYTEST-BLOCKER-1A)',
       );
     },

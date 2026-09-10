@@ -7,7 +7,7 @@ import 'package:smile_enjoy_story/game/public_demo/public_demo_summer_bonus_plan
 void main() {
   group('PublicDemoRevenue domain', () {
     test('defines the provisional per-assigned-engineer monthly rate', () {
-      expect(PublicDemoRevenue.ratePerAssignedEngineer, 500000);
+      expect(PublicDemoRevenue.ratePerAssignedEngineer, 600000);
     });
   });
 
@@ -17,11 +17,11 @@ void main() {
     });
 
     test('1 assigned engineer books the per-engineer rate', () {
-      expect(PublicDemoRevenue.monthlyRevenueForAssignedCount(1), 500000);
+      expect(PublicDemoRevenue.monthlyRevenueForAssignedCount(1), 600000);
     });
 
     test('2 assigned engineers books double the per-engineer rate', () {
-      expect(PublicDemoRevenue.monthlyRevenueForAssignedCount(2), 1000000);
+      expect(PublicDemoRevenue.monthlyRevenueForAssignedCount(2), 1200000);
     });
 
     test('scales linearly with assigned count', () {
@@ -34,8 +34,8 @@ void main() {
     });
 
     test('always multiplies by ratePerAssignedEngineer, not a copy of it', () {
-      expect(PublicDemoRevenue.ratePerAssignedEngineer, 500000);
-      expect(PublicDemoRevenue.monthlyRevenueForAssignedCount(4), 2000000);
+      expect(PublicDemoRevenue.ratePerAssignedEngineer, 600000);
+      expect(PublicDemoRevenue.monthlyRevenueForAssignedCount(4), 2400000);
     });
 
     test('negative assigned count is rejected', () {
@@ -73,7 +73,7 @@ void main() {
         PublicDemoRevenue.monthlyRevenueForAssignedCount(
           state.engineersAssigned,
         ),
-        500000,
+        600000,
       );
     });
   });

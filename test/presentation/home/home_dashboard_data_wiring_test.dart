@@ -99,9 +99,12 @@ void main() {
       expect(find.text('¥250万'), findsOneWidget); // 現金
       expect(find.text('2名'), findsOneWidget); // 社員数
       expect(find.text('1名'), findsOneWidget); // 参画中
-      // 売上 (1 assigned engineer x ¥50万) and 入金予定 (¥50万, set directly
-      // on the fixture) happen to format to the same string here.
-      expect(find.text('¥50万'), findsNWidgets(2));
+      // 売上: 1 assigned engineer x PublicDemoRevenue.ratePerAssignedEngineer
+      // (Issue #223 FIRST-FUN-YEAR Seeded Balance Fix tuning: ¥50万 -> ¥60万).
+      expect(find.text('¥60万'), findsOneWidget);
+      // 入金予定: ¥50万, set directly on the fixture (independent of the
+      // revenue rate).
+      expect(find.text('¥50万'), findsOneWidget);
       // 稼働案件/信用 have no HOME-UI-1C authority yet and stay placeholders.
       expect(find.text('—'), findsNWidgets(2));
     });

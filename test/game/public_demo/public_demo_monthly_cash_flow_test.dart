@@ -119,7 +119,7 @@ void main() {
           orderedEngineers: 0,
         );
         final flow = result.state.latestMonthlyCashFlow!;
-        expect(flow.revenue, 1000000);
+        expect(flow.revenue, 1200000);
         expect(flow.cashReceived, 0);
         expect(flow.revenue, isNot(flow.cashReceived));
       },
@@ -159,8 +159,8 @@ void main() {
         assignedInJuly: 3,
       );
       final flow = result.state.latestMonthlyCashFlow!;
-      expect(flow.revenue, 1500000);
-      expect(flow.receivables, 1500000);
+      expect(flow.revenue, 1800000);
+      expect(flow.receivables, 1800000);
       expect(result.state.pendingRevenue, flow.receivables);
     });
   });
@@ -390,9 +390,9 @@ void main() {
         monthlyExpenses: 800000,
       );
       final flow = result.state.latestMonthlyCashFlow!;
-      expect(flow.revenue, 1000000);
-      expect(flow.receivables, 1000000);
-      expect(result.state.pendingRevenue, 1000000);
+      expect(flow.revenue, 1200000);
+      expect(flow.receivables, 1200000);
+      expect(result.state.pendingRevenue, 1200000);
     });
   });
 

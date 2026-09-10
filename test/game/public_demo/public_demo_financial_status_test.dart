@@ -357,7 +357,7 @@ void main() {
         monthlyExpenses: 800000,
       );
       expect(result.state.fiscalYearCompleted, isTrue);
-      expect(result.state.pendingRevenue, 1000000);
+      expect(result.state.pendingRevenue, 1200000);
       expect(result.state.cash, 900000 - 800000);
     });
   });

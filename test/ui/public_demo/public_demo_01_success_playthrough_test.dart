@@ -247,8 +247,25 @@ void main() {
     expect(find.text('社員コンディション'), findsOneWidget);
     expect(find.text('モチベーション：高い'), findsOneWidget);
     expect(find.text('会社への信頼：高い'), findsOneWidget);
-    expect(find.textContaining('65'), findsNothing);
-    expect(find.textContaining('60'), findsNothing);
+    // Scoped to the 社員コンディション card itself (Issue #231 FIRST-FUN-YEAR
+    // P1 added a genuinely unrelated '60' elsewhere on this tab: eng-02
+    // is never trained/hired through in this fixture, so their roster row
+    // now truthfully states the real field-sales threshold/capability,
+    // '営業には実力60以上が必要（現在52）' — this assertion's own intent, that
+    // the condition card states morale/trust as 高い/低い labels and never
+    // leaks the underlying raw score, is unaffected and still checked here).
+    final conditionCard = find.ancestor(
+      of: find.text('社員コンディション'),
+      matching: find.byType(Card),
+    );
+    expect(
+      find.descendant(of: conditionCard, matching: find.textContaining('65')),
+      findsNothing,
+    );
+    expect(
+      find.descendant(of: conditionCard, matching: find.textContaining('60')),
+      findsNothing,
+    );
 
     // June: accept at least one July continuation — the assignment
     // (project continuation) pipeline is on 営業 now.

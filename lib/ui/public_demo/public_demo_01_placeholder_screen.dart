@@ -2248,10 +2248,26 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
   /// code path stays byte-for-byte untouched by this phase (HOME Freeze);
   /// both read the exact same authoritative facts (`engineer.stage`,
   /// [workflow.assignedEngineerIds]) and so can never disagree.
+  ///
+  /// Issue #231 FIRST-FUN-YEAR P1 Fresh Audit: [engineerStatus] alone
+  /// labels every still-`waiting` engineer identically ('待機'), even
+  /// though `PublicDemoEngineerRuntime.isReadyForFieldSales`
+  /// ([readyForFieldSales]) already, authoritatively, distinguishes the two
+  /// — this was exactly the "founding roster all reads the same in April"
+  /// comprehension gap the audit found: a fresh player could not tell 佐藤
+  /// (capability 78, ready) from 鈴木 (capability 52, not ready) without
+  /// scrolling to Section 2's per-engineer action card. This label now
+  /// states that same existing fact directly in the roster, still without
+  /// touching [engineerStatus] itself (HOME's [_officeStageStatusFor] and
+  /// the SkillSheet sheet's `statusLabel` keep reading the raw pipeline
+  /// stage, unchanged — HOME Freeze).
   String _currentEmployeeStatusLabel(PublicDemoEngineerSales engineer) {
     if (engineer.stage == PublicDemoSalesStage.ordered &&
         _currentlyAssignedEngineerIds.contains(engineer.id)) {
       return '参画中';
+    }
+    if (engineer.stage == PublicDemoSalesStage.waiting) {
+      return readyForFieldSales(engineer.id) ? '営業可能' : '研修が必要';
     }
     return engineerStatus(engineer);
   }
@@ -3996,6 +4012,28 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
                     beforeCapability: skill.beforeCapability,
                   ),
                 ],
+                // Issue #231 FIRST-FUN-YEAR P1 Fresh Audit: states the same
+                // reason [ec]'s own field-sales lock banner already gives
+                // (`実力 $threshold 以上が必要です（現在 $capability）`) right in
+                // the roster row, so "why does this employee need training"
+                // is visible without scrolling to Section 2 — reads only
+                // the same existing authority
+                // (`PublicDemoEngineerRuntime.fieldSalesCapabilityRequirement`
+                // / [capabilityFor]), never a new or duplicated threshold.
+                if (e.stage == PublicDemoSalesStage.waiting &&
+                    !readyForFieldSales(e.id))
+                  Padding(
+                    padding: const EdgeInsets.only(top: 2),
+                    child: Text(
+                      '営業には実力'
+                      '${PublicDemoEngineerRuntime.fieldSalesCapabilityRequirement}'
+                      '以上が必要（現在${capabilityFor(e.id)}）',
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ),
               ],
             ),
           ),
@@ -4030,6 +4068,16 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
     }
     if (s.trainingSelections.containsKey(e.id)) {
       return PublicDemoEmployeeStatusTone.training;
+    }
+    // Issue #231 FIRST-FUN-YEAR P1 Fresh Audit: mirrors
+    // [_currentEmployeeStatusLabel]'s own '営業可能'/'研修が必要' split for a
+    // still-`waiting` engineer, reading the same authoritative
+    // [readyForFieldSales] fact — never a second, independently-derived
+    // eligibility check.
+    if (e.stage == PublicDemoSalesStage.waiting) {
+      return readyForFieldSales(e.id)
+          ? PublicDemoEmployeeStatusTone.readyForSales
+          : PublicDemoEmployeeStatusTone.training;
     }
     return PublicDemoEmployeeStatusTone.waiting;
   }

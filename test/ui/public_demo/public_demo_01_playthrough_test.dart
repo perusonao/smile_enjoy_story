@@ -34,6 +34,11 @@ Future<void> tapAndSettle(WidgetTester tester, String text) async {
     await tester.pump();
   }
   await tester.pumpAndSettle();
+  // SES ISSUE-232 Phase B: a close path with no further Month Guard/event
+  // dialog (e.g. June) can already show the Monthly Management Report here
+  // — a no-op otherwise (dismissed separately once its own guard/event
+  // dialog is resolved).
+  await dismissMonthlyReportIfPresent(tester);
 }
 
 void main() {

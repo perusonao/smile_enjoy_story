@@ -26,6 +26,11 @@ extension PublicDemoTabKey on PublicDemoTab {
 /// the one mechanism PUBLIC-DEMO-HOME-UI-3B provides for reaching another
 /// tab's content — it never scrolls, and it never touches game state.
 Future<void> switchPublicDemoTab(WidgetTester tester, PublicDemoTab tab) async {
+  // SES ISSUE-232 Phase B: a lingering Monthly Management Report from a
+  // just-driven month close (see [dismissMonthlyReportIfPresent]'s own doc)
+  // would otherwise block this tap under its modal barrier — always safe,
+  // a no-op when nothing is showing.
+  await dismissMonthlyReportIfPresent(tester);
   await tester.tap(find.byKey(tab.navKey));
   await tester.pumpAndSettle();
 }
@@ -60,5 +65,33 @@ Future<void> dismissMonthGuardIfPresent(WidgetTester tester) async {
     );
     await tester.pump();
   }
+  await tester.pumpAndSettle();
+  // SES ISSUE-232 Phase B: some close paths (June/closeOrdinaryMonth) have
+  // no further one-time event dialog after the guard — the Monthly
+  // Management Report can already be showing here. A no-op when the close
+  // instead still has its own event dialog pending (the report only
+  // appears after that dialog is separately confirmed and the close
+  // actually commits).
+  await dismissMonthlyReportIfPresent(tester);
+}
+
+/// SES ISSUE-232 Phase B: dismisses the Monthly Management Report
+/// (`PublicDemoMonthlyReportDialog`) if it is currently showing — a no-op
+/// otherwise. Every one of the five monthly-close handlers
+/// (april/may/june/july/closeOrdinaryMonth) shows this report immediately
+/// after its own close has already committed (`_commitAggregate`), i.e.
+/// *after* any Month Guard warning and *after* any month-specific one-time
+/// event dialog (April's recruitment guidance, May's "入社・初参画！") have
+/// already been resolved — so this is the last dialog in the chain, and
+/// every existing caller that drives a month close through the real UI and
+/// then continues interacting with the screen must call this once that
+/// close attempt is otherwise done, mirroring [dismissMonthGuardIfPresent]'s
+/// own "always safe to call, no-op if nothing is showing" contract.
+Future<void> dismissMonthlyReportIfPresent(WidgetTester tester) async {
+  final dialog = find.byKey(const Key('public-demo-monthly-report-dialog'));
+  if (dialog.evaluate().isEmpty) return;
+  await tester.tap(
+    find.byKey(const Key('public-demo-monthly-report-dismiss')),
+  );
   await tester.pumpAndSettle();
 }

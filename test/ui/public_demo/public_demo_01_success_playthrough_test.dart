@@ -61,6 +61,11 @@ Future<void> tapAndSettle(WidgetTester tester, String text) async {
     await tester.tap(closeCandidateSkillSheet);
     await tester.pumpAndSettle();
   }
+  // SES ISSUE-232 Phase B: a close path with no further event dialog
+  // (June/July/closeOrdinaryMonth) can already show the Monthly Management
+  // Report here — a no-op otherwise (dismissed separately via
+  // `dismissEvent` once April/May's own event dialog is resolved).
+  await dismissMonthlyReportIfPresent(tester);
 }
 
 Future<void> dismissInterviewResult(
@@ -110,6 +115,10 @@ Future<void> dismissEvent(
   }
   await tester.tap(find.widgetWithText(FilledButton, '確認'));
   await tester.pumpAndSettle();
+  // SES ISSUE-232 Phase B: this confirm is exactly the tap that lets
+  // `_commitAggregate` run and the Monthly Management Report appear (April/
+  // May's own event dialog) — a no-op otherwise.
+  await dismissMonthlyReportIfPresent(tester);
 }
 
 void main() {

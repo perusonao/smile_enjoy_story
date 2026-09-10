@@ -373,6 +373,11 @@ Future<void> _driveToActualCashShortage(WidgetTester tester) async {
       await tester.tap(find.widgetWithText(FilledButton, '内容を確認'));
       await tester.pumpAndSettle();
     }
+    // SES ISSUE-232 Phase B: a close path with no further Month Guard/event
+    // dialog can already show the Monthly Management Report here — a
+    // no-op otherwise (dismissed separately via `dismissAnyMonthCloseDialogs`
+    // once its own guard/event dialog is resolved).
+    await dismissMonthlyReportIfPresent(tester);
   }
 
   // Dismisses every dialog a month-close attempt can pause on — the Month
@@ -396,6 +401,16 @@ Future<void> _driveToActualCashShortage(WidgetTester tester) async {
       if (confirm.evaluate().isNotEmpty) {
         await tester.tap(confirm.first);
         await tester.pumpAndSettle();
+        continue;
+      }
+      // SES ISSUE-232 Phase B: the Monthly Management Report is the last
+      // dialog in the chain (shown only once `_commitAggregate` has
+      // already run) — dismiss it exactly like the two dialogs above.
+      final report = find.byKey(
+        const Key('public-demo-monthly-report-dialog'),
+      );
+      if (report.evaluate().isNotEmpty) {
+        await dismissMonthlyReportIfPresent(tester);
         continue;
       }
       break;

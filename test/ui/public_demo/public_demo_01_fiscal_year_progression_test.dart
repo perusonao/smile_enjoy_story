@@ -84,11 +84,21 @@ Future<void> tapAndSettle(WidgetTester tester, String text) async {
     // fake-clock pumpAndSettle().
     await _settleAfterPossiblePrecache(tester);
   }
+  // SES ISSUE-232 Phase B: a close path with no further event dialog
+  // (June/July/closeOrdinaryMonth) can already show the Monthly Management
+  // Report here — a no-op otherwise (e.g. April/May's own event dialog is
+  // still pending, dismissed separately via `dismissDialog` below).
+  await dismissMonthlyReportIfPresent(tester);
 }
 
 Future<void> dismissDialog(WidgetTester tester, String confirmLabel) async {
   await tester.tap(find.widgetWithText(FilledButton, confirmLabel));
   await tester.pumpAndSettle();
+  // SES ISSUE-232 Phase B: a month-close event dialog's own confirm can be
+  // exactly the tap that lets `_commitAggregate` run and the Monthly
+  // Management Report appear — a no-op when [confirmLabel] dismissed some
+  // other, unrelated dialog.
+  await dismissMonthlyReportIfPresent(tester);
 }
 
 void main() {

@@ -78,6 +78,11 @@ Future<void> _tapAndSettle(WidgetTester tester, String text) async {
   await tester.pumpAndSettle();
   await tester.tap(finder.first);
   await _settle(tester);
+  // SES ISSUE-232 Phase B: a close path with no further event dialog can
+  // already show the Monthly Management Report here — a no-op otherwise
+  // (dismissed separately via `_dismissAnyMonthCloseDialogs` once its own
+  // guard/event dialog is resolved).
+  await dismissMonthlyReportIfPresent(tester);
 }
 
 /// Dismisses every dialog a month-close attempt can pause on, in whatever
@@ -106,6 +111,16 @@ Future<void> _dismissAnyMonthCloseDialogs(WidgetTester tester) async {
     if (confirm.evaluate().isNotEmpty) {
       await tester.tap(confirm.first);
       await tester.pumpAndSettle();
+      continue;
+    }
+    // SES ISSUE-232 Phase B: the Monthly Management Report is the last
+    // dialog in the chain (shown only once `_commitAggregate` has already
+    // run) — dismiss it exactly like the two dialogs above.
+    final report = find.byKey(
+      const Key('public-demo-monthly-report-dialog'),
+    );
+    if (report.evaluate().isNotEmpty) {
+      await dismissMonthlyReportIfPresent(tester);
       continue;
     }
     break;

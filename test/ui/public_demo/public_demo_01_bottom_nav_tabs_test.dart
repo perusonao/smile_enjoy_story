@@ -83,6 +83,10 @@ Future<void> tapAndDismissMonthEnd(WidgetTester tester) async {
     await tester.tap(confirm);
     await tester.pumpAndSettle();
   }
+  // SES ISSUE-232 Phase B: this confirm (or, with no event dialog, the CTA
+  // tap itself) can be exactly what lets `_commitAggregate` run and the
+  // Monthly Management Report appear — a no-op otherwise.
+  await dismissMonthlyReportIfPresent(tester);
 }
 
 Future<void> pumpDemo(WidgetTester tester) async {

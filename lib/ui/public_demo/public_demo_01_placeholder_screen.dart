@@ -3942,11 +3942,41 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
   /// (colored only — the text is still the exact
   /// [_currentEmployeeStatusLabel] every existing roster test already
   /// asserts), and — when a runtime exists — a capability progress bar for
-  /// the employee's confirmed primary skill. All values are read verbatim
-  /// from authoritative Public Demo state; nothing is computed or invented
-  /// here.
+  /// the employee's confirmed primary skill, plus a compensation line
+  /// (経験年数・月給・単金).
+  ///
+  /// SES ISSUE-235 PHASE B-1: adds the 経験年数/月給/単金 line below the
+  /// existing skill bar so the card compares "人材価値・コスト・現在状態" at a
+  /// glance, per the Fresh Audit
+  /// (`docs/reports/SES_FIRST-FUN-YEAR_Employee-Roster-Management-Data_Fresh-Audit.md`).
+  /// Every value here is read verbatim from existing authority — nothing is
+  /// computed or invented:
+  ///  * 経験年数 — [PublicDemoEngineerRuntime.totalItExperienceMonths] via the
+  ///    same [_primarySkillDisplayFor] runtime lookup the skill bar already
+  ///    uses, formatted with the app's existing [formatExperience].
+  ///  * 月給 — [PublicDemoSalary.currentMonthlySalaryFor], the same accessor
+  ///    the payroll total is built from; `null` (should not occur for any
+  ///    engineer already in [PublicDemoWorkflowState.engineers], but never
+  ///    assumed) renders as '—' rather than a fabricated amount.
+  ///  * 単金 (current-assignment unit price) — the Fresh Audit confirmed
+  ///    **no per-employee/per-assignment unit-price authority exists**
+  ///    anywhere in the repo (`PublicDemoAssignment` carries no rate field);
+  ///    the only revenue-facing rate,
+  ///    [PublicDemoRevenue.ratePerAssignedEngineer], is a flat company-wide
+  ///    constant, not any individual employee's negotiated rate, so display
+  ///    it as such would misrepresent it as a per-employee fact. This is
+  ///    Phase B-3's decision (issue #235 §5.3/§7), not Phase B-1's — so
+  ///    every employee, assigned or not, truthfully reads 単金 '—' until a
+  ///    real per-employee rate field exists. Never a recomputed/guessed
+  ///    number.
   Widget _employeeRosterCard(PublicDemoEngineerSales e) {
     final skill = _primarySkillDisplayFor(e.id);
+    final experienceMonths = s.runtimeForOrNull(e.id)?.totalItExperienceMonths;
+    final monthlySalary = PublicDemoSalary.currentMonthlySalaryFor(
+      e.id,
+      applicants: workflow.applicants,
+      month: s.month,
+    );
     return Container(
       key: Key('public-demo-employee-roster-row-${e.id}'),
       margin: const EdgeInsets.only(bottom: 6),
@@ -3996,6 +4026,21 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
                     beforeCapability: skill.beforeCapability,
                   ),
                 ],
+                const SizedBox(height: 4),
+                Text(
+                  [
+                    if (experienceMonths != null)
+                      '経験 ${formatExperience(experienceMonths)}',
+                    '月給 ${monthlySalary == null ? '—' : '${monthlySalary ~/ 10000}万円'}',
+                    '単金 —',
+                  ].join(' ｜ '),
+                  key: Key('public-demo-employee-roster-compensation-${e.id}'),
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
               ],
             ),
           ),

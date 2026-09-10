@@ -217,6 +217,21 @@ Result Reportは履歴・証拠であり、この文書の代わりにはしな�
 
 ## Update history
 
+### 2026-09-10（Issue #235 Phase A + Phase B-1完了 — Employee Roster Management Data / governing plan sync）
+
+- **Issue #235のPhase A（READ-ONLY Fresh Audit）とPhase B-1（実装）を完了。** 社員一覧を「社員を経営資源として比較できる一覧」へ改善する施策。対象は`publicDemoOl`経験の社員タブ（`_employeeRosterSection`/`_employeeRosterCard`、`lib/ui/public_demo/public_demo_01_placeholder_screen.dart`）。
+  - **Phase A（Fresh Audit）**: 氏名・年齢・性別・月給・スキル・経験年数・参画状況・単金の8項目についてauthorityを追跡した。氏名・月給・スキル・経験年数・参画状況の5項目は既存authorityがそのまま安全に参照可能（save-schema変更不要）。年齢・性別は**リポジトリ内のどこにも既存authorityが存在しない**（`prologue_engine.dart`のドキュメントコメントが示す通り、意図的にgender-blindな設計）。単金（現在案件の個別契約単価）も**社員/案件ごとのauthorityが存在せず**、存在するのは`PublicDemoRevenue.ratePerAssignedEngineer`という全社一律の定額のみ（個別契約単価として表示すると偽装表示になる）。詳細は`docs/reports/SES_FIRST-FUN-YEAR_Employee-Roster-Management-Data_Fresh-Audit.md`（本エントリで`origin/main`へ取り込み。Phase A自体は別セッション/別ブランチ（コミット`a2d62ad`）で2026-09-10 14:03Zに実施済みのREAD-ONLY監査で、PRは作成されずmainに未反映だったため、Phase B-1の一部として本docsを本ブランチへ持ち越した）。
+  - **Phase B-1（実装）**: Fresh Auditが「既存authorityでGO」と判定した5項目（氏名・月給・スキル・経験年数・参画状況）のみを`_employeeRosterCard`へ接続した。追加した主な表示は「経験年数・月給・単金」の1行（例: `経験 3 年 ｜ 月給 30万円 ｜ 単金 —`）——氏名・スキル（能力バー）・参画状況バッジは既存表示のまま無変更。
+    - 経験年数: `PublicDemoEngineerRuntime.totalItExperienceMonths`（既存の`formatExperience()`を再利用、新規フォーマッタなし）。
+    - 月給: `PublicDemoSalary.currentMonthlySalaryFor(employeeId, applicants:, month:)`（既存のPayroll authorityをそのまま呼び出し、UIローカル給与テーブルは追加していない）。
+    - 単金: Fresh Auditの確認通りauthorityが存在しないため、**参画中・待機中を問わず全社員が常に「単金 —」**と表示する（`PublicDemoRevenue.ratePerAssignedEngineer`などの推測値・代替値・一律金額をUIへ表示することは行っていない）。単金の実データ接続はPhase B-3（別途、Assignment/Financeへの追加的なsave-schema変更を要する、product decision前提）として据え置き。
+    - 年齢・性別は本Phaseで実装していない（Issue指示どおり）。UIローカルの仮値も追加していない。
+  - **save-schema変更なし**（`schemaVersion`は`1`のまま）。Assignment生成・Finance計算・Sales/Recruitmentロジック・Monthly Management Report・HOMEはいずれも無変更（`lib/ui/public_demo/public_demo_01_placeholder_screen.dart`の`_employeeRosterCard`のみ変更）。
+  - **Package B（Issue #231 / PR #233、社員一覧の「営業可能」「研修が必要」理由caption）は、本Phase B-1の実装基盤である`origin/main`（SHA `160b78ab972b00d787dc827620c23e1335144728`）へは実装時点でまだマージされていない（PR #233はopen）。** そのため本Phase B-1の基準では維持すべき既存captionが存在せず、regression要件は該当なしで充足している。Section 2の既存の営業準備クラリティ（`営業準備OK`／not-ready lock banner）は本Phaseの変更後も無変更であることをテストで確認済み。**PR #233が本PRより先にmainへマージされた場合は、単金行を追加した`_employeeRosterCard`へrebaseし、`営業可能`/`研修が必要`captionとの視覚的整合（同カード内の行順・overflow）を再確認する必要がある。**
+  - `flutter analyze`（プロジェクト全体）No issues、新規focused test（`test/ui/public_demo/public_demo_employee_roster_phase_b1_test.dart`、12件）、既存roster関連suite（`public_demo_employee_ui_phase1_test.dart`、`public_demo_employee_visual_complete_test.dart`）、`test/ui/public_demo/`全体、`test/game/public_demo/`全体、いずれもgreen（件数・詳細はResult Report参照）。
+  - 詳細・authority trace・テスト証跡は`docs/reports/SES_FIRST-FUN-YEAR_Employee-Roster-Management-Data_PhaseB1_Result.md`を参照。
+- **本エントリはCurrent execution order・Prioritized backlog tableの構成自体は変更しない。** Issue #235はPackage Bと同じくPrioritized backlog表のP3「Public Demo UX仕上げ」／「採用・社員マネジメント強化」に近い、Employee Status/Roster clarity改修として扱う——Visual Complete系列（Employee Visual Complete → Sales Visual Complete → …）やApril→March human replayの実行順自体は本エントリ以前と同じ。単金のPhase B-2/B-3（年齢・性別・個別契約単価の追加的なsave-schema拡張）は、product decisionが必要な独立項目として引き続き未着手のまま記録する。
+
 ### 2026-09-10（Issue #229完了 — Public Demo Opening Context Package A / governing plan sync）
 
 - **Issue #229を実装完了（PR #230、Package Aのみ）。** #225 Human Replayで発見されたPublic Demo初回プレイのOpening理解ギャップ（目的・初期資金・毎月の固定支出・売上ゼロを継続した場合の倒産リスクを理解しないまま4月の通常操作に入ってしまう）のうち、Package A（Opening Context画面の追加）を実装した。`PublicDemo01PlaceholderScreen`に、ブラウザ単位で一度だけ表示するOpening Context画面（目的・初期資金・毎月の固定費・倒産リスク・最初にすること + 既存のひよりナビゲーター紹介 + 「4月の経営を始める」CTA）を追加し、表示済み状態は新規の`PublicDemoOpeningMarker`（`SharedPreferences`、既存save schemaとは完全に独立したisolated key）で管理する。画面に表示する金額（初期資金¥4,000,000・月次固定費¥800,000）はいずれもcopyへハードコードせず、既存のFinance/Payroll authority（`PublicDemoState.aprilStart().cash` / `PublicDemoSalary.baselineMonthlyExpenses`）からそのまま取得している。Finance/Sales/Employee/月次決算のauthorityおよびsave schema（`schemaVersion`）は変更していない。

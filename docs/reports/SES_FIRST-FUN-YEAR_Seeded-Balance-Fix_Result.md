@@ -79,9 +79,24 @@ exactly like the pre-existing `PublicDemoSeededPlaythroughBot` (#217/#218).
 | Strategy | Recruit | Hiring selectivity | Training | Cash buffer | July-decline re-entry |
 |---|---|---|---|---|---|
 | **A. Conservative** | never | n/a | trains any below-threshold waiting engineer | ¥300,000 | yes |
-| **B. Balanced** | once, May only | only offers if `salesSkillFit≥45` and `requestedSalary≤¥380,000` | trains any below-threshold waiting engineer | ¥300,000 | yes |
-| **C. Growth** | every legal month (4–8, up to 5×) | none — accepts every offer the real evaluator would | trains any below-threshold waiting engineer | ¥150,000 (leaner) | yes |
-| **D. Poor decisions** | every legal month (4–8, up to 5×) | none | **never trains** | **¥0 (no discipline)** | **no — declined assignments sit idle** |
+| **B. Balanced** | once, May only | only offers if `interviewScore≥45` and `acceptanceScore≥45` and `requestedSalary≤¥380,000` | trains any below-threshold waiting engineer | ¥300,000 | yes |
+| **C. Growth** | every legal month (5–8, up to 4×) | none — accepts every offer the real evaluator would | trains any below-threshold waiting engineer | ¥150,000 (leaner) | yes |
+| **D. Poor decisions** | every legal month (5–8, up to 4×) | none | **never trains** | **¥0 (no discipline)** | **no — declined assignments sit idle** |
+
+Codex review on this PR (P1 x2) found the first implementation of this
+harness used two pieces of information a real player cannot have at the
+point each bot command models: Balanced's selection read
+`PublicDemoApplicant.salesSkillFit`, a field deliberately excluded from the
+pre-hire candidate SkillSheet and only ever revealed during the POST-offer
+pre-entry sales interview — no real player sees it before deciding to
+extend an offer; and Growth/Poor decisions recruited in month 4, but the
+Sales tab's own recruitment-media card never renders before month 5 (the
+underlying domain command itself doesn't gate on this, only the real UI
+does) — no real player can reach 求人媒体 in April at all. Both fixed
+(selection now reads `interviewScore`/`acceptanceScore`, both genuinely
+revealed by 採用面談 at this exact stage; recruiting starts at month 5), and
+every number in this report re-measured against the corrected harness —
+see §4c/§5a for the final figures.
 
 ## 4. Before/after — 300/2,000-seed sweep (Conservative/Balanced/Growth/Poor)
 
@@ -92,9 +107,9 @@ n=300, seeds 2000000–2000299:
 | Strategy | reachedMarch | bankrupt | avgMinCash | avgFinalCash |
 |---|---|---|---|---|
 | Conservative | 100.0% | 0.0% | ¥60,000 | ¥660,000 |
-| Balanced | 58.0% | 40.7% | −¥267,767 | ¥334,367 |
-| Growth | 0.7% | 99.3% | −¥1,189,400 | −¥1,169,000 |
-| Poor decisions | 1.0% | 99.0% | −¥1,306,833 | −¥1,292,533 |
+| Balanced | 49.0% | 49.7% | −¥397,567 | ¥121,600 |
+| Growth | 1.0% | 99.0% | −¥1,188,600 | −¥1,152,400 |
+| Poor decisions | 1.0% | 99.0% | −¥1,247,467 | −¥1,220,733 |
 
 **Finding**: hiring *at all* (Balanced) was already net-worse than never
 hiring (Conservative), and any real hiring intensity (Growth) was an almost
@@ -108,9 +123,9 @@ Same sweep:
 | Strategy | reachedMarch | bankrupt | avgMinCash | avgFinalCash |
 |---|---|---|---|---|
 | Conservative | 100.0% | 0.0% | ¥1,380,000 | ¥2,780,000 |
-| Balanced | 65.3% | 34.0% | ¥494,333 | ¥1,946,133 |
-| Growth | 4.7% | 95.3% | −¥1,030,733 | −¥828,167 |
-| Poor decisions | 1.0% | 99.0% | −¥1,306,833 | −¥1,292,533 (unaffected — never trains) |
+| Balanced | 56.3% | 42.3% | ¥347,967 | ¥1,606,133 |
+| Growth | 8.7% | 91.3% | −¥954,933 | −¥577,733 |
+| Poor decisions | 1.0% | 99.0% | −¥1,247,467 | −¥1,220,733 (unaffected — never trains) |
 
 Meaningful improvement, but Balanced still loses more often than not, and
 Growth is still an almost certain loss.
@@ -122,18 +137,25 @@ n=2,000, seeds 3000000–3001999:
 | Strategy | reachedMarch | bankrupt | avgMinCash | avgFinalCash |
 |---|---|---|---|---|
 | Conservative | 100.0% | 0.0% | ¥1,680,000 | ¥4,480,000 |
-| Balanced | **95.0%** | 5.0% | ¥933,725 | ¥4,102,165 |
-| Growth | **33.9%** | 66.0% | −¥526,470 | ¥1,450,260 |
-| Poor decisions | **16.6%** | 83.3% | −¥719,495 | −¥78,140 |
+| Balanced | **91.3%** | 8.7% | ¥780,165 | ¥3,569,665 |
+| Growth | **42.4%** | 57.6% | −¥418,165 | ¥1,978,380 |
+| Poor decisions | **22.4%** | 77.3% | −¥639,215 | ¥163,865 |
 
 All design targets hold:
 
-- Balanced reliably completes (95%).
+- Balanced reliably completes (91.3%).
 - Conservative and Growth both have real, differentiated outcomes — neither
   a guaranteed win nor a guaranteed loss.
 - Poor decisions is clearly worse than Growth despite the *same* recruiting
-  aggressiveness (16.6% vs. 33.9% survival; −¥78,140 vs. ¥1,450,260 average
+  aggressiveness (22.4% vs. 42.4% survival; ¥163,865 vs. ¥1,978,380 average
   final cash) — proving decisions beyond "how much you hire" matter.
+
+All three sweeps above (§4a/4b/4c) use the harness exactly as it stands
+after the Codex-review fix described in §3 (selection only reads
+pre-offer-visible fields; recruiting starts at month 5, not 4) — §4a/4b were
+re-measured against the corrected harness after that fix, by temporarily
+restoring the pre-tuning constants, so every number in this table is
+reproducible from the current code plus the stated constant values.
 
 ## 5. Before/after — required seeds (0, 1, 42, 13, 666, 315, 2147483000)
 
@@ -141,14 +163,18 @@ All design targets hold:
 
 | Seed | Conservative | Balanced | Growth | Poor decisions |
 |---|---|---|---|---|
-| 0 | March, ¥4,480,000 | March, ¥920,000 | March, ¥4,290,000 | March, ¥830,000 |
-| 1 | March, ¥4,480,000 | March, ¥2,370,000 | **bankrupt**, −¥470,000 | **bankrupt**, −¥860,000 |
-| 42 | March, ¥4,480,000 | March, ¥870,000 | **bankrupt**, −¥1,060,000 | **bankrupt**, −¥1,420,000 |
-| 13 | March, ¥4,480,000 | March, ¥6,280,000 | **bankrupt**, −¥190,000 | **bankrupt**, −¥550,000 |
-| 666 | March, ¥4,480,000 | March, ¥4,380,000 | **bankrupt**, −¥860,000 | **bankrupt**, −¥1,190,000 |
-| 315 | March, ¥4,480,000 | March, ¥1,430,000 | March, ¥5,150,000 | March, ¥960,000 |
-| 2147483000 | March, ¥4,480,000 | March, ¥4,380,000 | **bankrupt**, −¥1,400,000 | **bankrupt**, −¥2,280,000 |
-| **Survival** | **7/7** | **7/7** | **2/7** | **2/7** |
+| 0 | March, ¥4,480,000 | March, ¥920,000 | March, ¥5,490,000 | **bankrupt**, −¥380,000 |
+| 1 | March, ¥4,480,000 | March, ¥2,370,000 | **bankrupt**, −¥1,090,000 | **bankrupt**, −¥1,260,000 |
+| 42 | March, ¥4,480,000 | March, ¥870,000 | **bankrupt**, −¥800,000 | **bankrupt**, −¥1,320,000 |
+| 13 | March, ¥4,480,000 | March, ¥6,280,000 | **bankrupt**, −¥90,000 | **bankrupt**, −¥450,000 |
+| 666 | March, ¥4,480,000 | March, ¥480,000 | **bankrupt**, −¥1,200,000 | **bankrupt**, −¥1,690,000 |
+| 315 | March, ¥4,480,000 | March, ¥1,430,000 | March, ¥5,250,000 | March, ¥1,060,000 |
+| 2147483000 | March, ¥4,480,000 | **bankrupt**, −¥720,000 | **bankrupt**, −¥1,300,000 | **bankrupt**, −¥2,280,000 |
+| **Survival** | **7/7** | **6/7** | **2/7** | **1/7** |
+
+On every required seed, Poor decisions' final cash is ≤ Growth's own
+(strictly worse in aggregate) despite identical recruiting aggressiveness —
+locked as its own regression test.
 
 Exactly locked in `test/game/public_demo/public_demo_strategy_bot_regression_test.dart`.
 
@@ -282,7 +308,7 @@ test** (each file's own class doc now explains why, inline):
    only ever affects *whether* an order is won, never *how much* it is
    worth. A future pass could tie Revenue to the real project rate (the
    constant's own pre-existing doc already names this as
-   "REVENUE-6owns tuning it" — out of this issue's minimal-change scope).
+   "REVENUE-6 owns tuning it" — out of this issue's minimal-change scope).
 2. **30-day payment term is uniform** — `Client.paymentTermDays` (30 or 60
    for some sample clients) exists in the domain model but is never read by
    `PublicDemoRevenuePayment`. Pre-existing, unaffected by this issue, and

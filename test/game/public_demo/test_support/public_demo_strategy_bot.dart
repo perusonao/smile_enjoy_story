@@ -246,16 +246,29 @@ class PublicDemoStrategyBot {
         switch (applicant.stage) {
           case PublicDemoApplicantStage.interviewed:
             // Hire decision: a selective policy only extends the offer to
-            // an applicant whose visible résumé signals clear its own bar
-            // (real player judgement — never a hidden-field/omniscient
-            // shortcut, only [PublicDemoApplicant.salesSkillFit]/
-            // [requestedMonthlySalary], both already résumé-visible fields
-            // this same generic path already reads). A non-selective policy
-            // (Growth/Poor decisions) makes an offer to everyone the real
-            // [PublicDemoSalaryOfferEvaluator] says would accept, exactly
-            // like the original [PublicDemoSeededPlaythroughBot].
+            // an applicant whose visible-at-this-point signals clear its
+            // own bar — real player judgement, never a hidden-field/
+            // omniscient shortcut. [PublicDemoApplicant.salesSkillFit] is
+            // deliberately EXCLUDED from the pre-hire candidate SkillSheet
+            // (see `PublicDemoCandidateSkillSheetDisplayData`'s own class
+            // doc) and is only ever revealed during the POST-offer
+            // pre-entry sales interviews (上位会社面談/客先面談,
+            // `public_demo_01_placeholder_screen.dart`'s own `pi`/`ci`) — a
+            // real player deciding whether to extend an offer has never
+            // seen it. [interviewScore]/[acceptanceScore] are the real
+            // signals a player has at this exact point: both are revealed
+            // by 採用面談 (`completeInterview`, the transition into this
+            // very `interviewed` stage) — see the same class doc's "each is
+            // information the player only ever learns by actually running
+            // an interview step" note. [requestedMonthlySalary] is
+            // résumé-visible from the moment the applicant appears. A
+            // non-selective policy (Growth/Poor decisions) makes an offer
+            // to everyone the real [PublicDemoSalaryOfferEvaluator] says
+            // would accept, exactly like the original
+            // [PublicDemoSeededPlaythroughBot].
             final passesSelection = !policy.selectiveHiring ||
-                (applicant.salesSkillFit >= policy.minQualityForHire &&
+                (applicant.interviewScore >= policy.minQualityForHire &&
+                    applicant.acceptanceScore >= policy.minQualityForHire &&
                     applicant.requestedMonthlySalary <= policy.maxSalaryForHire);
             if (passesSelection) {
               final offer = PublicDemoSalaryOfferEvaluator.evaluate(
@@ -435,9 +448,12 @@ class PublicDemoStrategyPolicy {
 
   final PublicDemoStrategyKind kind;
 
-  /// Internal months (4-8, the real [PublicDemoState
-  /// .canUseRecruitmentMediaInMonth] window) this policy attempts an
-  /// engineer-medium purchase in — empty for Conservative.
+  /// Internal months this policy attempts an engineer-medium purchase in —
+  /// empty for Conservative. [PublicDemoState.canUseRecruitmentMediaInMonth]
+  /// itself allows 4-8, but the Sales tab's own recruitment-media card
+  /// (`_recruitmentMediaCardVisible`) only renders from month 5 onward — a
+  /// real player can never reach 求人媒体 in April at all — so no policy
+  /// here ever includes month 4.
   final Set<int> recruitMonths;
 
   /// Whether this policy only extends an offer to an interviewed applicant
@@ -495,7 +511,7 @@ class PublicDemoStrategyPolicy {
 
   static const growth = PublicDemoStrategyPolicy(
     kind: PublicDemoStrategyKind.growth,
-    recruitMonths: {4, 5, 6, 7, 8},
+    recruitMonths: {5, 6, 7, 8},
     selectiveHiring: false,
     minQualityForHire: 0,
     maxSalaryForHire: 1000000,
@@ -506,7 +522,7 @@ class PublicDemoStrategyPolicy {
 
   static const poorDecisions = PublicDemoStrategyPolicy(
     kind: PublicDemoStrategyKind.poorDecisions,
-    recruitMonths: {4, 5, 6, 7, 8},
+    recruitMonths: {5, 6, 7, 8},
     selectiveHiring: false,
     minQualityForHire: 0,
     maxSalaryForHire: 1000000,

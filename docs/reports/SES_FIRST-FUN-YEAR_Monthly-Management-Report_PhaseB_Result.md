@@ -187,7 +187,7 @@ No P0/P1/P2 findings remained unresolved at the end of this pass.
 
 ## 12. PR / review status
 
-PR: (filled in after push)
+PR: https://github.com/perusonao/smile_enjoy_story/pull/237
 No PR was merged by this task, as instructed — left open for the repository owner to review and merge.
 
 ---

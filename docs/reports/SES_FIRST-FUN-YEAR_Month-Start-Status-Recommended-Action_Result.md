@@ -7,7 +7,7 @@ Issue: [#243](https://github.com/perusonao/smile_enjoy_story/issues/243)
 | item | value |
 |---|---|
 | Base SHA (`origin/main`, fetched explicitly) | `8e64a1c8dda86f5848a3257dcffc3938323992ed` |
-| Final HEAD SHA (this branch) | `d92142a7516edd3bdac964c294c31a2bfd5e9e56` |
+| Final HEAD SHA (this branch) | `5103bbe187351742e38ef9164b6baa26275c1da5` |
 | Branch | `claude/issue-243-implementation-rtd0jz` |
 | Fresh Audit source (SSOT) | `docs/reports/SES_FIRST-FUN-YEAR_Month-Start-Status-Recommended-Action_Fresh-Audit.md` §5 Finding 1 — brought onto this branch (see Known Limitations) since it existed only on an unmerged branch at task start |
 | Scope | Fresh Audit Finding 1 only, per Issue #243's own Scope/Out-of-Scope |
@@ -67,7 +67,7 @@ emission logic at all.
 | file | change |
 |---|---|
 | `lib/ui/public_demo/public_demo_01_placeholder_screen.dart` | `_employeeNextActionsSection`: widened the June-only, joined-applicant-only `ec(i)` loop to May+June, any not-yet-ordered/not-assigned engineer (`showTrainingCard: false`, matching RECOVERY-LOOP-1's own duplicate-key precaution against `_employeeGrowthSection`'s unconditional `s.month >= 5` training card). `_recommendedActionCandidates`: same widening, same emission position. `_fieldSalesActionReachableThisMonth`: simplified to `s.month >= 4 && s.month <= 14`. |
-| `lib/ui/public_demo/public_demo_employee_status_resolver.dart` | Doc-only: updated the stale "March only" → correct "March only" note now that the reachable window is April-February (previously the doc said "May/March"). |
+| `lib/ui/public_demo/public_demo_employee_status_resolver.dart` | Doc-only: updated the stale "no reachable action — May/March only" note to the correct "March only" now that the reachable window is April-February. |
 
 No `lib/game/**` file, no `PublicDemoSaveCodec` file, and no HOME layout
 file was changed — matching the Fresh Audit's own §7/§10 prediction
@@ -77,7 +77,7 @@ exactly.
 
 | file | change |
 |---|---|
-| `test/ui/public_demo/public_demo_01_month_start_status_recommended_action_test.dart` (new) | Dedicated Finding 1 suite: April regression, May stage-by-stage candidate emission (waiting/skillSheet/selling/introduced/partnerInterviewPassed), June founding-engineer parity with the pre-existing joined-applicant case, ordered/assigned engineers producing no invalid or duplicate candidate, July+ RECOVERY-LOOP-1 no-double-emission, Month Guard `recommended` warning in May, save/reload round-trip, 360×800/390×844 × TextScaler 1.0/1.3 overflow check. |
+| `test/ui/public_demo/public_demo_01_month_start_status_recommended_action_test.dart` (new) | Dedicated Finding 1 suite: April regression, May stage-by-stage candidate emission (waiting/skillSheet/selling/introduced/partnerInterviewPassed), June founding-engineer parity with the pre-existing joined-applicant case, ordered/assigned engineers producing no invalid or duplicate candidate, July+ RECOVERY-LOOP-1 no-double-emission, Month Guard `recommended` warning in May, save/reload round-trip, 360×800/390×844 × TextScaler 1.0/1.3 overflow check. Self-hardening follow-up: the "joined applicant" test's own fixture used an unseeded recruit (capability is seed-dependent, occasionally generating a below-threshold candidate) and a scroll-position-dependent widget count — pinned to `runSeed: 3` and a scroll-until-found check; confirmed with 5 consecutive isolated runs, all green, after two full clean `flutter test test/ui/public_demo` runs. |
 | `test/ui/public_demo/public_demo_issue231_employee_skillsheet_clarity_test.dart` | Updated the May and June "no reachable action, roster falls back to 待機" assertions (this PR's own gap, now fixed) to the new truthful `営業可能`; narrowed the group's own doc to reflect that only March keeps the fallback. |
 | `test/ui/public_demo/public_demo_01_home_recommended_action_test.dart` | Two "no-hire route" June tests, and one May test, whose premise ("nothing sellable for a founding engineer") this fix genuinely changes — updated fixtures to sell/resolve the engineer first so each test still isolates the specific behavior (求人媒体 ranking, applicant-review ranking) it was written to prove. |
 | `test/ui/public_demo/public_demo_01_home_consolidation_test.dart` | Same "no-hire route" premise fix for test `14b`, including resolving the assigned engineer's July continuation so `assignmentConfirmNextOrder` (a genuine, unrelated pre-existing candidate) does not itself confound the scenario. |
@@ -114,7 +114,7 @@ exactly.
 - `flutter analyze`: **No issues found.**
 - `flutter test test/game/public_demo`: **861/861 passed** (zero-diff
   regression — no domain file was changed by this fix).
-- `flutter test test/ui/public_demo`: **{{UI_RESULT}}**
+- `flutter test test/ui/public_demo`: **670/670 passed** (full suite, two clean consecutive runs after the flakiness fix below)
 - `git diff --check`: clean (no whitespace errors).
 
 ### Verification matrix (Issue #243's own list)
@@ -136,7 +136,7 @@ exactly.
 | `flutter analyze` | ✅ clean |
 | focused tests | ✅ see above |
 | `flutter test test/game/public_demo` | ✅ 861/861 |
-| `flutter test test/ui/public_demo` | {{UI_RESULT_SHORT}} |
+| `flutter test test/ui/public_demo` | ✅ 670/670 |
 | `git diff --check` | ✅ clean |
 
 ## 6. Unresolved / Known Limitations
@@ -176,7 +176,7 @@ be green), not by unexpected domain/persistence scope.
 
 ## 8. PR
 
-{{PR_URL}}
+https://github.com/perusonao/smile_enjoy_story/pull/244
 
 ---
 

@@ -262,10 +262,14 @@ void main() {
     // candidates, dismissed the same way.
     await dismissMonthGuardIfPresent(tester);
     expect(find.text('1年目 6月'), findsOneWidget);
-    // June's founding-engineer sales card is scoped to newly joined
-    // applicants (joinedApplicantIds), which excludes Suzuki by design —
-    // she gets no SkillSheet action here either, only the standalone
-    // training card the month>=5 loop renders for every runtime.
+    // June's founding-engineer sales card (Issue #243 FIRST-FUN-YEAR P1,
+    // Fresh Audit Finding 1: widened from "newly joined applicants only" to
+    // every not-yet-ordered, not-assigned engineer) now also covers Sato
+    // (still `skillSheet`, sees her own 営業開始 button here — unchecked by
+    // this assertion, which only looks for 'スキルシート確認') — Suzuki
+    // herself stays excluded, never ready for field sales, so she still
+    // gets no SkillSheet action here, only the standalone training card the
+    // month>=5 loop renders for every runtime.
     await switchPublicDemoTab(tester, PublicDemoTab.employees);
     expect(actionButton('スキルシート確認'), findsNothing);
     expect(
@@ -275,6 +279,12 @@ void main() {
 
     await switchPublicDemoTab(tester, PublicDemoTab.home);
     await tapAndSettle(tester, '6月を終了して7月へ');
+    // Issue #243 FIRST-FUN-YEAR P1 (Fresh Audit Finding 1): Sato, still at
+    // `skillSheet` and never advanced past it in this fixture, is now a
+    // genuine outstanding Month Guard candidate (営業開始) at this close too
+    // — proceed past it, the same "player deliberately ignores it" route
+    // already used above.
+    await dismissMonthGuardIfPresent(tester);
     expect(find.text('1年目 7月'), findsOneWidget);
     // Month 7 re-renders Suzuki's sales-flow card (RECOVERY-LOOP-1's own
     // July-February window — see public_demo_01_suzuki_sales_reentry_test

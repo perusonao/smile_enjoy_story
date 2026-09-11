@@ -406,21 +406,36 @@ void main() {
 
     testWidgets('14b: with no eligible action the same slot recommends '
         '求人媒体, not the month goal', (tester) async {
-      // June on the no-hire route: nothing is assigned, nobody joined, and
-      // no engineer is in a sellable stage — the design table's original
-      // "none of the above" row. PR #210's merge-blocker fix means this is
-      // no longer actually "none of the above": `_S._recruitmentMediaCardVisible`
+      // June, with Sato (eng-01) sold and `ordered` since April — assigned
+      // for May by April's own `assignOrderedForMay`, and (Issue #243
+      // FIRST-FUN-YEAR P1, Fresh Audit Finding 1: `assignOrderedForMay` is
+      // not April-only — `closeMay` calls it too, so an order placed
+      // anywhere in April or May is assigned entering June either way) their
+      // July continuation is explicitly resolved here so
+      // `_addAssignmentCandidate` itself has nothing left to emit for them
+      // (`PublicDemoNextOrderStatus.accepted`'s own "nothing left to do"
+      // branch) — not merely excluded from this Issue's own widened
+      // engineer-stage loop. Suzuki (eng-02) stays below the field-sales
+      // threshold throughout: nothing is joined and no engineer is in a
+      // sellable stage, the design table's original "none of the above"
+      // row. PR #210's merge-blocker fix means this June is not actually
+      // "none of the above" even so: `_S._recruitmentMediaCardVisible`
       // spans May-August, and this playthrough never recruited, so 求人媒体
       // is still a live, unused P3 candidate in June and outranks the
       // fallback slot — see `public_demo_01_placeholder_screen.dart`'s own
       // `_recruitmentMediaCardVisible` doc for why April alone stays
       // excluded (unlike June here).
       await pumpDemo(tester);
+      await playApril(tester);
       await tapAndSettle(tester, '4月を終了して5月へ');
       await dismiss(tester);
       await tapAndSettle(tester, '5月を終了して6月へ');
       await settle(tester);
       expect(currentState(tester).month, 6);
+      await switchPublicDemoTab(tester, PublicDemoTab.sales);
+      await tapAndSettle(tester, '7月分の発注を確認');
+      await tapAndSettle(tester, '受注する');
+      await switchPublicDemoTab(tester, PublicDemoTab.home);
 
       const juneGoal = '翌月の発注を確認し、7月も稼働できる状態を作りましょう';
       expect(

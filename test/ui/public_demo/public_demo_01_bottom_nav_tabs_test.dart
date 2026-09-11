@@ -14,12 +14,55 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:smile_enjoy_story/game/persistence/public_demo_save_service.dart';
+import 'package:smile_enjoy_story/game/public_demo/public_demo_aggregate.dart';
+import 'package:smile_enjoy_story/game/public_demo/public_demo_interview.dart';
+import 'package:smile_enjoy_story/game/public_demo/public_demo_salary.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_state.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_workflow_state.dart';
 import 'package:smile_enjoy_story/ui/public_demo/public_demo_01_placeholder_screen.dart';
 import 'package:smile_enjoy_story/ui/public_demo/public_demo_home_dashboard_section.dart';
 
 import 'public_demo_tab_test_helpers.dart';
+
+class _FixedSaveService extends PublicDemoSaveService {
+  _FixedSaveService(this._aggregate);
+  final PublicDemoAggregate _aggregate;
+
+  @override
+  Future<PublicDemoAggregate?> load() async => _aggregate;
+
+  @override
+  Future<void> save(PublicDemoAggregate aggregate) async {}
+
+  @override
+  Future<bool> clear() async => true;
+}
+
+/// Sells eng-01 fully through April's real sales pipeline via direct domain
+/// commands (never the interview mini-game UI, whose pass/fail this file's
+/// own unseeded `pumpDemo` cannot pin), reaching May with them already
+/// `ordered` + assigned (April's own `assignOrderedForMay`) — the same
+/// shape `public_demo_01_month_guard_recommended_test.dart`'s own
+/// `_sellFirstEngineerAndCloseApril` already uses.
+PublicDemoAggregate _reachMayWithEng01SoldAndEng02Untouched() {
+  final expense = PublicDemoSalary.baselineMonthlyExpenses;
+  var game = PublicDemoAggregate.initial();
+  final engineerId = game.workflow.engineers[0].id;
+  game = game.startSkillSheetReview(engineerId);
+  game = game.beginSelling(engineerId);
+  game = game.introduceProject(engineerId);
+  game = game.recordEngineerInterviewResult(
+    engineerId: engineerId,
+    type: PublicDemoInterviewType.partner,
+  );
+  game = game.recordEngineerInterviewResult(
+    engineerId: engineerId,
+    type: PublicDemoInterviewType.client,
+  );
+  game = game.recordOrder(engineerId);
+  return game.closeApril(monthlyExpenses: expense);
+}
 
 PublicDemoState currentState(WidgetTester tester) =>
     (tester.state(find.byType(PublicDemo01PlaceholderScreen)) as dynamic).s
@@ -267,12 +310,25 @@ void main() {
       'important-task 採用 row is unaffected by the fix: it still always '
       'routes to 営業, its own unambiguous home',
       (tester) async {
-        await pumpDemo(tester);
-        // Advance to May: fresh April has no 採用 row at all
-        // (recruitment media only unlocks from month 5), and May is where
-        // that row becomes eligible while 営業's own row is not — an
-        // unambiguous scenario for proving 採用 keeps its own destination.
-        await tapAndDismissMonthEnd(tester);
+        // Issue #243 FIRST-FUN-YEAR P1 (Fresh Audit Finding 1): a fresh,
+        // completely untouched May now also gives eng-01 (ready for field
+        // sales) a real 営業 action — exactly the gap this Issue fixes — so
+        // this scenario needs eng-01 already sold to `ordered` + assigned
+        // before entering May to stay unambiguous. eng-02 stays genuinely
+        // untouched and below `fieldSalesCapabilityRequirement`, so neither
+        // engineer contributes a 営業 candidate here. Built via real domain
+        // commands directly (never the interview mini-game UI, whose
+        // pass/fail this file's own unseeded `pumpDemo` cannot pin).
+        await tester.pumpWidget(
+          MaterialApp(
+            home: PublicDemo01PlaceholderScreen(
+              saveService: _FixedSaveService(
+                _reachMayWithEng01SoldAndEng02Untouched(),
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
         expect(currentState(tester).month, 5);
         expect(find.text('営業活動を進める'), findsNothing);
 

@@ -91,26 +91,41 @@ void main() {
     // changes (e.g. Sato/Suzuki-related warnings unrelated to recruiting).
     await dismissMonthGuardIfPresent(tester);
     expect(find.text('1年目 6月'), findsOneWidget);
-    // PR #210 merge-blocker follow-up: 求人媒体 is no longer fixed to May
-    // (`canUseRecruitmentMediaInMonth` spans April-August, see
-    // `_salesNextActionCards`/`_addRecruitmentMediaCandidate`), and this
-    // playthrough never used it — so it is still the eligible P3
-    // Recommended Action candidate in June, outranking the plain month-goal
-    // fallback (`翌月の発注を確認...`) that only rendered here before this
-    // fix, when recruiting had no later entry point at all.
+    // Issue #243 FIRST-FUN-YEAR P1 (Fresh Audit Finding 1): both founding
+    // engineers are still genuinely untouched at this point (this
+    // playthrough's own deliberate no-sell/no-hire recovery route), and June
+    // now gives Sato (ready) a real, reachable SkillSheet-review action —
+    // the exact gap this Issue closes — so that outranks 求人媒体's P3
+    // candidate here (still real and reachable, just no longer top-ranked
+    // when a genuine per-engineer action also exists).
     expect(
       find.byWidgetPredicate(
         (w) =>
             w.key == const Key('home-recommended-action-headline') &&
             w is Text &&
-            w.data == '求人媒体で候補者を追加',
+            (w.data?.endsWith('のスキルシートを確認') ?? false),
       ),
       findsOneWidget,
     );
+    // 求人媒体 stays a real, reachable action on 営業 even though it no
+    // longer holds HOME's top slot — recruiting was never blocked by this
+    // fix, only correctly outranked.
+    await switchPublicDemoTab(tester, PublicDemoTab.sales);
+    expect(
+      find.byKey(const Key('public-demo-recruitment-media-card')),
+      findsOneWidget,
+    );
+    await switchPublicDemoTab(tester, PublicDemoTab.home);
     expect(find.text('6月を終了して7月へ'), findsOneWidget);
 
     // June: no assignments is valid; advance into July waiting state.
     await tapAndSettle(tester, '6月を終了して7月へ');
+    // Issue #243 FIRST-FUN-YEAR P1 (Fresh Audit Finding 1): Sato's own
+    // still-outstanding SkillSheet review (above) is now a genuine Month
+    // Guard recommended-level warning at this close — proceed past it, the
+    // same "player deliberately ignores the warning" route this whole
+    // playthrough already exercises at the April/May closes above.
+    await dismissMonthGuardIfPresent(tester);
     expect(find.text('1年目 7月'), findsOneWidget);
     // SES-FIRST-FUN-YEAR-UI-PHASE-1: the July recap's own
     // "参画 X名 / 待機 Y名" line was removed as a duplicate of the always-

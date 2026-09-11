@@ -92,9 +92,11 @@ class PublicDemoEmployeeStatusResolver {
   ///    (`PublicDemoEngineerRuntime.isReadyForFieldSales`), with 営業可能
   ///    additionally gated on [fieldSalesActionReachableThisMonth] so it is
   ///    never shown in a month with no reachable control to act on it (PR
-  ///    #233 Codex review P2 fix — preserved verbatim). Neither condition
-  ///    holds (`waiting`, ready, but no reachable action this month — May/
-  ///    March only) falls back to **待機**, matching what `engineerStatus`
+  ///    #233 Codex review P2 fix — preserved verbatim; Issue #243 widened
+  ///    the reachable window itself to April-February, so this fallback
+  ///    now only fires in March). Neither condition holds (`waiting`,
+  ///    ready, but no reachable action this month — March only) falls back
+  ///    to **待機**, matching what `engineerStatus`
   ///    already states for `waiting` verbatim.
   /// 4. **営業中** — every other [PublicDemoSalesStage] value: `skillSheet`,
   ///    `selling`, `introduced`, `partnerInterviewPassed`/`Failed`,

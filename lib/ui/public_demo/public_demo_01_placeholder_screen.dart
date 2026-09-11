@@ -1194,6 +1194,21 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
   /// 上位会社面談. When no real candidate resolves (should not happen in
   /// normal play — see [_bestFitProjectIdFor]'s own doc), nothing is shown,
   /// exactly matching the prior silent behavior rather than fabricating one.
+  ///
+  /// Codex review (PR #246, thread PRRT_kwDOT2htY86hiMIf): a proposal made
+  /// in an earlier month and only acted on (案件紹介) after the month
+  /// advanced — the engineer stays in `selling` across a month boundary,
+  /// nothing forces 案件紹介 in the same month as the proposal — used to
+  /// look up the candidate in `projectCandidatesForMonth(s.month)`, i.e.
+  /// THIS month's pool. Project ids encode their origin month
+  /// (`project-<month>-<slot>`), so a proposal from a prior month is simply
+  /// absent from that pool and the SnackBar silently never appeared. Fixed
+  /// by resolving through the existing [PublicDemoAggregate
+  /// .projectInterviewCandidateFor] — the same accessor Phase 6 itself uses
+  /// — which regenerates the proposal's own `projectId` via
+  /// [PublicDemoSeededProjectGenerator.regenerate] (month-independent: the
+  /// id already carries its origin month) instead of re-deriving it from
+  /// whatever month happens to be current.
   void _introduceProject(String engineerId) {
     var next = _game;
     if (next.matchingProposalFor(engineerId) == null) {
@@ -1208,15 +1223,8 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
     next = next.introduceProject(engineerId);
     _commitAggregate(next);
 
-    final proposal = next.matchingProposalFor(engineerId);
-    if (proposal == null) return;
-    PublicDemoProjectCandidate? candidate;
-    for (final c in next.projectCandidatesForMonth(s.month)) {
-      if (c.id == proposal.projectId) {
-        candidate = c;
-        break;
-      }
-    }
+    if (next.matchingProposalFor(engineerId) == null) return;
+    final candidate = next.projectInterviewCandidateFor(engineerId);
     if (candidate == null) return;
     final engineerName = _engineerName(engineerId);
     ScaffoldMessenger.of(context).showSnackBar(

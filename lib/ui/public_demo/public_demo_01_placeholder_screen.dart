@@ -92,6 +92,18 @@ typedef _AddCandidate =
 /// into; no new categorization is computed.
 enum _EmployeeStatusFilter { all, waiting, assigned }
 
+/// Issue #245 Finding #8: `評価 ${a.interviewScore}` used to render
+/// [PublicDemoApplicant.interviewScore] as a bare number, with the `>= 60`
+/// pass line ([_S.ac]'s own offer-button gate) implicit and undocumented.
+/// This states the exact same gate the button already enforces in words
+/// instead of a raw score — mirrors [PublicDemoMatchingProspect]'s own
+/// "never a raw score" precedent (public_demo_matching_fit.dart) — and never
+/// introduces a new tier/threshold the domain does not already have. Not
+/// private ([Applicant] evaluation display, `_` would hide it from this
+/// file's own dedicated regression test) — still library-internal in intent.
+String publicDemoApplicantEvaluationLabel(int interviewScore) =>
+    interviewScore >= 60 ? '評価: 採用基準を満たしています' : '評価: 採用基準を下回っています';
+
 // ---------------------------------------------------------------------------
 // PUBLIC-DEMO-HOME-UI-3A P2 fix (PR #150 review): "今月の重要タスク"'s 営業/採用
 // rows used to be unconditional — always rendered, always pointing at the
@@ -339,9 +351,18 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
   /// Dismisses the Opening Context and records the dismissal
   /// (best-effort — see [PublicDemoOpeningMarker.markSeen]) so a later
   /// reload of this same fresh session does not show it again.
-  void _acknowledgeOpeningContext() {
+  ///
+  /// [openEmployeesTabFirst] is Issue #245 Finding #1's "まずSkillSheetで2人
+  /// を確認する" CTA: when true, the first tab shown after the Opening
+  /// Context closes is 社員 (where SkillSheet confirmation lives) instead of
+  /// HOME. This never touches workflow/save state — only which tab index
+  /// this already-existing [_selectedTabIndex] field starts on.
+  void _acknowledgeOpeningContext({bool openEmployeesTabFirst = false}) {
     if (!mounted) return;
-    setState(() => _showOpening = false);
+    setState(() {
+      _showOpening = false;
+      if (openEmployeesTabFirst) _selectedTabIndex = _employeesTabIndex;
+    });
     unawaited(widget.openingMarker.markSeen());
   }
 
@@ -1161,6 +1182,18 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
   /// happen — [PublicDemoSeededProjectGenerator] always offers a full slate
   /// from April on) leaves this a no-op propose, exactly matching the old
   /// pure-stage-flip behavior.
+  /// Issue #245 Finding #2: 案件紹介 previously changed only the stage badge
+  /// text, with no visible event — a player could not tell anything had
+  /// happened. This now surfaces the same real [PublicDemoProjectCandidate]
+  /// [_bestFitProjectIdFor] already resolves into a genuine
+  /// [PublicDemoMatchingProposal] (existing Issue #219 authority — no new
+  /// formula, no fabricated project) via a SnackBar naming the real
+  /// project/client/rate — deliberately non-blocking (unlike
+  /// [_recordEngineerOrder]'s 受注 [PublicDemoEventDialog]) since 案件紹介
+  /// carries no decision of its own here; the player's next real decision is
+  /// 上位会社面談. When no real candidate resolves (should not happen in
+  /// normal play — see [_bestFitProjectIdFor]'s own doc), nothing is shown,
+  /// exactly matching the prior silent behavior rather than fabricating one.
   void _introduceProject(String engineerId) {
     var next = _game;
     if (next.matchingProposalFor(engineerId) == null) {
@@ -1172,7 +1205,30 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
         );
       }
     }
-    _commitAggregate(next.introduceProject(engineerId));
+    next = next.introduceProject(engineerId);
+    _commitAggregate(next);
+
+    final proposal = next.matchingProposalFor(engineerId);
+    if (proposal == null) return;
+    PublicDemoProjectCandidate? candidate;
+    for (final c in next.projectCandidatesForMonth(s.month)) {
+      if (c.id == proposal.projectId) {
+        candidate = c;
+        break;
+      }
+    }
+    if (candidate == null) return;
+    final engineerName = _engineerName(engineerId);
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        key: const Key('public-demo-project-introduced-snackbar'),
+        duration: const Duration(seconds: 4),
+        content: Text(
+          '$engineerNameさんに「${candidate.title}」（${candidate.clientName}・'
+          '月額${formatYen(candidate.monthlyRate)}）が紹介されました。',
+        ),
+      ),
+    );
   }
 
   /// The id of this month's real project candidate ([PublicDemoAggregate
@@ -3830,7 +3886,11 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
               child: const Text('採用面談'),
             ),
           if (a.stage == PublicDemoApplicantStage.interviewed) ...[
-            Text('評価 ${a.interviewScore}'),
+            Text(publicDemoApplicantEvaluationLabel(a.interviewScore)),
+            const Text(
+              'コミュニケーションや仕事への取り組み姿勢など、面談で確認できた内容をもとにした評価です。',
+              style: TextStyle(fontSize: 11.5, color: Colors.black54),
+            ),
             Text('希望給与 ${a.requestedMonthlySalary ~/ 10000}万円'),
             if (_interviewDecidedHired(a.id))
               FilledButton(
@@ -4849,10 +4909,13 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
     // `primaryText`/`secondaryText` keeps the exact wording (down to the
     // full-width unit characters) the prior two `Text` lines rendered, so
     // `public_demo_sales_ui_phase1_test.dart`'s existing
-    // `find.textContaining('営業残 N回')`/`'候補者 N名'`/`'案件 N件'`/
-    // `'うち検討中 N件'` assertions keep matching byte-for-byte — only the
-    // layout (icon + tile shape) changed, not one character of the text
-    // itself.
+    // `find.textContaining('営業残 N回')`/`'候補者 N名'`/`'うち検討中 N件'`
+    // assertions keep matching byte-for-byte — only the layout (icon + tile
+    // shape) changed, not one character of that text. Issue #245 Finding
+    // #11 relabeled the third tile from ambiguous "案件 N件" to explicit
+    // "受注案件 N件" (see below) — the same test file's `textContaining
+    // ('案件 N件')` checks still match unchanged, since that text remains a
+    // literal substring of the new label.
     return Padding(
       key: const Key('public-demo-sales-overview-section'),
       padding: const EdgeInsets.only(bottom: 12),
@@ -4881,7 +4944,14 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
               Expanded(
                 child: PublicDemoSalesStatTile(
                   icon: Icons.business_center_outlined,
-                  primaryText: '案件 ${workflow.assignments.length}件',
+                  // Issue #245 Finding #11: this counts
+                  // `workflow.assignments` — records that only ever exist
+                  // after a genuine order (see [PublicDemoAssignment]'s own
+                  // doc) — never 紹介された案件/候補案件. The old bare
+                  // "案件 N件" label read as ambiguous ("紹介された案件数?
+                  // 候補案件数?"); "受注案件" states plainly that every
+                  // number here is already-ordered, same data, no new count.
+                  primaryText: '受注案件 ${workflow.assignments.length}件',
                   secondaryText: pendingAssignmentCount > 0
                       ? 'うち検討中 $pendingAssignmentCount件'
                       : null,
@@ -5596,7 +5666,16 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
       return PublicDemoOpeningContextScreen(
         startingCash: PublicDemoState.aprilStart().cash,
         monthlyFixedCost: PublicDemoSalary.baselineMonthlyExpenses,
+        founders: [
+          for (final engineer in publicDemoInitialEngineers)
+            PublicDemoOpeningFounder(
+              name: engineer.name,
+              summary: engineer.summary,
+            ),
+        ],
         onStart: _acknowledgeOpeningContext,
+        onViewSkillSheetFirst: () =>
+            _acknowledgeOpeningContext(openEmployeesTabFirst: true),
       );
     }
     final navigatorAdvice = _compactedForShortage(

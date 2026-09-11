@@ -147,6 +147,117 @@ void main() {
     });
   });
 
+  group('dismiss never commits a pass/fail outcome (Issue #245 Finding #9)', () {
+    testWidgets(
+      'closing via the [X] button before any follow-up leaves the engineer '
+      'stage and session exactly as before, and reopening resumes the same '
+      'in-progress session rather than starting a fresh one',
+      (tester) async {
+        PublicDemoAggregate aggregate = _readyAggregate();
+        await _pump(
+          tester,
+          aggregate,
+          size: const Size(390, 844),
+          onCommit: (next) => aggregate = next,
+        );
+
+        final stageBeforeClose = aggregate.workflow.engineers
+            .firstWhere((e) => e.id == 'eng-01')
+            .stage;
+        final sessionBeforeClose = aggregate.projectInterviewSessionFor(
+          'eng-01',
+        );
+        expect(sessionBeforeClose, isNotNull);
+        expect(sessionBeforeClose!.completed, isFalse);
+        expect(sessionBeforeClose.playerFollowUps, isEmpty);
+
+        await tester.tap(
+          find.byKey(const Key('public-demo-project-interview-close')),
+        );
+        await tester.pumpAndSettle();
+
+        // Dismissing must never itself produce a pass/fail commit — the
+        // engineer's stage and the session's own completed/result fields
+        // must be byte-for-byte unchanged.
+        expect(
+          aggregate.workflow.engineers
+              .firstWhere((e) => e.id == 'eng-01')
+              .stage,
+          stageBeforeClose,
+        );
+        final sessionAfterClose = aggregate.projectInterviewSessionFor(
+          'eng-01',
+        );
+        expect(sessionAfterClose, isNotNull);
+        expect(sessionAfterClose!.completed, isFalse);
+        expect(sessionAfterClose.result, isNull);
+        expect(sessionAfterClose.playerFollowUps, isEmpty);
+        expect(sessionAfterClose.id, sessionBeforeClose.id);
+        expect(sessionAfterClose.startedWeek, sessionBeforeClose.startedWeek);
+
+        // Reopening resumes the exact same in-progress session, not a fresh
+        // one — the dialog's own doc comment's "closing and reopening this
+        // dialog resumes exactly where the player left off" guarantee.
+        await _pump(
+          tester,
+          aggregate,
+          size: const Size(390, 844),
+          onCommit: (next) => aggregate = next,
+        );
+        expect(find.text('案件面談'), findsOneWidget);
+        final sessionAfterReopen = aggregate.projectInterviewSessionFor(
+          'eng-01',
+        );
+        expect(sessionAfterReopen!.id, sessionBeforeClose.id);
+        expect(sessionAfterReopen.completed, isFalse);
+
+        // A real follow-up now genuinely advances the resumed session —
+        // reopening did not silently reset it to question 0 either.
+        await _tapFirstFollowUp(tester);
+        expect(tester.takeException(), isNull);
+        expect(
+          aggregate.projectInterviewSessionFor('eng-01')!.playerFollowUps,
+          isNotEmpty,
+        );
+      },
+    );
+
+    testWidgets(
+      'the Android/system back gesture (pop route) is exactly as safe as '
+      'the [X] button — no commit, session resumable',
+      (tester) async {
+        PublicDemoAggregate aggregate = _readyAggregate();
+        await _pump(
+          tester,
+          aggregate,
+          size: const Size(390, 844),
+          onCommit: (next) => aggregate = next,
+        );
+
+        final stageBeforeBack = aggregate.workflow.engineers
+            .firstWhere((e) => e.id == 'eng-01')
+            .stage;
+
+        // Simulates the OS-level back gesture/button through the real
+        // Navigator route (same effect production relies on — see this
+        // dialog's own class doc), not the [X] IconButton.
+        await tester.binding.handlePopRoute();
+        await tester.pumpAndSettle();
+
+        expect(
+          aggregate.workflow.engineers
+              .firstWhere((e) => e.id == 'eng-01')
+              .stage,
+          stageBeforeBack,
+        );
+        final session = aggregate.projectInterviewSessionFor('eng-01');
+        expect(session, isNotNull);
+        expect(session!.completed, isFalse);
+        expect(session.result, isNull);
+      },
+    );
+  });
+
   group('viewport / TextScaler safety', () {
     for (final size in const [Size(390, 844), Size(360, 800)]) {
       for (final scale in const [1.0, 1.3, 2.0]) {

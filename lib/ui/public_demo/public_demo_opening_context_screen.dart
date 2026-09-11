@@ -27,7 +27,9 @@ class PublicDemoOpeningContextScreen extends StatelessWidget {
     super.key,
     required this.startingCash,
     required this.monthlyFixedCost,
+    required this.founders,
     required this.onStart,
+    required this.onViewSkillSheetFirst,
   });
 
   /// The company's cash at company founding, verbatim from
@@ -39,10 +41,22 @@ class PublicDemoOpeningContextScreen extends StatelessWidget {
   /// fixed cost), verbatim from `PublicDemoSalary.baselineMonthlyExpenses`.
   final int monthlyFixedCost;
 
+  /// Issue #245 Finding #1: the founding engineer roster, verbatim from
+  /// `publicDemoInitialEngineers` (`name`/`summary` only — both already
+  /// player-facing in SkillSheet/Matching, never a hidden interview-profile
+  /// value). This widget never invents a founder or a differentiator of its
+  /// own; it only renders what the caller supplies.
+  final List<PublicDemoOpeningFounder> founders;
+
   /// Dismisses the Opening Context and proceeds into April. The owning
   /// screen is responsible for recording that this browser has seen it
   /// (`PublicDemoOpeningMarker.markSeen`) — this widget only ever calls it.
   final VoidCallback onStart;
+
+  /// Same dismissal as [onStart], but the owning screen additionally opens
+  /// on the 社員 tab (where SkillSheet confirmation lives) instead of HOME —
+  /// Issue #245 Finding #1's "SkillSheet確認に意味を持たせる" CTA.
+  final VoidCallback onViewSkillSheetFirst;
 
   @override
   Widget build(BuildContext context) {
@@ -94,6 +108,8 @@ class PublicDemoOpeningContextScreen extends StatelessWidget {
               tone: _OpeningSectionTone.caution,
             ),
             const SizedBox(height: 10),
+            _FoundingRosterSection(founders: founders),
+            const SizedBox(height: 10),
             const _OpeningSection(
               key: Key('public-demo-opening-first-step'),
               icon: Icons.play_circle_outline,
@@ -101,6 +117,15 @@ class PublicDemoOpeningContextScreen extends StatelessWidget {
               body: 'まずは4月、社員の状況を確認しながら、案件への参画や営業を進めていきましょう。',
             ),
             const SizedBox(height: 20),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton(
+                key: const Key('public-demo-opening-view-skillsheet-button'),
+                onPressed: onViewSkillSheetFirst,
+                child: const Text('まずSkillSheetで2人を確認する'),
+              ),
+            ),
+            const SizedBox(height: 8),
             SizedBox(
               width: double.infinity,
               child: FilledButton(
@@ -111,6 +136,82 @@ class PublicDemoOpeningContextScreen extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// Issue #245 Finding #1: a founding engineer's player-facing name/summary,
+/// verbatim from `publicDemoInitialEngineers` — never a new field, never a
+/// hidden interview-profile value.
+class PublicDemoOpeningFounder {
+  const PublicDemoOpeningFounder({required this.name, required this.summary});
+
+  final String name;
+  final String summary;
+}
+
+/// Introduces the 2 founding engineers by name and their existing
+/// `summary` text (already shown in SkillSheet/Matching) so a first-time
+/// player knows who they are and how they differ before being asked to
+/// open SkillSheet. Deliberately reuses only already-truthful, already
+/// player-facing text — no new score, no fabricated differentiator.
+class _FoundingRosterSection extends StatelessWidget {
+  const _FoundingRosterSection({required this.founders});
+
+  final List<PublicDemoOpeningFounder> founders;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      key: const Key('public-demo-opening-founders'),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerHighest.withValues(alpha: 0.4),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: scheme.primary.withValues(alpha: 0.3)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.groups_outlined, size: 18, color: scheme.primary),
+              const SizedBox(width: 8),
+              Text(
+                '創業メンバー',
+                style: TextStyle(fontWeight: FontWeight.bold, color: scheme.primary),
+              ),
+            ],
+          ),
+          const SizedBox(height: 3),
+          const Text(
+            'この会社には、創業時から在籍する技術者が2名います。まずはSkillSheetで'
+            '2人の得意分野を確認してから、案件への提案を考えましょう。',
+            style: TextStyle(fontSize: 13, height: 1.4),
+          ),
+          const SizedBox(height: 8),
+          for (final founder in founders)
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Text.rich(
+                TextSpan(
+                  children: [
+                    TextSpan(
+                      text: founder.name,
+                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                    ),
+                    const TextSpan(text: '　'),
+                    TextSpan(
+                      text: founder.summary,
+                      style: const TextStyle(fontSize: 12.5, color: Colors.black54),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+        ],
       ),
     );
   }

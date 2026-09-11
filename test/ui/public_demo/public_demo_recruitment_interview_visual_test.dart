@@ -6,14 +6,22 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:smile_enjoy_story/game/models/recruitment_interview.dart';
 import 'package:smile_enjoy_story/game/persistence/public_demo_save_service.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_aggregate.dart';
+import 'package:smile_enjoy_story/game/public_demo/public_demo_recruitment.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_recruitment_medium.dart';
+import 'package:smile_enjoy_story/game/public_demo/public_demo_workflow_state.dart';
 import 'package:smile_enjoy_story/ui/public_demo/public_demo_01_placeholder_screen.dart';
 import 'package:smile_enjoy_story/ui/theme.dart';
 
 import 'public_demo_interview_test_helpers.dart';
 import 'public_demo_tab_test_helpers.dart';
+
+PublicDemoWorkflowState _currentWorkflow(WidgetTester tester) =>
+    (tester.state(find.byType(PublicDemo01PlaceholderScreen)) as dynamic)
+            .workflow
+        as PublicDemoWorkflowState;
 
 class _FixedSaveService extends PublicDemoSaveService {
   _FixedSaveService(this._aggregate);
@@ -192,4 +200,118 @@ void main() {
       );
     }
   });
+
+  group(
+    'dismiss never commits a hire/reject outcome (Issue #245 Finding #9)',
+    () {
+      testWidgets(
+        'closing via the [X] button after answering one question leaves the '
+        'applicant stage untouched, and reopening resumes the same '
+        'in-progress session instead of restarting it',
+        (tester) async {
+          final fixture = mayWithInterviewedSeededApplicant(2024);
+          await _pumpToInterviewDialog(
+            tester,
+            fixture.aggregate,
+            fixture.applicantId,
+            size: const Size(390, 844),
+            textScale: 1.0,
+          );
+
+          final firstCard = find.byKey(
+            const ValueKey('question-card-technical'),
+          );
+          await tester.scrollUntilVisible(
+            firstCard,
+            200,
+            scrollable: interviewDialogScrollable,
+          );
+          await tester.pumpAndSettle();
+          await tester.tap(firstCard);
+          await tester.pumpAndSettle();
+
+          RecruitmentInterviewSession sessionFor(WidgetTester t) =>
+              _currentWorkflow(t).interviewSessions.firstWhere(
+                (session) => session.applicantId == fixture.applicantId,
+              );
+          PublicDemoApplicantStage stageFor(WidgetTester t) =>
+              _currentWorkflow(t).applicants
+                  .firstWhere((a) => a.id == fixture.applicantId)
+                  .stage;
+
+          final stageBeforeClose = stageFor(tester);
+          final sessionBeforeClose = sessionFor(tester);
+          expect(sessionBeforeClose.selectedQuestions, hasLength(1));
+          expect(sessionBeforeClose.completed, isFalse);
+
+          await tester.tap(
+            find.byKey(const Key('public-demo-interview-close')),
+          );
+          await tester.pumpAndSettle();
+
+          // Dismissing must never itself hire or reject the applicant, nor
+          // touch the in-progress session's own answered-question count.
+          expect(stageFor(tester), stageBeforeClose);
+          final sessionAfterClose = sessionFor(tester);
+          expect(sessionAfterClose.completed, isFalse);
+          expect(sessionAfterClose.outcome, isNull);
+          expect(sessionAfterClose.selectedQuestions, hasLength(1));
+          expect(sessionAfterClose.id, sessionBeforeClose.id);
+
+          // Reopening resumes the exact same in-progress session (the one
+          // already-answered question stays answered) rather than starting
+          // a fresh 0-question session — this dialog's own class doc's
+          // "closing this dialog mid-interview ... and reopening it later
+          // resumes exactly where the player left off" guarantee.
+          final reopenButton = find.byKey(
+            ValueKey('public-demo-interview-open-${fixture.applicantId}'),
+          );
+          await tester.ensureVisible(reopenButton);
+          await tester.pumpAndSettle();
+          await tester.tap(reopenButton);
+          await tester.pumpAndSettle();
+          expect(
+            find.byKey(const ValueKey('public-demo-interview-questions-1')),
+            findsOneWidget,
+          );
+          expect(sessionFor(tester).id, sessionBeforeClose.id);
+        },
+      );
+
+      testWidgets(
+        'the OS-level back gesture (route pop) is exactly as safe as the '
+        '[X] button — no commit, session resumable',
+        (tester) async {
+          final fixture = mayWithInterviewedSeededApplicant(4242);
+          await _pumpToInterviewDialog(
+            tester,
+            fixture.aggregate,
+            fixture.applicantId,
+            size: const Size(390, 844),
+            textScale: 1.0,
+          );
+
+          final stageBeforeBack = _currentWorkflow(tester).applicants
+              .firstWhere((a) => a.id == fixture.applicantId)
+              .stage;
+
+          await tester.binding.handlePopRoute();
+          await tester.pumpAndSettle();
+
+          final workflowAfterBack = _currentWorkflow(tester);
+          expect(
+            workflowAfterBack.applicants
+                .firstWhere((a) => a.id == fixture.applicantId)
+                .stage,
+            stageBeforeBack,
+          );
+          final session = workflowAfterBack.interviewSessions.firstWhere(
+            (s) => s.applicantId == fixture.applicantId,
+          );
+          expect(session.completed, isFalse);
+          expect(session.outcome, isNull);
+        },
+      );
+    },
+  );
 }

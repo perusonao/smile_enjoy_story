@@ -185,7 +185,7 @@ Future<void> _hireAppOneWithoutPreEntrySales(WidgetTester tester) async {
   await tester.pumpAndSettle();
   await _tapAndSettle(tester, 'スキルシート確認');
   await _tapAndSettle(tester, '採用面談');
-  expect(find.textContaining('評価 80'), findsOneWidget);
+  expect(find.text('評価: 採用基準を満たしています'), findsOneWidget);
   await driveRecruitmentInterviewToHireDecision(tester);
   await _tapAndSettle(tester, '合格・給与提示');
   await tester.tap(find.byKey(const Key('public-demo-salary-offer-370000')));

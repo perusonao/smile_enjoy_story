@@ -4,6 +4,7 @@ import 'package:smile_enjoy_story/game/persistence/public_demo_opening_marker.da
 import 'package:smile_enjoy_story/game/persistence/public_demo_save_service.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_aggregate.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_salary.dart';
+import 'package:smile_enjoy_story/game/public_demo/public_demo_sales.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_state.dart';
 import 'package:smile_enjoy_story/ui/public_demo/public_demo_01_placeholder_screen.dart';
 import 'package:smile_enjoy_story/ui/theme.dart' show formatYen;
@@ -62,6 +63,26 @@ class _RecordingOpeningMarker extends PublicDemoOpeningMarker {
 const _openingScreenKey = Key('public-demo-opening-context-screen');
 const _bottomNavKey = Key('public-demo-bottom-nav');
 const _startButtonKey = Key('public-demo-opening-start-button');
+const _viewSkillSheetFirstButtonKey = Key(
+  'public-demo-opening-view-skillsheet-button',
+);
+
+/// Issue #245 Finding #1 added a founding-roster card and a second CTA
+/// button to the Opening Context, so its total content height can now
+/// exceed flutter_test's default (short) window — scroll the target button
+/// into view first, exactly as real mobile playthroughs already rely on
+/// this screen's own `ListView` to do for TextScaler growth.
+Future<void> _tapOpeningButton(WidgetTester tester, Key key) async {
+  final finder = find.byKey(key);
+  await tester.scrollUntilVisible(
+    finder,
+    200,
+    scrollable: find.byType(Scrollable).first,
+  );
+  await tester.pumpAndSettle();
+  await tester.tap(finder);
+  await tester.pump();
+}
 
 Future<void> _mount(
   WidgetTester tester, {
@@ -159,6 +180,27 @@ void main() {
         expect(find.textContaining(expectedFixedCost), findsOneWidget);
       },
     );
+
+    testWidgets(
+      'Issue #245 Finding #1: introduces the 2 founding engineers by their '
+      'real name/summary from publicDemoInitialEngineers — never a '
+      'fabricated differentiator',
+      (tester) async {
+        await _mount(
+          tester,
+          openingMarker: _RecordingOpeningMarker(seen: false),
+        );
+
+        expect(
+          find.byKey(const Key('public-demo-opening-founders')),
+          findsOneWidget,
+        );
+        for (final engineer in publicDemoInitialEngineers) {
+          expect(find.textContaining(engineer.name), findsOneWidget);
+          expect(find.textContaining(engineer.summary), findsOneWidget);
+        }
+      },
+    );
   });
 
   group('dismissal', () {
@@ -170,8 +212,7 @@ void main() {
         await _mount(tester, openingMarker: marker);
         expect(find.byKey(_openingScreenKey), findsOneWidget);
 
-        await tester.tap(find.byKey(_startButtonKey));
-        await tester.pump();
+        await _tapOpeningButton(tester, _startButtonKey);
 
         expect(find.byKey(_openingScreenKey), findsNothing);
         expect(find.byKey(_bottomNavKey), findsOneWidget);
@@ -188,8 +229,7 @@ void main() {
         final marker = _RecordingOpeningMarker(seen: false);
         final saveService = _RecordingSaveService();
         await _mount(tester, saveService: saveService, openingMarker: marker);
-        await tester.tap(find.byKey(_startButtonKey));
-        await tester.pump();
+        await _tapOpeningButton(tester, _startButtonKey);
         expect(marker.seen, isTrue);
 
         // Simulate a fresh mount (reload) reusing the same marker/save
@@ -207,8 +247,7 @@ void main() {
 
   group('restart', () {
     Future<void> dismissOpeningAndReachMenuTab(WidgetTester tester) async {
-      await tester.tap(find.byKey(_startButtonKey));
-      await tester.pump();
+      await _tapOpeningButton(tester, _startButtonKey);
       await tester.tap(find.byKey(const Key('public-demo-nav-menu')));
       await tester.pumpAndSettle();
     }
@@ -277,21 +316,63 @@ void main() {
 
   group('mobile layout', () {
     for (final size in const [Size(360, 800), Size(390, 844)]) {
-      testWidgets('renders without overflow at ${size.width.toInt()}x${size.height.toInt()}', (
-        tester,
-      ) async {
-        tester.view.physicalSize = size;
-        tester.view.devicePixelRatio = 1.0;
-        addTearDown(tester.view.reset);
+      for (final textScale in const [1.0, 1.3]) {
+        testWidgets(
+          'renders without overflow at ${size.width.toInt()}x'
+          '${size.height.toInt()} / TextScaler $textScale',
+          (tester) async {
+            tester.view.physicalSize = size;
+            tester.view.devicePixelRatio = 1.0;
+            addTearDown(tester.view.reset);
 
-        await _mount(
-          tester,
-          openingMarker: _RecordingOpeningMarker(seen: false),
+            await tester.pumpWidget(
+              MaterialApp(
+                builder: (context, child) => MediaQuery(
+                  data: MediaQuery.of(
+                    context,
+                  ).copyWith(textScaler: TextScaler.linear(textScale)),
+                  child: child!,
+                ),
+                home: PublicDemo01PlaceholderScreen(
+                  key: UniqueKey(),
+                  saveService: _RecordingSaveService(),
+                  openingMarker: _RecordingOpeningMarker(seen: false),
+                ),
+              ),
+            );
+            await tester.pump();
+
+            expect(find.byKey(_openingScreenKey), findsOneWidget);
+            expect(
+              find.byKey(const Key('public-demo-opening-founders')),
+              findsOneWidget,
+            );
+            expect(tester.takeException(), isNull);
+          },
         );
-
-        expect(find.byKey(_openingScreenKey), findsOneWidget);
-        expect(tester.takeException(), isNull);
-      });
+      }
     }
+  });
+
+  group('Issue #245 Finding #1: SkillSheet-first CTA', () {
+    testWidgets(
+      'tapping "まずSkillSheetで2人を確認する" dismisses the Opening Context and '
+      'opens directly on the 社員 tab instead of HOME',
+      (tester) async {
+        final marker = _RecordingOpeningMarker(seen: false);
+        await _mount(tester, openingMarker: marker);
+        expect(find.byKey(_openingScreenKey), findsOneWidget);
+
+        await _tapOpeningButton(tester, _viewSkillSheetFirstButtonKey);
+
+        expect(find.byKey(_openingScreenKey), findsNothing);
+        expect(find.byKey(_bottomNavKey), findsOneWidget);
+        expect(
+          find.byKey(const PageStorageKey('public-demo-employees-tab')),
+          findsOneWidget,
+        );
+        expect(marker.markSeenCalls, 1);
+      },
+    );
   });
 }

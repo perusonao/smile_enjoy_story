@@ -801,6 +801,74 @@ class PublicDemoAggregate {
     );
   }
 
+  /// Issue #245 Phase B2 (Partner Interview Gameplay): starts (or resumes)
+  /// the interactive partner interview for [engineerId] — the same real
+  /// Phase 5 matching-proposal handoff Phase 6 uses, one stage earlier. A
+  /// no-op unless the engineer is genuinely at `introduced` and a real
+  /// Phase 5 proposal/project/runtime all resolve (an engineer who reached
+  /// this stage without ever using Matching, or in a month with no real
+  /// candidates, has no proposal at all and stays on the existing generic
+  /// [recordEngineerInterviewResult] path the UI falls back to — mirrors
+  /// [startProjectInterview]'s own fallback contract).
+  ///
+  /// Unlike Phase 6's client leg (an existing 0-slot step reusing
+  /// `partnerInterviewPassed`), the partner leg still consumes exactly one
+  /// real sales slot — the same [PublicDemoState.useSalesSlot] budget the
+  /// pre-B2 generic [recordEngineerInterviewResult] partner path always
+  /// consumed, never a new/second budget. Charged only on a genuinely NEW
+  /// attempt (`workflow.startProjectInterviewSession` actually changed the
+  /// session list — a fresh session, or replacing a stale *completed* one
+  /// for a retry) — resuming the SAME still-incomplete session (identical
+  /// `employeeId`/`projectId`/`startedWeek`, [startProjectInterviewSession]'s
+  /// own no-op-resume rule) returns an unchanged `workflow` reference, which
+  /// this detects via `identical` and never re-charges. A no-op with no
+  /// slot spent when [state.salesRemaining] is already exhausted — mirrors
+  /// the existing `上位会社面談` button's own enablement gate.
+  PublicDemoAggregate startPartnerInterview(String engineerId) {
+    final engineer = workflow.engineers
+        .where((candidate) => candidate.id == engineerId)
+        .firstOrNull;
+    if (engineer == null || engineer.stage != PublicDemoSalesStage.introduced) {
+      return this;
+    }
+    if (state.fiscalYearCompleted || state.salesRemaining <= 0) return this;
+    final candidate = projectInterviewCandidateFor(engineerId);
+    final runtime = state.runtimeForOrNull(engineerId);
+    if (candidate == null || runtime == null) return this;
+    final session = PublicDemoProjectInterview.start(
+      state: state,
+      runtime: runtime,
+      candidate: candidate,
+    );
+    final nextWorkflow = workflow.startProjectInterviewSession(session);
+    if (identical(nextWorkflow, workflow)) {
+      // A genuine resume of the same in-progress session — no new attempt,
+      // no new slot spent.
+      return this;
+    }
+    return _copyWith(state: state.useSalesSlot(), workflow: nextWorkflow);
+  }
+
+  /// Issue #245 Phase B2 (Partner Interview Gameplay): concludes
+  /// [engineerId]'s fully-answered partner interview and applies its
+  /// genuine pass/fail to the sales pipeline — see [PublicDemoWorkflowState
+  /// .concludePartnerProjectInterview] for the actual derivation/
+  /// precondition contract. A no-op unless a real proposal/runtime resolve.
+  PublicDemoAggregate concludePartnerInterview(String engineerId) {
+    final candidate = projectInterviewCandidateFor(engineerId);
+    final runtime = state.runtimeForOrNull(engineerId);
+    if (candidate == null || runtime == null) return this;
+    return _copyWith(
+      workflow: workflow.concludePartnerProjectInterview(
+        engineerId: engineerId,
+        runSeed: runSeed,
+        currentMonth: state.month,
+        runtime: runtime,
+        project: candidate.project,
+      ),
+    );
+  }
+
   /// The 1-2 truthful reasons [engineerId]'s failed project interview did
   /// not pass, for the real project their [PublicDemoMatchingProposal]
   /// names — `const []` if no proposal/runtime resolves (should not happen

@@ -346,6 +346,42 @@ class PublicDemoEngineerSales {
     );
   }
 
+  /// Issue #245 Phase B2 (Partner Interview Gameplay): applies the genuine
+  /// outcome of the interactive partner interview
+  /// (`public_demo_project_interview.dart`) to this engineer's sales
+  /// pipeline — the richer, real-[Project]-driven replacement for
+  /// [evaluateInterview]'s generic [PublicDemoInterviewEvaluator] formula at
+  /// this same `introduced` → partner-interview stage. Structurally mirrors
+  /// [applyProjectInterviewResult] one stage earlier: same "derive, never
+  /// accept, the outcome" contract, same no-op-unless-required-stage guard.
+  ///
+  /// Deliberately never mints [interviewRecord] — that field is reserved as
+  /// unforgeable proof of a genuine CLIENT-interview pass only (see
+  /// [hasGenuineInterviewRecord]'s own doc; [PublicDemoWorkflowState
+  /// .assignOrderedForMay] gates assignment eligibility on it). A partner
+  /// pass is a necessary step toward that, not the fact itself — this
+  /// mirrors [evaluateInterview]'s own partner branch, which never touches
+  /// [interviewRecord] either.
+  ///
+  /// [passed]/[score] are never caller-asserted outcomes with no real
+  /// interview behind them: this method's only production call site is
+  /// [PublicDemoWorkflowState.concludePartnerProjectInterview], which
+  /// computes both from a fresh [PublicDemoProjectInterview.conclude] call,
+  /// made only after verifying a genuine, fully-answered session exists. A
+  /// no-op unless [stage] already equals [PublicDemoSalesStage.introduced].
+  PublicDemoEngineerSales applyPartnerProjectInterviewResult({
+    required bool passed,
+    required int score,
+  }) {
+    if (stage != PublicDemoSalesStage.introduced) return this;
+    return copyWith(
+      stage: passed
+          ? PublicDemoSalesStage.partnerInterviewPassed
+          : PublicDemoSalesStage.partnerInterviewFailed,
+      lastInterviewScore: score,
+    );
+  }
+
   /// CORE-GAMEPLAY Phase 7A (Assignment Lifecycle): releases this engineer
   /// back to the real Sales pipeline after their assignment genuinely ends
   /// (the sole production caller is

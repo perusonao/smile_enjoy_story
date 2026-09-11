@@ -153,7 +153,7 @@ Future<void> _sellFoundingEngineerAndCloseApril(WidgetTester tester) async {
   await _tapAndSettle(tester, '営業開始');
   await _tapAndSettle(tester, '案件紹介');
   await _tapAndSettle(tester, '上位会社面談');
-  await _dismiss(tester);
+  await dismissPartnerInterview(tester);
   await _tapAndSettle(tester, '客先面談');
   await dismissClientInterview(tester);
   await _tapAndSettle(tester, '受注');
@@ -204,7 +204,7 @@ Future<void> _runAppOneSalesPipelineToOrdered(WidgetTester tester) async {
   await _tapAndSettle(tester, '営業開始');
   await _tapAndSettle(tester, '案件紹介');
   await _tapAndSettle(tester, '上位会社面談');
-  await _dismiss(tester);
+  await dismissPartnerInterview(tester);
   await _tapAndSettle(tester, '客先面談');
   await dismissClientInterview(tester);
   await _tapAndSettle(tester, '受注');

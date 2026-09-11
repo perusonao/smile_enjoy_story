@@ -1714,16 +1714,20 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
     final partner = t == PublicDemoInterviewType.partner;
     await _precacheEventImage(AssetPaths.eventClientInterview);
     if (!mounted) return;
+    // Issue #245 Finding #3 (HIDDEN-PARAMS-1): the raw `r.score`/a numeric
+    // "基準点60点" threshold are never shown to the player — only the
+    // truthful, qualitative pass/fail explanation below. `r` above still
+    // drives every commit/points/nextAction decision; only what is *shown*
+    // changed.
     await showDialog<void>(
       context: context,
       builder: (context) => PublicDemoInterviewResultDialog(
         interviewName: partner ? '上位会社面談' : '客先面談',
         personName: e.name,
-        score: r.score,
         passed: r.passed,
         points: [
           partner ? '経歴・スキルの案件適合度を確認' : '技術力と現場での適合度を確認',
-          r.passed ? '基準点60点をクリア' : '基準点60点に届かず',
+          r.passed ? '総合的な適性が評価されました' : '総合的な適性が基準に届きませんでした',
         ],
         nextAction: r.passed
             ? (partner ? '次は客先面談へ進みます' : '面談通過。案件を受注できます')
@@ -1744,9 +1748,28 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
   Future<void> _startClientInterview(int i) async {
     final engineer = workflow.engineers[i];
     if (_game.projectInterviewCandidateFor(engineer.id) != null) {
-      await _openProjectInterview(engineer.id);
+      await _openProjectInterview(engineer.id, type: PublicDemoInterviewType.client);
     } else {
       await ei(i, PublicDemoInterviewType.client);
+    }
+  }
+
+  /// Issue #245 Phase B2 (Partner Interview Gameplay): the `上位会社面談`
+  /// entry point — mirrors [_startClientInterview] exactly, one pipeline
+  /// stage earlier. `案件紹介` ([_introduceProject]) already proposes a real
+  /// Phase 5 [PublicDemoMatchingProposal] for this engineer before the
+  /// player can ever reach `introduced`, so in normal play
+  /// [PublicDemoAggregate.projectInterviewCandidateFor] always resolves here
+  /// and the interactive mini-game opens; the legacy generic [ei] evaluation
+  /// remains only as the fallback for a save/month with no real candidate at
+  /// all (should not happen in normal play — see [_bestFitProjectIdFor]'s
+  /// own doc).
+  Future<void> _startPartnerInterview(int i) async {
+    final engineer = workflow.engineers[i];
+    if (_game.projectInterviewCandidateFor(engineer.id) != null) {
+      await _openProjectInterview(engineer.id, type: PublicDemoInterviewType.partner);
+    } else {
+      await ei(i, PublicDemoInterviewType.partner);
     }
   }
 
@@ -1776,7 +1799,16 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
   /// `setState`, so that is safe). This does not depend on, or replace, any
   /// button-level `setState` disable — the field is checked and set
   /// synchronously, before any such disable could even take visual effect.
-  Future<void> _openProjectInterview(String engineerId) async {
+  /// [type] (Issue #245 Phase B2 addition) selects which leg of the
+  /// interactive mini-game to open — see [PublicDemoProjectInterviewDialog]'s
+  /// own doc for why partner/client share this exact same launch path,
+  /// double-tap guard included: [_projectInterviewLaunchInProgress] is one
+  /// shared in-flight flag for both legs, since only one project-interview
+  /// route (of either kind) can ever be on screen for this widget at a time.
+  Future<void> _openProjectInterview(
+    String engineerId, {
+    required PublicDemoInterviewType type,
+  }) async {
     if (_projectInterviewLaunchInProgress) return;
     _projectInterviewLaunchInProgress = true;
     try {
@@ -1789,6 +1821,7 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
           engineerId: engineerId,
           aggregate: _game,
           onCommit: _commitAggregate,
+          type: type,
         ),
       );
     } finally {
@@ -3189,9 +3222,8 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
           emit(
             HomeRecommendedActionKind.employeePartnerInterview,
             () => unawaited(
-              ei(
+              _startPartnerInterview(
                 workflow.engineers.indexWhere((x) => x.id == e.id),
-                PublicDemoInterviewType.partner,
               ),
             ),
           );
@@ -3765,7 +3797,7 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
             if (e.stage == PublicDemoSalesStage.introduced)
               FilledButton(
                 onPressed: s.salesRemaining > 0
-                    ? () => ei(i, PublicDemoInterviewType.partner)
+                    ? () => unawaited(_startPartnerInterview(i))
                     : null,
                 child: const Text('上位会社面談'),
               ),

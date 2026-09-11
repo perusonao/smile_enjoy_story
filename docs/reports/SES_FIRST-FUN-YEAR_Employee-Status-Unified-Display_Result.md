@@ -1,6 +1,7 @@
 # SES First Fun Year — Employee Status Unified Display — Result
 
-Status: **Implemented, tested, committed, and pushed. PR opened, not merged.**
+Status: **Implemented, tested, committed, and pushed. PR opened
+(https://github.com/perusonao/smile_enjoy_story/pull/238), not merged.**
 
 Base: `origin/main` @ `faee0ce100662aed405f34af68596dcd30e6f3e9` (fetched fresh at
 session start; unchanged from the audit session's SHA — no drift, no conflicts to
@@ -36,9 +37,9 @@ Revised ETA: none — this task is complete pending human review/merge.
   Fresh Audit report from the prior audit session survived this reset (it was never
   committed, so `git reset --hard` did not touch it) and is committed together with this
   implementation.
-- Final HEAD: see the commit this report ships with (`git log -1 --format=%H` on
-  `claude/employee-status-unified-audit-d848ed`).
-- PR: (see final response for URL).
+- Final HEAD (implementation commit, before this final-URL doc update):
+  `0b00a53d7c5a029f5ed34be466b3887968b2b1c3`.
+- PR: https://github.com/perusonao/smile_enjoy_story/pull/238 (open, not merged).
 
 ## 2. What changed
 

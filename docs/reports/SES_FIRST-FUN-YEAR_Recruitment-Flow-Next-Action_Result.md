@@ -79,6 +79,22 @@ test/game/public_demo/public_demo_post_may_join_lifecycle_test.dart
 
 これにより、**UI呼び出し経路だけでなく、将来のどんな呼び出し元からも**、既にjoinした応募者をpre-entry pipelineへ押し進めることが構造的に不可能になった（UI側のフィルタだけに依存しない二重の安全弁）。`reviewResume`/`rejectApplicant`が対象とする`applied`/`interviewed`ステージでは`hasJoined`は元々常にfalse（bindingOffer無しではjoinできないため）なので、この2メソッドへの影響は実質ゼロ。
 
+## PR #242 Codex Broad Review — P1 fix
+
+リポジトリオーナーによるCodex broad review（1回目、方針通り再実施なし）で以下1件のP1を検出、修正した。
+
+### 指摘内容
+
+`PublicDemoWorkflowState.recordPreEntryPartnerInterviewResult`に追加した`!hasJoined`ガードは`workflow`側のno-opを保証するが、これを呼び出す`PublicDemoAggregate.recordPreEntryPartnerInterviewResult`自体は`applicant.stage != preEntryIntroduced`と`state.salesRemaining > 0`しか確認せずに`state.useSalesSlot()`（実際のsales slot消費）を先に実行していた。Fresh Auditで示した「join後もstageが残る」性質上、mid-pipelineでjoinした`preEntryIntroduced`のapplicant idを渡すと、`workflow`は不変なのに`state.salesUsed`だけ増える**非atomicなpartial mutation**になっていた。
+
+### 修正
+
+`lib/game/public_demo/public_demo_aggregate.dart`の`recordPreEntryPartnerInterviewResult`に、`state`を変更する前の判定として`!applicant.hasJoined`を追加（`workflow`側と同じ趣旨のガードを、`state`を実際に触るこのメソッド自身の境界にも設置）。
+
+### 検証
+
+新規テスト（`test/game/public_demo/public_demo_aggregate_test.dart`）で、mid-pipeline joinを再現した上で`recordPreEntryPartnerInterviewResult`を呼び、**`PublicDemoAggregate.toJson()`がbefore/afterで完全一致**（`state`/`workflow`双方とも無変更）することを確認。修正前のコードに対してこのテストを実行し、`state.salesUsed`が`0`→`1`に変化して実際に失敗することも確認済み（fix適用後は成功）。
+
 ## Authority/Persistence Impact
 
 - Save schema変更なし（新規フィールド追加なし、`toJson`/`fromJson`は無変更）。
@@ -90,8 +106,10 @@ test/game/public_demo/public_demo_post_may_join_lifecycle_test.dart
 
 - `lib/ui/public_demo/public_demo_01_placeholder_screen.dart`（+約32行、ロジック変更2箇所）
 - `lib/game/public_demo/public_demo_workflow_state.dart`（+約40行、guard追加4箇所＋doc）
+- `lib/game/public_demo/public_demo_aggregate.dart`（PR #242レビューP1対応、+約1行のguard＋doc）
 - `test/game/public_demo/public_demo_workflow_state_test.dart`（新規domainテスト1件）
 - `test/game/public_demo/public_demo_post_may_join_lifecycle_test.dart`（新規regressionテスト1件、Fresh Audit §9固定）
+- `test/game/public_demo/public_demo_aggregate_test.dart`（PR #242レビューP1対応、新規atomicityテスト1件）
 - `test/ui/public_demo/public_demo_sales_ui_phase1_test.dart`（新規widgetテスト1件＋fixture）
 
 ## Tests
@@ -109,7 +127,7 @@ flutter test test/game/public_demo/public_demo_post_may_join_lifecycle_test.dart
   → 13 tests, All tests passed!（新規1件含む、Fresh Audit §9固定）
 
 flutter test test/game/public_demo/
-  → 859 tests, All tests passed!（regressionゼロ）
+  → 861 tests, All tests passed!（regressionゼロ、PR #242レビューP1対応の新規atomicityテスト1件含む）
 
 flutter test test/ui/public_demo/public_demo_sales_ui_phase1_test.dart
   → 33 tests, All tests passed!（新規1件含む）
@@ -151,7 +169,8 @@ after close stage:                preEntrySelling, hasJoined=true
 - Fresh Audit（origin/main確認、authority trace、症状再現確認、根本原因特定）: 実測 約50分（見積り30-45分よりやや超過——pre-entry pipeline mid-flight join defectの発見・検証に追加時間を要した）。
 - 実装（UI 2箇所 + domain guard 4メソッド）: 約20分。
 - テスト作成・実行（domain 2件 + widget 1件 + フルsuite）: 約30分。
-- 合計実測: 約1時間40分（見積り1.5〜2.5時間の範囲内）。
+- PR #242 Codex Broad Review P1対応（指摘確認・修正・atomicityテスト追加・検証）: 約20分。
+- 合計実測: 約2時間（見積り1.5〜2.5時間の範囲内）。
 
 ## PR URL
 

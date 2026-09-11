@@ -1166,4 +1166,107 @@ void main() {
       );
     });
   });
+
+  // Issue #241 PR #242 review fix (P1): PublicDemoWorkflowState's own
+  // `!hasJoined` guard on the pre-entry pipeline (added for Issue #241)
+  // only protects `workflow` — it says nothing about `state`. This method
+  // is the one place a pre-entry-pipeline command also mutates `state`
+  // directly (consuming a real sales slot), so it needed the same guard
+  // at ITS OWN boundary, not only inside the workflow method it calls.
+  group(
+    'Issue #241 PR #242 review fix (P1): sales-slot atomicity for an '
+    'already-joined mid-pipeline applicant',
+    () {
+      test(
+        'recordPreEntryPartnerInterviewResult never consumes a sales slot '
+        'for an applicant who already genuinely joined while still at '
+        'preEntryIntroduced — the whole aggregate (state AND workflow) '
+        'stays byte-for-byte unchanged',
+        () {
+          var aggregate = PublicDemoAggregate.initial()
+              .closeApril(monthlyExpenses: 800000)
+              .closeMay(week: 9, monthlyExpenses: 800000); // month 6
+
+          final recruited = aggregate.recruit(
+            PublicDemoRecruitmentMedium.engineer,
+          );
+          expect(recruited.isSuccess, isTrue);
+          aggregate = recruited.aggregate!;
+          final applicantId = aggregate.workflow.applicants.first.id;
+
+          final interview = aggregate.completeInterview(applicantId);
+          expect(interview.isCompleted, isTrue);
+          aggregate = interview.aggregate;
+
+          final applicant = aggregate.workflow.applicants.firstWhere(
+            (a) => a.id == applicantId,
+          );
+          aggregate = aggregate.acceptOffer(
+            applicantId: applicantId,
+            offer: PublicDemoSalaryOffer(
+              requestedMonthlySalary: applicant.requestedMonthlySalary,
+              offeredMonthlySalary: applicant.requestedMonthlySalary,
+              acceptanceScore: 100,
+              motivationDelta: 0,
+              trustDelta: 0,
+            ),
+            fiscalCloseId: PublicDemoFiscalCloseId.forMonth(
+              aggregate.state.month,
+            ),
+          );
+
+          // Walk to preEntryIntroduced — but the month closes (and
+          // genuinely joins the applicant, per Issue #221) before the
+          // partner interview ever happens.
+          aggregate = aggregate
+              .beginPreEntrySkillSheet(applicantId)
+              .beginPreEntrySelling(applicantId)
+              .introducePreEntryProject(applicantId);
+          expect(
+            aggregate.workflow.applicants
+                .firstWhere((a) => a.id == applicantId)
+                .stage,
+            PublicDemoApplicantStage.preEntryIntroduced,
+            reason: 'fixture sanity',
+          );
+
+          aggregate = aggregate.closeJune(
+            assignedInJuly: 0,
+            monthlyExpenses: 800000,
+          );
+          final joinedApplicant = aggregate.workflow.applicants.firstWhere(
+            (a) => a.id == applicantId,
+          );
+          expect(joinedApplicant.hasJoined, isTrue, reason: 'fixture sanity');
+          expect(
+            joinedApplicant.stage,
+            PublicDemoApplicantStage.preEntryIntroduced,
+            reason:
+                'join never rewrites stage — this applicant now reads as '
+                'still eligible for a partner interview by stage alone',
+          );
+          expect(
+            aggregate.state.salesRemaining,
+            greaterThan(0),
+            reason: 'fixture sanity: a slot must be available to attempt',
+          );
+
+          final before = aggregate.toJson();
+          final afterAttempt = aggregate.recordPreEntryPartnerInterviewResult(
+            applicantId,
+          );
+
+          expect(
+            afterAttempt.toJson(),
+            before,
+            reason:
+                'an already-joined applicant must never let this command '
+                'consume a real sales slot on `state` while `workflow` '
+                'itself no-ops — that would be a non-atomic partial '
+                'mutation for someone who is already a real employee',
+          );
+        },
+      );
+    },
+  );
 }

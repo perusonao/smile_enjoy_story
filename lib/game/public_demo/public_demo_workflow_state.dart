@@ -319,6 +319,26 @@ class PublicDemoWorkflowState {
   // .accept], which itself requires the genuine [PublicDemoInterviewRecord]
   // only [PublicDemoAggregate.completeInterview] can mint). There is no
   // path from `applied` to `juneOrdered` that skips any of these.
+  //
+  // Issue #241 FIRST-FUN-YEAR Recruitment Flow / Next Action Clarity
+  // (Fresh Audit finding): every transition below additionally requires
+  // `!applicant.hasJoined`. [PublicDemoApplicant.join] can mint a
+  // [PublicDemoApplicant.hasJoined]-backing record for an applicant who is
+  // still genuinely mid-pre-entry-pipeline (accepted an offer, started
+  // pre-entry sales, but had not yet reached `juneOrdered` by the time
+  // their own [PublicDemoBindingOffer.fiscalCloseId] month closes) — the
+  // pre-entry pipeline itself has no month boundary, but a month-end close
+  // does, and [join] only requires a valid, fiscal-close-matching offer,
+  // never a completed pre-entry chain. Before this guard, such an
+  // already-employed applicant could still be walked further through
+  // pre-entry sales stages (`beginPreEntrySelling`, `introducePreEntryProject`,
+  // ..., even all the way to a second `juneOrdered`) purely because their
+  // `stage` had not moved — even though they are already a real employee
+  // in [engineers], reachable via completely different (Employee tab)
+  // authority. Once genuinely joined, no pre-entry-pipeline transition is
+  // ever the correct next step for that applicant again; every caller
+  // (production and test) that reaches these methods post-join now
+  // no-ops, exactly like reaching them from any other invalid `stage`.
   // ---------------------------------------------------------------------
 
   PublicDemoWorkflowState reviewResume(String applicantId) =>
@@ -336,7 +356,8 @@ class PublicDemoWorkflowState {
         applicantId,
         (applicant) =>
             applicant.stage == PublicDemoApplicantStage.offerAccepted &&
-                applicant.canEnterPreJoinSales
+                applicant.canEnterPreJoinSales &&
+                !applicant.hasJoined
             ? applicant.copyWith(
                 stage: PublicDemoApplicantStage.preEntrySkillSheet,
               )
@@ -373,7 +394,7 @@ class PublicDemoWorkflowState {
     required PublicDemoApplicantStage to,
   }) => _withApplicant(
     applicantId,
-    (applicant) => from.contains(applicant.stage)
+    (applicant) => from.contains(applicant.stage) && !applicant.hasJoined
         ? applicant.copyWith(stage: to)
         : applicant,
   );
@@ -455,7 +476,10 @@ class PublicDemoWorkflowState {
   /// Records the pre-entry partner-interview outcome for one applicant
   /// (WORKFLOW-STATE-1AB FIX6 P1, moved out of
   /// `PublicDemoAggregate.recordPreEntryPartnerInterviewResult`). A no-op
-  /// unless the applicant is currently at `preEntryIntroduced`. Derives
+  /// unless the applicant is currently at `preEntryIntroduced` and has not
+  /// already joined (Issue #241 — see the pre-entry-pipeline section doc
+  /// above for why [PublicDemoApplicant.hasJoined] must gate this too, not
+  /// just `stage`). Derives
   /// pass/fail itself from the applicant's own
   /// [PublicDemoApplicant.salesSkillFit] — never from a caller-supplied
   /// stage. Sales-slot consumption is decided by the caller
@@ -468,7 +492,8 @@ class PublicDemoWorkflowState {
         .where((candidate) => candidate.id == applicantId)
         .firstOrNull;
     if (applicant == null ||
-        applicant.stage != PublicDemoApplicantStage.preEntryIntroduced) {
+        applicant.stage != PublicDemoApplicantStage.preEntryIntroduced ||
+        applicant.hasJoined) {
       return this;
     }
     final nextStage = applicant.salesSkillFit >= 60
@@ -483,7 +508,9 @@ class PublicDemoWorkflowState {
   /// Records the pre-entry client-interview outcome for one applicant
   /// (WORKFLOW-STATE-1AB FIX6 P1, moved out of
   /// `PublicDemoAggregate.recordPreEntryClientInterviewResult`). A no-op
-  /// unless the applicant is currently at `preEntryPartnerPassed`. Derives
+  /// unless the applicant is currently at `preEntryPartnerPassed` and has
+  /// not already joined (Issue #241 — same [PublicDemoApplicant.hasJoined]
+  /// guard as [recordPreEntryPartnerInterviewResult]). Derives
   /// pass/fail itself from the applicant's own
   /// [PublicDemoApplicant.salesSkillFit] — never from a caller-supplied
   /// stage. Matches the pre-cutover widget's own `ci()` handler: no sales
@@ -495,7 +522,8 @@ class PublicDemoWorkflowState {
         .where((candidate) => candidate.id == applicantId)
         .firstOrNull;
     if (applicant == null ||
-        applicant.stage != PublicDemoApplicantStage.preEntryPartnerPassed) {
+        applicant.stage != PublicDemoApplicantStage.preEntryPartnerPassed ||
+        applicant.hasJoined) {
       return this;
     }
     final nextStage = applicant.salesSkillFit >= 65

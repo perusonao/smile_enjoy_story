@@ -827,12 +827,25 @@ class PublicDemoAggregate {
   /// file no longer needs the now-private `workflow._withApplicant`
   /// directly; this method still owns deciding whether a sales slot is
   /// genuinely available, since only it has [state].
+  ///
+  /// Issue #241 PR #242 review fix (P1): also requires
+  /// `!applicant.hasJoined` here, at the [state]-mutating boundary — not
+  /// only inside [PublicDemoWorkflowState.recordPreEntryPartnerInterviewResult].
+  /// Without this, an applicant who genuinely joined mid-pipeline (see
+  /// that method's own doc: `join` only requires a fiscal-close-matching
+  /// offer, never a completed pre-entry chain, so `stage` can still read
+  /// `preEntryIntroduced` after a real join) would still pass this method's
+  /// `stage`/`salesRemaining` checks, consuming a real sales slot
+  /// ([state.useSalesSlot]) even though the workflow-side call is already a
+  /// no-op — a non-atomic partial mutation (state changes, workflow does
+  /// not) for someone who is already a real employee.
   PublicDemoAggregate recordPreEntryPartnerInterviewResult(String applicantId) {
     final applicant = workflow.applicants
         .where((candidate) => candidate.id == applicantId)
         .firstOrNull;
     if (applicant == null) return this;
-    if (applicant.stage != PublicDemoApplicantStage.preEntryIntroduced) {
+    if (applicant.stage != PublicDemoApplicantStage.preEntryIntroduced ||
+        applicant.hasJoined) {
       return this;
     }
     if (state.fiscalYearCompleted || state.salesRemaining <= 0) return this;

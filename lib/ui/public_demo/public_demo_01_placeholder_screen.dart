@@ -2967,7 +2967,14 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
     // render condition (whenever there is an applicant to act on) — not
     // fixed to May, so a candidate recruited in a later month (June-August,
     // via the same widened recruitment window) is still recommendable.
-    for (final a in workflow.applicants) {
+    //
+    // Issue #241: also mirrors that same section's `!a.hasJoined` filter —
+    // an already-joined applicant's own pre-entry-pipeline domain
+    // transitions now no-op (see `PublicDemoWorkflowState`'s own doc), but
+    // without this filter HOME could still surface a stale recommended
+    // action (e.g. "入社前スキルシートを確認") pointing at an already-employed
+    // person the Sales tab's own funnel no longer shows at all.
+    for (final a in workflow.applicants.where((a) => !a.hasJoined)) {
       _addApplicantStageCandidate(add, a);
     }
 
@@ -4888,9 +4895,28 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
   /// never have a funnel to act through. Gated on the same authoritative
   /// fact the funnel itself is about — whether there is an applicant to
   /// show — rather than on which month it is.
+  ///
+  /// Issue #241 FIRST-FUN-YEAR Recruitment Flow / Next Action Clarity
+  /// (Fresh Audit finding): [PublicDemoApplicant.stage] never advances (or
+  /// resets) once an applicant actually joins — [PublicDemoApplicant.join]
+  /// only mints a [PublicDemoApplicant.hasJoined]-backing record, exactly
+  /// as [PublicDemoMonthlyReportSnapshot.confirmedNextMonthJoinApplicantIds]'s
+  /// own doc already explains for the identical `stage == juneOrdered`
+  /// case (Issue #232/#234). Without this filter, a joined applicant kept
+  /// rendering here forever with a stale pre-join badge (e.g. "入社・参画予定"
+  /// or "内定承諾") even after they were already an active employee on the
+  /// 社員 tab — misleading the player into thinking a real hire was still
+  /// only "入社待ち" (mixing up 入社待ち/入社済み, which Issue #241 explicitly
+  /// requires stay distinct). [_salesOverviewSection]'s own `候補者` count
+  /// already excludes [PublicDemoApplicant.hasJoined] applicants for the
+  /// same reason (see its own doc); this reuses the exact same predicate
+  /// so the funnel list and its own headline count never disagree. No new
+  /// authority: once joined, the applicant's story continues via the
+  /// existing `workflow.engineers`-based 社員/SkillSheet/営業 tabs, exactly
+  /// as [_salesOverviewSection] already documents.
   List<Widget> _salesApplicantProgressCards() => [
-    if (workflow.applicants.isNotEmpty)
-      for (var i = 0; i < workflow.applicants.length; i++) ac(i),
+    for (var i = 0; i < workflow.applicants.length; i++)
+      if (!workflow.applicants[i].hasJoined) ac(i),
   ];
 
   /// Section 4 — 案件・参画/継続状況: June's assignment decision cards and

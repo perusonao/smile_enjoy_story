@@ -6,6 +6,7 @@ import 'package:smile_enjoy_story/game/public_demo/public_demo_interview.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_recruitment.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_sales.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_salary_offer.dart';
+import 'package:smile_enjoy_story/game/public_demo/public_demo_state.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_workflow_state.dart';
 
 import 'test_support/public_demo_offer_test_helpers.dart';
@@ -94,6 +95,78 @@ void main() {
         expect(
           again.applicants.firstWhere((a) => a.id == id).stage,
           PublicDemoApplicantStage.resumeReviewed,
+        );
+      },
+    );
+
+    // Issue #241 FIRST-FUN-YEAR Recruitment Flow / Next Action Clarity
+    // (Fresh Audit finding): [PublicDemoApplicant.join] only requires a
+    // valid, fiscal-close-matching [PublicDemoBindingOffer] — never a
+    // completed pre-entry-sales chain — so an applicant can genuinely join
+    // while still mid-pipeline (e.g. `preEntrySelling`) if the month
+    // closes before the player finishes that chain. Before this fix, every
+    // pre-entry-pipeline transition below only checked `stage`, so such an
+    // already-joined applicant could still be walked further through
+    // pre-entry sales (all the way to a second `juneOrdered`) even though
+    // they already have a real, independent existence in `engineers`.
+    test(
+      'every pre-entry-pipeline transition no-ops once the applicant has '
+      'genuinely joined mid-pipeline: hasJoined, not just stage, must gate '
+      'further pre-entry-pipeline progress',
+      () {
+        final proof = PublicDemoState.aprilStart()
+            .useSalesSlotForInterview()
+            .proof!;
+        var workflow = initialWithOneApplicant().recordInterviewCompletion(
+          testApplicant.id,
+          proof,
+        );
+        workflow = workflow.acceptOffer(
+          applicantId: testApplicant.id,
+          offer: PublicDemoSalaryOffer(
+            requestedMonthlySalary: testApplicant.requestedMonthlySalary,
+            offeredMonthlySalary: testApplicant.requestedMonthlySalary,
+            acceptanceScore: 100,
+            motivationDelta: 0,
+            trustDelta: 0,
+          ),
+          fiscalCloseId: PublicDemoFiscalCloseId.forMonth(5),
+        );
+        workflow = workflow
+            .beginPreEntrySkillSheet(testApplicant.id)
+            .beginPreEntrySelling(testApplicant.id);
+        expect(
+          workflow.applicants.single.stage,
+          PublicDemoApplicantStage.preEntrySelling,
+        );
+        expect(workflow.applicants.single.hasJoined, isFalse);
+
+        // The month closes before the pre-entry chain finished — the
+        // applicant genuinely joins (a valid, fiscal-close-matching offer
+        // is all `join` requires) while still mid-pipeline.
+        final joined = workflow.joinAcceptedForFiscalClose(
+          week: 20,
+          currentFiscalCloseId: PublicDemoFiscalCloseId.forMonth(5),
+        );
+        expect(joined.applicants.single.hasJoined, isTrue);
+        expect(
+          joined.applicants.single.stage,
+          PublicDemoApplicantStage.preEntrySelling,
+          reason: 'join never rewrites stage — see PublicDemoApplicant.join',
+        );
+
+        // Every later pre-entry-pipeline transition must now no-op.
+        final afterFurtherAttempts = joined
+            .introducePreEntryProject(testApplicant.id)
+            .recordPreEntryPartnerInterviewResult(testApplicant.id)
+            .recordPreEntryClientInterviewResult(testApplicant.id)
+            .recordJuneOrder(testApplicant.id);
+        expect(
+          afterFurtherAttempts.applicants.single.stage,
+          PublicDemoApplicantStage.preEntrySelling,
+          reason:
+              'hasJoined must gate pre-entry-pipeline progress, not just '
+              'stage (Issue #241)',
         );
       },
     );

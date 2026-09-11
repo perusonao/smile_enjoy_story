@@ -7,7 +7,7 @@ Branch: `claude/issue-241-recruitment-flow-fhsqyd`
 
 - BASE (`origin/main` at task start, PR #240 merge済み): `56c71e80db684b6039b88162dfd0f097ab380863`
   （Issue #241本文が明示するmainと一致。ズレなし。）
-- HEAD (this fix, pushed): 記載は本レポートcommit後に更新（コミット直後のログ参照）。
+- HEAD (this fix, pushed, before this final report update commit): `acbd18f834c44a1a0c7439bf3b0f79b52a10fbb3`
 
 ## Fresh Audit: 採用フロー authority trace（現mainで実コードをtrace）
 
@@ -155,4 +155,4 @@ after close stage:                preEntrySelling, hasJoined=true
 
 ## PR URL
 
-（このセクションはPR作成後に追記/更新する。）
+https://github.com/perusonao/smile_enjoy_story/pull/242

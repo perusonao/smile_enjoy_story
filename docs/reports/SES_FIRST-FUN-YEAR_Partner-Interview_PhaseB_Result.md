@@ -4,7 +4,7 @@
 **Audited explicit main SHA:** `0b90d556b74746c2f82ac0e9111a95e93bd564b6`（`git fetch origin` 後の `origin/main` — Issue本文の期待SHAと完全一致。これが最新でもあることを確認済み）
 **Branch:** `claude/ses-partner-interview-phase-b-dz4g42`
 **Final HEAD SHA:** `67271b8492c9e4bc5b7f735094e06aa21d0bcc00`
-**PR URL:** _(PR作成後に記載)_
+**PR URL:** https://github.com/perusonao/smile_enjoy_story/pull/247
 
 ---
 
@@ -204,4 +204,4 @@ Fresh Auditの提案するPhase分けに沿うと、今回のPhase Bで対応し
 
 ## PR URL
 
-_(PR作成後に追記)_
+https://github.com/perusonao/smile_enjoy_story/pull/247

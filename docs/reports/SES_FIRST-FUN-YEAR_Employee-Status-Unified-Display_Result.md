@@ -48,13 +48,15 @@ Revised ETA: none — this task is complete pending human review/merge.
 `lib/ui/public_demo/public_demo_employee_status_resolver.dart` (new file) —
 `PublicDemoEmployeeStatusResolver.resolve(...)` and `PublicDemoEmployeeStatusDisplay`
 (label + tone, always produced together). A pure function: takes only
-`stage`/`isCurrentlyAssigned`/`isReadyForFieldSales`/`fieldSalesActionReachableThisMonth`/
-`rawStageLabel` — primitives/enums the caller already computes from existing
-authoritative state — and never reads `PublicDemoAggregate`/`PublicDemoState` itself,
-mirroring the existing convention documented at the top of
-`public_demo_employee_visual.dart`. Never re-derives the raw 9-stage label switch that
-already lives in `engineerStatus` — that remains the single place that literal switch is
-written; the resolver takes it as an input (`rawStageLabel`) instead.
+`stage`/`isCurrentlyAssigned`/`isReadyForFieldSales`/`fieldSalesActionReachableThisMonth`
+— primitives/enums the caller already computes from existing authoritative state — and
+never reads `PublicDemoAggregate`/`PublicDemoState` itself, mirroring the existing
+convention documented at the top of `public_demo_employee_visual.dart`. **Post-review
+revision (§9):** the first version also took a caller-supplied `rawStageLabel` as a
+fallback for the sales-pipeline sub-stages and for an `ordered`-not-yet-assigned
+engineer; the current version is an exhaustive `switch (stage)` with an explicit branch
+for every `PublicDemoSalesStage` value and takes no raw-label fallback at all, per the
+PR #238 review follow-up (§9).
 
 ### 2.2 Call sites unified
 
@@ -124,6 +126,16 @@ related P2 found during this session's own implementation/self-review pass:
    参画中 branch, closing this gap by construction — pinned by
    `public_demo_employee_status_resolver_test.dart`'s own "参画中 requires BOTH" test.
 
+4. **Sales-pipeline sub-stages/ordered-unassigned not actually collapsed (PR #238 review
+   follow-up — see §9 for the full fix).** The first version's resolver still fell back
+   to the caller-supplied raw `engineerStatus` label for every non-`waiting`,
+   non-currently-assigned-`ordered` stage — so the roster/SkillSheet kept showing the raw,
+   un-collapsed per-sub-stage text (営業準備/案件紹介済/各面談通過・不合格) and the raw
+   '翌月参画予定' for an `ordered`-not-yet-assigned engineer, rather than Fresh Audit §4's
+   actual six-value taxonomy (営業中 for all six pipeline sub-stages, 参画予定 for
+   ordered-not-assigned). Fixed by making the resolver an exhaustive switch with an
+   explicit branch for every stage.
+
 No other P1/P2 was found in self-review. One unrelated, environment-specific side effect
 was caught and reverted before committing: running the full `test/ui/public_demo` suite
 locally regenerates 4 screenshot PNGs under `docs/reports/screenshots/` (a pre-existing
@@ -155,35 +167,48 @@ PR touches `docs/reports/screenshots/`.
 
 ## 5. Tests
 
-New:
+New/updated (post-review counts — see §9 for what changed since the initial PR):
 - `test/ui/public_demo/public_demo_employee_status_resolver_test.dart` (pure unit tests,
-  no widget pump) — every resolver branch (研修が必要/営業可能/営業中 sub-stages/
-  参画予定/参画中/待機 fallback), status priority (参画中 must win over ready-for-sales;
-  参画中 requires both `stage == ordered` and assignment membership), and the
-  training-selection non-interference guarantee. 15 tests, all passing.
+  no widget pump) — every resolver branch (研修が必要/営業可能/待機/参画予定/参画中, and
+  all seven sales-pipeline sub-stages individually asserted as 営業中), status priority
+  (参画中 must win over ready-for-sales; 参画中 requires both `stage == ordered` and
+  assignment membership; 参画予定 vs 営業中 are never confused), and the
+  training-selection non-interference guarantee (both for a ready-and-waiting engineer
+  and for one genuinely on the 営業中 pipeline). **17 tests, all passing.**
 - `test/ui/public_demo/public_demo_employee_status_unified_display_test.dart`
   (real-screen widget tests, fixtures built via the same real domain-command chaining
   technique `public_demo_employee_roster_phase_b1_test.dart` already uses — never a
   hand-built/UI-driven fixture) — SkillSheet now reads 参画中 for an ordered+assigned
   engineer (never 翌月参画予定); a field-sales-ready engineer with training selected
-  stays 営業可能 in the roster; four mobile-density no-overflow checks. 6 tests, all
-  passing.
+  stays 営業可能 in the roster; an engineer genuinely at `stage == selling` reads 営業中
+  in both the roster and SkillSheet; an engineer genuinely `ordered`-not-yet-assigned
+  reads 参画予定 in the roster; four mobile-density no-overflow checks. **8 tests, all
+  passing.**
+- `test/ui/public_demo/public_demo_employee_ui_phase1_test.dart` (pre-existing, updated):
+  one assertion's expected text updated from the raw '翌月参画予定' to the unified
+  '参画予定' for the same ordered-not-assigned scenario it already covered (§9) — still
+  passing, now asserting the current, intended text.
 
 Full-suite verification (this session, via a self-provisioned Flutter 3.44.8 — pinned to
 the same version `.github/workflows/public-demo-validation.yml` uses — since this
-environment does not ship Flutter):
-- `flutter analyze` (whole project): **No issues found.**
-- `flutter test test/game/public_demo`: **858 tests, all passing** (unaffected, as
-  expected — no domain file changed).
-- `flutter test test/ui/public_demo` (full suite, including both new files): **607
-  tests, all passing** (baseline 586 + 15 new resolver unit tests + 6 new widget
-  regression tests).
-- `git diff --check`: clean, no whitespace errors.
-- One unrelated side effect caught on both full-suite runs and reverted before staging:
+environment does not ship Flutter), run twice: once for the initial implementation, once
+more after the §9 review follow-up:
+- `flutter analyze` (whole project): **No issues found** (both rounds).
+- `flutter test test/game/public_demo`: **858 tests, all passing** (both rounds —
+  unaffected, as expected, since no domain file changed).
+- `flutter test test/ui/public_demo` (full suite): **607/607 passing** after the initial
+  implementation; **611/611 passing** after the §9 review follow-up (586 pre-existing +
+  17 resolver unit tests + 8 widget regression tests).
+- Focused suite (11 files covering both fixed inconsistencies, the §9 follow-up,
+  #233/#236/#237, HOME, SkillSheet, monthly report) re-run after §9: **140 tests, all
+  passing**, including HOME's own pre-existing literal '翌月参画予定' assertions
+  (`public_demo_01_home_office_stage_test.dart`), confirming HOME is genuinely untouched.
+- `git diff --check`: clean, no whitespace errors (both rounds).
+- One unrelated side effect caught on every full-suite run and reverted before staging:
   running `test/ui/public_demo` regenerates 4 screenshot PNGs under
   `docs/reports/screenshots/` (`public_demo_seeded_recruitment_visual_test.dart` writes
   them as a side effect) with different bytes than committed — environment font-rendering
-  differences, not a real change. Reverted via `git restore` both times; nothing in this
+  differences, not a real change. Reverted via `git restore` every time; nothing in this
   PR touches `docs/reports/screenshots/`.
 
 ## 6. Files changed
@@ -192,10 +217,15 @@ environment does not ship Flutter):
 - `lib/ui/public_demo/public_demo_01_placeholder_screen.dart` (modified — see §2.2)
 - `lib/ui/public_demo/public_demo_employee_visual.dart` (doc-comment only — stale function
   name reference updated after the rename)
-- `test/ui/public_demo/public_demo_employee_status_resolver_test.dart` (new)
-- `test/ui/public_demo/public_demo_employee_status_unified_display_test.dart` (new)
-- `docs/decisions/SES_DEVELOPMENT-PRIORITY_2026-09-02.md` (Update history entry)
-- `docs/decisions/SES_FIRST-FUN-YEAR_NEXT-PRIORITIES_2026-09-10.md` (item 4 marked done)
+- `test/ui/public_demo/public_demo_employee_status_resolver_test.dart` (new, revised in §9)
+- `test/ui/public_demo/public_demo_employee_status_unified_display_test.dart` (new,
+  extended in §9)
+- `test/ui/public_demo/public_demo_employee_ui_phase1_test.dart` (pre-existing file,
+  one assertion's expected text updated in §9)
+- `docs/decisions/SES_DEVELOPMENT-PRIORITY_2026-09-02.md` (Update history entries, incl.
+  §9 follow-up)
+- `docs/decisions/SES_FIRST-FUN-YEAR_NEXT-PRIORITIES_2026-09-10.md` (item 4 marked done,
+  revised in §9 to state the taxonomy precisely and name the HOME wording gap explicitly)
 - `docs/reports/SES_FIRST-FUN-YEAR_Employee-Status-Unified-Display_Fresh-Audit.md`
   (committed alongside — was untracked from the prior READ-ONLY audit session)
 - `docs/reports/SES_FIRST-FUN-YEAR_Employee-Status-Unified-Display_Result.md` (this file)
@@ -221,12 +251,68 @@ environment does not ship Flutter):
 - `docs/decisions/SES_FIRST-FUN-YEAR_NEXT-PRIORITIES_2026-09-10.md`: item 4 ("Employee
   lifecycle status clarity") marked done with a summary and pointer to this report.
 
-## 9. Merge readiness
+## 9. PR #238 review follow-up (same day, same PR, same branch)
 
-Not merged (per instruction — this session stops at PR-opened). Implementation,
-self-review, and full-suite verification are complete; CI will re-run the same checks
-this session already ran locally (`flutter analyze`, `flutter test test/game/public_demo`,
-plus the two focused UI test files this workflow names explicitly) via
-`.github/workflows/public-demo-validation.yml`, and this session's own broader
-`test/ui/public_demo` full-suite run gives additional confidence beyond that workflow's
-own narrower test selection.
+PR #238 was opened, then reviewed (automated Codex review + the human owner's own P1
+review comment) before merge. Both independently flagged the same real gap:
+
+**Finding:** the Fresh Audit's own §4 taxonomy specifies that every sales-pipeline
+sub-stage (`skillSheet`/`selling`/`introduced`/partner-and-client interview pass/fail)
+collapses to one player-facing **営業中** bucket, and that an `ordered`-but-not-yet-
+assigned engineer reads **参画予定** (not the raw pipeline's own `翌月参画予定` text). The
+first implementation's resolver still fell back to the caller-supplied raw
+`engineerStatus` label for exactly those cases, so the roster/SkillSheet kept showing the
+un-collapsed per-sub-stage text and the raw ordered-unassigned wording instead of the
+taxonomy the PR's own description claimed to ship.
+
+**Fix (this same PR/branch, no new Broad Review, no new PR):**
+- `PublicDemoEmployeeStatusResolver.resolve` rewritten as an exhaustive
+  `switch (stage)` with an explicit branch for every `PublicDemoSalesStage` value — no
+  more `rawStageLabel` fallback parameter. `ordered` splits into 参画中 (assigned) /
+  参画予定 (not yet assigned); `waiting` keeps its existing 研修が必要/営業可能/待機 split
+  unchanged; the remaining six stages all return 営業中. Because the switch is now
+  exhaustive, a future `PublicDemoSalesStage` value added without updating this file
+  fails to compile, rather than silently reusing an un-collapsed raw label.
+- `_employeeStatusDisplayFor` (`public_demo_01_placeholder_screen.dart`) updated to stop
+  passing `rawStageLabel: engineerStatus(engineer)` — its own doc comment updated to
+  record this fix and to be explicit that HOME's un-integrated wording gap (待機 vs
+  研修が必要/営業可能, and now also 翌月参画予定 vs 参画予定, and raw pipeline sub-stage
+  text vs 営業中) is a known, tracked difference, not a new regression.
+- **No domain authority, save schema, economy, or HOME Freeze change** — `engineerStatus`
+  itself (the raw 9-stage switch), `PublicDemoSalesProgress`'s stepper, the Sales tab, and
+  `_officeStageStatusFor` are all byte-for-byte unchanged.
+- Tests updated/added:
+  - `public_demo_employee_status_resolver_test.dart`: the 7-stage loop now asserts every
+    sales-pipeline sub-stage collapses to 営業中/waiting tone (not a caller-supplied raw
+    label); the ordered-not-assigned test now asserts 参画予定 literally; a new priority
+    test pins that 参画予定 and 営業中 are never confused with each other.
+  - `public_demo_employee_status_unified_display_test.dart`: two new real-screen widget
+    tests — an engineer genuinely driven to `stage == selling` (via the real
+    `startSkillSheetReview`→`beginSelling` commands) reads 営業中 in both the roster and
+    SkillSheet; an engineer genuinely `ordered` but not yet assigned reads 参画予定 in the
+    roster (never 翌月参画予定).
+  - `public_demo_employee_ui_phase1_test.dart` (pre-existing #231-era test): the one
+    assertion that hard-coded the old raw '翌月参画予定' text for this exact
+    ordered-not-assigned roster scenario was updated to '参画予定' — a deliberate,
+    reviewer-directed label change, not a silently-tolerated regression (same precedent
+    as prior status-text changes in this repo's own history, e.g. #231's own update to a
+    "待機 for everyone" assertion).
+- Verification: `flutter analyze` (whole project) — No issues. Focused tests (11 files
+  covering both fixed inconsistencies, #233/#236/#237, HOME, SkillSheet, monthly report) —
+  140 tests, all passing, including HOME's own pre-existing '翌月参画予定'-literal
+  assertions (`public_demo_01_home_office_stage_test.dart`), confirming HOME truly is
+  untouched. Full `test/game/public_demo` — 858 tests, all passing (unaffected). Full
+  `test/ui/public_demo` (including the updated/new tests) — see §5 for the final count.
+  `git diff --check` — clean.
+- Final HEAD after this follow-up: see the commit this report ships with, same
+  `claude/employee-status-unified-audit-d848ed` branch, same PR #238 (pushed, not merged).
+
+## 10. Merge readiness
+
+Not merged (per instruction — this session stops at PR-opened/PR-updated). Implementation,
+self-review, and full-suite verification are complete for both the initial PR and this
+review follow-up; CI will re-run the same checks this session already ran locally
+(`flutter analyze`, `flutter test test/game/public_demo`, plus the two focused UI test
+files this workflow names explicitly) via `.github/workflows/public-demo-validation.yml`,
+and this session's own broader `test/ui/public_demo` full-suite run gives additional
+confidence beyond that workflow's own narrower test selection.

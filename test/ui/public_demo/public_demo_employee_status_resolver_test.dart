@@ -5,9 +5,10 @@ import 'package:smile_enjoy_story/ui/public_demo/public_demo_employee_status_res
 import 'package:smile_enjoy_story/ui/public_demo/public_demo_employee_visual.dart';
 
 /// SES Employee Status Unified Display (Fresh Audit,
-/// docs/reports/SES_FIRST-FUN-YEAR_Employee-Status-Unified-Display_Fresh-Audit.md):
-/// pure unit coverage for [PublicDemoEmployeeStatusResolver.resolve] —
-/// deliberately independent of any widget/pump, since the resolver takes
+/// docs/reports/SES_FIRST-FUN-YEAR_Employee-Status-Unified-Display_Fresh-Audit.md;
+/// PR #238 review follow-up — the pipeline-stage collapse this file now
+/// pins): pure unit coverage for [PublicDemoEmployeeStatusResolver.resolve]
+/// — deliberately independent of any widget/pump, since the resolver takes
 /// only primitives/enums and never reads [PublicDemoAggregate]/
 /// [PublicDemoState] itself.
 void main() {
@@ -16,16 +17,14 @@ void main() {
     bool isCurrentlyAssigned = false,
     bool isReadyForFieldSales = false,
     bool fieldSalesActionReachableThisMonth = false,
-    String rawStageLabel = 'RAW',
   }) => PublicDemoEmployeeStatusResolver.resolve(
     stage: stage,
     isCurrentlyAssigned: isCurrentlyAssigned,
     isReadyForFieldSales: isReadyForFieldSales,
     fieldSalesActionReachableThisMonth: fieldSalesActionReachableThisMonth,
-    rawStageLabel: rawStageLabel,
   );
 
-  group('each player-facing status', () {
+  group('each player-facing status (Fresh Audit §4 six-value taxonomy)', () {
     test('waiting + not ready → 研修が必要 / training tone', () {
       final display = resolveFor(
         stage: PublicDemoSalesStage.waiting,
@@ -48,27 +47,25 @@ void main() {
     });
 
     test('waiting + ready but action NOT reachable this month (May/March) '
-        '→ falls back to the raw stage label / waiting tone — PR #233 '
-        'Codex review (P2): never name an action with no reachable control',
-        () {
+        '→ 待機 / waiting tone — PR #233 Codex review (P2): never name an '
+        'action with no reachable control', () {
       final display = resolveFor(
         stage: PublicDemoSalesStage.waiting,
         isReadyForFieldSales: true,
         fieldSalesActionReachableThisMonth: false,
-        rawStageLabel: '待機',
       );
       expect(display.label, '待機');
       expect(display.tone, PublicDemoEmployeeStatusTone.waiting);
     });
 
-    test('ordered + not yet currently assigned → raw 翌月参画予定 / waiting '
-        'tone', () {
+    test('ordered + not yet currently assigned → 参画予定 / waiting tone — '
+        'PR #238 review follow-up: the literal Fresh Audit §4 label, not '
+        "the raw pipeline's own '翌月参画予定' text", () {
       final display = resolveFor(
         stage: PublicDemoSalesStage.ordered,
         isCurrentlyAssigned: false,
-        rawStageLabel: '翌月参画予定',
       );
-      expect(display.label, '翌月参画予定');
+      expect(display.label, '参画予定');
       expect(display.tone, PublicDemoEmployeeStatusTone.waiting);
     });
 
@@ -94,12 +91,12 @@ void main() {
       PublicDemoSalesStage.clientInterviewPassed,
       PublicDemoSalesStage.clientInterviewFailed,
     ]) {
-      test('$stage (not currently assigned) → falls back to the raw stage '
-          'label verbatim / waiting tone — never a second, '
-          'independently-derived label for the sales pipeline sub-stages',
-          () {
-        final display = resolveFor(stage: stage, rawStageLabel: 'RAW-$stage');
-        expect(display.label, 'RAW-$stage');
+      test('$stage → collapses to 営業中 / waiting tone — PR #238 review '
+          'follow-up: every non-waiting, non-ordered sales-pipeline '
+          'sub-stage reads the same unified bucket, never its own raw '
+          'per-sub-stage label (営業準備/案件紹介済/各面談通過・不合格)', () {
+        final display = resolveFor(stage: stage);
+        expect(display.label, '営業中');
         expect(display.tone, PublicDemoEmployeeStatusTone.waiting);
       });
     }
@@ -137,6 +134,19 @@ void main() {
       expect(display.label, '研修が必要');
       expect(display.tone, PublicDemoEmployeeStatusTone.training);
     });
+
+    test('参画予定 must never be confused with a 営業中 pipeline sub-stage — '
+        'ordered-not-assigned keeps its own distinct label/tone even '
+        'though both currently share the waiting tone', () {
+      final ordered = resolveFor(
+        stage: PublicDemoSalesStage.ordered,
+        isCurrentlyAssigned: false,
+      );
+      final selling = resolveFor(stage: PublicDemoSalesStage.selling);
+      expect(ordered.label, '参画予定');
+      expect(selling.label, '営業中');
+      expect(ordered.label, isNot(selling.label));
+    });
   });
 
   group(
@@ -156,6 +166,18 @@ void main() {
           );
           expect(display.label, '営業可能');
           expect(display.tone, PublicDemoEmployeeStatusTone.readyForSales);
+        },
+      );
+
+      test(
+        'an engineer genuinely on the 営業中 pipeline (e.g. selling) stays '
+        '営業中/waiting tone regardless of any month-training-selection '
+        'fact — the resolver has no way to paint a training tone over a '
+        'pipeline sub-stage label',
+        () {
+          final display = resolveFor(stage: PublicDemoSalesStage.selling);
+          expect(display.label, '営業中');
+          expect(display.tone, PublicDemoEmployeeStatusTone.waiting);
         },
       );
     },

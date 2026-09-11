@@ -218,6 +218,82 @@ void main() {
     },
   );
 
+  group(
+    'PR #238 review follow-up (P1): sales-pipeline sub-stages collapse to '
+    '営業中 in both the roster and SkillSheet, and an ordered-but-not-yet-'
+    'assigned engineer reads 参画予定, never the raw per-sub-stage label',
+    () {
+      testWidgets(
+        'eng-01 genuinely at stage == selling (real startSkillSheetReview → '
+        'beginSelling chain) reads 営業中 in the roster and in SkillSheet — '
+        'never the raw 営業準備/営業中-sub-stage-specific label',
+        (tester) async {
+          var aggregate = publicDemoAggregateAtMonth(8);
+          aggregate = aggregate
+              .startSkillSheetReview('eng-01')
+              .beginSelling('eng-01');
+          final sato = aggregate.workflow.engineers.firstWhere(
+            (e) => e.id == 'eng-01',
+          );
+          expect(sato.stage, PublicDemoSalesStage.selling);
+
+          await pumpDemoWith(tester, aggregate);
+
+          final rosterRow = find.byKey(
+            const Key('public-demo-employee-roster-row-eng-01'),
+          );
+          expect(
+            find.descendant(of: rosterRow, matching: find.text('営業中')),
+            findsOneWidget,
+          );
+
+          await tester.tap(
+            find.byKey(
+              const Key('public-demo-employee-roster-skill-sheet-eng-01'),
+            ),
+          );
+          await tester.pumpAndSettle();
+          final sheet = find.byKey(
+            const Key('public-demo-skill-sheet-eng-01'),
+          );
+          expect(sheet, findsOneWidget);
+          expect(
+            find.descendant(of: sheet, matching: find.text('営業中')),
+            findsAtLeastNWidgets(1),
+          );
+        },
+      );
+
+      testWidgets(
+        'eng-01 genuinely ordered but NOT YET assigned reads 参画予定 in the '
+        'roster — the unified label, never the raw 翌月参画予定 text',
+        (tester) async {
+          var aggregate = publicDemoAggregateAtMonth(8);
+          aggregate = publicDemoAdvanceEngineerToOrdered(aggregate, 'eng-01');
+          expect(
+            aggregate.workflow.assignedEngineerIds(month: 8),
+            isEmpty,
+            reason: 'ordered but never recovered into a real assignment',
+          );
+
+          await pumpDemoWith(tester, aggregate);
+
+          final rosterRow = find.byKey(
+            const Key('public-demo-employee-roster-row-eng-01'),
+          );
+          expect(
+            find.descendant(of: rosterRow, matching: find.text('参画予定')),
+            findsOneWidget,
+          );
+          expect(
+            find.descendant(of: rosterRow, matching: find.text('翌月参画予定')),
+            findsNothing,
+          );
+        },
+      );
+    },
+  );
+
   group('mobile density — the two fixed scenarios add no new overflow', () {
     for (final size in [Size(360, 800), Size(390, 844)]) {
       for (final textScale in [1.0, 1.3]) {

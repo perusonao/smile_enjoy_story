@@ -2321,7 +2321,7 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
   /// `engineerStatus(engineer)` straight through as `statusLabel`.
   ///
   /// This fixes both inconsistencies the Fresh Audit confirmed by tracing
-  /// the code (§3):
+  /// the code (§3), plus the PR #238 review follow-up below:
   ///  * An already-`ordered`+currently-assigned engineer's SkillSheet used
   ///    to keep showing the stale '翌月参画予定' while the roster/HOME
   ///    already said '参画中' for the same person — SkillSheet now reads
@@ -2343,11 +2343,25 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
   ///    `waiting` and could show a green 参画中 tone next to a
   ///    研修が必要/営業可能 label. One shared condition for both label and
   ///    tone closes this too.
+  ///  * PR #238 review follow-up (P1): the first version of this resolver
+  ///    still fell back to the caller-supplied raw `engineerStatus` label
+  ///    for every sales-pipeline sub-stage and for an `ordered`-but-not-yet-
+  ///    assigned engineer, so the roster/SkillSheet kept showing the
+  ///    un-collapsed raw text (営業準備/案件紹介済/各面談通過・不合格/翌月参画予定)
+  ///    instead of Fresh Audit §4's actual six-value taxonomy. Fixed inside
+  ///    [PublicDemoEmployeeStatusResolver.resolve] itself — see that
+  ///    method's own doc — with no change needed here beyond dropping the
+  ///    now-removed `rawStageLabel` argument below.
   ///
   /// Reads only existing authoritative facts already used elsewhere on this
   /// screen ([_currentlyAssignedEngineerIds], [readyForFieldSales],
-  /// [_fieldSalesActionReachableThisMonth], [engineerStatus]) — no new
-  /// domain authority, enum, or persisted field.
+  /// [_fieldSalesActionReachableThisMonth]) — no new domain authority, enum,
+  /// or persisted field. `engineerStatus`'s own raw 9-stage switch is
+  /// unchanged and still backs the sales-pipeline detail views that
+  /// legitimately keep showing it verbatim ([engineerStep]'s
+  /// `PublicDemoSalesProgress` stepper, the Sales tab) — only the
+  /// card-level player-facing status this resolver computes now differs
+  /// from it on purpose.
   ///
   /// HOME Freeze: HOME's own [_officeStageStatusFor] is deliberately NOT
   /// routed through this resolver in this change. Every prior consolidation
@@ -2356,11 +2370,18 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
   /// than share even logically-equivalent code with it, treating any diff
   /// inside HOME-owned code as HOME Freeze risk regardless of behavior
   /// preservation. This change follows that same established precedent:
-  /// HOME's Office Stage keeps its own separate, unchanged implementation.
-  /// It reads the exact same underlying facts this resolver does, so it
-  /// still cannot disagree with the roster/SkillSheet on the *fact*
-  /// (`stage == ordered && isCurrentlyAssigned` vs '参画中'); it simply does
-  /// not yet share this file's implementation. Routing HOME through this
+  /// HOME's Office Stage keeps its own separate, unchanged implementation,
+  /// still built on the raw `engineerStatus` switch. On the 参画中/参画予定
+  /// split, HOME reads the exact same underlying fact this resolver does
+  /// (`stage == ordered && isCurrentlyAssigned`) and shows the same '参画中'
+  /// text, so the two cannot disagree there. On every sales-pipeline
+  /// sub-stage (and on the exact wording of an `ordered`-but-not-yet-
+  /// assigned engineer — HOME still says '翌月参画予定', the roster/SkillSheet
+  /// now say '参画予定'), HOME intentionally still shows the raw, un-
+  /// collapsed `engineerStatus` label rather than this resolver's unified
+  /// 営業中/参画予定 buckets — a known, tracked cross-surface wording gap
+  /// (see the governing plan's own Update history entry for this Issue),
+  /// not a regression this PR introduced. Routing HOME through this
   /// resolver is a safe, ready-to-do follow-up once HOME Freeze is lifted or
   /// explicitly confirmed to allow a behavior-preserving internal refactor.
   PublicDemoEmployeeStatusDisplay _employeeStatusDisplayFor(
@@ -2372,7 +2393,6 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
     fieldSalesActionReachableThisMonth: _fieldSalesActionReachableThisMonth(
       engineer,
     ),
-    rawStageLabel: engineerStatus(engineer),
   );
 
   /// PR #233 Codex review (P2): [_employeeStatusDisplayFor]'s '営業可能'

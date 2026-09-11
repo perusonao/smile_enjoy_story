@@ -192,7 +192,7 @@ void main() {
     );
   });
 
-  group('Stale 翌月参画予定 regression: the same ordered stage reads '
+  group('Stale ordered-vs-assigned regression: the same ordered stage reads '
       'differently once actually assigned', () {
     // Same engineer (eng-01, capability 78 — reliably clears both
     // interviews) in two different real aggregates, each pumped in its own
@@ -227,9 +227,11 @@ void main() {
     );
 
     testWidgets(
-      'eng-01 ordered but NOT YET assigned still truthfully reads 翌月参画予定 '
-      '— the fix is about the assignment fact, not about hiding the '
-      'ordered stage',
+      'eng-01 ordered but NOT YET assigned still truthfully reads 参画予定 '
+      '(PR #238 review follow-up: unified taxonomy renamed the raw '
+      "engineerStatus '翌月参画予定' to '参画予定' for this exact case) — the "
+      'fix is about the assignment fact, not about hiding the ordered '
+      'stage',
       (tester) async {
         var aggregate = publicDemoAggregateAtMonth(8);
         aggregate = publicDemoAdvanceEngineerToOrdered(aggregate, 'eng-01');
@@ -243,7 +245,7 @@ void main() {
         expect(
           find.descendant(
             of: find.byKey(rosterRowKey('eng-01')),
-            matching: find.text('翌月参画予定'),
+            matching: find.text('参画予定'),
           ),
           findsOneWidget,
           reason: 'eng-01 has genuinely not joined a project yet',

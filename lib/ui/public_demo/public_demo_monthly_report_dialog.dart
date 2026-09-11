@@ -59,15 +59,31 @@ class _ReportSectionHeader extends StatelessWidget {
 /// architecture [PublicDemoYearEndResultCard] and every other Public Demo
 /// result surface already use. This widget calls no aggregate/state/
 /// workflow command and holds no callback beyond dismissing itself: the
-/// only action available is "翌月へ進む", which pops this route and lets
-/// the caller's own already-existing `_resetMonthScroll()` → HOME flow
-/// continue exactly as it does today. [data] is built once by the caller
-/// from an already-[PublicDemoMonthlyReportSnapshot.isReady] snapshot —
-/// this widget performs no additional gating of its own.
+/// only action available pops this route and lets the caller's own
+/// already-existing `_resetMonthScroll()` → HOME flow continue exactly as
+/// it does today. [data] is built once by the caller from an already-
+/// [PublicDemoMonthlyReportSnapshot.isReady] snapshot — this widget
+/// performs no additional gating of its own.
+///
+/// Codex Broad Review P2 (PR #237): the dismiss button's own label used to
+/// read "翌月へ進む" unconditionally, but [data.closedMonth] `== 15`
+/// (March, the fiscal year's last internal month —
+/// [PublicDemoState.completeFiscalYear]'s own doc) never advances to
+/// "next month": dismissing this dialog instead reveals the accounting
+/// tab's Year-End result (success) or the HOME bankruptcy-style terminal
+/// card (a March cash-shortage failure) — see
+/// `PublicDemo01PlaceholderScreen._accountingMonthlyResultSection`/
+/// `_bankruptcyTerminalCard`. [_isYearEndClose] reads that single already-
+/// exposed field (no new authority) to keep the button's own copy truthful
+/// about what happens next; every other month keeps its original label.
 class PublicDemoMonthlyReportDialog extends StatelessWidget {
   const PublicDemoMonthlyReportDialog({super.key, required this.data});
 
   final PublicDemoMonthlyReportDisplayData data;
+
+  /// True only for March's close (internal month 15) — the one month this
+  /// dialog's dismiss button never leads to "next month" HOME.
+  bool get _isYearEndClose => data.closedMonth == 15;
 
   @override
   Widget build(BuildContext context) {
@@ -157,7 +173,7 @@ class PublicDemoMonthlyReportDialog extends StatelessWidget {
         FilledButton(
           key: const Key('public-demo-monthly-report-dismiss'),
           onPressed: () => Navigator.of(context).pop(),
-          child: const Text('翌月へ進む'),
+          child: Text(_isYearEndClose ? '年度結果を見る' : '翌月へ進む'),
         ),
       ],
     );

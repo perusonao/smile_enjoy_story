@@ -128,6 +128,23 @@ void main() {
       expect(find.text('4月の経営結果'), findsOneWidget);
       // The month has already advanced beneath the dialog.
       expect(_currentState(tester).month, 5);
+      // Codex Broad Review P2 (PR #237): an ordinary month's dismiss CTA
+      // still reads "翌月へ進む" — dismissing genuinely advances to next
+      // month's HOME here.
+      expect(
+        find.descendant(
+          of: find.byKey(_dismissKey),
+          matching: find.text('翌月へ進む'),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: find.byKey(_dismissKey),
+          matching: find.text('年度結果を見る'),
+        ),
+        findsNothing,
+      );
     });
 
     testWidgets('May: shows the report after the "入社・初参画！" event dialog '
@@ -294,6 +311,27 @@ void main() {
       // own state-driven build, unconditionally re-evaluated regardless of
       // this dialog).
 
+      // Codex Broad Review P2 (PR #237): this zero-engagement fixture
+      // leaves both founding engineers waiting — the report's own Hiyori
+      // comment must never recommend a Sales-tab action that is no longer
+      // reachable now that the game is terminal.
+      expect(
+        _currentState(tester).engineersWaiting,
+        greaterThan(0),
+        reason: 'fixture must genuinely have waiting engineers to exercise '
+            'the terminal-advice fix',
+      );
+      final hiyoriComment = tester
+          .widget<Text>(
+            find.byKey(
+              const Key('public-demo-monthly-report-hiyori-comment'),
+            ),
+          )
+          .data!;
+      expect(hiyoriComment, isNot(contains('営業タブ')));
+      expect(hiyoriComment, isNot(contains('案件参画を進めましょう')));
+      expect(hiyoriComment, contains('今月の結果を振り返り'));
+
       await tester.tap(find.byKey(_dismissKey));
       await tester.pumpAndSettle();
 
@@ -358,6 +396,43 @@ void main() {
       expect(find.byKey(_reportKey), findsOneWidget);
       expect(find.text('3月の経営結果'), findsOneWidget);
       expect(_currentState(tester).fiscalYearCompleted, isTrue);
+
+      // Codex Broad Review P2 (PR #237): dismissing this dialog never
+      // advances to "next month" — it reveals the Year-End result instead
+      // — so the CTA's own copy must say so, not "翌月へ進む".
+      expect(
+        find.descendant(
+          of: find.byKey(_dismissKey),
+          matching: find.text('年度結果を見る'),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: find.byKey(_dismissKey),
+          matching: find.text('翌月へ進む'),
+        ),
+        findsNothing,
+      );
+      // This fixture leaves both founding engineers waiting (nobody was
+      // ever sold/assigned) — the Hiyori comment must never recommend a
+      // Sales-tab action once the fiscal year is complete.
+      expect(
+        _currentState(tester).engineersWaiting,
+        greaterThan(0),
+        reason: 'fixture must genuinely have waiting engineers to exercise '
+            'the terminal-advice fix',
+      );
+      final hiyoriComment = tester
+          .widget<Text>(
+            find.byKey(
+              const Key('public-demo-monthly-report-hiyori-comment'),
+            ),
+          )
+          .data!;
+      expect(hiyoriComment, isNot(contains('営業タブ')));
+      expect(hiyoriComment, isNot(contains('案件参画を進めましょう')));
+      expect(hiyoriComment, contains('1年間の経営結果を確認しましょう'));
 
       await tester.tap(find.byKey(_dismissKey));
       await tester.pumpAndSettle();

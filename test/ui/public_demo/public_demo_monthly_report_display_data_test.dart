@@ -32,6 +32,8 @@ void main() {
       final data = PublicDemoMonthlyReportDisplayData.fromSnapshot(
         snapshot,
         applicants: aggregate.workflow.applicants,
+        isFiscalYearCompleted: false,
+        isFinanciallyTerminal: false,
       );
 
       expect(data.closedMonth, 4);
@@ -86,6 +88,8 @@ void main() {
       final data = PublicDemoMonthlyReportDisplayData.fromSnapshot(
         snapshot,
         applicants: aggregate.workflow.applicants,
+        isFiscalYearCompleted: false,
+        isFinanciallyTerminal: false,
       );
 
       final nameById = {
@@ -123,6 +127,8 @@ void main() {
         assignedCount: 0,
         waitingCount: 0,
         nextMonthJoinNames: [],
+        isFiscalYearCompleted: false,
+        isFinanciallyTerminal: false,
       );
       final comment = publicDemoMonthlyReportHiyoriComment(data);
       expect(comment, contains('減りました'));
@@ -148,6 +154,8 @@ void main() {
         assignedCount: 0,
         waitingCount: 0,
         nextMonthJoinNames: [],
+        isFiscalYearCompleted: false,
+        isFinanciallyTerminal: false,
       );
       final comment = publicDemoMonthlyReportHiyoriComment(data);
       expect(comment, contains('増えました'));
@@ -173,6 +181,8 @@ void main() {
         assignedCount: 0,
         waitingCount: 0,
         nextMonthJoinNames: [],
+        isFiscalYearCompleted: false,
+        isFinanciallyTerminal: false,
       );
       final comment = publicDemoMonthlyReportHiyoriComment(data);
       expect(comment, contains('増減がありませんでした'));
@@ -199,6 +209,8 @@ void main() {
         assignedCount: 1,
         waitingCount: 2,
         nextMonthJoinNames: [],
+        isFiscalYearCompleted: false,
+        isFinanciallyTerminal: false,
       );
       final comment = publicDemoMonthlyReportHiyoriComment(data);
       expect(comment, contains('2名'));
@@ -225,6 +237,8 @@ void main() {
         assignedCount: 2,
         waitingCount: 0,
         nextMonthJoinNames: [],
+        isFiscalYearCompleted: false,
+        isFinanciallyTerminal: false,
       );
       final comment = publicDemoMonthlyReportHiyoriComment(data);
       expect(comment, contains('全員が案件に参画'));
@@ -250,12 +264,106 @@ void main() {
         assignedCount: 2,
         waitingCount: 1,
         nextMonthJoinNames: ['佐藤 健'],
+        isFiscalYearCompleted: false,
+        isFinanciallyTerminal: false,
       );
       final comment = publicDemoMonthlyReportHiyoriComment(data);
       expect(comment, isNot(contains('増えた')));
       expect(comment, isNot(contains('今月の応募')));
       expect(comment, isNot(contains('今月の受注')));
       expect(comment, isNot(contains('新規参画')));
+    });
+  });
+
+  group('5. hiyori comment branches — terminal state (Codex Broad Review '
+      'P2, PR #237)', () {
+    test('isFinanciallyTerminal + waitingCount > 0 never recommends an '
+        'action the player can no longer take (no 営業タブ/案件参画 '
+        'wording), and instead gives a backward-looking line', () {
+      const data = PublicDemoMonthlyReportDisplayData(
+        closedMonth: 15,
+        openingCash: 500000,
+        closingCash: 400000,
+        cashDelta: -100000,
+        revenue: 0,
+        cashReceived: 0,
+        receivables: 0,
+        totalExpenses: 100000,
+        salaryPaid: 100000,
+        fixedCostsPaid: 0,
+        bonusPaid: 0,
+        trainingCost: 0,
+        recruitmentCost: 0,
+        netIncome: -100000,
+        assignedCount: 0,
+        waitingCount: 2,
+        nextMonthJoinNames: [],
+        isFiscalYearCompleted: false,
+        isFinanciallyTerminal: true,
+      );
+      final comment = publicDemoMonthlyReportHiyoriComment(data);
+      expect(comment, isNot(contains('営業タブ')));
+      expect(comment, isNot(contains('案件参画を進めましょう')));
+      expect(comment, contains('今月の結果を振り返り'));
+    });
+
+    test('isFiscalYearCompleted + waitingCount > 0 never recommends an '
+        'action the player can no longer take, and instead gives a '
+        'year-end-appropriate line', () {
+      const data = PublicDemoMonthlyReportDisplayData(
+        closedMonth: 15,
+        openingCash: 500000,
+        closingCash: 600000,
+        cashDelta: 100000,
+        revenue: 200000,
+        cashReceived: 200000,
+        receivables: 200000,
+        totalExpenses: 100000,
+        salaryPaid: 100000,
+        fixedCostsPaid: 0,
+        bonusPaid: 0,
+        trainingCost: 0,
+        recruitmentCost: 0,
+        netIncome: 100000,
+        assignedCount: 1,
+        waitingCount: 1,
+        nextMonthJoinNames: [],
+        isFiscalYearCompleted: true,
+        isFinanciallyTerminal: false,
+      );
+      final comment = publicDemoMonthlyReportHiyoriComment(data);
+      expect(comment, isNot(contains('営業タブ')));
+      expect(comment, isNot(contains('案件参画を進めましょう')));
+      expect(comment, contains('1年間の経営結果を確認しましょう'));
+    });
+
+    test('an ordinary month (isFiscalYearCompleted/isFinanciallyTerminal '
+        'both false) with waitingCount > 0 keeps the existing sales advice '
+        'unchanged — this fix never touches the ordinary-month branch', () {
+      const data = PublicDemoMonthlyReportDisplayData(
+        closedMonth: 8,
+        openingCash: 1000000,
+        closingCash: 1000000,
+        cashDelta: 0,
+        revenue: 0,
+        cashReceived: 0,
+        receivables: 0,
+        totalExpenses: 0,
+        salaryPaid: 0,
+        fixedCostsPaid: 0,
+        bonusPaid: 0,
+        trainingCost: 0,
+        recruitmentCost: 0,
+        netIncome: 0,
+        assignedCount: 1,
+        waitingCount: 3,
+        nextMonthJoinNames: [],
+        isFiscalYearCompleted: false,
+        isFinanciallyTerminal: false,
+      );
+      final comment = publicDemoMonthlyReportHiyoriComment(data);
+      expect(comment, contains('3名'));
+      expect(comment, contains('営業タブから案件参画を進めましょう'));
     });
   });
 }

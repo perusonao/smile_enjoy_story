@@ -49,6 +49,8 @@ class PublicDemoMonthlyReportDisplayData {
     required this.assignedCount,
     required this.waitingCount,
     required this.nextMonthJoinNames,
+    required this.isFiscalYearCompleted,
+    required this.isFinanciallyTerminal,
   });
 
   /// The internal month number (4-15) this report describes — always the
@@ -94,16 +96,39 @@ class PublicDemoMonthlyReportDisplayData {
   /// this class's own doc.
   final List<String> nextMonthJoinNames;
 
+  /// Codex Broad Review P2 (PR #237): [PublicDemoState.fiscalYearCompleted]
+  /// verbatim, read from the same already-committed aggregate the snapshot
+  /// itself was built from — the existing authority
+  /// [PublicDemoYearEndResultCard]'s own gate already uses, reused here
+  /// verbatim (no new judgment). True only when this close genuinely
+  /// completed the fiscal year in success; always false for an ordinary
+  /// month, and false for a March close that instead produced
+  /// [isFinanciallyTerminal].
+  final bool isFiscalYearCompleted;
+
+  /// Codex Broad Review P2 (PR #237): [PublicDemoState.isFinanciallyTerminal]
+  /// verbatim — the same existing authority `_bankruptcyTerminalCard`'s own
+  /// gate already uses. True for bankruptcy or a March cash-shortage
+  /// failure; mutually exclusive with [isFiscalYearCompleted] by
+  /// construction ([PublicDemoState.completeFiscalYear]'s own doc).
+  final bool isFinanciallyTerminal;
+
   /// Builds this projection from [snapshot] (which must already be
   /// [PublicDemoMonthlyReportSnapshot.isReady] — callers gate on that
   /// before ever constructing this class, exactly like
   /// [PublicDemoYearEndDisplayData] is only ever built once
-  /// `fiscalYearCompleted` is confirmed) and [applicants] — the same
+  /// `fiscalYearCompleted` is confirmed), [applicants] — the same
   /// aggregate's own `workflow.applicants`, used only to resolve
-  /// [nextMonthJoinNames].
+  /// [nextMonthJoinNames] — and [isFiscalYearCompleted]/
+  /// [isFinanciallyTerminal], read by the caller from that same
+  /// already-committed aggregate's `state` (Codex Broad Review P2, PR
+  /// #237): neither is derivable from the snapshot alone, and both are
+  /// already-existing authority, never recomputed here.
   factory PublicDemoMonthlyReportDisplayData.fromSnapshot(
     PublicDemoMonthlyReportSnapshot snapshot, {
     required List<PublicDemoApplicant> applicants,
+    required bool isFiscalYearCompleted,
+    required bool isFinanciallyTerminal,
   }) {
     final flow = snapshot.cashFlow!;
     final nameById = {
@@ -130,6 +155,8 @@ class PublicDemoMonthlyReportDisplayData {
         for (final id in snapshot.confirmedNextMonthJoinApplicantIds)
           nameById[id] ?? id,
       ],
+      isFiscalYearCompleted: isFiscalYearCompleted,
+      isFinanciallyTerminal: isFinanciallyTerminal,
     );
   }
 }
@@ -144,10 +171,27 @@ class PublicDemoMonthlyReportDisplayData {
 /// .cashDelta] (`< 0` / `> 0` / `== 0`, mirroring [PublicDemoState
 /// .netCashMovement]'s own sign, not a new threshold),
 /// [PublicDemoMonthlyReportDisplayData.waitingCount] `> 0`, and
-/// [PublicDemoMonthlyReportDisplayData.assignedCount] `> 0`. Never
-/// comments on an in-month delta (application/interview/order count, or
-/// "参画人数が増えた") — no such history is available (Phase A §6.2/§7.2),
-/// so no such claim is made.
+/// [PublicDemoMonthlyReportDisplayData.assignedCount] `> 0` — plus, since
+/// Codex Broad Review P2 (PR #237), [PublicDemoMonthlyReportDisplayData
+/// .isFinanciallyTerminal]/[PublicDemoMonthlyReportDisplayData
+/// .isFiscalYearCompleted], both already-existing authority (never a new
+/// threshold). Never comments on an in-month delta (application/interview/
+/// order count, or "参画人数が増えた") — no such history is available
+/// (Phase A §6.2/§7.2), so no such claim is made.
+///
+/// Codex Broad Review P2 (PR #237): once this close made the game terminal
+/// (bankruptcy/March cash-shortage failure) or genuinely completed the
+/// fiscal year, [PublicDemoState.isCloseBlocked] is true and there is no
+/// next month to act in — `_bankruptcyTerminalCard`/`PublicDemoYearEndResultCard`
+/// take over immediately after this dialog is dismissed (§7 of this Issue's
+/// own Fresh Audit). Recommending "営業タブから案件参画を進めましょう" here
+/// would send the player toward a Sales tab whose own next-action slot is
+/// itself already suppressed for the same [isCloseBlocked] reason
+/// (`HomeRecommendedActionSuppressed`) — so this branch is checked first
+/// and replaces that recommendation with a backward-looking, terminal-
+/// appropriate line instead. The cash-movement sentence above is left
+/// exactly as-is in every case (still a true fact about the month that just
+/// closed); only this second sentence's content changes.
 String publicDemoMonthlyReportHiyoriComment(
   PublicDemoMonthlyReportDisplayData data,
 ) {
@@ -163,7 +207,11 @@ String publicDemoMonthlyReportHiyoriComment(
     sentences.add('今月は資金の増減がありませんでした。');
   }
 
-  if (data.waitingCount > 0) {
+  if (data.isFinanciallyTerminal) {
+    sentences.add('今月の結果を振り返り、次の経営に活かしましょう。');
+  } else if (data.isFiscalYearCompleted) {
+    sentences.add('1年間の経営結果を確認しましょう。');
+  } else if (data.waitingCount > 0) {
     sentences.add(
       '待機中のメンバーが${data.waitingCount}名います。営業タブから案件参画を進めましょう。',
     );

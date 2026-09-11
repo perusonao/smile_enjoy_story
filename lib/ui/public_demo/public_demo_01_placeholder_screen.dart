@@ -413,6 +413,12 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
     final data = PublicDemoMonthlyReportDisplayData.fromSnapshot(
       snapshot,
       applicants: workflow.applicants,
+      // Codex Broad Review P2 (PR #237): read straight off the same
+      // already-committed aggregate's state — never recomputed, never a
+      // new judgment — so the report's own CTA copy and Hiyori comment
+      // can tell a terminal/year-end close apart from an ordinary one.
+      isFiscalYearCompleted: s.fiscalYearCompleted,
+      isFinanciallyTerminal: s.isFinanciallyTerminal,
     );
     await showDialog<void>(
       context: context,

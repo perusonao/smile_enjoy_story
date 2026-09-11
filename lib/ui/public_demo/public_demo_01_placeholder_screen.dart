@@ -58,6 +58,8 @@ import 'public_demo_menu_visual.dart';
 import 'public_demo_month_guard_warning_dialog.dart';
 import 'public_demo_monthly_cash_flow_card.dart';
 import 'public_demo_monthly_report_dialog.dart';
+import 'public_demo_project_context.dart';
+import 'public_demo_project_context_resolver.dart';
 import 'public_demo_monthly_report_display_data.dart';
 import 'public_demo_project_interview_dialog.dart';
 import 'public_demo_recruitment_interview_dialog.dart';
@@ -2628,6 +2630,19 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
   /// today it is always its constructed default (50) for every assignment
   /// in every reachable game state, so surfacing it would present a
   /// constant as a meaningful evaluation.
+  ///
+  /// SES FIRST-FUN-YEAR P1 (Project/Order/Assignment Continuous Visibility):
+  /// the project line now reads [_realProjectNameFor] instead of `a
+  /// .projectName` verbatim — the real [Project.title] when this assignment
+  /// carries a genuine Phase 6 `projectId`, else `a.projectName` itself
+  /// unchanged (still the exact same generic placeholder this card always
+  /// showed before). No new fact: this is the identical `project?.title ??
+  /// assignment.projectName` resolution [PublicDemoAggregate
+  /// ._careerHistoryEntryFor] already performs for the same assignment when
+  /// it ends, now also read here so a still-active, genuinely project-bound
+  /// assignment shows its real project's name instead of the generic
+  /// template a fresh order always starts with (see
+  /// [PublicDemoAssignment.forOrderedEngineer]'s own doc).
   Widget activeProjectStatusCard(PublicDemoAssignment a) => Card(
     key: Key('public-demo-active-project-status-${a.engineerId}'),
     child: Padding(
@@ -2661,7 +2676,11 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
             ],
           ),
           const SizedBox(height: 6),
-          Text('参画中案件：${a.projectName}', style: const TextStyle(fontSize: 13)),
+          Text(
+            '参画中案件：${_realProjectNameFor(a)}',
+            style: const TextStyle(fontSize: 13),
+            overflow: TextOverflow.ellipsis,
+          ),
           const SizedBox(height: 8),
           _assignmentMetricBar(label: '納期プレッシャー', value: a.deliveryPressure),
           const SizedBox(height: 6),
@@ -3403,7 +3422,12 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
                 color: Theme.of(context).colorScheme.onSurfaceVariant,
               ),
               const SizedBox(width: 4),
-              Expanded(child: Text(a.projectName)),
+              Expanded(
+                child: Text(
+                  _realProjectNameFor(a),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
             ],
           ),
           if (a.nextOrderStatus == PublicDemoNextOrderStatus.undecided)
@@ -3540,6 +3564,30 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
             const SizedBox(height: 2),
             Text(e.summary),
             PublicDemoSalesProgress(currentStep: engineerStep(e)),
+            // SES FIRST-FUN-YEAR P1 (Project/Order/Assignment Continuous
+            // Visibility): states which real project this stepper's stage
+            // is actually for — before this, an engineer at 案件紹介済/各面談
+            // showed only the raw pipeline step, with no way to see which
+            // of this month's real Phase 4 projects (`_introduceProject`'s
+            // own auto-pick fallback, or the player's own "案件を見る"
+            // choice) they were actually proposed for/interviewing for
+            // until an order/assignment appeared, months later. `null` for
+            // `waiting`/`skillSheet`/`selling` (nothing introduced yet).
+            if (_projectContextFor(e) case final projectContext?)
+              Padding(
+                padding: const EdgeInsets.only(top: 4, bottom: 2),
+                child: Text(
+                  '${projectContext.label}：${projectContext.title}'
+                  '（${projectContext.clientName}・月額'
+                  '${projectContext.monthlyRate ~/ 10000}万円）',
+                  key: Key('public-demo-employee-project-context-${e.id}'),
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
             const SizedBox(height: 6),
             if (!readyForFieldSales(e.id) &&
                 (e.stage == PublicDemoSalesStage.waiting ||
@@ -4223,6 +4271,9 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
                       '経験 ${formatExperience(experienceMonths)}',
                     '月給 ${monthlySalary == null ? '—' : '${monthlySalary ~/ 10000}万円'}',
                     '単金 ${unitPriceDisplay ?? '—'}',
+                    if (_orderedProjectRosterSegment(e, unitPriceDisplay)
+                        case final segment?)
+                      segment,
                   ].join(' ｜ '),
                   key: Key('public-demo-employee-roster-compensation-${e.id}'),
                   style: TextStyle(
@@ -4288,6 +4339,76 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
     );
     if (candidate == null) return null;
     return '${candidate.monthlyRate ~/ 10000}万円';
+  }
+
+  /// SES FIRST-FUN-YEAR P1 (Project/Order/Assignment Continuous Visibility):
+  /// the resolved real-project context for [engineer] right now, via
+  /// [PublicDemoProjectContextResolver] — the single place every card on
+  /// this screen (Sales-pipeline card, roster row, active-project card)
+  /// reads which real project an engineer is proposed for / interviewing
+  /// for / has ordered / is participating in, so none of them can disagree.
+  /// `null` for `waiting`/`skillSheet`/`selling` (nothing has been
+  /// introduced yet) and for any stage where none of the resolver's three
+  /// project-id sources resolves — never a fabricated project reference.
+  PublicDemoProjectContext? _projectContextFor(PublicDemoEngineerSales engineer) =>
+      PublicDemoProjectContextResolver.resolve(
+        stage: engineer.stage,
+        isCurrentlyAssigned: _currentlyAssignedEngineerIds.contains(
+          engineer.id,
+        ),
+        assignmentProjectId: _assignmentForOrNull(engineer.id)?.projectId,
+        genuineInterviewProjectId: engineer.genuineInterviewProjectId,
+        matchingProposalProjectId: workflow
+            .matchingProposalFor(engineer.id)
+            ?.projectId,
+        resolveCandidate: (projectId) =>
+            PublicDemoSeededProjectGenerator.regenerate(
+              runSeed: s.runSeed,
+              projectId: projectId,
+            ),
+      );
+
+  /// The roster row's own minimal "案件名" addition for an `ordered`
+  /// engineer (Issue #239: 参画予定/参画中 truthful project context) — `null`
+  /// for every other stage, so the roster row is unchanged for anyone still
+  /// mid-pipeline (that detail already lives on the Sales-pipeline card via
+  /// [_projectContextFor] directly). Shows only the title when
+  /// [unitPriceDisplay] already carries this same project's real rate
+  /// (参画中) — repeating the same number twice on one line would not add
+  /// information — and adds the rate itself only when [unitPriceDisplay] is
+  /// `null` (参画予定, not yet earning — see [_currentUnitPriceDisplayFor]'s
+  /// own doc for why that field deliberately stays a dash until
+  /// participation actually starts), since that is the one `ordered` case
+  /// with no rate shown anywhere else on this row.
+  String? _orderedProjectRosterSegment(
+    PublicDemoEngineerSales engineer,
+    String? unitPriceDisplay,
+  ) {
+    if (engineer.stage != PublicDemoSalesStage.ordered) return null;
+    final context = _projectContextFor(engineer);
+    if (context == null) return null;
+    return unitPriceDisplay == null
+        ? '案件 ${context.title}（月額${context.monthlyRate ~/ 10000}万円）'
+        : '案件 ${context.title}';
+  }
+
+  /// The real [Project.title] for [assignment] when it carries a genuine
+  /// Phase 6 project-bound `projectId`, else its own already-persisted
+  /// [PublicDemoAssignment.projectName] (the generic placeholder, e.g.
+  /// '新規開発支援') — the exact same `project?.title ?? assignment
+  /// .projectName` convention [PublicDemoAggregate._careerHistoryEntryFor]
+  /// already established for the identical lookup, reused here rather than
+  /// a second, independently-derived resolution. Never a guessed/invented
+  /// name: a `projectId` that fails to resolve (should not happen, but
+  /// never assumed) also falls back to [assignment]'s own generic name.
+  String _realProjectNameFor(PublicDemoAssignment assignment) {
+    final projectId = assignment.projectId;
+    if (projectId == null) return assignment.projectName;
+    final candidate = PublicDemoSeededProjectGenerator.regenerate(
+      runSeed: s.runSeed,
+      projectId: projectId,
+    );
+    return candidate?.title ?? assignment.projectName;
   }
 
   /// The confirmed primary-skill display for [engineerId], or `null` when

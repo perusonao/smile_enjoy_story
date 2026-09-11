@@ -22,8 +22,10 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:smile_enjoy_story/game/persistence/public_demo_save_service.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_aggregate.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_assignment.dart';
+import 'package:smile_enjoy_story/game/public_demo/public_demo_fiscal_close_id.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_interview.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_recruitment_medium.dart';
+import 'package:smile_enjoy_story/game/public_demo/public_demo_salary_offer.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_state.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_workflow_state.dart';
 import 'package:smile_enjoy_story/ui/public_demo/public_demo_01_placeholder_screen.dart';
@@ -111,6 +113,38 @@ PublicDemoAggregate mayWithApplicants() {
     reason: 'fixture sanity: April cash must afford the free medium',
   );
   return recruited.aggregate!;
+}
+
+/// Issue #241 fixture: the May free-medium applicant's offer is accepted
+/// and genuinely joined at `closeMay` (an acceptanceScore: 100 hand-built
+/// offer, exactly like `public_demo_post_may_join_lifecycle_test.dart`'s
+/// own `recruitAndAccept`, so this always accepts regardless of the
+/// generated applicant's own seed-dependent acceptanceScore) — reaching
+/// June with a real, already-employed hire on `workflow.applicants` whose
+/// `stage` never advances past whatever it was left at (see
+/// `PublicDemoApplicant.join`'s own doc for why `hasJoined`, not `stage`,
+/// is the only fact that changes).
+PublicDemoAggregate juneWithJoinedHire() {
+  final game = mayWithApplicants();
+  final applicantId = game.workflow.applicants.first.id;
+  final interview = game.completeInterview(applicantId);
+  expect(interview.isCompleted, isTrue, reason: 'fixture sanity');
+  var next = interview.aggregate;
+  final applicant = next.workflow.applicants.firstWhere(
+    (a) => a.id == applicantId,
+  );
+  next = next.acceptOffer(
+    applicantId: applicantId,
+    offer: PublicDemoSalaryOffer(
+      requestedMonthlySalary: applicant.requestedMonthlySalary,
+      offeredMonthlySalary: applicant.requestedMonthlySalary,
+      acceptanceScore: 100,
+      motivationDelta: 0,
+      trustDelta: 0,
+    ),
+    fiscalCloseId: PublicDemoFiscalCloseId.forMonth(next.state.month),
+  );
+  return next.closeMay(week: 9, monthlyExpenses: _expense);
 }
 
 /// Sells the first founding engineer through April's real pipeline and
@@ -299,6 +333,57 @@ void main() {
       },
     );
   });
+
+  // Issue #241 FIRST-FUN-YEAR Recruitment Flow / Next Action Clarity
+  // (Fresh Audit finding): [PublicDemoApplicant.stage] never advances (or
+  // resets) once an applicant actually joins, so before this fix a joined
+  // applicant kept rendering a stale, pre-join funnel card here forever —
+  // mixing up 入社待ち/入社済み, which Issue #241 explicitly requires stay
+  // distinct. `_salesApplicantProgressCards` now excludes
+  // `PublicDemoApplicant.hasJoined` applicants, exactly like this
+  // section's own 候補者 count already did (see the Section 1 group above).
+  group(
+    '採用・候補者進捗 never lingers on an already-joined applicant (Issue #241)',
+    () {
+      testWidgets(
+        'an applicant who genuinely joined at May-close no longer renders a '
+        'funnel card in June — their story continues on the 社員 tab '
+        'instead, not a stale pre-join badge',
+        (tester) async {
+          final game = juneWithJoinedHire();
+          final joinedApplicant = game.workflow.applicants.firstWhere(
+            (a) => a.hasJoined,
+          );
+          await pumpSalesTab(tester, game);
+
+          expect(currentState(tester).month, 6);
+          expect(
+            find.text(joinedApplicant.name),
+            findsNothing,
+            reason:
+                'a joined applicant must never render a candidate-funnel '
+                'card again',
+          );
+          expect(
+            find.byKey(_applicantProgressKey),
+            findsNothing,
+            reason:
+                'this fixture has no other (still-unjoined) applicant, so '
+                'the section itself must not render an empty/stale shell',
+          );
+          expect(
+            currentWorkflow(
+              tester,
+            ).engineers.any((e) => e.id == joinedApplicant.id),
+            isTrue,
+            reason:
+                'the joined applicant must still exist as a real employee '
+                '— this is a display filter, not a data loss',
+          );
+        },
+      );
+    },
+  );
 
   group('June assignment state', () {
     testWidgets(

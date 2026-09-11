@@ -627,4 +627,51 @@ void main() {
       );
     });
   });
+
+  group(
+    'Issue #241 FIRST-FUN-YEAR Recruitment Flow / Next Action Clarity: '
+    'Fresh Audit §9 — an applicant can never appear without a genuine '
+    'recruit() call, at any month boundary',
+    () {
+      test(
+        'April with no recruitment media used: closing April into May '
+        'produces zero applicants — the Human Replay #225 "4月に求人を出して'
+        'いないのに5月に応募者が出る" symptom does not reproduce on current '
+        'main (CORE-GAMEPLAY Phase 4.5 already removed all pre-seeded '
+        'applicants; PublicDemoWorkflowState.initial() starts genuinely '
+        'empty, and no month-close command ever generates an applicant)',
+        () {
+          final aggregate = PublicDemoAggregate.initial();
+          expect(
+            aggregate.workflow.applicants,
+            isEmpty,
+            reason: 'a new game must start with zero applicants',
+          );
+
+          final mayAggregate = aggregate.closeApril(
+            monthlyExpenses: PublicDemoSalary.baselineMonthlyExpenses,
+          );
+          expect(mayAggregate.state.month, 5);
+          expect(
+            mayAggregate.workflow.applicants,
+            isEmpty,
+            reason:
+                'no applicant may ever appear in May without an explicit '
+                'recruit() call in April or May — closeApril is the only '
+                'production path from month 4 to month 5, and it never '
+                'calls recruit()/withGeneratedApplicants itself',
+          );
+
+          // The same holds walking forward without ever recruiting: no
+          // month-end close command anywhere in the aggregate invents an
+          // applicant on its own.
+          final juneAggregate = mayAggregate.closeMay(
+            week: 9,
+            monthlyExpenses: PublicDemoSalary.baselineMonthlyExpenses,
+          );
+          expect(juneAggregate.workflow.applicants, isEmpty);
+        },
+      );
+    },
+  );
 }

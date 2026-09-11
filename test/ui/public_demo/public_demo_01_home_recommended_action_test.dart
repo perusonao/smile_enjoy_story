@@ -210,6 +210,30 @@ Future<void> playIntoJuly(WidgetTester tester) async {
   await settle(tester);
 }
 
+/// Sells eng-01 fully in April (`playApril`, already `ordered` + assigned
+/// for May via `assignOrderedForMay`), then — once in June — also resolves
+/// their July continuation (`7月分の発注を確認` -> `受注する`), leaving
+/// `nextOrderStatus == accepted` so `_addAssignmentCandidate` itself emits
+/// nothing for them (`PublicDemoNextOrderStatus.accepted`'s own "nothing
+/// left to do" branch) — not just excluded from Issue #243 FIRST-FUN-YEAR
+/// P1's widened engineer-stage loop. Without this second step, an assigned-
+/// but-undecided eng-01 would still surface a real, unrelated
+/// `assignmentConfirmNextOrder` candidate in June, which would itself
+/// outrank 求人媒体 and defeat this group's own "nothing [else] eligible"
+/// premise just as much as the original gap did. eng-02 stays untouched
+/// and below the field-sales threshold throughout.
+Future<void> playIntoJuneWithEng01SoldAndConfirmed(WidgetTester tester) async {
+  await playApril(tester);
+  await tapAndSettle(tester, '4月を終了して5月へ');
+  await dismiss(tester);
+  await tapAndSettle(tester, '5月を終了して6月へ');
+  await settle(tester);
+  await switchPublicDemoTab(tester, PublicDemoTab.sales);
+  await tapAndSettle(tester, '7月分の発注を確認');
+  await tapAndSettle(tester, '受注する');
+  await switchPublicDemoTab(tester, PublicDemoTab.home);
+}
+
 /// Drives the structurally-insolvent trajectory the existing suites pin —
 /// CASH SHORTAGE closing October — using nothing but the real screen and
 /// the real domain commands behind it. `PublicDemoAggregate` deliberately
@@ -424,6 +448,13 @@ void main() {
       tester,
     ) async {
       await pumpDemo(tester);
+      // Issue #243 FIRST-FUN-YEAR P1 (Fresh Audit Finding 1): May now also
+      // recommends an untouched founding engineer's own sales action (the
+      // gap this Issue fixes) — sell eng-01 fully through April first so
+      // this scenario stays specifically about 求人媒体's own ranking, the
+      // same reason the "July DOES expose recruitment media" test below
+      // already calls `playApril` first.
+      await playApril(tester);
       await tapAndSettle(tester, '4月を終了して5月へ');
       await dismiss(tester);
       expect(currentState(tester).month, 5);
@@ -966,18 +997,20 @@ void main() {
         'an unused recruiting window is always a real "nothing eligible" '
         'escape hatch now', (tester) async {
       await pumpDemo(tester);
-      await tapAndSettle(tester, '4月を終了して5月へ');
-      await dismiss(tester);
-      await tapAndSettle(tester, '5月を終了して6月へ');
-      await settle(tester);
+      // Issue #243 FIRST-FUN-YEAR P1 (Fresh Audit Finding 1): an untouched
+      // founding engineer is no longer invisible in June — sell eng-01
+      // fully from inside May first so this scenario stays about
+      // recruitment media specifically (eng-02 alone, never field-sales
+      // ready, still leaves nothing else sellable).
+      await playIntoJuneWithEng01SoldAndConfirmed(tester);
 
       expect(currentState(tester).month, 6);
-      // Neither founding engineer holds the slot on the no-hire route
-      // (eng-01 untouched and out of `ec(i)`'s April/July-February render
-      // window; eng-02 never field-sales-ready) — but June is still inside
-      // the domain's recruiting window and it has not been used yet, so
-      // 求人媒体 is recommended instead of the true "nothing eligible"
-      // fallback this test used to document.
+      // Neither founding engineer holds the slot on this route (eng-01
+      // already `ordered`, out of `ec(i)`'s render window entirely; eng-02
+      // never field-sales-ready) — but June is still inside the domain's
+      // recruiting window and it has not been used yet, so 求人媒体 is
+      // recommended instead of the true "nothing eligible" fallback this
+      // test used to document.
       expect(
         currentState(tester).canUseRecruitmentMediaInMonth(6),
         isTrue,
@@ -994,10 +1027,10 @@ void main() {
         '— recruiting is never a true dead end, it always leaves a real '
         'candidate behind for the slot to pick up next', (tester) async {
       await pumpDemo(tester);
-      await tapAndSettle(tester, '4月を終了して5月へ');
-      await dismiss(tester);
-      await tapAndSettle(tester, '5月を終了して6月へ');
-      await settle(tester);
+      // Issue #243 FIRST-FUN-YEAR P1 (Fresh Audit Finding 1): same reason
+      // as the sibling test above — sell eng-01 fully from inside May so
+      // June starts with nothing sellable before recruiting is used up.
+      await playIntoJuneWithEng01SoldAndConfirmed(tester);
       expect(currentState(tester).month, 6);
 
       // Use up June's own recruiting window via the real production

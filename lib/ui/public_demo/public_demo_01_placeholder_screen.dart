@@ -2400,24 +2400,25 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
   /// (スキルシート確認/営業開始) — is reachable for THIS engineer; otherwise the
   /// roster would name an action with no control anywhere on screen to take
   /// it (a new dead end this Issue explicitly forbids). Mirrors `ec(i)`'s
-  /// own three render conditions in `_employeeNextActionsSection` exactly,
+  /// own render conditions in `_employeeNextActionsSection` exactly,
   /// simplified using the facts already established by the `waiting`-stage
   /// caller (never `ordered`, never currently assigned):
-  ///  * April (4): `ec(i)` always renders, for every engineer.
-  ///  * June (6): only for a later-joined hire still in the applicant→
-  ///    engineer funnel (`s.joinedApplicantIds`) — never a founding
-  ///    engineer, who has no June-specific `ec(i)` render site.
-  ///  * July-February (7-14, RECOVERY-LOOP-1): every still-waiting engineer.
-  ///  * May (5) and March (15): `ec(i)` is never rendered at all this
-  ///    screen, in any branch — so '営業可能' falls back to the plain,
-  ///    pre-existing [engineerStatus] label there instead.
+  ///  * April (4) through February (14): `ec(i)` renders every month in
+  ///    this range for every not-yet-`ordered`, not-currently-assigned
+  ///    engineer — April unconditionally, May-June per Issue #243
+  ///    FIRST-FUN-YEAR P1 (Fresh Audit Finding 1: previously May rendered
+  ///    `ec(i)` for nobody and June only for a later-joined hire, leaving
+  ///    a founding engineer stuck mid-pipeline with no reachable action for
+  ///    two months), and July-February via RECOVERY-LOOP-1.
+  ///  * March (15): `ec(i)` is never rendered at all this screen, in any
+  ///    branch — so '営業可能' falls back to the plain, pre-existing
+  ///    [engineerStatus] label there instead (the fiscal year's final,
+  ///    no-recovery month).
   /// '研修が必要' needs no such gating: `_employeeGrowthSection`'s internal-
   /// training card is unconditionally reachable every month from May
   /// through March (`s.month >= 5`), independently of `ec(i)`.
   bool _fieldSalesActionReachableThisMonth(PublicDemoEngineerSales engineer) {
-    if (s.month == 4 || (s.month >= 7 && s.month <= 14)) return true;
-    if (s.month == 6) return s.joinedApplicantIds.contains(engineer.id);
-    return false;
+    return s.month >= 4 && s.month <= 14;
   }
 
   String applicantStatus(PublicDemoApplicant a) => switch (a.stage) {
@@ -2978,18 +2979,30 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
       _addApplicantStageCandidate(add, a);
     }
 
-    // ---- month 6: condition cards, the still-selling engineers, then
-    // the assignment cards — the same three loops, with the same filters.
+    // ---- month 6: condition cards, then the assignment cards — unchanged.
     if (s.month == 6) {
       for (final a in _joinedEmployees) {
         _addRaiseCandidate(add, a);
       }
+    }
+
+    // ---- months 5-6: Issue #243 FIRST-FUN-YEAR P1 (Fresh Audit Finding
+    // 1) — mirrors `_employeeNextActionsSection`'s own widened `ec(i)`
+    // render-site loop exactly (same month window, same filter): any
+    // engineer not yet `ordered` and not currently assigned, not just a
+    // later-joined hire. Kept in the same emission position this single
+    // engineer-stage loop already held at month 6 (between the raise
+    // candidates above and the assignment candidates below) so tie-break
+    // order among same-priority candidates is unchanged for June.
+    if (s.month == 5 || s.month == 6) {
       for (final e in workflow.engineers) {
-        if (!s.joinedApplicantIds.contains(e.id)) continue;
         if (e.stage == PublicDemoSalesStage.ordered) continue;
         if (workflow.assignments.any((x) => x.engineerId == e.id)) continue;
         _addEngineerStageCandidate(add, e);
       }
+    }
+
+    if (s.month == 6) {
       for (final a in workflow.assignments) {
         _addAssignmentCandidate(add, a);
       }
@@ -3741,11 +3754,16 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
             // screen without outranking it in importance.
             // RECOVERY-LOOP-1: from month 7 on, internal training already
             // has its own unconditional, dedicated card for every engineer
-            // runtime (the `s.month >= 6` block further down in build()) —
-            // rendering this embedded one too would duplicate the same
-            // `public-demo-internal-training-<id>` key on screen at once.
-            // Months 4/6 are unaffected: [showTrainingCard] stays true
-            // there, exactly as before this parameter existed.
+            // runtime (`_employeeGrowthSection`'s `s.month >= 5` block
+            // further down in build()) — rendering this embedded one too
+            // would duplicate the same `public-demo-internal-training-<id>`
+            // key on screen at once. Only April (month 4, before that
+            // unconditional block's own `>= 5` window starts) is unaffected:
+            // [showTrainingCard] stays true there, exactly as before this
+            // parameter existed. Issue #243 FIRST-FUN-YEAR P1 (Fresh Audit
+            // Finding 1) widened May/June's own `ec(i)` render site to the
+            // same `>= 5` window, so they now pass `false` here too, for the
+            // same reason RECOVERY-LOOP-1 already does.
             if (showTrainingCard)
               internalTrainingCard(
                 engineerId: e.id,
@@ -4501,15 +4519,30 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
           (a) => s.joinedApplicantIds.contains(a.id) && a.hasJoined,
         ))
           employeeConditionCard(a),
-      if (s.month == 6)
+      // Issue #243 FIRST-FUN-YEAR P1 (Fresh Audit Finding 1): a founding
+      // engineer who does not reach `ordered` inside April previously had
+      // no `ec(i)` render site at all in May, and June only rendered it
+      // for a later-joined hire (`s.joinedApplicantIds`) — leaving every
+      // founding engineer stuck mid-pipeline with zero interactive control
+      // for two full months, resurfacing only once RECOVERY-LOOP-1's July
+      // window opened. Widened from "June, joined-applicant only" to "May
+      // and June, any engineer not yet ordered and not currently assigned"
+      // — the same filter shape the July-February loop below already uses
+      // — covering both populations (founding and joined-applicant) under
+      // one condition instead of two near-duplicate loops.
+      // `showTrainingCard: false` for the same reason RECOVERY-LOOP-1's own
+      // loop below already sets it: `_employeeGrowthSection`'s `s.month >=
+      // 5` block already renders this same engineer runtime's training
+      // card unconditionally, and May/June are both `>= 5` — embedding a
+      // second one here would duplicate that card's own key.
+      if (s.month == 5 || s.month == 6)
         for (var i = 0; i < workflow.engineers.length; i++)
-          if (s.joinedApplicantIds.contains(workflow.engineers[i].id) &&
-              workflow.engineers[i].stage != PublicDemoSalesStage.ordered &&
+          if (workflow.engineers[i].stage != PublicDemoSalesStage.ordered &&
               !workflow.assignments.any(
                 (assignment) =>
                     assignment.engineerId == workflow.engineers[i].id,
               ))
-            ec(i),
+            ec(i, showTrainingCard: false),
       // RECOVERY-LOOP-1: from July (7) through February (14) — the same
       // window `PublicDemoRecoveryEligibility` enforces — every
       // economically-waiting engineer's card is rendered here, mirroring

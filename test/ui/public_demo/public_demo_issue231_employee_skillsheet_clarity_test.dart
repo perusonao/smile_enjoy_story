@@ -174,12 +174,15 @@ void main() {
     );
 
     group('PR #233 Codex review (P2): 営業可能 must not be shown in a month '
-        'with no actual sales-flow control to act on it', () {
+        'with no actual sales-flow control to act on it — narrowed by Issue '
+        '#243 FIRST-FUN-YEAR P1 (Fresh Audit Finding 1) to March only, the '
+        'one remaining month with no ec(i) render site', () {
       testWidgets(
-        'May (month 5): eng-01 is genuinely ready but still waiting — no '
-        'ec(i) card renders in May for any engineer, so the roster falls '
-        'back to the plain 待機 label/tone instead of naming an unreachable '
-        'action',
+        'May (month 5): eng-01 is genuinely ready and still waiting — Issue '
+        '#243 (Fresh Audit Finding 1) now renders ec(i) here for every '
+        'not-yet-ordered engineer (previously nobody), so the roster '
+        'correctly reads 営業可能 instead of naming a now-reachable action '
+        '待機',
         (tester) async {
           final aggregate = publicDemoAggregateAtMonth(5);
           expect(
@@ -192,14 +195,14 @@ void main() {
           expect(
             find.descendant(
               of: find.byKey(_rosterRowKey('eng-01')),
-              matching: find.text('待機'),
+              matching: find.text('営業可能'),
             ),
             findsOneWidget,
           );
           expect(
             find.descendant(
               of: find.byKey(_rosterRowKey('eng-01')),
-              matching: find.text('営業可能'),
+              matching: find.text('待機'),
             ),
             findsNothing,
           );
@@ -208,8 +211,9 @@ void main() {
 
       testWidgets(
         'March (month 15): eng-01 is genuinely ready but still waiting — '
-        'ec(i) never renders in March either, so the roster still reads '
-        '待機, never 営業可能, for the entire remainder of the fiscal year',
+        'ec(i) never renders in March (the one month Issue #243 leaves '
+        'unreached, matching RECOVERY-LOOP-1\'s own last-eligible-month '
+        'boundary), so the roster still reads 待機, never 営業可能',
         (tester) async {
           final aggregate = publicDemoAggregateAtMonth(15);
           expect(aggregate.state.month, 15);
@@ -239,8 +243,9 @@ void main() {
 
       testWidgets(
         'June (month 6): a founding engineer (never in joinedApplicantIds) '
-        'gets no June-specific ec(i) render site either — still 待機, not '
-        '営業可能',
+        'now gets the same widened ec(i) render site Issue #243 gives May — '
+        'no longer restricted to a later-joined hire — so the roster reads '
+        '営業可能, not 待機',
         (tester) async {
           final aggregate = publicDemoAggregateAtMonth(6);
           expect(
@@ -256,14 +261,14 @@ void main() {
           expect(
             find.descendant(
               of: find.byKey(_rosterRowKey('eng-01')),
-              matching: find.text('待機'),
+              matching: find.text('営業可能'),
             ),
             findsOneWidget,
           );
           expect(
             find.descendant(
               of: find.byKey(_rosterRowKey('eng-01')),
-              matching: find.text('営業可能'),
+              matching: find.text('待機'),
             ),
             findsNothing,
           );

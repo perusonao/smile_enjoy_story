@@ -158,12 +158,15 @@ void main() {
             .toList();
         expect(widgets.any((w) => w.primaryText.startsWith('営業残')), isTrue);
         expect(widgets.any((w) => w.primaryText.startsWith('候補者')), isTrue);
-        expect(widgets.any((w) => w.primaryText.startsWith('案件')), isTrue);
+        // Issue #245 Finding #11: relabeled from ambiguous "案件 N件" to
+        // explicit "受注案件 N件" — this tile only ever counted assignment
+        // records (受注済み/検討中), never 紹介された案件数.
+        expect(widgets.any((w) => w.primaryText.startsWith('受注案件')), isTrue);
       },
     );
 
     testWidgets(
-      'June with a pending assignment: the 案件 tile is emphasized and its '
+      'June with a pending assignment: the 受注案件 tile is emphasized and its '
       'secondary line states the pending count truthfully',
       (tester) async {
         final game = juneWithAssignment();
@@ -179,7 +182,7 @@ void main() {
                 matching: find.byType(PublicDemoSalesStatTile),
               ),
             )
-            .firstWhere((w) => w.primaryText.startsWith('案件'));
+            .firstWhere((w) => w.primaryText.startsWith('受注案件'));
         expect(projectTile.emphasize, isTrue);
         expect(projectTile.secondaryText, 'うち検討中 1件');
       },

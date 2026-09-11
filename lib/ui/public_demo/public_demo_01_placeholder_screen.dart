@@ -58,9 +58,9 @@ import 'public_demo_menu_visual.dart';
 import 'public_demo_month_guard_warning_dialog.dart';
 import 'public_demo_monthly_cash_flow_card.dart';
 import 'public_demo_monthly_report_dialog.dart';
+import 'public_demo_monthly_report_display_data.dart';
 import 'public_demo_project_context.dart';
 import 'public_demo_project_context_resolver.dart';
-import 'public_demo_monthly_report_display_data.dart';
 import 'public_demo_project_interview_dialog.dart';
 import 'public_demo_recruitment_interview_dialog.dart';
 import 'public_demo_sales_progress.dart';
@@ -4350,23 +4350,22 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
   /// `null` for `waiting`/`skillSheet`/`selling` (nothing has been
   /// introduced yet) and for any stage where none of the resolver's three
   /// project-id sources resolves — never a fabricated project reference.
-  PublicDemoProjectContext? _projectContextFor(PublicDemoEngineerSales engineer) =>
-      PublicDemoProjectContextResolver.resolve(
-        stage: engineer.stage,
-        isCurrentlyAssigned: _currentlyAssignedEngineerIds.contains(
-          engineer.id,
+  PublicDemoProjectContext? _projectContextFor(
+    PublicDemoEngineerSales engineer,
+  ) => PublicDemoProjectContextResolver.resolve(
+    stage: engineer.stage,
+    isCurrentlyAssigned: _currentlyAssignedEngineerIds.contains(engineer.id),
+    assignmentProjectId: _assignmentForOrNull(engineer.id)?.projectId,
+    genuineInterviewProjectId: engineer.genuineInterviewProjectId,
+    matchingProposalProjectId: workflow
+        .matchingProposalFor(engineer.id)
+        ?.projectId,
+    resolveCandidate: (projectId) =>
+        PublicDemoSeededProjectGenerator.regenerate(
+          runSeed: s.runSeed,
+          projectId: projectId,
         ),
-        assignmentProjectId: _assignmentForOrNull(engineer.id)?.projectId,
-        genuineInterviewProjectId: engineer.genuineInterviewProjectId,
-        matchingProposalProjectId: workflow
-            .matchingProposalFor(engineer.id)
-            ?.projectId,
-        resolveCandidate: (projectId) =>
-            PublicDemoSeededProjectGenerator.regenerate(
-              runSeed: s.runSeed,
-              projectId: projectId,
-            ),
-      );
+  );
 
   /// The roster row's own minimal "案件名" addition for an `ordered`
   /// engineer (Issue #239: 参画予定/参画中 truthful project context) — `null`

@@ -24,16 +24,19 @@ void main() {
       expect(id, 'project-assignment');
     });
 
-    test('currently assigned with no assignmentProjectId (legacy/generic '
-        'path) → null, never falling back to a stale interview/proposal id', () {
-      final id = PublicDemoProjectContextResolver.projectIdFor(
-        stage: PublicDemoSalesStage.ordered,
-        isCurrentlyAssigned: true,
-        genuineInterviewProjectId: 'project-interview',
-        matchingProposalProjectId: 'project-proposal',
-      );
-      expect(id, isNull);
-    });
+    test(
+      'currently assigned with no assignmentProjectId (legacy/generic '
+      'path) → null, never falling back to a stale interview/proposal id',
+      () {
+        final id = PublicDemoProjectContextResolver.projectIdFor(
+          stage: PublicDemoSalesStage.ordered,
+          isCurrentlyAssigned: true,
+          genuineInterviewProjectId: 'project-interview',
+          matchingProposalProjectId: 'project-proposal',
+        );
+        expect(id, isNull);
+      },
+    );
 
     test('ordered, not yet assigned (参画予定) → genuineInterviewProjectId '
         'first', () {
@@ -46,15 +49,18 @@ void main() {
       expect(id, 'project-interview');
     });
 
-    test('ordered, not yet assigned, no genuine interview id → falls back '
-        'to a pre-existing assignmentProjectId (e.g. a prior cycle\'s row)', () {
-      final id = PublicDemoProjectContextResolver.projectIdFor(
-        stage: PublicDemoSalesStage.ordered,
-        isCurrentlyAssigned: false,
-        assignmentProjectId: 'project-prior',
-      );
-      expect(id, 'project-prior');
-    });
+    test(
+      'ordered, not yet assigned, no genuine interview id → falls back '
+      'to a pre-existing assignmentProjectId (e.g. a prior cycle\'s row)',
+      () {
+        final id = PublicDemoProjectContextResolver.projectIdFor(
+          stage: PublicDemoSalesStage.ordered,
+          isCurrentlyAssigned: false,
+          assignmentProjectId: 'project-prior',
+        );
+        expect(id, 'project-prior');
+      },
+    );
 
     for (final stage in [
       PublicDemoSalesStage.introduced,

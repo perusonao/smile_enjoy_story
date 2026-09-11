@@ -142,7 +142,7 @@ git diff --check
   → 差分なし
 ```
 
-`flutter test`（フルリポジトリ、公式レポート#221の実測で2082+テスト規模）はこの環境で追加実行中（バックグラウンド、`test/game/public_demo/`・`test/ui/public_demo/`はいずれも上記で個別に全通過済みなので、フル実行は追加のregression確認）。完了結果は本Issueの「Known Limitations」に記載する形で扱う——Issue #241自身が要求する検証範囲（`flutter analyze`・focused tests・relevant game/public_demo regression・`git diff --check`）は上記で満たしている。
+フルリポジトリの`flutter test`も実行し、**2311 tests, All tests passed!**（regressionゼロ、PR #242レビューP1修正後の最終コード状態で確認）。
 
 ### 手動trace（追加のsanity check）
 
@@ -162,7 +162,6 @@ after close stage:                preEntrySelling, hasJoined=true
 - 「入社待ち」表示自体（`juneOrdered && !hasJoined`→「入社・参画予定」、非pre-entry組の`offerAccepted`→「内定承諾」＋「入社後、研修で育成します」）は、既存ワーディングのまま変更していない——真実性は保たれているが、具体的な「入社予定月（◯月）」の数値までは表示していない（既存authorityから安全に導出できる一般化された月表示ロジックが無く、Issueの「authorityのない…入社時期を作らない」を厳守するため今回は追加しなかった）。将来の別Issueで、`PublicDemoBindingOffer.fiscalCloseId`から真実性のある月表示を追加する余地はある。
 - HOMEの「今月の重要タスク」`_recommendedActionCandidates`のうち、`_addEngineerStageCandidate`（既存社員のsales-flow）側は元々`hasJoined`の概念を持たない`PublicDemoEngineerSales`のみを扱うため対象外——今回発見した欠陥は「応募者(`PublicDemoApplicant`)がjoin後も応募者リストに残り続ける」構造に固有のものであり、社員側には存在しない。
 - Broad Codex Reviewは、Issue本文の指示通りこの時点では未実施（レビュー方針で「実装→self-hardening→focused verification→Codex broad review 1回」の順を守るため）。
-- `flutter test test/ui/public_demo/`のフル実行完了はバックグラウンドで進行中のため、最終確認結果を本レポートおよびPRのコミットで追記する。
 
 ## Actual Elapsed Time / Revised ETA
 

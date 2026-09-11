@@ -7,7 +7,7 @@ Branch: `claude/issue-241-recruitment-flow-fhsqyd`
 
 - BASE (`origin/main` at task start, PR #240 merge済み): `56c71e80db684b6039b88162dfd0f097ab380863`
   （Issue #241本文が明示するmainと一致。ズレなし。）
-- HEAD (this fix, pushed, before this final report update commit): `acbd18f834c44a1a0c7439bf3b0f79b52a10fbb3`
+- HEAD (final, after PR #242 Codex Broad Review P1 fix, pushed, before this report-only commit): `968cafc111030dfbd01b8d7002336f13d82c5678`
 
 ## Fresh Audit: 採用フロー authority trace（現mainで実コードをtrace）
 

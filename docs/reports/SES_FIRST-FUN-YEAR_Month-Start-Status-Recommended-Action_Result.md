@@ -7,7 +7,7 @@ Issue: [#243](https://github.com/perusonao/smile_enjoy_story/issues/243)
 | item | value |
 |---|---|
 | Base SHA (`origin/main`, fetched explicitly) | `8e64a1c8dda86f5848a3257dcffc3938323992ed` |
-| Final HEAD SHA (this branch) | `5103bbe187351742e38ef9164b6baa26275c1da5` |
+| Final HEAD SHA (this branch, i.e. current PR #244 HEAD before this report-only metadata-fix commit) | `261b47cac88d83b5fac0c339a27e218b5e9e37ea` |
 | Branch | `claude/issue-243-implementation-rtd0jz` |
 | Fresh Audit source (SSOT) | `docs/reports/SES_FIRST-FUN-YEAR_Month-Start-Status-Recommended-Action_Fresh-Audit.md` §5 Finding 1 — brought onto this branch (see Known Limitations) since it existed only on an unmerged branch at task start |
 | Scope | Fresh Audit Finding 1 only, per Issue #243's own Scope/Out-of-Scope |

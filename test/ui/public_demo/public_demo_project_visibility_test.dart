@@ -18,6 +18,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:smile_enjoy_story/game/persistence/public_demo_save_codec.dart';
 import 'package:smile_enjoy_story/game/persistence/public_demo_save_service.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_aggregate.dart';
+import 'package:smile_enjoy_story/game/public_demo/public_demo_assignment.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_interview.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_project_generator.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_project_interview.dart';
@@ -105,8 +106,12 @@ PublicDemoAggregate _runInterviewToConclusion(PublicDemoAggregate aggregate) {
 ({PublicDemoAggregate afterInterviewPass, String projectId})?
 _genuineInterviewPassFixture({int maxSeed = 40}) {
   for (var seed = 0; seed < maxSeed; seed++) {
-    var aggregate = _withRealProposal(PublicDemoAggregate.initial(runSeed: seed));
-    final projectId = aggregate.workflow.matchingProposalFor('eng-01')!.projectId;
+    var aggregate = _withRealProposal(
+      PublicDemoAggregate.initial(runSeed: seed),
+    );
+    final projectId = aggregate.workflow
+        .matchingProposalFor('eng-01')!
+        .projectId;
     aggregate = _runInterviewToConclusion(aggregate);
     final engineer = aggregate.workflow.engineers.firstWhere(
       (e) => e.id == 'eng-01',
@@ -118,6 +123,25 @@ _genuineInterviewPassFixture({int maxSeed = 40}) {
   return null;
 }
 
+/// eng-01 assigned through the real April→May close flow — mirrors
+/// `public_demo_employee_roster_phase_b1_test.dart`'s own
+/// `genuineProjectBackedFixture`, reproduced here since that helper is
+/// private to its own file.
+({PublicDemoAggregate aggregate, String projectId})? _genuineAssignedFixture({
+  int maxSeed = 40,
+}) {
+  final fixture = _genuineInterviewPassFixture(maxSeed: maxSeed);
+  if (fixture == null) return null;
+  var aggregate = fixture.afterInterviewPass.recordOrder('eng-01');
+  aggregate = aggregate.closeApril(monthlyExpenses: 0);
+  aggregate = aggregate.closeMay(week: 9, monthlyExpenses: 0);
+  final assignment = aggregate.workflow.assignments
+      .where((a) => a.engineerId == 'eng-01')
+      .firstOrNull;
+  if (assignment?.projectId != fixture.projectId) return null;
+  return (aggregate: aggregate, projectId: fixture.projectId);
+}
+
 const _targetSizes = <Size>[Size(360, 800), Size(390, 844)];
 
 void main() {
@@ -125,7 +149,8 @@ void main() {
       'interviewing', () {
     testWidgets(
       'a real Phase 5 proposal (introduced, not yet interviewed) shows '
-      '提案中の案件：{real title}（{real client}・月額{real rate}万円）', (tester) async {
+      '提案中の案件：{real title}（{real client}・月額{real rate}万円）',
+      (tester) async {
         var aggregate = _advanceToPartnerPassed(PublicDemoAggregate.initial());
         final candidate = aggregate.projectCandidatesForMonth(4).first;
         aggregate = aggregate.proposeMatch(
@@ -160,34 +185,33 @@ void main() {
       },
     );
 
-    testWidgets(
-      'a genuine client-interview pass (real Phase 6) shows the real '
-      'project under the same 提案中の案件 label, using the interview\'s own '
-      'project id rather than the (now potentially stale) proposal', (
-        tester,
-      ) async {
-        final fixture = _genuineInterviewPassFixture();
-        expect(fixture, isNotNull, reason: 'fixture sanity');
-        final aggregate = fixture!.afterInterviewPass;
-        final candidate = PublicDemoSeededProjectGenerator.regenerate(
-          runSeed: aggregate.state.runSeed,
-          projectId: fixture.projectId,
-        )!;
+    testWidgets('a genuine client-interview pass (real Phase 6) shows the real '
+        'project under the same 提案中の案件 label, using the interview\'s own '
+        'project id rather than the (now potentially stale) proposal', (
+      tester,
+    ) async {
+      final fixture = _genuineInterviewPassFixture();
+      expect(fixture, isNotNull, reason: 'fixture sanity');
+      final aggregate = fixture!.afterInterviewPass;
+      final candidate = PublicDemoSeededProjectGenerator.regenerate(
+        runSeed: aggregate.state.runSeed,
+        projectId: fixture.projectId,
+      )!;
 
-        await pumpDemoWith(tester, aggregate);
+      await pumpDemoWith(tester, aggregate);
 
-        final text = tester
-            .widget<Text>(find.byKey(ecProjectContextKey('eng-01')))
-            .data;
-        expect(text, contains('提案中の案件'));
-        expect(text, contains(candidate.title));
-      },
-    );
+      final text = tester
+          .widget<Text>(find.byKey(ecProjectContextKey('eng-01')))
+          .data;
+      expect(text, contains('提案中の案件'));
+      expect(text, contains(candidate.title));
+    });
 
     testWidgets(
       'ordered but not yet assigned (参画予定) shows 受注案件：{real title} on '
       'the Sales-pipeline card, using the genuine interview project id — '
-      'materialization has not happened yet this same month', (tester) async {
+      'materialization has not happened yet this same month',
+      (tester) async {
         final fixture = _genuineInterviewPassFixture();
         expect(fixture, isNotNull, reason: 'fixture sanity');
         var aggregate = fixture!.afterInterviewPass;
@@ -219,66 +243,43 @@ void main() {
             .data;
         expect(compensation, contains('単金 —'));
         expect(compensation, contains('案件 ${candidate.title}'));
-        expect(
-          compensation,
-          contains('月額${candidate.monthlyRate ~/ 10000}万円'),
-        );
+        expect(compensation, contains('月額${candidate.monthlyRate ~/ 10000}万円'));
       },
     );
   });
 
   group('assigned (参画中): roster + activeProjectStatusCard + June '
       'assignmentCard all show the same real project identity', () {
-    /// eng-01 assigned through the real April→May close flow — mirrors
-    /// `public_demo_employee_roster_phase_b1_test.dart`'s own
-    /// `genuineProjectBackedFixture`, reproduced here since that helper is
-    /// private to its own file.
-    ({PublicDemoAggregate aggregate, String projectId})?
-    genuineAssignedFixture({int maxSeed = 40}) {
-      final fixture = _genuineInterviewPassFixture(maxSeed: maxSeed);
-      if (fixture == null) return null;
-      var aggregate = fixture.afterInterviewPass.recordOrder('eng-01');
-      aggregate = aggregate.closeApril(monthlyExpenses: 0);
-      aggregate = aggregate.closeMay(week: 9, monthlyExpenses: 0);
-      final assignment = aggregate.workflow.assignments
-          .where((a) => a.engineerId == 'eng-01')
-          .firstOrNull;
-      if (assignment?.projectId != fixture.projectId) return null;
-      return (aggregate: aggregate, projectId: fixture.projectId);
-    }
+    final genuineAssignedFixture = _genuineAssignedFixture;
 
-    testWidgets(
-      '参画中: roster shows 案件 {real title} without repeating the rate '
-      '単金 already shows, and the Sales-pipeline card no longer renders '
-      'for this engineer at all', (tester) async {
-        final fixture = genuineAssignedFixture();
-        expect(fixture, isNotNull, reason: 'fixture sanity');
-        final aggregate = fixture!.aggregate;
-        final candidate = PublicDemoSeededProjectGenerator.regenerate(
-          runSeed: aggregate.state.runSeed,
-          projectId: fixture.projectId,
-        )!;
+    testWidgets('参画中: roster shows 案件 {real title} without repeating the rate '
+        '単金 already shows, and the Sales-pipeline card no longer renders '
+        'for this engineer at all', (tester) async {
+      final fixture = genuineAssignedFixture();
+      expect(fixture, isNotNull, reason: 'fixture sanity');
+      final aggregate = fixture!.aggregate;
+      final candidate = PublicDemoSeededProjectGenerator.regenerate(
+        runSeed: aggregate.state.runSeed,
+        projectId: fixture.projectId,
+      )!;
 
-        await pumpDemoWith(tester, aggregate);
+      await pumpDemoWith(tester, aggregate);
 
-        final compensation = tester
-            .widget<Text>(find.byKey(rosterCompensationKey('eng-01')))
-            .data;
-        expect(
-          compensation,
-          contains('単金 ${candidate.monthlyRate ~/ 10000}万円'),
-        );
-        expect(compensation, contains('案件 ${candidate.title}'));
-        // No repeated rate parenthetical for the already-assigned case.
-        expect(compensation, isNot(contains('（月額')));
+      final compensation = tester
+          .widget<Text>(find.byKey(rosterCompensationKey('eng-01')))
+          .data;
+      expect(compensation, contains('単金 ${candidate.monthlyRate ~/ 10000}万円'));
+      expect(compensation, contains('案件 ${candidate.title}'));
+      // No repeated rate parenthetical for the already-assigned case.
+      expect(compensation, isNot(contains('（月額')));
 
-        expect(find.byKey(ecProjectContextKey('eng-01')), findsNothing);
-      },
-    );
+      expect(find.byKey(ecProjectContextKey('eng-01')), findsNothing);
+    });
 
     testWidgets(
       'activeProjectStatusCard (Section 3) shows the real Project.title, '
-      'not the generic placeholder', (tester) async {
+      'not the generic placeholder',
+      (tester) async {
         final fixture = genuineAssignedFixture();
         expect(fixture, isNotNull, reason: 'fixture sanity');
         final aggregate = fixture!.aggregate;
@@ -289,7 +290,8 @@ void main() {
         expect(
           candidate.title,
           isNot('新規開発支援'),
-          reason: 'fixture sanity: a real generated title, not the generic '
+          reason:
+              'fixture sanity: a real generated title, not the generic '
               'placeholder, by construction',
         );
 
@@ -358,13 +360,187 @@ void main() {
     });
   });
 
+  group('July+ replacement mini-cycle: the OLD project\'s real identity '
+      'must never be shown as if it were the NEW (replacement) project '
+      '(PR #240 Codex Broad Review P2, thread PRRT_kwDOT2htY86hW6el)', () {
+    testWidgets(
+      'replacementStage == ordered: assignmentCard\'s project row falls '
+      'back to the generic placeholder — never the OLD real project\'s '
+      'title next to "7月：新案件参画予定"',
+      (tester) async {
+        final fixture = _genuineAssignedFixture();
+        expect(fixture, isNotNull, reason: 'fixture sanity');
+        var aggregate = fixture!.aggregate;
+        final oldCandidate = PublicDemoSeededProjectGenerator.regenerate(
+          runSeed: aggregate.state.runSeed,
+          projectId: fixture.projectId,
+        )!;
+        // The real June replacement chain: decline continuation, then win
+        // a replacement — the same commands `decideOrder`/`ars` call.
+        aggregate = aggregate.withAssignmentUpdate(
+          'eng-01',
+          nextOrderStatus: PublicDemoNextOrderStatus.notOffered,
+        );
+        aggregate = aggregate.withAssignmentUpdate(
+          'eng-01',
+          replacementStage: PublicDemoReplacementStage.ordered,
+        );
+        final assignment = aggregate.workflow.assignments.firstWhere(
+          (a) => a.engineerId == 'eng-01',
+        );
+        expect(
+          assignment.projectId,
+          fixture.projectId,
+          reason:
+              'fixture sanity: projectId is identity, never mutated by '
+              'withAssignmentUpdate',
+        );
+
+        await pumpDemoWith(tester, aggregate, tab: PublicDemoTab.sales);
+
+        expect(find.text('7月：新案件参画予定'), findsOneWidget);
+        expect(
+          find.textContaining(oldCandidate.title),
+          findsNothing,
+          reason:
+              'the ending project\'s real title must not appear at all '
+              'once a replacement has been secured',
+        );
+        expect(find.textContaining(assignment.projectName), findsWidgets);
+      },
+    );
+
+    testWidgets(
+      'replacementStage == ordered, rolled into July via a real month '
+      'close: activeProjectStatusCard also falls back to the generic '
+      'placeholder, never the OLD real project\'s title',
+      (tester) async {
+        final fixture = _genuineAssignedFixture();
+        expect(fixture, isNotNull, reason: 'fixture sanity');
+        var aggregate = fixture!.aggregate;
+        final oldCandidate = PublicDemoSeededProjectGenerator.regenerate(
+          runSeed: aggregate.state.runSeed,
+          projectId: fixture.projectId,
+        )!;
+        aggregate = aggregate.withAssignmentUpdate(
+          'eng-01',
+          nextOrderStatus: PublicDemoNextOrderStatus.notOffered,
+        );
+        aggregate = aggregate.withAssignmentUpdate(
+          'eng-01',
+          replacementStage: PublicDemoReplacementStage.ordered,
+        );
+        aggregate = aggregate.closeJune(assignedInJuly: 1, monthlyExpenses: 0);
+        expect(aggregate.state.month, 7);
+        expect(
+          aggregate.workflow.assignedEngineerIds(month: 7),
+          contains('eng-01'),
+          reason:
+              'fixture sanity: replacementStage == ordered counts as '
+              'assigned from month 7 on',
+        );
+
+        await pumpDemoWith(tester, aggregate);
+
+        expect(
+          find.descendant(
+            of: find.byKey(
+              const Key('public-demo-active-project-status-eng-01'),
+            ),
+            matching: find.textContaining(oldCandidate.title),
+          ),
+          findsNothing,
+        );
+      },
+    );
+
+    testWidgets(
+      'replacementStage == ordered: the roster shows no 案件 segment at '
+      'all — never a fabricated placeholder in its place',
+      (tester) async {
+        final fixture = _genuineAssignedFixture();
+        expect(fixture, isNotNull, reason: 'fixture sanity');
+        var aggregate = fixture!.aggregate;
+        aggregate = aggregate.withAssignmentUpdate(
+          'eng-01',
+          nextOrderStatus: PublicDemoNextOrderStatus.notOffered,
+        );
+        aggregate = aggregate.withAssignmentUpdate(
+          'eng-01',
+          replacementStage: PublicDemoReplacementStage.ordered,
+        );
+
+        await pumpDemoWith(tester, aggregate);
+
+        final compensation = tester
+            .widget<Text>(find.byKey(rosterCompensationKey('eng-01')))
+            .data;
+        expect(compensation, isNot(contains('案件 ')));
+      },
+    );
+
+    testWidgets(
+      'still searching (replacementStage == selling/clientPassed, not yet '
+      'ordered): the engineer is genuinely still on the ORIGINAL project — '
+      'its real title still shows, regression-proofing that this fix does '
+      'not over-suppress the normal, still-current-project case',
+      (tester) async {
+        final fixture = _genuineAssignedFixture();
+        expect(fixture, isNotNull, reason: 'fixture sanity');
+        var aggregate = fixture!.aggregate;
+        final candidate = PublicDemoSeededProjectGenerator.regenerate(
+          runSeed: aggregate.state.runSeed,
+          projectId: fixture.projectId,
+        )!;
+        aggregate = aggregate.withAssignmentUpdate(
+          'eng-01',
+          nextOrderStatus: PublicDemoNextOrderStatus.notOffered,
+        );
+        for (final stage in [
+          PublicDemoReplacementStage.selling,
+          PublicDemoReplacementStage.introduced,
+          PublicDemoReplacementStage.partnerPassed,
+          PublicDemoReplacementStage.clientPassed,
+        ]) {
+          aggregate = aggregate.withAssignmentUpdate(
+            'eng-01',
+            replacementStage: stage,
+          );
+
+          await pumpDemoWith(tester, aggregate);
+
+          expect(
+            find.descendant(
+              of: find.byKey(
+                const Key('public-demo-active-project-status-eng-01'),
+              ),
+              matching: find.textContaining(candidate.title),
+            ),
+            findsOneWidget,
+            reason: 'replacementStage: $stage',
+          );
+
+          final compensation = tester
+              .widget<Text>(find.byKey(rosterCompensationKey('eng-01')))
+              .data;
+          expect(
+            compensation,
+            contains('案件 ${candidate.title}'),
+            reason: 'replacementStage: $stage',
+          );
+        }
+      },
+    );
+  });
+
   group('legacy/generic path (projectId == null): never fabricated, always '
       'the existing generic fallback', () {
     testWidgets(
       'eng-01 ordered+assigned via the generic pipeline only (never real '
       'Phase 5/6 matching) — roster shows no 案件 segment (単金 already "—" '
       'covers this case), activeProjectStatusCard falls back to the '
-      'generic PublicDemoAssignment.projectName unchanged', (tester) async {
+      'generic PublicDemoAssignment.projectName unchanged',
+      (tester) async {
         var aggregate = PublicDemoAggregate.initial()
             .startSkillSheetReview('eng-01')
             .beginSelling('eng-01')
@@ -385,7 +561,8 @@ void main() {
         expect(
           assignment.projectId,
           isNull,
-          reason: 'fixture sanity: the generic evaluateInterview path never '
+          reason:
+              'fixture sanity: the generic evaluateInterview path never '
               'mints a projectId',
         );
 
@@ -414,44 +591,41 @@ void main() {
       'lines never overflow', () {
     for (final size in _targetSizes) {
       for (final textScale in [1.0, 1.3]) {
-        testWidgets(
-          '${size.width.toInt()}x${size.height.toInt()} / textScale '
-          '$textScale: Sales-pipeline project-context line + roster 案件 '
-          'segment both render with no overflow exception',
-          (tester) async {
-            tester.view.physicalSize = size;
-            tester.view.devicePixelRatio = 1.0;
-            addTearDown(tester.view.reset);
+        testWidgets('${size.width.toInt()}x${size.height.toInt()} / textScale '
+            '$textScale: Sales-pipeline project-context line + roster 案件 '
+            'segment both render with no overflow exception', (tester) async {
+          tester.view.physicalSize = size;
+          tester.view.devicePixelRatio = 1.0;
+          addTearDown(tester.view.reset);
 
-            var aggregate = _advanceToPartnerPassed(
-              PublicDemoAggregate.initial(),
-            );
-            final candidate = aggregate.projectCandidatesForMonth(4).first;
-            aggregate = aggregate.proposeMatch(
-              engineerId: 'eng-01',
-              projectId: candidate.id,
-            );
+          var aggregate = _advanceToPartnerPassed(
+            PublicDemoAggregate.initial(),
+          );
+          final candidate = aggregate.projectCandidatesForMonth(4).first;
+          aggregate = aggregate.proposeMatch(
+            engineerId: 'eng-01',
+            projectId: candidate.id,
+          );
 
-            await tester.pumpWidget(
-              MaterialApp(
-                home: MediaQuery(
-                  data: MediaQueryData(
-                    size: size,
-                    textScaler: TextScaler.linear(textScale),
-                  ),
-                  child: PublicDemo01PlaceholderScreen(
-                    saveService: _FixedSaveService(aggregate),
-                  ),
+          await tester.pumpWidget(
+            MaterialApp(
+              home: MediaQuery(
+                data: MediaQueryData(
+                  size: size,
+                  textScaler: TextScaler.linear(textScale),
+                ),
+                child: PublicDemo01PlaceholderScreen(
+                  saveService: _FixedSaveService(aggregate),
                 ),
               ),
-            );
-            await tester.pumpAndSettle();
-            await switchPublicDemoTab(tester, PublicDemoTab.employees);
+            ),
+          );
+          await tester.pumpAndSettle();
+          await switchPublicDemoTab(tester, PublicDemoTab.employees);
 
-            expect(tester.takeException(), isNull);
-            expect(find.byKey(ecProjectContextKey('eng-01')), findsOneWidget);
-          },
-        );
+          expect(tester.takeException(), isNull);
+          expect(find.byKey(ecProjectContextKey('eng-01')), findsOneWidget);
+        });
       }
     }
   });

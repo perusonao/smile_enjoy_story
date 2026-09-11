@@ -4359,20 +4359,25 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
   /// resolves — never a fabricated project reference.
   PublicDemoProjectContext? _projectContextFor(
     PublicDemoEngineerSales engineer,
-  ) => PublicDemoProjectContextResolver.resolve(
-    stage: engineer.stage,
-    isCurrentlyAssigned: _currentlyAssignedEngineerIds.contains(engineer.id),
-    assignmentProjectId: _assignmentForOrNull(engineer.id)?.projectId,
-    genuineInterviewProjectId: engineer.genuineInterviewProjectId,
-    matchingProposalProjectId: workflow
-        .matchingProposalFor(engineer.id)
-        ?.projectId,
-    resolveCandidate: (projectId) =>
-        PublicDemoSeededProjectGenerator.regenerate(
-          runSeed: s.runSeed,
-          projectId: projectId,
-        ),
-  );
+  ) {
+    final assignment = _assignmentForOrNull(engineer.id);
+    return PublicDemoProjectContextResolver.resolve(
+      stage: engineer.stage,
+      isCurrentlyAssigned: _currentlyAssignedEngineerIds.contains(engineer.id),
+      assignmentProjectId: assignment == null
+          ? null
+          : _authoritativeProjectIdFor(assignment),
+      genuineInterviewProjectId: engineer.genuineInterviewProjectId,
+      matchingProposalProjectId: workflow
+          .matchingProposalFor(engineer.id)
+          ?.projectId,
+      resolveCandidate: (projectId) =>
+          PublicDemoSeededProjectGenerator.regenerate(
+            runSeed: s.runSeed,
+            projectId: projectId,
+          ),
+    );
+  }
 
   /// The roster row's own minimal "案件名" addition for an `ordered`
   /// engineer (Issue #239: 参画予定/参画中 truthful project context) — `null`
@@ -4398,8 +4403,36 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
         : '案件 ${context.title}';
   }
 
+  /// PR #240 Codex Broad Review P2 fix: [PublicDemoAssignment.projectId] is
+  /// identity fixed at creation (see that field's own doc) — it never
+  /// changes, even after the July+ replacement mini-cycle
+  /// (`replacementStage`) secures a nominally different client for the SAME
+  /// assignment slot, because that mini-cycle has no real Phase 4/5/6
+  /// [Project] identity of its own to mint (see the Fresh Audit/Result
+  /// Report's own "July+ replacement mini-cycle" Known Limitation — this
+  /// mini-cycle is a separate, generic state machine, not a Matching/
+  /// Interview-backed one). Once [PublicDemoAssignment.replacementStage] is
+  /// [PublicDemoReplacementStage.ordered] — the exact point `7月：新案件参画予定`
+  /// already declares a new project for next month — [assignment.projectId]
+  /// therefore identifies only the ENDING project, never the new one, and is
+  /// no longer a truthful "current project" fact: resolving it as if it
+  /// were would show the old project's real title directly beside/above
+  /// text that already says a different, new project was won. This returns
+  /// `null` in exactly that one case so every caller's own generic fallback
+  /// renders instead — never fabricating a name for a project with no real
+  /// identity to resolve. Every other `replacementStage` (including `none`,
+  /// the normal — non-replacement — case, and every earlier in-progress
+  /// replacement search stage, where the engineer is still genuinely
+  /// working the ORIGINAL project while searching) is unaffected: the
+  /// assignment's own identity is still genuinely authoritative there.
+  String? _authoritativeProjectIdFor(PublicDemoAssignment assignment) =>
+      assignment.replacementStage == PublicDemoReplacementStage.ordered
+      ? null
+      : assignment.projectId;
+
   /// The real [Project.title] for [assignment] when it carries a genuine
-  /// Phase 6 project-bound `projectId`, else its own already-persisted
+  /// Phase 6 project-bound, still-authoritative `projectId`
+  /// ([_authoritativeProjectIdFor]), else its own already-persisted
   /// [PublicDemoAssignment.projectName] (the generic placeholder, e.g.
   /// '新規開発支援') — the exact same `project?.title ?? assignment
   /// .projectName` convention [PublicDemoAggregate._careerHistoryEntryFor]
@@ -4408,7 +4441,7 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
   /// name: a `projectId` that fails to resolve (should not happen, but
   /// never assumed) also falls back to [assignment]'s own generic name.
   String _realProjectNameFor(PublicDemoAssignment assignment) {
-    final projectId = assignment.projectId;
+    final projectId = _authoritativeProjectIdFor(assignment);
     if (projectId == null) return assignment.projectName;
     final candidate = PublicDemoSeededProjectGenerator.regenerate(
       runSeed: s.runSeed,

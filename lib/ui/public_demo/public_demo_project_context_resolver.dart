@@ -61,11 +61,30 @@ class PublicDemoProjectContextResolver {
   ///   [assignmentProjectId] only for the edge case where an assignment row
   ///   already exists (a prior cycle's) but this month's [isCurrentlyAssigned]
   ///   check does not yet count it.
-  /// * Still mid-pipeline (`introduced` through the client-interview
-  ///   pass/fail stages): the same [genuineInterviewProjectId] once a
-  ///   client-interview pass exists, else the still-open
-  ///   [matchingProposalProjectId] — the player's current "提案する" target,
-  ///   which is all that exists before any interview has run.
+  /// * Still actively mid-pipeline with a live proposal/pass (`introduced`,
+  ///   `partnerInterviewPassed`, `clientInterviewPassed`): the same
+  ///   [genuineInterviewProjectId] once a client-interview pass exists, else
+  ///   the still-open [matchingProposalProjectId] — the player's current
+  ///   "提案する" target, which is all that exists before any interview has
+  ///   run.
+  /// * `partnerInterviewFailed`/`clientInterviewFailed` (PR #240 Codex Broad
+  ///   Review P1 fix): always `null`, never [matchingProposalProjectId] —
+  ///   that proposal's own interview already concluded in failure, so it is
+  ///   no longer a truthful "currently proposing/interviewing" fact (see
+  ///   [labelFor]'s own doc for why showing it under **提案中の案件** would
+  ///   misstate an already-decided outcome as still in progress). A genuine
+  ///   client-interview pass never precedes a *failed* stage for the same
+  ///   attempt — [PublicDemoEngineerSales.evaluateInterview] mints
+  ///   [PublicDemoEngineerInterviewRecord] only on an actual pass — and the
+  ///   one path that could carry a stale record from an earlier, different
+  ///   assignment ([PublicDemoEngineerSales.releaseFromAssignment]) clears it
+  ///   before the engineer can ever reach `introduced` again, so
+  ///   [genuineInterviewProjectId] is never genuinely non-null here either;
+  ///   this branch does not rely on that being true to stay correct. The
+  ///   player is not left with no information at all: `PublicDemoSalesProgress`
+  ///   (the raw stage stepper, unchanged by this resolver) still shows the
+  ///   failed step, and `再営業`/`beginSelling` — also unchanged — remains
+  ///   the one existing recovery action.
   /// * `waiting`/`skillSheet`/`selling`: always `null` — no project has been
   ///   introduced yet at these stages (`案件紹介` is the introduction event
   ///   itself), so there is nothing truthful to resolve.
@@ -82,10 +101,10 @@ class PublicDemoProjectContextResolver {
         return genuineInterviewProjectId ?? assignmentProjectId;
       case PublicDemoSalesStage.introduced:
       case PublicDemoSalesStage.partnerInterviewPassed:
-      case PublicDemoSalesStage.partnerInterviewFailed:
       case PublicDemoSalesStage.clientInterviewPassed:
-      case PublicDemoSalesStage.clientInterviewFailed:
         return genuineInterviewProjectId ?? matchingProposalProjectId;
+      case PublicDemoSalesStage.partnerInterviewFailed:
+      case PublicDemoSalesStage.clientInterviewFailed:
       case PublicDemoSalesStage.waiting:
       case PublicDemoSalesStage.skillSheet:
       case PublicDemoSalesStage.selling:
@@ -97,13 +116,39 @@ class PublicDemoProjectContextResolver {
   /// never itself a claim about ordered/assigned identity (that remains
   /// [PublicDemoEmployeeStatusResolver]'s job): purely which noun phrase
   /// truthfully describes *this* project reference at this stage.
+  ///
+  /// Deliberately exhaustive over every [PublicDemoSalesStage] rather than a
+  /// catch-all default (PR #240 Codex Broad Review P1 fix): the prior
+  /// catch-all silently labeled `partnerInterviewFailed`/
+  /// `clientInterviewFailed` as **提案中の案件** ("currently proposing") —
+  /// truthful only for the three still-live pipeline stages, never for a
+  /// stage whose own interview has already concluded in failure. In
+  /// production this method is only ever reached via [resolve] after
+  /// [projectIdFor] has already returned non-`null` for the same
+  /// stage/[isCurrentlyAssigned] pair, so the failed/pre-introduction
+  /// branches below never actually render — kept explicit anyway (with a
+  /// clearly-inert label, never **提案中の案件**) so a future direct caller
+  /// of this method in isolation cannot reintroduce the same
+  /// active/concluded mismatch.
   static String labelFor({
     required PublicDemoSalesStage stage,
     required bool isCurrentlyAssigned,
   }) {
     if (isCurrentlyAssigned) return '参画中案件';
-    if (stage == PublicDemoSalesStage.ordered) return '受注案件';
-    return '提案中の案件';
+    switch (stage) {
+      case PublicDemoSalesStage.ordered:
+        return '受注案件';
+      case PublicDemoSalesStage.introduced:
+      case PublicDemoSalesStage.partnerInterviewPassed:
+      case PublicDemoSalesStage.clientInterviewPassed:
+        return '提案中の案件';
+      case PublicDemoSalesStage.partnerInterviewFailed:
+      case PublicDemoSalesStage.clientInterviewFailed:
+      case PublicDemoSalesStage.waiting:
+      case PublicDemoSalesStage.skillSheet:
+      case PublicDemoSalesStage.selling:
+        return '対象案件なし';
+    }
   }
 
   /// Resolves the full display context, via [resolveCandidate] — injected so

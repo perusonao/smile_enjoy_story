@@ -1877,10 +1877,7 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
         personName: a.name,
         score: score,
         passed: passed,
-        points: [
-          '入社前スキルシートと案件要件の適合度を確認',
-          passed ? '基準点60点をクリア' : '基準点60点に届かず',
-        ],
+        points: ['入社前スキルシートと案件要件の適合度を確認', passed ? '基準点60点をクリア' : '基準点60点に届かず'],
         nextAction: passed ? '次は客先面談へ進みます' : '別案件へ再営業しましょう',
       ),
     );
@@ -3572,7 +3569,14 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
             // own auto-pick fallback, or the player's own "案件を見る"
             // choice) they were actually proposed for/interviewing for
             // until an order/assignment appeared, months later. `null` for
-            // `waiting`/`skillSheet`/`selling` (nothing introduced yet).
+            // `waiting`/`skillSheet`/`selling` (nothing introduced yet) and
+            // for `partnerInterviewFailed`/`clientInterviewFailed` (PR #240
+            // Codex Broad Review P1 fix: that interview already concluded in
+            // failure, so labeling it 提案中の案件 — "currently proposing" —
+            // would misstate an already-decided outcome as still in
+            // progress; see [PublicDemoProjectContextResolver.projectIdFor]'s
+            // own doc). The raw stepper above still shows the failed step,
+            // and 再営業 remains the one existing recovery action.
             if (_projectContextFor(e) case final projectContext?)
               Padding(
                 padding: const EdgeInsets.only(top: 4, bottom: 2),
@@ -4348,8 +4352,11 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
   /// reads which real project an engineer is proposed for / interviewing
   /// for / has ordered / is participating in, so none of them can disagree.
   /// `null` for `waiting`/`skillSheet`/`selling` (nothing has been
-  /// introduced yet) and for any stage where none of the resolver's three
-  /// project-id sources resolves — never a fabricated project reference.
+  /// introduced yet), for `partnerInterviewFailed`/`clientInterviewFailed`
+  /// (PR #240 Codex Broad Review P1 fix: that interview already concluded —
+  /// see [PublicDemoProjectContextResolver.projectIdFor]'s own doc), and for
+  /// any stage where none of the resolver's three project-id sources
+  /// resolves — never a fabricated project reference.
   PublicDemoProjectContext? _projectContextFor(
     PublicDemoEngineerSales engineer,
   ) => PublicDemoProjectContextResolver.resolve(

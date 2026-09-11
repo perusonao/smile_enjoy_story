@@ -65,9 +65,7 @@ void main() {
     for (final stage in [
       PublicDemoSalesStage.introduced,
       PublicDemoSalesStage.partnerInterviewPassed,
-      PublicDemoSalesStage.partnerInterviewFailed,
       PublicDemoSalesStage.clientInterviewPassed,
-      PublicDemoSalesStage.clientInterviewFailed,
     ]) {
       test('$stage → genuineInterviewProjectId first, else '
           'matchingProposalProjectId', () {
@@ -92,6 +90,46 @@ void main() {
           PublicDemoProjectContextResolver.projectIdFor(
             stage: stage,
             isCurrentlyAssigned: false,
+          ),
+          isNull,
+        );
+      });
+    }
+
+    // PR #240 Codex Broad Review P1 fix: partnerInterviewFailed/
+    // clientInterviewFailed must NEVER resolve a project id — that
+    // proposal's own interview already concluded in failure, so showing it
+    // as if still "提案中" (currently proposing) would misstate an
+    // already-decided outcome as still in progress. Grouped separately from
+    // waiting/skillSheet/selling below (a distinct reason for the same
+    // `null` result) so a future change to either group cannot silently
+    // merge them back together unnoticed.
+    for (final stage in [
+      PublicDemoSalesStage.partnerInterviewFailed,
+      PublicDemoSalesStage.clientInterviewFailed,
+    ]) {
+      test('$stage → always null, even with a still-recorded '
+          'matchingProposalProjectId for the project that was just failed — '
+          'never shown as if still actively proposing', () {
+        expect(
+          PublicDemoProjectContextResolver.projectIdFor(
+            stage: stage,
+            isCurrentlyAssigned: false,
+            matchingProposalProjectId: 'project-proposal',
+          ),
+          isNull,
+        );
+      });
+
+      test('$stage → always null even if a genuineInterviewProjectId is '
+          'also (should not happen in production, but never assumed) '
+          'present', () {
+        expect(
+          PublicDemoProjectContextResolver.projectIdFor(
+            stage: stage,
+            isCurrentlyAssigned: false,
+            genuineInterviewProjectId: 'project-interview',
+            matchingProposalProjectId: 'project-proposal',
           ),
           isNull,
         );
@@ -139,15 +177,45 @@ void main() {
       );
     });
 
-    test('any pre-order pipeline stage → 提案中の案件', () {
-      expect(
-        PublicDemoProjectContextResolver.labelFor(
-          stage: PublicDemoSalesStage.introduced,
-          isCurrentlyAssigned: false,
-        ),
-        '提案中の案件',
-      );
+    test('any still-live pre-order pipeline stage → 提案中の案件', () {
+      for (final stage in [
+        PublicDemoSalesStage.introduced,
+        PublicDemoSalesStage.partnerInterviewPassed,
+        PublicDemoSalesStage.clientInterviewPassed,
+      ]) {
+        expect(
+          PublicDemoProjectContextResolver.labelFor(
+            stage: stage,
+            isCurrentlyAssigned: false,
+          ),
+          '提案中の案件',
+          reason: '$stage',
+        );
+      }
     });
+
+    // PR #240 Codex Broad Review P1 fix: a failed interview stage must
+    // never read as 提案中の案件 ("currently proposing") — its own interview
+    // already concluded. `projectIdFor` already guarantees `resolve` never
+    // reaches this branch for these stages in production (see its own
+    // group above), but `labelFor` is independently pinned here too so a
+    // future direct caller of it in isolation cannot reintroduce the same
+    // active/concluded mismatch Codex's review actually found in the code.
+    for (final stage in [
+      PublicDemoSalesStage.partnerInterviewFailed,
+      PublicDemoSalesStage.clientInterviewFailed,
+    ]) {
+      test('$stage → never 提案中の案件 — the interview already concluded '
+          'in failure, not still in progress', () {
+        expect(
+          PublicDemoProjectContextResolver.labelFor(
+            stage: stage,
+            isCurrentlyAssigned: false,
+          ),
+          isNot('提案中の案件'),
+        );
+      });
+    }
   });
 
   group('resolve: end-to-end via an injected candidate lookup', () {
@@ -198,5 +266,30 @@ void main() {
       expect(context.clientName, candidate.clientName);
       expect(context.monthlyRate, candidate.monthlyRate);
     });
+
+    // PR #240 Codex Broad Review P1 fix.
+    for (final stage in [
+      PublicDemoSalesStage.partnerInterviewFailed,
+      PublicDemoSalesStage.clientInterviewFailed,
+    ]) {
+      test('$stage → resolve() returns null end-to-end, never calling '
+          'resolveCandidate, even with a still-recorded '
+          'matchingProposalProjectId for the just-failed project — the '
+          'Sales-pipeline card must show no project-context line at all for '
+          'a failed stage, never a stale "提案中の案件"', () {
+        var called = false;
+        final context = PublicDemoProjectContextResolver.resolve(
+          stage: stage,
+          isCurrentlyAssigned: false,
+          matchingProposalProjectId: 'project-just-failed',
+          resolveCandidate: (_) {
+            called = true;
+            return null;
+          },
+        );
+        expect(context, isNull);
+        expect(called, isFalse);
+      });
+    }
   });
 }

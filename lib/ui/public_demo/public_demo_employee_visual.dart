@@ -17,9 +17,9 @@ import 'package:flutter/material.dart';
 /// The authoritative buckets a 社員タブ status badge can visually fall
 /// into. This is a *coloring* concern only — the badge's own text always
 /// stays whatever the caller's authoritative status string already is
-/// (e.g. `engineerStatus`/`_currentEmployeeStatusLabel`'s '待機'/'参画中'/
-/// '営業中'/'研修が必要'/'営業可能'/etc.); no new status vocabulary is
-/// introduced here — this enum only maps an existing label to a color.
+/// (e.g. `PublicDemoEmployeeStatusResolver`/`engineerStatus`'s '待機'/
+/// '参画中'/'営業中'/'研修が必要'/'営業可能'/etc.); no new status vocabulary
+/// is introduced here — this enum only maps an existing label to a color.
 enum PublicDemoEmployeeStatusTone {
   /// Currently assigned to a project — the same fact
   /// `_currentlyAssignedEngineerIds` already backs.

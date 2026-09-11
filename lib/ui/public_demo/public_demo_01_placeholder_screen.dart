@@ -46,6 +46,7 @@ import 'public_demo_opening_context_screen.dart';
 import 'public_demo_accounting_visual.dart';
 import 'public_demo_candidate_skill_sheet_sheet.dart';
 import 'public_demo_cash_shortage_card.dart';
+import 'public_demo_employee_status_resolver.dart';
 import 'public_demo_employee_visual.dart';
 import 'public_demo_founder_follow_up_dialog.dart';
 import 'public_demo_growth_result_card.dart';
@@ -1041,7 +1042,10 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
     final confirmed = await PublicDemoSkillSheetSheet.show(
       context,
       engineer: engineer,
-      statusLabel: engineerStatus(engineer),
+      // SES Employee Status Unified Display: the same resolved display the
+      // roster badge shows, not raw `engineerStatus` — see
+      // [_employeeStatusDisplayFor]'s own doc for why (Fresh Audit §3).
+      statusLabel: _employeeStatusDisplayFor(engineer).label,
       runtime: s.runtimeForOrNull(engineer.id),
       currentAssignment: _assignmentForOrNull(engineer.id),
     );
@@ -1065,7 +1069,13 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
     await PublicDemoSkillSheetSheet.show(
       context,
       engineer: engineer,
-      statusLabel: engineerStatus(engineer),
+      // SES Employee Status Unified Display (Fresh Audit §3): this is the
+      // exact call site the audit found showing a stale '翌月参画予定' for an
+      // already-`ordered`+currently-assigned engineer while the roster/HOME
+      // already said '参画中' — reading the same resolved display the
+      // roster badge shows fixes it by construction (see
+      // [_employeeStatusDisplayFor]'s own doc).
+      statusLabel: _employeeStatusDisplayFor(engineer).label,
       runtime: s.runtimeForOrNull(engineer.id),
       currentAssignment: _assignmentForOrNull(engineer.id),
     );
@@ -2299,46 +2309,93 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
     PublicDemoSalesStage.ordered => 5,
   };
 
-  /// SES EMPLOYEE-UI-PHASE-1: the 社員タブ's own version of the same
-  /// ordered-vs-assigned truthful-status fix [_officeStageStatusFor]
-  /// already applies to HOME's Office Stage (POST-HOME-FREEZE
-  /// Small-UX-Fix) — an `ordered` engineer already counted into
-  /// [_currentlyAssignedEngineerIds] has actually joined their project, so
-  /// [engineerStatus]'s '翌月参画予定' would contradict the truthful
-  /// '参画中' the APV card (`activeProjectStatusCard`) shows for the same
-  /// engineer. Deliberately a separate method from
-  /// [_officeStageStatusFor] — not a shared refactor of it — so HOME's own
-  /// code path stays byte-for-byte untouched by this phase (HOME Freeze);
-  /// both read the exact same authoritative facts (`engineer.stage`,
-  /// [workflow.assignedEngineerIds]) and so can never disagree.
+  /// SES EMPLOYEE STATUS UNIFIED DISPLAY (Fresh Audit,
+  /// docs/reports/SES_FIRST-FUN-YEAR_Employee-Status-Unified-Display_Fresh-Audit.md):
+  /// the single place this screen resolves an engineer's player-facing
+  /// status (label + badge tone together), delegating to the pure
+  /// [PublicDemoEmployeeStatusResolver]. Replaces the three independently
+  /// hand-maintained functions the Fresh Audit found: the former
+  /// `_currentEmployeeStatusLabel` (社員タブ label), the former
+  /// `_employeeStatusTone` (社員タブ badge color), and each SkillSheet call
+  /// site ([_openSkillSheetReview]/[_viewEmployeeSkillSheet]) passing raw
+  /// `engineerStatus(engineer)` straight through as `statusLabel`.
   ///
-  /// Issue #231 FIRST-FUN-YEAR P1 Fresh Audit: [engineerStatus] alone
-  /// labels every still-`waiting` engineer identically ('待機'), even
-  /// though `PublicDemoEngineerRuntime.isReadyForFieldSales`
-  /// ([readyForFieldSales]) already, authoritatively, distinguishes the two
-  /// — this was exactly the "founding roster all reads the same in April"
-  /// comprehension gap the audit found: a fresh player could not tell 佐藤
-  /// (capability 78, ready) from 鈴木 (capability 52, not ready) without
-  /// scrolling to Section 2's per-engineer action card. This label now
-  /// states that same existing fact directly in the roster, still without
-  /// touching [engineerStatus] itself (HOME's [_officeStageStatusFor] and
-  /// the SkillSheet sheet's `statusLabel` keep reading the raw pipeline
-  /// stage, unchanged — HOME Freeze).
-  String _currentEmployeeStatusLabel(PublicDemoEngineerSales engineer) {
-    if (engineer.stage == PublicDemoSalesStage.ordered &&
-        _currentlyAssignedEngineerIds.contains(engineer.id)) {
-      return '参画中';
-    }
-    if (engineer.stage == PublicDemoSalesStage.waiting) {
-      if (!readyForFieldSales(engineer.id)) return '研修が必要';
-      return _fieldSalesActionReachableThisMonth(engineer)
-          ? '営業可能'
-          : engineerStatus(engineer);
-    }
-    return engineerStatus(engineer);
-  }
+  /// This fixes both inconsistencies the Fresh Audit confirmed by tracing
+  /// the code (§3), plus the PR #238 review follow-up below:
+  ///  * An already-`ordered`+currently-assigned engineer's SkillSheet used
+  ///    to keep showing the stale '翌月参画予定' while the roster/HOME
+  ///    already said '参画中' for the same person — SkillSheet now reads
+  ///    this same resolved display, so it cannot disagree.
+  ///  * A field-sales-ready `waiting` engineer (or any other non-training
+  ///    status) with this month's training also selected
+  ///    (`PublicDemoState.trainingSelections`) used to show the correct
+  ///    '営業可能' text painted in the training (red) tone — the resolver
+  ///    never lets `trainingSelections` override label or tone at all (see
+  ///    [PublicDemoEmployeeStatusResolver.resolve]'s own doc), so text and
+  ///    color can no longer disagree.
+  ///  * (found during this consolidation, not by the original audit) the
+  ///    former `_employeeStatusTone` treated *any* currently-assigned
+  ///    engineer as the 参画中 tone, without the label's own
+  ///    `stage == ordered` requirement — an engineer whose assignment was
+  ///    just ended mid-month while this month's revenue still counts them
+  ///    (`PublicDemoWorkflowState.endAssignment`'s documented pre-July
+  ///    "row kept, stage reset to waiting" case) is genuinely back at
+  ///    `waiting` and could show a green 参画中 tone next to a
+  ///    研修が必要/営業可能 label. One shared condition for both label and
+  ///    tone closes this too.
+  ///  * PR #238 review follow-up (P1): the first version of this resolver
+  ///    still fell back to the caller-supplied raw `engineerStatus` label
+  ///    for every sales-pipeline sub-stage and for an `ordered`-but-not-yet-
+  ///    assigned engineer, so the roster/SkillSheet kept showing the
+  ///    un-collapsed raw text (営業準備/案件紹介済/各面談通過・不合格/翌月参画予定)
+  ///    instead of Fresh Audit §4's actual six-value taxonomy. Fixed inside
+  ///    [PublicDemoEmployeeStatusResolver.resolve] itself — see that
+  ///    method's own doc — with no change needed here beyond dropping the
+  ///    now-removed `rawStageLabel` argument below.
+  ///
+  /// Reads only existing authoritative facts already used elsewhere on this
+  /// screen ([_currentlyAssignedEngineerIds], [readyForFieldSales],
+  /// [_fieldSalesActionReachableThisMonth]) — no new domain authority, enum,
+  /// or persisted field. `engineerStatus`'s own raw 9-stage switch is
+  /// unchanged and still backs the sales-pipeline detail views that
+  /// legitimately keep showing it verbatim ([engineerStep]'s
+  /// `PublicDemoSalesProgress` stepper, the Sales tab) — only the
+  /// card-level player-facing status this resolver computes now differs
+  /// from it on purpose.
+  ///
+  /// HOME Freeze: HOME's own [_officeStageStatusFor] is deliberately NOT
+  /// routed through this resolver in this change. Every prior consolidation
+  /// touching this same status logic (#231, Employee UI Phase 1; #235/#236)
+  /// explicitly left `_officeStageStatusFor` byte-for-byte untouched rather
+  /// than share even logically-equivalent code with it, treating any diff
+  /// inside HOME-owned code as HOME Freeze risk regardless of behavior
+  /// preservation. This change follows that same established precedent:
+  /// HOME's Office Stage keeps its own separate, unchanged implementation,
+  /// still built on the raw `engineerStatus` switch. On the 参画中/参画予定
+  /// split, HOME reads the exact same underlying fact this resolver does
+  /// (`stage == ordered && isCurrentlyAssigned`) and shows the same '参画中'
+  /// text, so the two cannot disagree there. On every sales-pipeline
+  /// sub-stage (and on the exact wording of an `ordered`-but-not-yet-
+  /// assigned engineer — HOME still says '翌月参画予定', the roster/SkillSheet
+  /// now say '参画予定'), HOME intentionally still shows the raw, un-
+  /// collapsed `engineerStatus` label rather than this resolver's unified
+  /// 営業中/参画予定 buckets — a known, tracked cross-surface wording gap
+  /// (see the governing plan's own Update history entry for this Issue),
+  /// not a regression this PR introduced. Routing HOME through this
+  /// resolver is a safe, ready-to-do follow-up once HOME Freeze is lifted or
+  /// explicitly confirmed to allow a behavior-preserving internal refactor.
+  PublicDemoEmployeeStatusDisplay _employeeStatusDisplayFor(
+    PublicDemoEngineerSales engineer,
+  ) => PublicDemoEmployeeStatusResolver.resolve(
+    stage: engineer.stage,
+    isCurrentlyAssigned: _currentlyAssignedEngineerIds.contains(engineer.id),
+    isReadyForFieldSales: readyForFieldSales(engineer.id),
+    fieldSalesActionReachableThisMonth: _fieldSalesActionReachableThisMonth(
+      engineer,
+    ),
+  );
 
-  /// PR #233 Codex review (P2): [_currentEmployeeStatusLabel]'s '営業可能'
+  /// PR #233 Codex review (P2): [_employeeStatusDisplayFor]'s '営業可能'
   /// must only be shown in a month where `_employeeNextActionsSection`'s
   /// `ec(i)` card — the only control that can actually start selling
   /// (スキルシート確認/営業開始) — is reachable for THIS engineer; otherwise the
@@ -3931,7 +3988,7 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
   /// every current employee (`workflow.engineers` — founding engineers
   /// plus every joined applicant, the same roster [_officeStageDisplay]'s
   /// own doc already establishes as "the company's employees") and their
-  /// truthful current status ([_currentEmployeeStatusLabel]), plus the
+  /// truthful current status ([_employeeStatusDisplayFor]), plus the
   /// same 待機/参画中 counts HOME's KPI already shows
   /// ([PublicDemoState.engineersWaiting]/[engineersAssigned]) — no new
   /// aggregate is computed. This did not exist before Phase 1: previously
@@ -4047,11 +4104,10 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
   }
 
   /// One Reference-style employee card: portrait, name, a real-status badge
-  /// (colored only — the text is still the exact
-  /// [_currentEmployeeStatusLabel] every existing roster test already
-  /// asserts), and — when a runtime exists — a capability progress bar for
-  /// the employee's confirmed primary skill, plus a compensation line
-  /// (経験年数・月給・単金).
+  /// ([_employeeStatusDisplayFor] — the text is still the exact label every
+  /// existing roster test already asserts), and — when a runtime exists —
+  /// a capability progress bar for the employee's confirmed primary skill,
+  /// plus a compensation line (経験年数・月給・単金).
   ///
   /// SES ISSUE-235 PHASE B-1: adds the 経験年数/月給/単金 line below the
   /// existing skill bar so the card compares "人材価値・コスト・現在状態" at a
@@ -4088,6 +4144,7 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
       month: s.month,
     );
     final unitPriceDisplay = _currentUnitPriceDisplayFor(e.id);
+    final statusDisplay = _employeeStatusDisplayFor(e);
     return Container(
       key: Key('public-demo-employee-roster-row-${e.id}'),
       margin: const EdgeInsets.only(bottom: 6),
@@ -4124,8 +4181,8 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
                     ),
                     const SizedBox(width: 8),
                     PublicDemoEmployeeStatusBadge(
-                      label: _currentEmployeeStatusLabel(e),
-                      tone: _employeeStatusTone(e),
+                      label: statusDisplay.label,
+                      tone: statusDisplay.tone,
                     ),
                   ],
                 ),
@@ -4231,34 +4288,6 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
     );
     if (candidate == null) return null;
     return '${candidate.monthlyRate ~/ 10000}万円';
-  }
-
-  /// [PublicDemoEmployeeStatusTone] for [e] — a pure coloring read of the
-  /// same two authoritative facts the roster/badge text already uses:
-  /// current assignment ([_currentlyAssignedEngineerIds]) and this month's
-  /// internal training selection ([PublicDemoState.trainingSelections]).
-  PublicDemoEmployeeStatusTone _employeeStatusTone(PublicDemoEngineerSales e) {
-    if (_currentlyAssignedEngineerIds.contains(e.id)) {
-      return PublicDemoEmployeeStatusTone.assigned;
-    }
-    if (s.trainingSelections.containsKey(e.id)) {
-      return PublicDemoEmployeeStatusTone.training;
-    }
-    // Issue #231 FIRST-FUN-YEAR P1 Fresh Audit: mirrors
-    // [_currentEmployeeStatusLabel]'s own '営業可能'/'研修が必要' split for a
-    // still-`waiting` engineer, reading the same authoritative
-    // [readyForFieldSales] fact — never a second, independently-derived
-    // eligibility check. PR #233 Codex review (P2): also mirrors that same
-    // label's [_fieldSalesActionReachableThisMonth] month gate, so the tone
-    // never promises an action (readyForSales) in a month where no control
-    // can actually take it.
-    if (e.stage == PublicDemoSalesStage.waiting) {
-      if (!readyForFieldSales(e.id)) return PublicDemoEmployeeStatusTone.training;
-      return _fieldSalesActionReachableThisMonth(e)
-          ? PublicDemoEmployeeStatusTone.readyForSales
-          : PublicDemoEmployeeStatusTone.waiting;
-    }
-    return PublicDemoEmployeeStatusTone.waiting;
   }
 
   /// The confirmed primary-skill display for [engineerId], or `null` when

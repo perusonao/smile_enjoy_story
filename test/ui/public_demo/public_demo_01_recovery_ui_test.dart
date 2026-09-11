@@ -107,6 +107,9 @@ Future<void> _tapAndSettle(WidgetTester tester, String text) async {
     // fake-clock pumpAndSettle().
     await _settle(tester);
   }
+  // SES ISSUE-232 Phase B: a close path with no further event dialog can
+  // already show the Monthly Management Report here — a no-op otherwise.
+  await dismissMonthlyReportIfPresent(tester);
 }
 
 Future<void> _tapKeyAndSettle(WidgetTester tester, Key key) async {
@@ -124,11 +127,18 @@ Future<void> _tapKeyAndSettle(WidgetTester tester, Key key) async {
   await tester.pumpAndSettle();
   await tester.tap(finder);
   await _settle(tester);
+  // SES ISSUE-232 Phase B: a no-op unless this exact tap was a month close
+  // with nothing further pending.
+  await dismissMonthlyReportIfPresent(tester);
 }
 
 Future<void> _dismiss(WidgetTester tester) async {
   await tester.tap(find.widgetWithText(FilledButton, '確認'));
   await tester.pumpAndSettle();
+  // SES ISSUE-232 Phase B: this exact confirm can be the tap that lets
+  // `_commitAggregate` run and the Monthly Management Report appear — a
+  // no-op when it dismissed some other, unrelated dialog.
+  await dismissMonthlyReportIfPresent(tester);
 }
 
 /// April: sells eng-01 (佐藤 健) through the normal founding-engineer

@@ -121,6 +121,10 @@ Future<void> tapAndSettle(WidgetTester tester, String text) async {
     // `pumpAndSettle()`, or its dialog never actually appears.
     await settle(tester);
   }
+  // SES ISSUE-232 Phase B: a close path with no further event dialog
+  // (June/July/closeOrdinaryMonth) can already show the Monthly Management
+  // Report here — a no-op otherwise.
+  await dismissMonthlyReportIfPresent(tester);
 }
 
 Future<void> tapCta(WidgetTester tester) async {
@@ -138,11 +142,18 @@ Future<void> tapCta(WidgetTester tester) async {
     await tester.tap(closeCandidateSkillSheet);
     await tester.pumpAndSettle();
   }
+  // SES ISSUE-232 Phase B: a no-op unless this exact CTA tap was a month
+  // close with nothing further pending.
+  await dismissMonthlyReportIfPresent(tester);
 }
 
 Future<void> dismiss(WidgetTester tester) async {
   await tester.tap(find.widgetWithText(FilledButton, '確認'));
   await tester.pumpAndSettle();
+  // SES ISSUE-232 Phase B: this exact confirm can be the tap that lets
+  // `_commitAggregate` run and the Monthly Management Report appear — a
+  // no-op when it dismissed some other, unrelated dialog.
+  await dismissMonthlyReportIfPresent(tester);
 }
 
 /// Pumps a genuinely fresh Public Demo screen.

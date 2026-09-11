@@ -15,6 +15,7 @@ import '../../game/public_demo/public_demo_matching_fit.dart';
 import '../../game/public_demo/public_demo_month_guard.dart';
 import '../../game/public_demo/public_demo_month_label.dart';
 import '../../game/public_demo/public_demo_monthly_growth.dart';
+import '../../game/public_demo/public_demo_monthly_report_snapshot.dart';
 import '../../game/public_demo/public_demo_project_generator.dart';
 import '../../game/public_demo/public_demo_recovery.dart';
 import '../../game/public_demo/public_demo_recruitment.dart';
@@ -55,6 +56,8 @@ import 'public_demo_matching_screen.dart';
 import 'public_demo_menu_visual.dart';
 import 'public_demo_month_guard_warning_dialog.dart';
 import 'public_demo_monthly_cash_flow_card.dart';
+import 'public_demo_monthly_report_dialog.dart';
+import 'public_demo_monthly_report_display_data.dart';
 import 'public_demo_project_interview_dialog.dart';
 import 'public_demo_recruitment_interview_dialog.dart';
 import 'public_demo_sales_progress.dart';
@@ -372,6 +375,55 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
     final captured = next;
     unawaited(
       _enqueuePersistence<void>(() => widget.saveService.save(captured)),
+    );
+  }
+
+  /// SES ISSUE-232 Phase B: shows the read-only Monthly Management Report
+  /// immediately after [closedMonth]'s own close has already committed via
+  /// [_commitAggregate] — the sole call site for
+  /// [PublicDemoMonthlyReportDialog], wired identically from all five
+  /// monthly-close handlers ([april], [may], [june], [july],
+  /// [closeOrdinaryMonth]).
+  ///
+  /// Reads [PublicDemoMonthlyReportSnapshot.fromAggregate] against the
+  /// **already-committed** [_game] — this method itself never calls
+  /// `closeX(...)` or any other aggregate/state/workflow command, and the
+  /// snapshot factory it calls is documented as never doing so either
+  /// (Phase A). The report is shown only when
+  /// [PublicDemoMonthlyReportSnapshot.isReady]: a blocked/no-op close
+  /// (Month Guard cancel, an outstanding required decision) never reaches
+  /// this method at all — every caller only calls this after its own
+  /// commit, and every close handler already returns early, before ever
+  /// reaching its commit, when the close itself did not happen. A stale
+  /// snapshot (`flow.month != closedMonth`) is a defense-in-depth case that
+  /// should not occur from these five call sites either, but is still
+  /// silently skipped rather than ever shown under the wrong month's label
+  /// (Fresh Audit §4/§12, carried from Phase A).
+  ///
+  /// Never calls `closeX(...)` again — [closedMonth] is used only to ask
+  /// the snapshot "is this the month you just recorded", never to redrive
+  /// a close.
+  Future<void> _maybeShowMonthlyReport(int closedMonth) async {
+    final snapshot = PublicDemoMonthlyReportSnapshot.fromAggregate(
+      _game,
+      closedMonth: closedMonth,
+    );
+    if (!snapshot.isReady) return;
+    if (!mounted) return;
+    final data = PublicDemoMonthlyReportDisplayData.fromSnapshot(
+      snapshot,
+      applicants: workflow.applicants,
+      // Codex Broad Review P2 (PR #237): read straight off the same
+      // already-committed aggregate's state — never recomputed, never a
+      // new judgment — so the report's own CTA copy and Hiyori comment
+      // can tell a terminal/year-end close apart from an ordinary one.
+      isFiscalYearCompleted: s.fiscalYearCompleted,
+      isFinanciallyTerminal: s.isFinanciallyTerminal,
+    );
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => PublicDemoMonthlyReportDialog(data: data),
     );
   }
 
@@ -1721,7 +1773,9 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
       ),
     );
     if (!mounted) return;
+    final closedMonth = s.month;
     _commitAggregate(_game.closeApril(monthlyExpenses: expense));
+    await _maybeShowMonthlyReport(closedMonth);
     _resetMonthScroll();
   }
 
@@ -1888,7 +1942,9 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
     // command — there is no `assignments`/`joinedApplicants` parameter for
     // this widget to supply; both are derived entirely from the
     // aggregate's own authoritative facts.
+    final closedMonth = s.month;
     _commitAggregate(_game.closeMay(week: 9, monthlyExpenses: expense));
+    await _maybeShowMonthlyReport(closedMonth);
     _resetMonthScroll();
   }
 
@@ -1964,6 +2020,7 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
         )
         .length;
     final joinedHires = workflow.applicants.where(accepted);
+    final closedMonth = s.month;
     _commitAggregate(
       _game.closeJune(
         assignedInJuly: assigned,
@@ -1973,6 +2030,7 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
         ),
       ),
     );
+    await _maybeShowMonthlyReport(closedMonth);
     _resetMonthScroll();
   }
 
@@ -2167,7 +2225,9 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
       await decideSummerBonus();
       return;
     }
+    final closedMonth = s.month;
     _commitAggregate(_game.closeJuly(monthlyExpenses: _julyMonthlyExpenses));
+    await _maybeShowMonthlyReport(closedMonth);
     _resetMonthScroll();
   }
 
@@ -2189,9 +2249,11 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
   /// rule outside July).
   Future<void> closeOrdinaryMonth() async {
     if (!await _confirmMonthCloseIfRecommendedOutstanding()) return;
+    final closedMonth = s.month;
     _commitAggregate(
       _game.closeOrdinaryMonth(monthlyExpenses: _ordinaryMonthlyExpenses),
     );
+    await _maybeShowMonthlyReport(closedMonth);
     _resetMonthScroll();
   }
 

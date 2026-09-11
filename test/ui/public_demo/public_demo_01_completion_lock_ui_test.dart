@@ -83,11 +83,18 @@ Future<void> tapAndSettle(WidgetTester tester, String text) async {
     await tester.tap(find.widgetWithText(FilledButton, '内容を確認'));
     await tester.pumpAndSettle();
   }
+  // SES ISSUE-232 Phase B: a close path with no further event dialog can
+  // already show the Monthly Management Report here — a no-op otherwise.
+  await dismissMonthlyReportIfPresent(tester);
 }
 
 Future<void> dismiss(WidgetTester tester) async {
   await tester.tap(find.widgetWithText(FilledButton, '確認'));
   await tester.pumpAndSettle();
+  // SES ISSUE-232 Phase B: this exact confirm can be the tap that lets
+  // `_commitAggregate` run and the Monthly Management Report appear — a
+  // no-op when it dismissed some other, unrelated dialog.
+  await dismissMonthlyReportIfPresent(tester);
 }
 
 /// Spends this month's one legal engineer-medium recruitment-media purchase

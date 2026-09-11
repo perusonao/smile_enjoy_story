@@ -73,6 +73,9 @@ Future<void> tapAndSettle(WidgetTester tester, String text) async {
     await tester.tap(find.widgetWithText(FilledButton, '内容を確認'));
     await tester.pumpAndSettle();
   }
+  // SES ISSUE-232 Phase B: a close path with no further event dialog can
+  // already show the Monthly Management Report here — a no-op otherwise.
+  await dismissMonthlyReportIfPresent(tester);
 }
 
 Future<void> dismissDialog(WidgetTester tester, String confirmLabel) async {

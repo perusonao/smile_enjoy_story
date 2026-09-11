@@ -22,7 +22,12 @@ this pass, per instructions.
   `git rev-parse origin/main` before any work):**
   `0ba21f2021c0963d8acfad28c2c99de096b776a9` (PR #244 merge — matches the
   Fresh Audit's own audited SHA exactly; no drift).
-- **Final HEAD (pushed):** `109c63a32d102376b96097d83420f3d637b43bc8`
+- **Final HEAD (pushed):** `c2801ae7aa5534f582bf89143d3f5b809ca9a945` (the
+  commit that adds this report itself — as with PR #244's own Result
+  Report, a report cannot embed the hash of the commit that contains it
+  before that commit exists; this value was filled in via a follow-up
+  metadata-only amendment of this same file, verified against `git log -1`
+  after pushing).
 - **Branch:** `claude/phase-a-fresh-audit-245-hymp9b`
 
 The designated branch existed locally but pointed at a stale, unrelated

@@ -6,7 +6,7 @@ class PublicDemoInterviewResultDialog extends StatelessWidget {
     super.key,
     required this.interviewName,
     required this.personName,
-    required this.score,
+    this.score,
     required this.passed,
     required this.points,
     required this.nextAction,
@@ -14,7 +14,12 @@ class PublicDemoInterviewResultDialog extends StatelessWidget {
 
   final String interviewName;
   final String personName;
-  final int score;
+  // Issue #245 Finding #3/#9 (HIDDEN-PARAMS-1): `null` omits the raw score
+  // row entirely — the caller-truthful, qualitative [points]/[nextAction]
+  // text is what explains the outcome instead. Still accepted (non-null) for
+  // callers (the pre-entry applicant pipeline) that have not yet been
+  // migrated off showing it.
+  final int? score;
   final bool passed;
   final List<String> points;
   final String nextAction;
@@ -63,13 +68,15 @@ class PublicDemoInterviewResultDialog extends StatelessWidget {
                         color: passed ? scheme.primary : scheme.error,
                       ),
                 ),
-                const Spacer(),
-                Text(
-                  '$score点',
-                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                        fontWeight: FontWeight.bold,
-                      ),
-                ),
+                if (score != null) ...[
+                  const Spacer(),
+                  Text(
+                    '$score点',
+                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                          fontWeight: FontWeight.bold,
+                        ),
+                  ),
+                ],
               ],
             ),
             const SizedBox(height: 16),

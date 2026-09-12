@@ -56,3 +56,37 @@ Future<void> dismissClientInterview(WidgetTester tester) async {
   await tester.tap(find.widgetWithText(FilledButton, '確認'));
   await tester.pumpAndSettle();
 }
+
+/// Issue #245 Phase B2: the exact same reasoning as [dismissClientInterview]
+/// above, one pipeline stage earlier. `上位会社面談` now opens the real
+/// interactive mini-game ([PublicDemoProjectInterviewDialog],
+/// `type: partner`) whenever `案件紹介` already produced a real matching
+/// proposal — which, after Issue #219's own fix, it always does for the
+/// guided per-engineer flow every fixture using this helper already drives —
+/// instead of the old generic pass/fail dialog (a single `確認` tap). This
+/// single shared helper replaces every fixture's own "tap `上位会社面談` then
+/// dismiss with 確認" step, exactly mirroring [dismissClientInterview]'s own
+/// replacement of the pre-Issue-#219 `客先面談` step.
+Future<void> dismissPartnerInterview(WidgetTester tester) async {
+  if (find.text('上位会社面談').evaluate().isNotEmpty &&
+      find.byKey(
+        const Key('public-demo-partner-interview-dialog'),
+      ).evaluate().isNotEmpty) {
+    final letEmployeeHandle = find.byKey(
+      const Key('public-demo-partner-interview-follow-letEmployeeHandle'),
+    );
+    for (var i = 0; i < 6; i++) {
+      if (find.text('続ける').evaluate().isNotEmpty) break;
+      await tester.ensureVisible(letEmployeeHandle);
+      await tester.pumpAndSettle();
+      await tester.tap(letEmployeeHandle);
+      await tester.pumpAndSettle();
+    }
+    expect(find.text('続ける'), findsOneWidget);
+    await tester.tap(find.text('続ける'));
+    await tester.pumpAndSettle();
+    return;
+  }
+  await tester.tap(find.widgetWithText(FilledButton, '確認'));
+  await tester.pumpAndSettle();
+}

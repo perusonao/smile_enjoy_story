@@ -119,7 +119,7 @@ void main() {
       await tapAndSettle(tester, '営業開始');
       await tapAndSettle(tester, '案件紹介');
       await tapAndSettle(tester, '上位会社面談');
-      await dismissDialog(tester, '確認');
+      await dismissPartnerInterview(tester);
       await tapAndSettle(tester, '客先面談');
       await dismissClientInterview(tester);
       await tapAndSettle(tester, '受注');

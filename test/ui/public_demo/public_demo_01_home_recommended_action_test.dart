@@ -191,7 +191,7 @@ Future<void> playApril(WidgetTester tester) async {
   await tapAndSettle(tester, '営業開始');
   await tapAndSettle(tester, '案件紹介');
   await tapAndSettle(tester, '上位会社面談');
-  await dismiss(tester);
+  await dismissPartnerInterview(tester);
   await tapAndSettle(tester, '客先面談');
   await dismissClientInterview(tester);
   await tapAndSettle(tester, '受注');
@@ -339,7 +339,7 @@ void main() {
       await tapAndSettle(tester, '営業開始');
       await tapAndSettle(tester, '案件紹介');
       await tapAndSettle(tester, '上位会社面談');
-      await dismiss(tester);
+      await dismissPartnerInterview(tester);
       if (actionButton('客先面談').evaluate().isNotEmpty) {
         await tapAndSettle(tester, '客先面談');
         await dismissClientInterview(tester);
@@ -766,10 +766,17 @@ void main() {
       );
 
       await tapCta(tester);
-      // The same interview-result dialog the legacy button opens — the
-      // dialog titles itself '<interview> 結果'.
-      expect(find.text('上位会社面談 結果'), findsOneWidget);
-      await dismiss(tester);
+      // Issue #245 Phase B2: 案件紹介 (above) already produced a real
+      // matching proposal, so both the CTA and the legacy button now open
+      // the same real interactive partner-interview mini-game
+      // (PublicDemoProjectInterviewDialog, type: partner) — the same dialog
+      // key either route reaches, not the pre-B2 generic '<interview> 結果'
+      // dialog.
+      expect(
+        find.byKey(const Key('public-demo-partner-interview-dialog')),
+        findsOneWidget,
+      );
+      await dismissPartnerInterview(tester);
       expect(
         currentWorkflow(tester).engineers.first.stage,
         anyOf(
@@ -791,7 +798,7 @@ void main() {
       await tapCta(tester);
       final before = currentState(tester).salesRemaining;
       await tapCta(tester);
-      await dismiss(tester);
+      await dismissPartnerInterview(tester);
       expect(currentState(tester).salesRemaining, before - 1);
     });
   });

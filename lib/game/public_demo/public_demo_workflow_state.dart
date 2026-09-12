@@ -1569,4 +1569,77 @@ class PublicDemoWorkflowState {
       ],
     );
   }
+
+  /// Issue #245 Phase B2 (Partner Interview Gameplay): concludes the
+  /// interactive partner interview for [engineerId] and applies its genuine
+  /// outcome to the engineer's sales pipeline — structurally mirrors
+  /// [concludeProjectInterview] one stage earlier (`introduced` →
+  /// `partnerInterviewPassed`/`partnerInterviewFailed` instead of
+  /// `partnerInterviewPassed` → `clientInterviewPassed`/
+  /// `clientInterviewFailed`), reusing the exact same
+  /// [projectInterviewSessions] list/[ClientInterviewSession] shape — no new
+  /// persisted field. A partner session and a later client session for the
+  /// same engineer never coexist: [startProjectInterviewSession]'s own
+  /// "at most one entry per employeeId" replace rule (invoked identically by
+  /// both this phase and Phase 6) discards the completed partner session the
+  /// moment a fresh client-interview session starts for the same engineer.
+  ///
+  /// A no-op unless: [engineerId] is currently at `introduced` (the stage
+  /// this phase's own interactive mini-game requires); a genuine, started
+  /// session exists for it *for this exact [project]* and *this exact
+  /// [currentMonth]* (same defense-in-depth pairing
+  /// [concludeProjectInterview] already documents); and every question in
+  /// that session has already received a player-chosen follow-up.
+  PublicDemoWorkflowState concludePartnerProjectInterview({
+    required String engineerId,
+    required int runSeed,
+    required int currentMonth,
+    required PublicDemoEngineerRuntime runtime,
+    required Project project,
+  }) {
+    final engineer = engineers
+        .where((candidate) => candidate.id == engineerId)
+        .firstOrNull;
+    if (engineer == null ||
+        engineer.stage != PublicDemoSalesStage.introduced) {
+      return this;
+    }
+    final session = projectInterviewSessionFor(engineerId);
+    if (session == null ||
+        session.completed ||
+        session.projectId != project.id ||
+        session.startedWeek != currentMonth ||
+        !PublicDemoProjectInterview.isReadyToConclude(session)) {
+      return this;
+    }
+
+    final outcome = PublicDemoProjectInterview.conclude(
+      runSeed: runSeed,
+      runtime: runtime,
+      project: project,
+      session: session,
+    );
+    final completedSession = session.copyWith(
+      completed: true,
+      result: outcome.passed
+          ? ClientInterviewResult.passed
+          : ClientInterviewResult.failed,
+    );
+    return _copyWith(
+      engineers: [
+        for (final candidate in engineers)
+          if (candidate.id == engineerId)
+            candidate.applyPartnerProjectInterviewResult(
+              passed: outcome.passed,
+              score: outcome.score,
+            )
+          else
+            candidate,
+      ],
+      projectInterviewSessions: [
+        for (final existing in projectInterviewSessions)
+          if (existing.employeeId == engineerId) completedSession else existing,
+      ],
+    );
+  }
 }

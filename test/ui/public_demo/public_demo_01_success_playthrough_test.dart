@@ -81,15 +81,41 @@ Future<void> dismissInterviewResult(
 /// ([PublicDemoProjectInterviewDialog], titled `案件面談`) whenever this
 /// engineer's `案件紹介` step already produced a real matching proposal —
 /// which, after this fix, it always does — instead of the old generic
-/// pass/fail dialog `dismissInterviewResult` above still covers for
-/// `上位会社面談` (partner interviews never route through Matching). Drives
-/// every follow-up with `letEmployeeHandle` — [ClientInterviewEngine
-/// .evaluate]'s one choice with no category-specific risk/mismatch penalty
-/// — until the result phase appears, then dismisses it with `続ける`.
+/// pass/fail dialog `dismissInterviewResult` above still covers for the
+/// pre-entry applicant pipeline (`pi`/`ci`, which never routes through
+/// Matching). Drives every follow-up with `letEmployeeHandle` —
+/// [ClientInterviewEngine.evaluate]'s one choice with no category-specific
+/// risk/mismatch penalty — until the result phase appears, then dismisses it
+/// with `続ける`.
 Future<void> driveProjectInterviewMiniGameToContinue(WidgetTester tester) async {
   expect(find.text('案件面談'), findsOneWidget);
   final letEmployeeHandle = find.byKey(
     const Key('public-demo-project-interview-follow-letEmployeeHandle'),
+  );
+  for (var i = 0; i < 6; i++) {
+    if (find.text('続ける').evaluate().isNotEmpty) break;
+    await tester.ensureVisible(letEmployeeHandle);
+    await tester.pumpAndSettle();
+    await tester.tap(letEmployeeHandle);
+    await tester.pumpAndSettle();
+  }
+  expect(find.text('続ける'), findsOneWidget);
+  expect(find.textContaining('合格'), findsWidgets);
+  await tester.tap(find.text('続ける'));
+  await tester.pumpAndSettle();
+}
+
+/// Issue #245 Phase B2: `上位会社面談` now opens the same interactive
+/// mini-game one pipeline stage earlier
+/// ([PublicDemoProjectInterviewDialog], `type: partner`) whenever this
+/// engineer's `案件紹介` step already produced a real matching proposal —
+/// which, after Issue #219's own fix, it always does for the guided
+/// engineer flow this test drives. Mirrors
+/// [driveProjectInterviewMiniGameToContinue] exactly, one key-prefix over.
+Future<void> drivePartnerInterviewMiniGameToContinue(WidgetTester tester) async {
+  expect(find.text('上位会社面談'), findsWidgets);
+  final letEmployeeHandle = find.byKey(
+    const Key('public-demo-partner-interview-follow-letEmployeeHandle'),
   );
   for (var i = 0; i < 6; i++) {
     if (find.text('続ける').evaluate().isNotEmpty) break;
@@ -144,16 +170,18 @@ void main() {
     await tapAndSettle(tester, 'スキルシート確認');
     await tapAndSettle(tester, '営業開始');
     await tapAndSettle(tester, '案件紹介');
+    // Issue #245 Phase B2: `案件紹介` (above) now auto-proposes a real Phase
+    // 4/5 matching candidate for Sato, so `上位会社面談` — like `客先面談`
+    // below it — opens the real interactive mini-game
+    // ([PublicDemoProjectInterviewDialog], `type: partner`), not the
+    // pre-Phase-6/B2 generic pass/fail dialog `dismissInterviewResult`
+    // still covers for the pre-entry applicant pipeline. This is the exact
+    // reachability Issue #245 Finding #3/#9's own fix targets: a player who
+    // only ever follows this same guided per-engineer flow now genuinely
+    // reaches a real mini-game for BOTH interviews, not just the client one.
     await tapAndSettle(tester, '上位会社面談');
-    await dismissInterviewResult(tester, '上位会社面談');
+    await drivePartnerInterviewMiniGameToContinue(tester);
     expect(find.text('客先面談'), findsWidgets);
-    // Issue #219: `案件紹介` (above) now auto-proposes a real Phase 4/5
-    // matching candidate for Sato, so `客先面談` opens the real interactive
-    // Phase 6 mini-game (`案件面談`) — not the pre-Phase-6 generic pass/fail
-    // dialog `上位会社面談` above still exercises (partner interviews never
-    // touch Matching). This is the exact reachability this issue's fix
-    // targets: a player who only ever follows this same guided per-engineer
-    // flow now genuinely reaches the mini-game.
     await tapAndSettle(tester, '客先面談');
     await driveProjectInterviewMiniGameToContinue(tester);
     await tapAndSettle(tester, '受注');

@@ -441,8 +441,7 @@ Future<void> _driveToActualCashShortage(WidgetTester tester) async {
   await tapAndSettle('営業開始');
   await tapAndSettle('案件紹介');
   await tapAndSettle('上位会社面談');
-  await tester.tap(find.widgetWithText(FilledButton, '確認'));
-  await tester.pumpAndSettle();
+  await dismissPartnerInterview(tester);
   await tapAndSettle('客先面談');
   await dismissClientInterview(tester);
   await switchPublicDemoTab(tester, PublicDemoTab.home);

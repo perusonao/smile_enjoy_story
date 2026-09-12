@@ -117,13 +117,24 @@ class PublicDemoWorkflowState {
   final List<PublicDemoMatchingProposal> matchingProposals;
 
   /// CORE-GAMEPLAY Phase 6 (Project Interview Gameplay): at most one
-  /// in-progress/completed [ClientInterviewSession] per engineer id (its
-  /// own [ClientInterviewSession.employeeId]) — the interactive project
-  /// interview reused from the main game's own
+  /// in-progress/completed [ClientInterviewSession] per `(employeeId,
+  /// projectId)` pair (see [projectInterviewSessionFor]/
+  /// [startProjectInterviewSession]) — the interactive project interview
+  /// reused from the main game's own
   /// [ClientInterviewEngine]/[ProjectInterviewEngine]
   /// (`public_demo_project_interview.dart`), exactly like
   /// [interviewSessions] reuses [RecruitmentInterviewEngine]. Additive to
   /// the save schema — see [fromJson]'s backward-compatible default below.
+  ///
+  /// Issue #257 composite-identity widening: unlike [matchingProposals]
+  /// (at most one per `engineerId` alone), many sessions can coexist for
+  /// the same engineer as long as each names a different `projectId` —
+  /// mirrors [offerCandidates]' own `(engineerId, projectId)` identity.
+  /// Every entry already carried its own `projectId` even before this
+  /// widening (see [ClientInterviewSession.projectId]), so no save-schema
+  /// migration is needed: only the in-memory "at most one per employee"
+  /// invariant this list's own production callers used to enforce has been
+  /// relaxed to "at most one per `(employeeId, projectId)` pair".
   final List<ClientInterviewSession> projectInterviewSessions;
 
   /// Issue #245 Finding #4, Phase 1a (Domain Foundation): at most one
@@ -216,25 +227,21 @@ class PublicDemoWorkflowState {
       );
     }
 
-    // Additive field (Issue #245 Finding #4, Phase 1a): a save written
-    // before this change has no 'offerCandidates' key at all. Absent means
-    // "no candidate was ever recorded through the new command path AND no
-    // migration has run yet for this save" — synthesized once, from the
-    // legacy authority, the first time such a save is loaded. See
-    // [_synthesizeLegacyOfferCandidates]'s own doc, and its doc's own
-    // "Known limitation" paragraph for the one gap this one-shot,
-    // key-presence-gated trigger cannot close on its own (a Codex review
-    // finding on PR #254, deliberately NOT "fixed" by synthesizing on every
-    // load instead — doing so was tried and reverted because it broke this
-    // codec's own strict round-trip guarantee for every save with an
-    // engineer at a relevant legacy stage: [PublicDemoWorkflowState.toJson]
-    // always writes a present `offerCandidates` key, including an empty
-    // one, so re-deriving on every load would make a freshly re-decoded
-    // aggregate disagree with its own just-encoded envelope purely because
-    // legacy-authority facts unrelated to any real edit happened to still
-    // exist — exactly the "normalized away" class of corruption this
-    // codec's round-trip check exists to catch. See that doc for the
-    // Phase 1b-scoped correct fix instead).
+    // Additive field (Issue #245 Finding #4, Phase 1a/1b): a save written
+    // before this change has no 'offerCandidates' key at all — absent means
+    // "no candidate was ever recorded through the new command path", an
+    // empty starting point for reconciliation, never a rejected save.
+    //
+    // Phase 1b (Production Cutover): whether the key is present or absent,
+    // [_reconcileOfferCandidates] now ALWAYS runs below — see its own doc.
+    // This replaces Phase 1a's one-shot, key-ABSENCE-gated synthesis
+    // (`_synthesizeLegacyOfferCandidates`), which a Codex review on PR #254
+    // correctly flagged: since [toJson] always writes a present
+    // `offerCandidates` key (even `[]`) from the very first save Phase 1a's
+    // own code produced, that gate could never fire again for such a save —
+    // "key present" was never actually proof of "fully migrated". Real,
+    // repeatable reconciliation against legacy authority is required
+    // instead, every time a save is loaded, not merely once.
     final offerCandidatesRaw = json['offerCandidates'];
     if (offerCandidatesRaw != null && offerCandidatesRaw is! List) {
       throw const FormatException('Invalid workflow offerCandidates');
@@ -255,31 +262,39 @@ class PublicDemoWorkflowState {
             ),
     );
 
-    final offerCandidates = offerCandidatesRaw == null
-        ? _synthesizeLegacyOfferCandidates(
-            engineers: engineers,
-            matchingProposals: matchingProposals,
-            assignments: assignments,
-          )
+    final decodedOfferCandidates = offerCandidatesRaw == null
+        ? const <PublicDemoOfferCandidate>[]
         : decodeList(offerCandidatesRaw, PublicDemoOfferCandidate.fromJson);
     // A malformed/corrupted save can assert a duplicate composite key
-    // directly in the raw payload — reject that outright.
-    final offerCandidateKeys = offerCandidates
-        .map((candidate) => candidate.id)
-        .toList();
-    if (offerCandidateKeys.toSet().length != offerCandidateKeys.length) {
-      throw const FormatException(
-        'Duplicate offer candidate (engineerId, projectId) identity',
-      );
+    // directly in the raw payload — reject that outright, before
+    // reconciliation ever runs on it.
+    void checkOfferCandidateInvariants(List<PublicDemoOfferCandidate> list) {
+      final keys = list.map((candidate) => candidate.id).toList();
+      if (keys.toSet().length != keys.length) {
+        throw const FormatException(
+          'Duplicate offer candidate (engineerId, projectId) identity',
+        );
+      }
+      final knownEngineerIds = engineers.map((engineer) => engineer.id).toSet();
+      if (list.any(
+        (candidate) => !knownEngineerIds.contains(candidate.engineerId),
+      )) {
+        throw const FormatException('Invalid offer candidate engineerId');
+      }
     }
-    final knownEngineerIds = engineers
-        .map((engineer) => engineer.id)
-        .toSet();
-    if (offerCandidates.any(
-      (candidate) => !knownEngineerIds.contains(candidate.engineerId),
-    )) {
-      throw const FormatException('Invalid offer candidate engineerId');
-    }
+
+    checkOfferCandidateInvariants(decodedOfferCandidates);
+    final offerCandidates = _reconcileOfferCandidates(
+      existing: decodedOfferCandidates,
+      engineers: engineers,
+      matchingProposals: matchingProposals,
+      assignments: assignments,
+    );
+    // Defense in depth: reconciliation is trusted domain code, but the
+    // invariant is cheap enough to re-verify on its output too, exactly
+    // mirroring how [PublicDemoAggregate._validateForPersistence] re-checks
+    // this same invariant one layer up.
+    checkOfferCandidateInvariants(offerCandidates);
 
     return PublicDemoWorkflowState._(
       applicants: List.unmodifiable(
@@ -308,70 +323,80 @@ class PublicDemoWorkflowState {
     );
   }
 
-  /// Issue #245 Finding #4, Phase 1a: one-time, load-time-only upgrade for a
-  /// save written before [offerCandidates] existed — see
-  /// [PublicDemoOfferCandidate.fromLegacyEngineerState]'s own doc for why
-  /// this mints a fresh, candidate-scoped [PublicDemoOfferInterviewRecord]
-  /// rather than reusing any legacy record verbatim.
+  /// Issue #245 Finding #4, Phase 1b (Production Cutover): the real,
+  /// repeatable reconciliation this phase's own task explicitly requires —
+  /// replacing Phase 1a's one-shot, key-ABSENCE-gated
+  /// `_synthesizeLegacyOfferCandidates` (a Codex review on PR #254 correctly
+  /// found "key present" was never actually proof of "fully migrated"; see
+  /// git history for that method's own doc explaining exactly why a
+  /// per-load re-derivation was tried and reverted at Phase 1a time — this
+  /// method is the fix that review called for, landing at the point Phase
+  /// 1b actually starts trusting/writing this list for real gameplay).
   ///
-  /// **Known limitation (Codex review finding on PR #254, deliberately not
-  /// "fixed" — see below for why):** this only ever fires once per save,
-  /// gated on the raw `offerCandidates` key being entirely absent. From the
-  /// very first save [toJson] writes after this field existed (which always
-  /// includes the key, even as `[]`), that gate can never fire again for
-  /// this save — so an engineer who reaches a relevant stage *after* that
-  /// first post-Phase-1a save, but before some later Phase 1b actually
-  /// starts reading/writing [offerCandidates] for real gameplay, will not
-  /// get a synthesized candidate merely by being loaded again. This is
-  /// real, and was not fixed here: an early attempt at this same fix made
-  /// synthesis re-run on every load, gated on absence *of a specific
-  /// candidate* rather than the whole key — direct experiment (all
-  /// pre-existing Public Demo tests) showed this breaks
-  /// [PublicDemoSaveCodec]'s own strict round-trip check for **every**
-  /// existing save with an engineer at a relevant legacy stage: [toJson]
-  /// always emits an explicit `offerCandidates` (`[]` when nothing has ever
-  /// used the new command path, which is every real Phase 1a save), so
-  /// re-deriving non-empty content from legacy facts on decode makes the
-  /// freshly re-decoded aggregate disagree with the very envelope it was
-  /// just decoded from — indistinguishable, to that round-trip check, from
-  /// genuine corruption. Fixing the staleness properly needs a real,
-  /// one-time reconciliation pass Phase 1b performs itself at cutover
-  /// (when it starts actually trusting/writing this list for gameplay),
-  /// not a per-load re-derivation Phase 1a's own additive-only,
-  /// no-caller-cutover mandate has no safe way to perform. The engineer's
-  /// own legacy `stage`/`interviewRecord` remain the complete, correct,
-  /// unaffected record of every relevant fact regardless — nothing is ever
-  /// lost, only not yet mirrored into this new list.
+  /// Runs unconditionally on every [fromJson] call, over whatever
+  /// already-decoded [existing] candidates the raw save carried (`[]` for a
+  /// save with no `offerCandidates` key at all). For every engineer whose
+  /// [PublicDemoEngineerSales.stage] names a resolvable project (via that
+  /// engineer's own [PublicDemoMatchingProposal] when one exists, falling
+  /// back to [PublicDemoAssignment.projectId] only when already `ordered`
+  /// with no proposal on record — identical resolution to the Phase 1a
+  /// synthesis this replaces):
   ///
-  /// For every engineer already at [PublicDemoSalesStage.partnerInterviewPassed],
-  /// [PublicDemoSalesStage.clientInterviewPassed], or
-  /// [PublicDemoSalesStage.ordered], synthesizes exactly one candidate — the
-  /// project id comes from that engineer's own [PublicDemoMatchingProposal]
-  /// when one exists (the normal case: a proposal is what led to the
-  /// interview in the first place), falling back to the engineer's own
-  /// [PublicDemoAssignment.projectId] only when already
-  /// [PublicDemoSalesStage.ordered] with no matching proposal on record
-  /// (an assignment created before Phase 5's own matching-proposal tracking
-  /// existed). An engineer at one of these stages with neither a resolvable
-  /// proposal nor assignment project id is left with no synthesized
-  /// candidate — there is no fabricatable project identity to attach one
-  /// to; this is a pre-existing, already-legacy combination
-  /// [PublicDemoSaveCodec] tolerates today as well, and this Phase 1a
-  /// migration adds nothing that could newly corrupt it (the engineer's own
-  /// legacy `stage`/`interviewRecord` are completely untouched either way).
-  static List<PublicDemoOfferCandidate> _synthesizeLegacyOfferCandidates({
+  /// - No candidate yet for that exact (engineerId, projectId) pair: a fresh
+  ///   one is synthesized from legacy authority ([PublicDemoOfferCandidate
+  ///   .fromLegacyEngineerState]), exactly as Phase 1a did.
+  /// - A candidate already exists for that pair, and legacy authority's own
+  ///   stage genuinely outranks it (see [_offerCandidateStageRank]): the
+  ///   candidate is upgraded in place ([PublicDemoOfferCandidate
+  ///   .upgradeFromLegacy]) — this is the actual fix for the Codex-flagged
+  ///   staleness gap (a save whose `offerCandidates` key is present but
+  ///   empty/behind a legacy pipeline that kept advancing after that first
+  ///   post-Phase-1a save).
+  /// - A candidate already exists and is at least as advanced as (or
+  ///   [PublicDemoOfferCandidateStage.declined], a deliberate terminal
+  ///   candidate-level decision legacy authority knows nothing about and
+  ///   must never resurrect): left completely untouched — this is the
+  ///   "never rewind, never lose more-advanced state" guarantee.
+  /// - Every OTHER candidate this engineer holds, for every other project,
+  ///   is left completely untouched regardless — legacy authority is a
+  ///   single scalar and can only ever speak to the ONE project it
+  ///   currently/finally resolves to; every sibling candidate for a
+  ///   different project is exactly the multi-candidate state this whole
+  ///   Finding exists to preserve.
+  /// - If the reconciled/synthesized candidate for that one resolved project
+  ///   is now [PublicDemoOfferCandidateStage.ordered], every OTHER live
+  ///   sibling candidate for the same engineer is atomically declined too —
+  ///   the same real-world fact [recordOfferCandidateOrder] itself encodes
+  ///   (an engineer can only ever be genuinely ordered for one project), so
+  ///   a legacy `ordered` engineer reconciled for the first time can never
+  ///   leave a contradictory "ordered + still-live sibling" candidate state
+  ///   behind.
+  ///
+  /// Deliberately does not run over [existing] entries whose engineer no
+  /// longer resolves a legacy project at all (`waiting`/`skillSheet`/
+  /// `selling`, or an `ordered` engineer since released back to `waiting` by
+  /// [endAssignment]) — those candidates are historical facts about a
+  /// concluded pipeline (e.g. an already-`ordered` candidate for an
+  /// assignment that has since ended), never invalidated by the engineer's
+  /// current, unrelated state.
+  ///
+  /// Idempotent by construction: a second call over this method's own
+  /// output finds every resolvable candidate already at least as advanced
+  /// as legacy authority (upgrade is a no-op) and every sibling already
+  /// declined (decline is a no-op) — see
+  /// `test/game/public_demo/public_demo_parallel_sales_phase1b_test.dart`
+  /// for the direct save → load → reconcile → save → reload proof.
+  static List<PublicDemoOfferCandidate> _reconcileOfferCandidates({
+    required List<PublicDemoOfferCandidate> existing,
     required List<PublicDemoEngineerSales> engineers,
     required List<PublicDemoMatchingProposal> matchingProposals,
     required List<PublicDemoAssignment> assignments,
   }) {
-    const relevantStages = {
-      PublicDemoSalesStage.partnerInterviewPassed,
-      PublicDemoSalesStage.clientInterviewPassed,
-      PublicDemoSalesStage.ordered,
-    };
-    final synthesized = <PublicDemoOfferCandidate>[];
+    final result = <PublicDemoOfferCandidate>[...existing];
+
     for (final engineer in engineers) {
-      if (!relevantStages.contains(engineer.stage)) continue;
+      final legacyStage = _legacyOfferCandidateStageFor(engineer.stage);
+      if (legacyStage == null) continue;
       final proposal = matchingProposals
           .where((candidate) => candidate.engineerId == engineer.id)
           .firstOrNull;
@@ -384,36 +409,172 @@ class PublicDemoWorkflowState {
                     ?.projectId
               : null);
       if (projectId == null) continue;
-      final stage = switch (engineer.stage) {
-        PublicDemoSalesStage.partnerInterviewPassed =>
-          PublicDemoOfferCandidateStage.partnerInterviewPassed,
-        PublicDemoSalesStage.clientInterviewPassed =>
-          PublicDemoOfferCandidateStage.clientInterviewPassed,
-        PublicDemoSalesStage.ordered => PublicDemoOfferCandidateStage.ordered,
-        _ => throw StateError('unreachable: filtered by relevantStages'),
-      };
-      synthesized.add(
-        PublicDemoOfferCandidate.fromLegacyEngineerState(
-          engineerId: engineer.id,
-          projectId: projectId,
-          proposedMonth: proposal?.decidedMonth ?? 0,
-          stage: stage,
-          clientScore:
-              stage == PublicDemoOfferCandidateStage.partnerInterviewPassed
-              ? null
-              : engineer.lastInterviewScore,
-          partnerScore:
-              stage == PublicDemoOfferCandidateStage.partnerInterviewPassed
-              ? engineer.lastInterviewScore
-              : null,
-          hasGenuineInterviewRecord:
-              stage != PublicDemoOfferCandidateStage.partnerInterviewPassed &&
-              engineer.hasGenuineInterviewRecord,
-        ),
+
+      final index = result.indexWhere(
+        (candidate) =>
+            candidate.engineerId == engineer.id &&
+            candidate.projectId == projectId,
       );
+      if (index < 0) {
+        result.add(
+          _offerCandidateFromLegacy(
+            engineer: engineer,
+            projectId: projectId,
+            proposedMonth: proposal?.decidedMonth ?? 0,
+            legacyStage: legacyStage,
+          ),
+        );
+      } else {
+        final current = result[index];
+        if (current.stage != PublicDemoOfferCandidateStage.declined &&
+            _offerCandidateStageRank(legacyStage) >
+                _offerCandidateStageRank(current.stage)) {
+          result[index] = current.upgradeFromLegacy(
+            stage: legacyStage,
+            partnerScore: _legacyOfferCandidatePartnerScore(engineer, legacyStage),
+            clientScore: _legacyOfferCandidateClientScore(engineer, legacyStage),
+            hasGenuineInterviewRecord: _legacyOfferCandidateHasRecord(
+              engineer,
+              legacyStage,
+            ),
+          );
+        }
+      }
+
+      final resolvedIndex = result.indexWhere(
+        (candidate) =>
+            candidate.engineerId == engineer.id &&
+            candidate.projectId == projectId,
+      );
+      if (resolvedIndex >= 0 &&
+          result[resolvedIndex].stage == PublicDemoOfferCandidateStage.ordered) {
+        for (var i = 0; i < result.length; i++) {
+          final sibling = result[i];
+          if (sibling.engineerId == engineer.id &&
+              sibling.projectId != projectId &&
+              _isLiveOfferCandidateStage(sibling.stage)) {
+            result[i] = sibling.decline();
+          }
+        }
+      }
     }
-    return synthesized;
+    return result;
   }
+
+  /// The [PublicDemoOfferCandidateStage] legacy authority's own
+  /// [PublicDemoSalesStage] maps to for reconciliation purposes — `null` for
+  /// `waiting`/`skillSheet`/`selling`, which commit to no project identity
+  /// yet (there is nothing a candidate could represent). Every other stage
+  /// mirrors 1:1, exactly as [PublicDemoOfferCandidateStage]'s own class doc
+  /// says it always does.
+  static PublicDemoOfferCandidateStage? _legacyOfferCandidateStageFor(
+    PublicDemoSalesStage stage,
+  ) => switch (stage) {
+    PublicDemoSalesStage.waiting ||
+    PublicDemoSalesStage.skillSheet ||
+    PublicDemoSalesStage.selling => null,
+    PublicDemoSalesStage.introduced => PublicDemoOfferCandidateStage.proposed,
+    PublicDemoSalesStage.partnerInterviewFailed =>
+      PublicDemoOfferCandidateStage.partnerInterviewFailed,
+    PublicDemoSalesStage.partnerInterviewPassed =>
+      PublicDemoOfferCandidateStage.partnerInterviewPassed,
+    PublicDemoSalesStage.clientInterviewFailed =>
+      PublicDemoOfferCandidateStage.clientInterviewFailed,
+    PublicDemoSalesStage.clientInterviewPassed =>
+      PublicDemoOfferCandidateStage.clientInterviewPassed,
+    PublicDemoSalesStage.ordered => PublicDemoOfferCandidateStage.ordered,
+  };
+
+  static bool _legacyOfferCandidateHasRecord(
+    PublicDemoEngineerSales engineer,
+    PublicDemoOfferCandidateStage legacyStage,
+  ) =>
+      (legacyStage == PublicDemoOfferCandidateStage.clientInterviewPassed ||
+          legacyStage == PublicDemoOfferCandidateStage.ordered) &&
+      engineer.hasGenuineInterviewRecord;
+
+  static int? _legacyOfferCandidatePartnerScore(
+    PublicDemoEngineerSales engineer,
+    PublicDemoOfferCandidateStage legacyStage,
+  ) =>
+      legacyStage == PublicDemoOfferCandidateStage.partnerInterviewPassed ||
+          legacyStage == PublicDemoOfferCandidateStage.partnerInterviewFailed
+      ? engineer.lastInterviewScore
+      : null;
+
+  static int? _legacyOfferCandidateClientScore(
+    PublicDemoEngineerSales engineer,
+    PublicDemoOfferCandidateStage legacyStage,
+  ) =>
+      legacyStage == PublicDemoOfferCandidateStage.clientInterviewPassed ||
+          legacyStage == PublicDemoOfferCandidateStage.clientInterviewFailed ||
+          legacyStage == PublicDemoOfferCandidateStage.ordered
+      ? engineer.lastInterviewScore
+      : null;
+
+  /// Builds a brand-new [PublicDemoOfferCandidate] for (`engineer.id`,
+  /// [projectId]) directly at legacy authority's own current stage/score/
+  /// record — the shared derivation both [_reconcileOfferCandidates] (a
+  /// missing candidate for a resolvable legacy project) and
+  /// [withMatchingProposal] (a fresh candidate for an engineer whose coarse
+  /// [PublicDemoSalesStage] already outranks the bare
+  /// [PublicDemoOfferCandidateStage.proposed] entry point — e.g. a genuine
+  /// partner-interview pass minted through the legacy, project-agnostic
+  /// [recordEngineerInterviewResult] path *before* this exact project was
+  /// ever proposed) use, so a freshly-visible candidate is never left
+  /// transiently behind the very engineer it belongs to. When [legacyStage]
+  /// is itself [PublicDemoOfferCandidateStage.proposed] (the common case —
+  /// no partner interview has happened yet), every derived score/record is
+  /// `null`/`false`, making this produce the exact same result as
+  /// [PublicDemoOfferCandidate.propose].
+  static PublicDemoOfferCandidate _offerCandidateFromLegacy({
+    required PublicDemoEngineerSales engineer,
+    required String projectId,
+    required int proposedMonth,
+    required PublicDemoOfferCandidateStage legacyStage,
+  }) => PublicDemoOfferCandidate.fromLegacyEngineerState(
+    engineerId: engineer.id,
+    projectId: projectId,
+    proposedMonth: proposedMonth,
+    stage: legacyStage,
+    partnerScore: _legacyOfferCandidatePartnerScore(engineer, legacyStage),
+    clientScore: _legacyOfferCandidateClientScore(engineer, legacyStage),
+    hasGenuineInterviewRecord: _legacyOfferCandidateHasRecord(
+      engineer,
+      legacyStage,
+    ),
+  );
+
+  /// Total order over the "in-progress" [PublicDemoOfferCandidateStage]
+  /// values used only to compare legacy authority's stage against an
+  /// existing candidate's own stage during reconciliation — never used for
+  /// any other purpose. `partnerInterviewFailed`/`partnerInterviewPassed`
+  /// rank equally (both mean "the partner leg has concluded"), likewise
+  /// `clientInterviewFailed`/`clientInterviewPassed` — a pass/fail retry
+  /// loop at the same leg must never be treated as "legacy is behind" or
+  /// "legacy is ahead" of the other outcome for that same leg.
+  /// [PublicDemoOfferCandidateStage.declined] has no legacy equivalent and
+  /// is handled separately (skipped entirely) by
+  /// [_reconcileOfferCandidates] — its rank here is never consulted.
+  static int _offerCandidateStageRank(PublicDemoOfferCandidateStage stage) =>
+      switch (stage) {
+        PublicDemoOfferCandidateStage.proposed => 0,
+        PublicDemoOfferCandidateStage.partnerInterviewFailed => 1,
+        PublicDemoOfferCandidateStage.partnerInterviewPassed => 1,
+        PublicDemoOfferCandidateStage.clientInterviewFailed => 2,
+        PublicDemoOfferCandidateStage.clientInterviewPassed => 2,
+        PublicDemoOfferCandidateStage.ordered => 3,
+        PublicDemoOfferCandidateStage.declined => -1,
+      };
+
+  /// "Live" here means the exact same set [recordOfferCandidateOrder] itself
+  /// auto-declines siblings against — a competing candidate still in play,
+  /// never one already concluded (failed) or already terminal
+  /// (ordered/declined).
+  static bool _isLiveOfferCandidateStage(PublicDemoOfferCandidateStage stage) =>
+      stage == PublicDemoOfferCandidateStage.proposed ||
+      stage == PublicDemoOfferCandidateStage.partnerInterviewPassed ||
+      stage == PublicDemoOfferCandidateStage.clientInterviewPassed;
 
   // WORKFLOW-STATE-1AB FIX4 P1-2: the FIX3 `.restore(...)` reconstruction
   // factory (applicants/engineers/assignments accepted verbatim) was itself
@@ -979,12 +1140,62 @@ class PublicDemoWorkflowState {
   /// The only production way an engineer reaches `ordered`. See this
   /// section's class doc above for why that makes it unreachable without a
   /// genuine partner+client interview pass.
-  PublicDemoWorkflowState recordOrder(String engineerId) =>
-      _transitionEngineerStage(
-        engineerId,
-        from: const {PublicDemoSalesStage.clientInterviewPassed},
-        to: PublicDemoSalesStage.ordered,
-      );
+  ///
+  /// Phase 1b (Production Cutover), Scope D: also candidate-aware, atomic
+  /// with the engineer-level transition in the same [_copyWith] call — the
+  /// real production entry point ([PublicDemoAggregate.recordOrder]) is the
+  /// "既存受注操作を candidate-aware にする" cutover this task requires. The
+  /// project ordered is resolved from this engineer's own (locked, per
+  /// [withMatchingProposal]'s own doc, once a genuine client-interview pass
+  /// occurs) [PublicDemoMatchingProposal] — never a caller-supplied project
+  /// id, and never a UI change, since this method's own signature is
+  /// unchanged. When that resolves to a genuine
+  /// [PublicDemoOfferCandidateStage.clientInterviewPassed] candidate, it is
+  /// ordered and every other live sibling candidate for the same engineer is
+  /// declined, atomically — the exact same rule
+  /// [recordOfferCandidateOrder] itself encodes. A no-op for the candidate
+  /// side (engineer-level transition still proceeds) when no project
+  /// resolves at all (the legacy, project-agnostic generic-interview path,
+  /// unchanged single-project behavior) or no matching candidate exists.
+  PublicDemoWorkflowState recordOrder(String engineerId) {
+    final engineer = engineers
+        .where((candidate) => candidate.id == engineerId)
+        .firstOrNull;
+    if (engineer == null ||
+        engineer.stage != PublicDemoSalesStage.clientInterviewPassed) {
+      return this;
+    }
+    final projectId = matchingProposalFor(engineerId)?.projectId;
+    final target = projectId == null
+        ? null
+        : offerCandidateFor(engineerId, projectId);
+    final canOrderCandidate =
+        target != null &&
+        target.stage == PublicDemoOfferCandidateStage.clientInterviewPassed &&
+        target.hasGenuineInterviewRecord;
+    return _copyWith(
+      engineers: [
+        for (final candidate in engineers)
+          if (candidate.id == engineerId)
+            candidate.copyWith(stage: PublicDemoSalesStage.ordered)
+          else
+            candidate,
+      ],
+      offerCandidates: !canOrderCandidate
+          ? offerCandidates
+          : [
+              for (final candidate in offerCandidates)
+                if (candidate.engineerId == engineerId &&
+                    candidate.projectId == projectId)
+                  candidate.markOrdered()
+                else if (candidate.engineerId == engineerId &&
+                    _isLiveOfferCandidateStage(candidate.stage))
+                  candidate.decline()
+                else
+                  candidate,
+            ],
+    );
+  }
 
   PublicDemoWorkflowState _transitionEngineerStage(
     String engineerId, {
@@ -1547,6 +1758,37 @@ class PublicDemoWorkflowState {
   /// [PublicDemoEngineerSales.genuineInterviewProjectId]); a *failed*
   /// interview (`clientInterviewFailed`) is unaffected and still freely
   /// re-proposable, exactly as before.
+  ///
+  /// Phase 1b (Production Cutover), Scope A: also synchronizes the
+  /// (engineerId, projectId) [PublicDemoOfferCandidate] for this exact
+  /// proposal, atomically, in the same [_copyWith] call — the real
+  /// production entry point ([PublicDemoAggregate.proposeMatch]) is the
+  /// "既存proposal flow -> candidate synchronization" cutover this task
+  /// requires, reusing [PublicDemoOfferCandidate.propose] verbatim (no new
+  /// logic/engine). Unlike [matchingProposals] itself (replaced, never
+  /// accumulated, per-engineer), a fresh proposal for a *different* project
+  /// never removes/replaces an existing candidate for another project —
+  /// both coexist, exactly [proposeOfferCandidate]'s own contract. A no-op
+  /// for the candidate side when one already exists for this exact pair
+  /// (e.g. reconciliation already synthesized it, or a prior proposal for
+  /// this same pair already created it).
+  ///
+  /// A brand-new candidate is seeded directly at this engineer's own
+  /// CURRENT legacy stage/score/record ([_offerCandidateFromLegacy]) rather
+  /// than always at the bare [PublicDemoOfferCandidateStage.proposed] entry
+  /// point — the one edge case this matters for is an engineer who already
+  /// passed/failed a partner interview through the legacy, project-agnostic
+  /// [recordEngineerInterviewResult] path before this exact project was
+  /// ever proposed (this method's own guard above already excludes the
+  /// `clientInterviewPassed`/`ordered` legacy stages from ever reaching
+  /// here, so this can never fabricate a client-pass or an order for a
+  /// project never actually interviewed for). Without this, such a
+  /// candidate would start one stage behind the very engineer it belongs
+  /// to until the next save/load's [_reconcileOfferCandidates] pass caught
+  /// it up — self-healing, but needlessly transient. The common case (no
+  /// partner interview has happened yet) is unaffected:
+  /// [_offerCandidateFromLegacy] produces the exact same result
+  /// [PublicDemoOfferCandidate.propose] would.
   PublicDemoWorkflowState withMatchingProposal({
     required String engineerId,
     required String projectId,
@@ -1570,6 +1812,41 @@ class PublicDemoWorkflowState {
           decidedMonth: month,
         ),
       ],
+      offerCandidates: offerCandidateFor(engineerId, projectId) != null
+          ? offerCandidates
+          : [
+              ...offerCandidates,
+              // Only inherit this engineer's CURRENT legacy stage when this
+              // is the engineer's very first candidate ever (no other
+              // (engineerId, *) entry exists yet): in that case the legacy
+              // scalar can only ever have been earned for this one project,
+              // since nothing else has been proposed for this engineer to
+              // attribute it to instead (see this method's own doc). Once a
+              // second or later candidate is created for this engineer,
+              // legacy authority may already be attributed to a DIFFERENT
+              // sibling project (e.g. a genuine partner-interview pass this
+              // engineer earned for project A) — reusing it here would
+              // fraudulently seed a brand-new, never-interviewed project B
+              // candidate already past its own required interview steps.
+              // Bug found in PR #258 review: a plain proposeMatch(A) then
+              // proposeMatch(B) for the same engineer, with a genuine
+              // partner-interview pass recorded on A in between, silently
+              // skipped B's own partner interview entirely.
+              offerCandidatesForEngineer(engineerId).isEmpty
+                  ? _offerCandidateFromLegacy(
+                      engineer: engineer,
+                      projectId: projectId,
+                      proposedMonth: month,
+                      legacyStage:
+                          _legacyOfferCandidateStageFor(engineer.stage) ??
+                          PublicDemoOfferCandidateStage.proposed,
+                    )
+                  : PublicDemoOfferCandidate.propose(
+                      engineerId: engineerId,
+                      projectId: projectId,
+                      proposedMonth: month,
+                    ),
+            ],
     );
   }
 
@@ -1583,20 +1860,38 @@ class PublicDemoWorkflowState {
   // gives a failed attempt a dead-end-free way back to selling.
   // ---------------------------------------------------------------------
 
-  /// The current in-progress/completed project-interview session for
-  /// [engineerId], if one exists — `null` otherwise. At most one is ever
-  /// kept per engineer (see [startProjectInterviewSession]).
-  ClientInterviewSession? projectInterviewSessionFor(String engineerId) {
+  /// The current in-progress/completed project-interview session for the
+  /// exact `(engineerId, projectId)` pair, if one exists — `null` otherwise.
+  /// At most one is ever kept per pair (see [startProjectInterviewSession]).
+  ///
+  /// Issue #257 composite-identity widening (independently converged on by
+  /// two concurrent sessions — this one and PR #256's own carry-over): before
+  /// this fix, a session was identified by [engineerId] alone, so the same
+  /// engineer could never hold independent in-flight/concluded interview
+  /// sessions for two different projects at once — starting a fresh
+  /// interview for project B silently discarded an unfinished (or even
+  /// completed-but-not-yet-reconciled) session for project A. [projectId] is
+  /// now a required part of this lookup's own identity, mirroring
+  /// [offerCandidateFor]'s own `(engineerId, projectId)` key — every
+  /// production caller that used to search by [engineerId] alone has been
+  /// updated to pass the exact project it means (never an ambiguous
+  /// "whichever session this engineer happens to have").
+  ClientInterviewSession? projectInterviewSessionFor(
+    String engineerId,
+    String projectId,
+  ) {
     for (final session in projectInterviewSessions) {
-      if (session.employeeId == engineerId) return session;
+      if (session.employeeId == engineerId && session.projectId == projectId) {
+        return session;
+      }
     }
     return null;
   }
 
   /// Starts [session] as the project-interview session for its own
-  /// [ClientInterviewSession.employeeId] — a no-op (resume) only when an
-  /// incomplete session for that engineer **already exists for the same
-  /// [ClientInterviewSession.projectId]** — mirrors
+  /// `(employeeId, projectId)` pair — a no-op (resume) only when an
+  /// incomplete session for that exact pair **already exists with the same
+  /// [ClientInterviewSession.startedWeek]** — mirrors
   /// [startInterviewSession]'s own idempotency convention, but additionally
   /// keyed by project (Codex P1 fix, PR #214): resuming an incomplete
   /// session purely by employee id was unsafe — if the player closed an
@@ -1607,16 +1902,23 @@ class PublicDemoWorkflowState {
   /// project's fit/requirements by [chooseFollowUp]/[conclude] — old
   /// questions and new-project scoring must never mix.
   ///
-  /// A prior session for the same engineer is replaced (never resumed)
-  /// whenever it is already *completed* (a past pass/fail attempt — a
-  /// failed project interview must be retryable after the engineer returns
-  /// to selling and reaches `partnerInterviewPassed` again, for the same or
-  /// a newly proposed project — never a dead end), when it names a
-  /// *different* [ClientInterviewSession.projectId] than [session] (the
-  /// Codex P1 case above: the stale, project-mismatched session is safely
-  /// discarded in favor of this fresh one for the currently proposed
-  /// project, rather than either resuming it or leaving two sessions
-  /// around for the same engineer), or when it names a *different*
+  /// Issue #257 composite-identity widening: only the existing entry for
+  /// the exact SAME `(employeeId, projectId)` pair as [session] is ever
+  /// replaced — every other project's session for this same engineer is
+  /// left completely untouched, so a player who switches Matching focus to
+  /// a different project no longer silently loses an unfinished (or
+  /// completed) interview for the project they came from. This is the
+  /// P2 gap Issue #257's own "必須" item and PR #258's Claude Broad Review
+  /// both flagged: sessions used to be identified by [ClientInterviewSession
+  /// .employeeId] alone (see git history), so starting a session for ANY
+  /// project unconditionally swept away every other entry for the same
+  /// employee.
+  ///
+  /// The entry for the SAME `(employeeId, projectId)` pair is replaced
+  /// (never resumed) whenever it is already *completed* (a past pass/fail
+  /// attempt — a failed project interview must be retryable after the
+  /// engineer returns to selling and is proposed to this same project
+  /// again — never a dead end), or when it names a *different*
   /// [ClientInterviewSession.startedWeek] (Codex P2 fix, PR #214): Public
   /// Demo's own engineer runtime only ever changes at a month-close
   /// boundary ([PublicDemoState.applyMonthlyGrowth]/`selectInternalTraining`
@@ -1632,7 +1934,7 @@ class PublicDemoWorkflowState {
   /// [chooseFollowUp]/[conclude] time. No new persisted field is needed —
   /// this compares [ClientInterviewSession.startedWeek], which already
   /// exists — and the stale session is safely discarded for a fresh
-  /// restart, never resumed, exactly like the projectId case above.
+  /// restart, never resumed.
   PublicDemoWorkflowState startProjectInterviewSession(
     ClientInterviewSession session,
   ) {
@@ -1647,7 +1949,9 @@ class PublicDemoWorkflowState {
     return _copyWith(
       projectInterviewSessions: [
         for (final existing in projectInterviewSessions)
-          if (existing.employeeId != session.employeeId) existing,
+          if (existing.employeeId != session.employeeId ||
+              existing.projectId != session.projectId)
+            existing,
         session,
       ],
     );
@@ -1720,10 +2024,13 @@ class PublicDemoWorkflowState {
         engineer.stage != PublicDemoSalesStage.partnerInterviewPassed) {
       return this;
     }
-    final session = projectInterviewSessionFor(engineerId);
+    // Issue #257 composite-identity widening: looked up by the exact
+    // `(engineerId, project.id)` pair, never by [engineerId] alone — this
+    // engineer may hold other, independent sessions for other projects at
+    // the same time, and none of them may ever be picked up here.
+    final session = projectInterviewSessionFor(engineerId, project.id);
     if (session == null ||
         session.completed ||
-        session.projectId != project.id ||
         session.startedWeek != currentMonth ||
         !PublicDemoProjectInterview.isReadyToConclude(session)) {
       return this;
@@ -1753,10 +2060,39 @@ class PublicDemoWorkflowState {
           else
             candidate,
       ],
+      // Composite-identity widening: only THIS exact (engineerId,
+      // project.id) entry is replaced with the concluded session — every
+      // other project's session this engineer holds is left untouched, so
+      // concluding project A's interview can never overwrite or discard an
+      // independent, unrelated session for project B.
       projectInterviewSessions: [
         for (final existing in projectInterviewSessions)
-          if (existing.employeeId == engineerId) completedSession else existing,
+          if (existing.employeeId == engineerId &&
+              existing.projectId == project.id)
+            completedSession
+          else
+            existing,
       ],
+      // Phase 1b (Production Cutover), Scope C: syncs the same
+      // already-computed [outcome] — never a second, independent
+      // evaluation — onto the matching (engineerId, project.id) candidate,
+      // atomically alongside the engineer-level update above. A no-op when
+      // no such candidate exists (e.g. a save from before the cutover that
+      // reconciliation has not yet reached, or an engineer who reached this
+      // stage through the legacy generic path with no proposal at all).
+      offerCandidates: offerCandidateFor(engineerId, project.id) == null
+          ? offerCandidates
+          : [
+              for (final candidate in offerCandidates)
+                if (candidate.engineerId == engineerId &&
+                    candidate.projectId == project.id)
+                  candidate.applyClientInterviewResult(
+                    passed: outcome.passed,
+                    score: outcome.score,
+                  )
+                else
+                  candidate,
+            ],
     );
   }
 
@@ -1768,11 +2104,16 @@ class PublicDemoWorkflowState {
   /// `partnerInterviewPassed` → `clientInterviewPassed`/
   /// `clientInterviewFailed`), reusing the exact same
   /// [projectInterviewSessions] list/[ClientInterviewSession] shape — no new
-  /// persisted field. A partner session and a later client session for the
-  /// same engineer never coexist: [startProjectInterviewSession]'s own
-  /// "at most one entry per employeeId" replace rule (invoked identically by
-  /// both this phase and Phase 6) discards the completed partner session the
-  /// moment a fresh client-interview session starts for the same engineer.
+  /// persisted field. A partner session and a later client session *for the
+  /// same project* never coexist: [startProjectInterviewSession]'s own "at
+  /// most one entry per `(employeeId, projectId)` pair" replace rule
+  /// (invoked identically by both this phase and Phase 6) discards the
+  /// completed partner session the moment a fresh client-interview session
+  /// starts for that exact project. Issue #257 composite-identity widening:
+  /// a partner session for one project and an independent (partner or
+  /// client) session for a genuinely *different* project the same engineer
+  /// has also been proposed to now DO coexist, by design — see
+  /// [startProjectInterviewSession]'s own doc.
   ///
   /// A no-op unless: [engineerId] is currently at `introduced` (the stage
   /// this phase's own interactive mini-game requires); a genuine, started
@@ -1794,10 +2135,12 @@ class PublicDemoWorkflowState {
         engineer.stage != PublicDemoSalesStage.introduced) {
       return this;
     }
-    final session = projectInterviewSessionFor(engineerId);
+    // Issue #257 composite-identity widening: looked up by the exact
+    // `(engineerId, project.id)` pair — see [concludeProjectInterview]'s
+    // own identical comment.
+    final session = projectInterviewSessionFor(engineerId, project.id);
     if (session == null ||
         session.completed ||
-        session.projectId != project.id ||
         session.startedWeek != currentMonth ||
         !PublicDemoProjectInterview.isReadyToConclude(session)) {
       return this;
@@ -1826,10 +2169,37 @@ class PublicDemoWorkflowState {
           else
             candidate,
       ],
+      // Composite-identity widening: only THIS exact (engineerId,
+      // project.id) entry is replaced — see [concludeProjectInterview]'s
+      // own identical comment.
       projectInterviewSessions: [
         for (final existing in projectInterviewSessions)
-          if (existing.employeeId == engineerId) completedSession else existing,
+          if (existing.employeeId == engineerId &&
+              existing.projectId == project.id)
+            completedSession
+          else
+            existing,
       ],
+      // Phase 1b (Production Cutover), Scope B: syncs the same
+      // already-computed [outcome] — never a second, independent
+      // evaluation, and no additional sales slot consumed here (the
+      // aggregate layer already charged the one real slot for this attempt
+      // when the session started) — onto the matching (engineerId,
+      // project.id) candidate, atomically alongside the engineer-level
+      // update above. A no-op when no such candidate exists.
+      offerCandidates: offerCandidateFor(engineerId, project.id) == null
+          ? offerCandidates
+          : [
+              for (final candidate in offerCandidates)
+                if (candidate.engineerId == engineerId &&
+                    candidate.projectId == project.id)
+                  candidate.applyPartnerInterviewResult(
+                    passed: outcome.passed,
+                    score: outcome.score,
+                  )
+                else
+                  candidate,
+            ],
     );
   }
 
@@ -2020,11 +2390,6 @@ class PublicDemoWorkflowState {
         !target.hasGenuineInterviewRecord) {
       return this;
     }
-    const liveSiblingStages = {
-      PublicDemoOfferCandidateStage.proposed,
-      PublicDemoOfferCandidateStage.partnerInterviewPassed,
-      PublicDemoOfferCandidateStage.clientInterviewPassed,
-    };
     return _copyWith(
       offerCandidates: [
         for (final candidate in offerCandidates)
@@ -2032,7 +2397,7 @@ class PublicDemoWorkflowState {
               candidate.projectId == projectId)
             candidate.markOrdered()
           else if (candidate.engineerId == engineerId &&
-              liveSiblingStages.contains(candidate.stage))
+              _isLiveOfferCandidateStage(candidate.stage))
             candidate.decline()
           else
             candidate,

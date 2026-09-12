@@ -34,8 +34,12 @@ void main() {
         applicants: aggregate.workflow.applicants,
         isFiscalYearCompleted: false,
         isFinanciallyTerminal: false,
+        nextActionHeadline: '佐藤 健のスキルシートを確認',
       );
 
+      // SES ISSUE-250: a plain passthrough of the caller-resolved headline —
+      // this presenter performs no gating/derivation of its own.
+      expect(data.nextActionHeadline, '佐藤 健のスキルシートを確認');
       expect(data.closedMonth, 4);
       expect(data.openingCash, flow.openingCash);
       expect(data.closingCash, flow.closingCash);
@@ -90,6 +94,7 @@ void main() {
         applicants: aggregate.workflow.applicants,
         isFiscalYearCompleted: false,
         isFinanciallyTerminal: false,
+        nextActionHeadline: null,
       );
 
       final nameById = {
@@ -129,6 +134,7 @@ void main() {
         nextMonthJoinNames: [],
         isFiscalYearCompleted: false,
         isFinanciallyTerminal: false,
+        nextActionHeadline: null,
       );
       final comment = publicDemoMonthlyReportHiyoriComment(data);
       expect(comment, contains('減りました'));
@@ -156,6 +162,7 @@ void main() {
         nextMonthJoinNames: [],
         isFiscalYearCompleted: false,
         isFinanciallyTerminal: false,
+        nextActionHeadline: null,
       );
       final comment = publicDemoMonthlyReportHiyoriComment(data);
       expect(comment, contains('増えました'));
@@ -183,6 +190,7 @@ void main() {
         nextMonthJoinNames: [],
         isFiscalYearCompleted: false,
         isFinanciallyTerminal: false,
+        nextActionHeadline: null,
       );
       final comment = publicDemoMonthlyReportHiyoriComment(data);
       expect(comment, contains('増減がありませんでした'));
@@ -211,6 +219,7 @@ void main() {
         nextMonthJoinNames: [],
         isFiscalYearCompleted: false,
         isFinanciallyTerminal: false,
+        nextActionHeadline: null,
       );
       final comment = publicDemoMonthlyReportHiyoriComment(data);
       expect(comment, contains('2名'));
@@ -239,6 +248,7 @@ void main() {
         nextMonthJoinNames: [],
         isFiscalYearCompleted: false,
         isFinanciallyTerminal: false,
+        nextActionHeadline: null,
       );
       final comment = publicDemoMonthlyReportHiyoriComment(data);
       expect(comment, contains('全員が案件に参画'));
@@ -266,6 +276,7 @@ void main() {
         nextMonthJoinNames: ['佐藤 健'],
         isFiscalYearCompleted: false,
         isFinanciallyTerminal: false,
+        nextActionHeadline: null,
       );
       final comment = publicDemoMonthlyReportHiyoriComment(data);
       expect(comment, isNot(contains('増えた')));
@@ -300,6 +311,7 @@ void main() {
         nextMonthJoinNames: [],
         isFiscalYearCompleted: false,
         isFinanciallyTerminal: true,
+        nextActionHeadline: null,
       );
       final comment = publicDemoMonthlyReportHiyoriComment(data);
       expect(comment, isNot(contains('営業タブ')));
@@ -330,6 +342,7 @@ void main() {
         nextMonthJoinNames: [],
         isFiscalYearCompleted: true,
         isFinanciallyTerminal: false,
+        nextActionHeadline: null,
       );
       final comment = publicDemoMonthlyReportHiyoriComment(data);
       expect(comment, isNot(contains('営業タブ')));
@@ -360,10 +373,159 @@ void main() {
         nextMonthJoinNames: [],
         isFiscalYearCompleted: false,
         isFinanciallyTerminal: false,
+        nextActionHeadline: null,
       );
       final comment = publicDemoMonthlyReportHiyoriComment(data);
       expect(comment, contains('3名'));
       expect(comment, contains('営業タブから案件参画を進めましょう'));
+    });
+  });
+
+  group('6. hiyori comment branches — SES ISSUE-250 黒字/赤字 (netIncome)', () {
+    test('netIncome > 0 adds a 黒字 sentence naming the exact profit', () {
+      const data = PublicDemoMonthlyReportDisplayData(
+        closedMonth: 8,
+        openingCash: 1000000,
+        closingCash: 1000000,
+        cashDelta: 0,
+        revenue: 300000,
+        cashReceived: 300000,
+        receivables: 300000,
+        totalExpenses: 200000,
+        salaryPaid: 200000,
+        fixedCostsPaid: 0,
+        bonusPaid: 0,
+        trainingCost: 0,
+        recruitmentCost: 0,
+        netIncome: 100000,
+        assignedCount: 0,
+        waitingCount: 0,
+        nextMonthJoinNames: [],
+        isFiscalYearCompleted: false,
+        isFinanciallyTerminal: false,
+        nextActionHeadline: null,
+      );
+      final comment = publicDemoMonthlyReportHiyoriComment(data);
+      expect(comment, contains('黒字'));
+      expect(comment, contains('¥100,000'));
+      expect(comment, isNot(contains('赤字')));
+    });
+
+    test('netIncome < 0 adds a 赤字 sentence naming the exact loss', () {
+      const data = PublicDemoMonthlyReportDisplayData(
+        closedMonth: 8,
+        openingCash: 1000000,
+        closingCash: 1000000,
+        cashDelta: 0,
+        revenue: 100000,
+        cashReceived: 100000,
+        receivables: 100000,
+        totalExpenses: 200000,
+        salaryPaid: 200000,
+        fixedCostsPaid: 0,
+        bonusPaid: 0,
+        trainingCost: 0,
+        recruitmentCost: 0,
+        netIncome: -100000,
+        assignedCount: 0,
+        waitingCount: 0,
+        nextMonthJoinNames: [],
+        isFiscalYearCompleted: false,
+        isFinanciallyTerminal: false,
+        nextActionHeadline: null,
+      );
+      final comment = publicDemoMonthlyReportHiyoriComment(data);
+      expect(comment, contains('赤字'));
+      expect(comment, contains('¥100,000'));
+      expect(comment, isNot(contains('黒字')));
+    });
+
+    test('netIncome == 0 adds neither 黒字 nor 赤字', () {
+      const data = PublicDemoMonthlyReportDisplayData(
+        closedMonth: 8,
+        openingCash: 1000000,
+        closingCash: 1000000,
+        cashDelta: 0,
+        revenue: 0,
+        cashReceived: 0,
+        receivables: 0,
+        totalExpenses: 0,
+        salaryPaid: 0,
+        fixedCostsPaid: 0,
+        bonusPaid: 0,
+        trainingCost: 0,
+        recruitmentCost: 0,
+        netIncome: 0,
+        assignedCount: 0,
+        waitingCount: 0,
+        nextMonthJoinNames: [],
+        isFiscalYearCompleted: false,
+        isFinanciallyTerminal: false,
+        nextActionHeadline: null,
+      );
+      final comment = publicDemoMonthlyReportHiyoriComment(data);
+      expect(comment, isNot(contains('黒字')));
+      expect(comment, isNot(contains('赤字')));
+    });
+  });
+
+  group('7. hiyori comment branches — SES ISSUE-250 次月入社', () {
+    test('a non-terminal, non-year-end month with nextMonthJoinNames names '
+        'every confirmed joiner', () {
+      const data = PublicDemoMonthlyReportDisplayData(
+        closedMonth: 5,
+        openingCash: 1000000,
+        closingCash: 1000000,
+        cashDelta: 0,
+        revenue: 0,
+        cashReceived: 0,
+        receivables: 0,
+        totalExpenses: 0,
+        salaryPaid: 0,
+        fixedCostsPaid: 0,
+        bonusPaid: 0,
+        trainingCost: 0,
+        recruitmentCost: 0,
+        netIncome: 0,
+        assignedCount: 0,
+        waitingCount: 0,
+        nextMonthJoinNames: ['佐藤 健', '鈴木 葵'],
+        isFiscalYearCompleted: false,
+        isFinanciallyTerminal: false,
+        nextActionHeadline: null,
+      );
+      final comment = publicDemoMonthlyReportHiyoriComment(data);
+      expect(comment, contains('来月は'));
+      expect(comment, contains('佐藤 健さん'));
+      expect(comment, contains('鈴木 葵さん'));
+    });
+
+    test('a terminal close never mentions a next-month join even when the '
+        'list is non-empty (no "次月" exists once the game is terminal)', () {
+      const data = PublicDemoMonthlyReportDisplayData(
+        closedMonth: 15,
+        openingCash: 500000,
+        closingCash: 400000,
+        cashDelta: -100000,
+        revenue: 0,
+        cashReceived: 0,
+        receivables: 0,
+        totalExpenses: 100000,
+        salaryPaid: 100000,
+        fixedCostsPaid: 0,
+        bonusPaid: 0,
+        trainingCost: 0,
+        recruitmentCost: 0,
+        netIncome: -100000,
+        assignedCount: 0,
+        waitingCount: 0,
+        nextMonthJoinNames: ['佐藤 健'],
+        isFiscalYearCompleted: false,
+        isFinanciallyTerminal: true,
+        nextActionHeadline: null,
+      );
+      final comment = publicDemoMonthlyReportHiyoriComment(data);
+      expect(comment, isNot(contains('来月は')));
     });
   });
 }

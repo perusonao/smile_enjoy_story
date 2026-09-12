@@ -427,6 +427,11 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
   /// Never calls `closeX(...)` again — [closedMonth] is used only to ask
   /// the snapshot "is this the month you just recorded", never to redrive
   /// a close.
+  ///
+  /// SES ISSUE-250: also reads [_recommendedActionSlot] — the same getter
+  /// HOME's own build() reads for its recommended-action slot — purely to
+  /// display its headline as this report's "次に考えること" line. Reading a
+  /// getter, not calling it, so this still never invokes a command.
   Future<void> _maybeShowMonthlyReport(int closedMonth) async {
     final snapshot = PublicDemoMonthlyReportSnapshot.fromAggregate(
       _game,
@@ -434,6 +439,19 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
     );
     if (!snapshot.isReady) return;
     if (!mounted) return;
+    // SES ISSUE-250: read the exact same recommended-action authority HOME's
+    // own slot already renders next build — [_recommendedActionSlot] itself
+    // already returns [HomeRecommendedActionSuppressed] for a
+    // terminal/year-end close (`s.isCloseBlocked`), so a bankruptcy/March
+    // close reaches this report with no next-action headline for the same
+    // reason HOME's own slot would show nothing then. Only the headline text
+    // is read — [HomeRecommendedActionCandidate.invoke] is never called, so
+    // this can never mutate any aggregate/state/workflow from inside the
+    // report.
+    final recommendedAction = _recommendedActionSlot;
+    final nextActionHeadline = recommendedAction is HomeRecommendedActionAvailable
+        ? recommendedAction.candidate.action.headline
+        : null;
     final data = PublicDemoMonthlyReportDisplayData.fromSnapshot(
       snapshot,
       applicants: workflow.applicants,
@@ -443,6 +461,7 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
       // can tell a terminal/year-end close apart from an ordinary one.
       isFiscalYearCompleted: s.fiscalYearCompleted,
       isFinanciallyTerminal: s.isFinanciallyTerminal,
+      nextActionHeadline: nextActionHeadline,
     );
     await showDialog<void>(
       context: context,

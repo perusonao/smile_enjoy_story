@@ -126,6 +126,15 @@ void main() {
 
       expect(find.byKey(_reportKey), findsOneWidget);
       expect(find.text('4月の経営結果'), findsOneWidget);
+      // SES ISSUE-250: the 固定費 row's composition caption and ひより's
+      // portrait are wired into the real production dialog, not just the
+      // isolated widget fixture in
+      // `public_demo_monthly_report_dialog_test.dart`.
+      expect(find.text('（家賃・水道光熱費など）'), findsOneWidget);
+      expect(
+        find.byKey(const Key('public-demo-monthly-report-hiyori-portrait')),
+        findsOneWidget,
+      );
       // The month has already advanced beneath the dialog.
       expect(_currentState(tester).month, 5);
       // Codex Broad Review P2 (PR #237): an ordinary month's dismiss CTA
@@ -331,6 +340,13 @@ void main() {
       expect(hiyoriComment, isNot(contains('営業タブ')));
       expect(hiyoriComment, isNot(contains('案件参画を進めましょう')));
       expect(hiyoriComment, contains('今月の結果を振り返り'));
+      // SES ISSUE-250: a terminal (bankrupt) close must never show an
+      // impossible future action — [_recommendedActionSlot] itself already
+      // returns [HomeRecommendedActionSuppressed] here (`s.isCloseBlocked`).
+      expect(
+        find.byKey(const Key('public-demo-monthly-report-next-action')),
+        findsNothing,
+      );
 
       await tester.tap(find.byKey(_dismissKey));
       await tester.pumpAndSettle();
@@ -433,6 +449,13 @@ void main() {
       expect(hiyoriComment, isNot(contains('営業タブ')));
       expect(hiyoriComment, isNot(contains('案件参画を進めましょう')));
       expect(hiyoriComment, contains('1年間の経営結果を確認しましょう'));
+      // SES ISSUE-250: fiscal-year completion is the same
+      // [HomeRecommendedActionSuppressed] case as bankruptcy — no next
+      // action exists, so the section must not render.
+      expect(
+        find.byKey(const Key('public-demo-monthly-report-next-action')),
+        findsNothing,
+      );
 
       await tester.tap(find.byKey(_dismissKey));
       await tester.pumpAndSettle();

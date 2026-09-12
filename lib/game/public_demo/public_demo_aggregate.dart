@@ -1314,9 +1314,9 @@ class PublicDemoAggregate {
         for (final applicant in joinedNow)
           PublicDemoEngineerRuntime.fromApplicant(
             applicant,
-            sourceApplicant: PublicDemoSeededRecruitmentGenerator.regenerateDomainApplicant(
+            sourceApplicant: PublicDemoSeededRecruitmentGenerator.verifiedSourceApplicantFor(
               runSeed: state.runSeed,
-              applicantId: applicant.id,
+              applicant: applicant,
             ),
           ),
       ],
@@ -1518,9 +1518,9 @@ class PublicDemoAggregate {
             for (final applicant in newlyJoined)
               PublicDemoEngineerRuntime.fromApplicant(
                 applicant,
-                sourceApplicant: PublicDemoSeededRecruitmentGenerator.regenerateDomainApplicant(
+                sourceApplicant: PublicDemoSeededRecruitmentGenerator.verifiedSourceApplicantFor(
                   runSeed: state.runSeed,
-                  applicantId: applicant.id,
+                  applicant: applicant,
                 ),
               ),
           ],

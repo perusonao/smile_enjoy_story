@@ -1,8 +1,9 @@
 # SES FIRST-FUN-YEAR — Applicant→Engineer Data Preservation / SkillSheet Expansion — Result Report
 
-Status: **Implemented, self-hardened, tests green**
+Status: **Implemented, self-hardened, Codex broad review P1s addressed, tests green**
 
 Issue: [#248](https://github.com/perusonao/smile_enjoy_story/issues/248)
+PR: [#249](https://github.com/perusonao/smile_enjoy_story/pull/249)
 
 ## Audited explicit main SHA
 
@@ -30,11 +31,34 @@ non-existent document.
 - Branch: `claude/ses-248-applicant-engineer-preservation-rlchfl`
 - Base: `main` (`0b90d556b74746c2f82ac0e9111a95e93bd564b6`)
 - PR: https://github.com/perusonao/smile_enjoy_story/pull/249
-- Final HEAD SHA: `b70d6972ddd5ee1da7c1afffa26a40926f7ca8c7` (this
-  docs-only commit, filling in the PR URL/SHA into this same report after
-  PR #249 was opened at `00c304e40b4667082e9aaa07556bd9d67d1d5d74` —
-  confirmed via `git rev-parse HEAD` immediately before this final push;
-  no production/test code changed since `00c304e`)
+- PR HEAD before this Codex-review-response round: `b18bf4c32849e756d409501c50403caa5e5d979e`
+- Final HEAD SHA (after this round — Codex broad review P1 fixes): *(see
+  chat's final report for the exact value confirmed via `pull_request_read`
+  after push)*
+
+## Codex broad review response (this round)
+
+PR #249's one broad Codex review (already run once, per the issue's review
+policy — **not re-run in this round**) raised two P1 findings, both fixed
+here in the same PR:
+
+1. **[Review thread `PRRT_kwDOT2htY86hrzq4`](https://github.com/perusonao/smile_enjoy_story/pull/249#discussion_r3994580195)
+   — an id shape alone is not proof of provenance.** A save created before
+   CORE-GAMEPLAY Phase 2 (seeded recruitment) can still carry a *pending*
+   applicant whose id is already shaped like
+   `recruitment-<month>-<medium>-<slot>` — the pre-Phase-2 fixed/cyclic
+   template pool (`PublicDemoRecruitmentCalculation`'s old default) used the
+   exact same id scheme. Blindly trusting `regenerateDomainApplicant` for
+   such an id would attach today's seed-generated candidate's language/
+   skill/tech to a completely unrelated stored applicant. See "Phase 1
+   fix, round 2" below for the resolution.
+2. **[Review thread `PRRT_kwDOT2htY86hrzq9`](https://github.com/perusonao/smile_enjoy_story/pull/249#discussion_r3994580200)
+   — governing plan not synced.** `docs/decisions/SES_DEVELOPMENT-PRIORITY_2026-09-02.md`
+   did not record Issue #248/PR #249's completion. Fixed by adding a
+   2026-09-12 Update history entry (First Fun Year priority, Current
+   execution order, and Prioritized backlog table structure all left
+   unchanged, per that document's own plan-maintenance rule and per this
+   task's explicit instruction).
 
 ## Phase 0 — Fresh Audit (traced against current code, not the missing report)
 
@@ -179,10 +203,48 @@ applicantId})`, no new save data, purely re-derived on demand).
 Call sites updated (`lib/game/public_demo/public_demo_aggregate.dart`,
 the only two production call sites of `fromApplicant`): both now pass
 `sourceApplicant: PublicDemoSeededRecruitmentGenerator
-.regenerateDomainApplicant(runSeed: state.runSeed, applicantId:
-applicant.id)`. `state.runSeed` is invariant for the whole playthrough
-(existing guarantee), so this is deterministic and safe to call at any
-point join can occur (May, June, or a later recovery-loop join).
+.verifiedSourceApplicantFor(runSeed: state.runSeed, applicant: applicant)`.
+`state.runSeed` is invariant for the whole playthrough (existing
+guarantee), so this is deterministic and safe to call at any point join
+can occur (May, June, or a later recovery-loop join).
+
+### Phase 1 fix, round 2 (Codex P1): provenance verification, not id-only trust
+
+The initial implementation called `regenerateDomainApplicant` directly,
+trusting the id shape alone. Codex's broad review correctly identified that
+this is unsafe for a save created before CORE-GAMEPLAY Phase 2: the
+pre-Phase-2 fixed/cyclic template pool used the exact same
+`recruitment-<month>-<medium>-<slot>` id scheme, so a *pending* applicant
+from such a save could have an id today's generator would happily
+regenerate a candidate for — a candidate that is, by construction, an
+unrelated person.
+
+`lib/game/public_demo/public_demo_recruitment_candidate_generator.dart`
+gained two new methods on `PublicDemoSeededRecruitmentGenerator`:
+
+- `regenerateProjectedApplicant({runSeed, applicantId})` — reconstructs the
+  exact `PublicDemoApplicant` `generate()` would have produced for this
+  id's own slot, purely from `(runSeed, id)`. Implemented by extracting the
+  same per-slot branch `generate()` already uses (same `_rollsInexperienced`/
+  `_pickApplicant`/`_project`/`_inexperiencedCandidate` calls) — no new
+  generation formula.
+- `verifiedSourceApplicantFor({runSeed, applicant})` — calls the above and
+  compares every résumé-visible field (`name`, `resumeSummary`,
+  `experienceMonths`, `salesSkillFit`, `interviewScore`, `acceptanceScore`,
+  `requestedMonthlySalary`) against what is *actually stored* on
+  `applicant`. Only when **every** field matches does it return the
+  verified domain `Applicant` (via `regenerateDomainApplicant`); otherwise
+  it returns `null`, and the caller falls back to the exact pre-existing
+  placeholder behavior — identical to the "no `sourceApplicant`" path
+  already described above.
+
+No new save-schema/provenance field was added — this is a pure,
+re-derived-on-demand check, matching the existing `regenerateDomainApplicant`
+design (nothing about it is persisted). A genuinely fresh, seed-generated
+applicant always verifies (its stored fields are exactly what `_project()`
+derived from the same seed in the first place), so the happy path this
+issue exists for is unaffected; only an id-shape coincidence with
+mismatched stored data now safely falls back.
 
 **This one change automatically fixes the roster skill bar, the
 SkillSheet's primary-language chip / experience comparison / tech-skill
@@ -283,9 +345,20 @@ Unaffected. `fromApplicant` is only ever invoked at the moment of a *new*
 join — never at load time — so an already-materialized `PublicDemoEngineerRuntime`
 in an existing save reloads exactly as before via the unchanged `fromJson`.
 For a legacy save still mid-game with an unjoined `app-01`/`app-02`/
-`free-template-*` applicant, `regenerateDomainApplicant` returns `null` for
-those ids (verified by test), so any future join for them reproduces the
-exact pre-existing hard-coded-Java behavior — zero behavior change.
+`free-template-*` applicant, `regenerateDomainApplicant`/
+`regenerateProjectedApplicant` return `null` for those ids (unparseable —
+verified by test), so any future join for them reproduces the exact
+pre-existing hard-coded-Java behavior — zero behavior change.
+
+**Round 2 addition**: a legacy save whose pending applicant's id *does*
+parse as `recruitment-<month>-<medium>-<slot>` (the pre-Phase-2 template
+pool used this same scheme) is now also safe: `verifiedSourceApplicantFor`
+rejects the regenerated candidate unless its projected profile matches the
+actually-stored applicant field-for-field, so such an applicant still joins
+with their own real salary/experience and the same safe Java/zero-tech
+placeholder every pre-this-issue save already used — never an unrelated
+regenerated identity. Verified end-to-end by test, including a
+save→reload immediately after join and a duplicate/retry `closeMay` call.
 
 ## UI changes
 
@@ -301,25 +374,31 @@ exact pre-existing hard-coded-Java behavior — zero behavior change.
 ## Tests
 
 - `flutter analyze` (project-wide): **No issues found.**
-- New: `test/game/public_demo/public_demo_issue248_applicant_engineer_continuity_test.dart`
-  (7 tests) — factory-level language/techSkills/confirmedLanguages
-  continuity, legacy-fixture no-op, inexperienced-hire no-fabrication,
-  toJson key-set/round-trip regression, SkillSheet-projection surfacing,
-  Matching-input surfacing, and a full production
+- `test/game/public_demo/public_demo_issue248_applicant_engineer_continuity_test.dart`
+  (**11 tests**, +4 in this round) — factory-level language/techSkills/
+  confirmedLanguages continuity, legacy-fixture no-op, inexperienced-hire
+  no-fabrication, toJson key-set/round-trip regression, SkillSheet-projection
+  surfacing, Matching-input surfacing, a full production
   recruit→interview→offer→pre-entry-sales→closeApril/closeMay→reload
-  end-to-end check.
-- New: `test/ui/public_demo/public_demo_issue248_recruitment_comparison_display_test.dart`
-  (5 tests) — the new row is present pre-interview at 360×800/390×844 ×
-  TextScaler 1.0/1.3 with no overflow, and the fact is shown exactly once
-  (not duplicated) once interviewed.
-- `flutter test test/game/public_demo`: **861 passed**, 0 failed (run both
-  before and after the `ac(i)` UI edit — domain suite unaffected by the
-  UI-only change).
-- `flutter test test/ui/public_demo`: **683 passed**, 0 failed — run once
-  with the Phase 1 domain fix alone, and again with both the domain fix
-  and the Phase 2 `ac(i)` UI edit applied together; both full runs green.
-  (The two new Issue #248 test files were run separately, +7 and +5
-  respectively, both green — see below.)
+  end-to-end check, and (round 2, Codex P1) four regression tests: a
+  genuinely fresh seed-generated applicant still verifies and uses its real
+  source (happy path unaffected); an id-only match with a mismatched
+  stored profile is rejected by `verifiedSourceApplicantFor`;
+  `fromApplicant` falls back to the exact pre-existing placeholder for such
+  a mismatched legacy-style applicant; and a full production join pipeline
+  test for that same legacy-style applicant, including save→reload and a
+  duplicate/retry `closeMay` call, confirming salary/experience authority
+  stays theirs while the placeholder technology profile is preserved.
+- `test/ui/public_demo/public_demo_issue248_recruitment_comparison_display_test.dart`
+  (5 tests, unchanged this round) — the new row is present pre-interview at
+  360×800/390×844 × TextScaler 1.0/1.3 with no overflow, and the fact is
+  shown exactly once (not duplicated) once interviewed.
+- `flutter test test/game/public_demo`: **872 passed**, 0 failed (861 +
+  11 new, after the round-2 provenance fix).
+- `flutter test test/ui/public_demo`: full suite re-run after the round-2
+  fix — *(see chat's final report for the exact count; the fix only
+  touches `lib/game/public_demo/`, no UI file, so no change to Phase 2's
+  own UI test results was expected or found)*.
 - `git diff --check`: clean.
 
 ## Unresolved issues / follow-ups
@@ -332,6 +411,10 @@ exact pre-existing hard-coded-Java behavior — zero behavior change.
   issue names as its source audit does not exist in the repository at all
   (checked on `origin/main` and every remote branch) — flagged here rather
   than silently working around it.
+- Both Codex broad review P1 findings on PR #249 are resolved as of this
+  round (provenance verification; governing plan sync) — no other P0/P1/P2
+  is outstanding on this PR. Per the review policy, the broad review is not
+  re-run in this round.
 
 ## Recommended next phase
 

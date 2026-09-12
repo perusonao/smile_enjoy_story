@@ -104,6 +104,91 @@ class PublicDemoSeededRecruitmentGenerator {
     );
   }
 
+  /// Reconstructs the exact [PublicDemoApplicant] [generate] would have
+  /// produced for [applicantId]'s own slot, purely from `(runSeed, id)` --
+  /// the same per-slot projection [generate] itself performs, exposed for
+  /// [verifiedSourceApplicantFor] to compare against what is actually
+  /// stored. Returns `null` under the same condition as
+  /// [regenerateDomainApplicant] (an id this generator's own scheme cannot
+  /// parse).
+  static PublicDemoApplicant? regenerateProjectedApplicant({
+    required int runSeed,
+    required String applicantId,
+  }) {
+    final parsed = _parseId(applicantId);
+    if (parsed == null) return null;
+    final (month, medium, index) = parsed;
+    final identifier = '${medium.name}:$index';
+    if (medium == PublicDemoRecruitmentMedium.free &&
+        _rollsInexperienced(
+          runSeed: runSeed,
+          month: month,
+          identifier: identifier,
+        )) {
+      return _inexperiencedCandidate(
+        runSeed: runSeed,
+        month: month,
+        identifier: identifier,
+        id: applicantId,
+      );
+    }
+    final applicant = _pickApplicant(
+      runSeed: runSeed,
+      month: month,
+      medium: medium,
+      identifier: identifier,
+    );
+    return _project(applicant, id: applicantId, medium: medium);
+  }
+
+  /// Issue #248 Codex P1 fix: verifies that regenerating from [applicant]'s
+  /// own id would reproduce the exact same résumé-visible profile already
+  /// stored on [applicant], before trusting the result as this applicant's
+  /// real generation source.
+  ///
+  /// A save created before this generator existed can still carry a
+  /// *pending* (not yet joined) applicant whose id already happens to be
+  /// shaped like `recruitment-<month>-<medium>-<slot>` -- the pre-Phase-2
+  /// fixed/cyclic template pool this generator replaced
+  /// (`PublicDemoRecruitmentCalculation`'s old default, see this class's
+  /// own doc) used the exact same id scheme, just cycling through a small
+  /// template array instead of seed-generating. For such an applicant, the
+  /// id alone is not proof of provenance: [regenerateDomainApplicant]
+  /// would return today's seed-generated candidate for that slot -- an
+  /// unrelated person's profile, not the one the old template pool
+  /// actually assigned this stored applicant. Only once every
+  /// résumé-visible field [regenerateProjectedApplicant] independently
+  /// derives for this id already matches what is actually stored is it
+  /// safe to treat the regenerated domain [Applicant] as this applicant's
+  /// genuine source; otherwise this returns `null` and the caller must
+  /// fall back to its own pre-existing (non-seeded) behavior. Deliberately
+  /// adds no new save-schema/provenance field -- this is a pure,
+  /// re-derived-on-demand check, exactly like [regenerateDomainApplicant]
+  /// itself.
+  static Applicant? verifiedSourceApplicantFor({
+    required int runSeed,
+    required PublicDemoApplicant applicant,
+  }) {
+    final projected = regenerateProjectedApplicant(
+      runSeed: runSeed,
+      applicantId: applicant.id,
+    );
+    if (projected == null ||
+        projected.name != applicant.name ||
+        projected.resumeSummary != applicant.resumeSummary ||
+        projected.experienceMonths != applicant.experienceMonths ||
+        projected.salesSkillFit != applicant.salesSkillFit ||
+        projected.interviewScore != applicant.interviewScore ||
+        projected.acceptanceScore != applicant.acceptanceScore ||
+        projected.requestedMonthlySalary != applicant.requestedMonthlySalary) {
+      return null;
+    }
+    return regenerateDomainApplicant(
+      runSeed: runSeed,
+      applicantId: applicant.id,
+    );
+  }
+
   static (int, PublicDemoRecruitmentMedium, int)? _parseId(String id) {
     final parts = id.split('-');
     if (parts.length != 4 || parts[0] != 'recruitment') return null;

@@ -2,11 +2,53 @@
 
 ## STATUS
 
-**Implemented, self-hardened, tests green.** Presentation-only change on the
-existing 営業タブ (Recruitment/Sales surface). No new screen, no save-schema
-change, no hiring-decision/authority change. Codex broad review has **not**
-been run this session, per the task's explicit instruction ("Broad Reviewは
-まだ実施しないでください").
+**Implemented, self-hardened, tests green. PR #252's Codex review P2 fixed
+in a follow-up round.** Presentation-only change on the existing 営業タブ
+(Recruitment/Sales surface). No new screen, no save-schema change, no
+hiring-decision/authority change. Codex broad review was **not re-run**
+this round, per explicit instruction — only the already-posted P2 finding
+was fixed.
+
+## PR #252 Codex review round — P2 fix (this update)
+
+PR: [#252](https://github.com/perusonao/smile_enjoy_story/pull/252)
+(`claude/recruitment-lifecycle-visibility-qul91k` → `main`).
+
+**Finding (P2, [discussion `r3995465859`](https://github.com/perusonao/smile_enjoy_story/pull/252#discussion_r3995465859)):**
+`preEntryPartnerFailed`/`preEntryClientFailed` were classified as `closed`
+("結果確定（不採用・辞退）"), but a failed pre-entry partner/client interview
+never touches [PublicDemoApplicant.bindingOffer] (minted once, at offer
+acceptance, before the pre-entry sales chain even starts) or excludes the
+applicant from `PublicDemoApplicant.join`'s guard (which only excludes
+`hasJoined` and `stage == offerDeclined`). `closeMay`'s own `accepted()`
+predicate explicitly includes both failed stages in its joined set, and
+later months' `joinAcceptedForFiscalClose` join every applicant
+unconditionally except `offerDeclined`. So such an applicant **genuinely
+still joins at month-end** — the player was being told, falsely, that their
+employment outcome was final and negative.
+
+**Fix**: `_S._applicantLifecycleBucket` now classifies
+`preEntryPartnerFailed`/`preEntryClientFailed` as `awaitingJoin` (alongside
+`juneOrdered` and an inexperienced accepted offer), not `closed`. `closed`
+is now exactly `{rejected, offerDeclined}` — the only two stages where
+`PublicDemoApplicant.join` genuinely never joins (confirmed independently
+by re-reading `join()`'s guard and `closeMay`/`joinAcceptedForFiscalClose`
+before editing). The card's own sales-failure status/tone is **byte-for-
+byte unchanged** — `applicantStatus`'s "上位面談不合格"/"客先面談不合格" labels,
+`_applicantStatusTone`'s negative (caution-colored) tone, and
+`applicantStep`'s progress-bar position are untouched; only which lifecycle
+group header the card renders under changed. This was independently
+verified against `origin/main`'s live PR #252 HEAD (`04c5fd7bbfdb822ffcaa0db455b4f81728be5964`
+— unchanged since the original push, confirmed via `pull_request_read`)
+before editing, matching the review comment's own citation exactly.
+
+A second P2 finding on the same PR round
+([discussion `r3995477975`](https://github.com/perusonao/smile_enjoy_story/pull/252#discussion_r3995477975),
+about a permanently-below-threshold `interviewed` applicant staying in
+`active` forever) was **not** addressed in this round — out of the explicit
+scope given for this fix, which named only the
+`preEntryPartnerFailed`/`preEntryClientFailed` finding. Left open, see
+"Unresolved items" below.
 
 ## Issue / scope
 
@@ -82,20 +124,31 @@ shows in full (name, skills, salary, assignment).
 
 Added `_ApplicantLifecycleBucket` (`active` / `awaitingJoin` / `closed`) and
 `_S._applicantLifecycleBucket(PublicDemoApplicant)`, a pure presentation-time
-classifier:
+classifier — **as corrected by the PR #252 Codex review P2 fix above**:
 
-- **`closed`**: `rejected`, `offerDeclined`, `preEntryPartnerFailed`,
-  `preEntryClientFailed` — the exact same 4-value set
-  `_applicantStatusTone` already calls "negative" (a final, unsuccessful
-  outcome).
-- **`awaitingJoin`**: `juneOrdered`, and `offerAccepted` when
+- **`closed`**: `rejected`, `offerDeclined` — the only two stages where
+  `PublicDemoApplicant.join` genuinely never joins the applicant (a
+  *final, unsuccessful employment outcome*, not merely a failed sales
+  attempt).
+- **`awaitingJoin`**: `juneOrdered`, `offerAccepted` when
   `!canEnterPreJoinSales` (an inexperienced hire waiting for the normal
-  monthly join boundary) — both cases where `ac(i)` renders **no button at
-  all**, but the outcome is not unsuccessful.
+  monthly join boundary), and — since the P2 fix — `preEntryPartnerFailed`/
+  `preEntryClientFailed` (a failed pre-entry sales interview that does not
+  cancel the already-minted binding offer, so the applicant still joins at
+  month-end). All four cases are stages where `ac(i)` renders **no button
+  at all**, but the *employment* outcome is not unsuccessful.
 - **`active`**: everything else — every stage where `ac(i)` renders an
   actionable button (`applied`/`resumeReviewed`/`interviewed`/
   `offerAccepted`&&experienced/`preEntrySkillSheet`/`preEntrySelling`/
   `preEntryIntroduced`/`preEntryPartnerPassed`/`preEntryClientPassed`).
+
+Note this bucket assignment is deliberately **not** identical to
+`_applicantStatusTone`'s "negative" set — that tone is about the *sales/
+interview* outcome (used for `applicantStatus`'s own badge color, left
+unchanged) and still marks `preEntryPartnerFailed`/`preEntryClientFailed`
+as negative-toned, correctly, since the pre-entry interview itself did
+fail. The lifecycle bucket is about the *employment* outcome instead, and
+the two deliberately disagree for exactly these two stages.
 
 `_salesApplicantProgressCards()` now buckets every not-yet-joined applicant
 by index, then renders three optional, count-labeled group headers —
@@ -125,39 +178,51 @@ unmodified).
 
 ## Tests
 
-- `flutter analyze`: **No issues found.**
-- New file:
-  `test/ui/public_demo/public_demo_issue245_recruitment_lifecycle_visibility_test.dart`
-  (**17 tests**) — active-only grouping, closed-only grouping (via a
-  genuinely rejected applicant driven through the real production
-  `completeInterview` → interactive interview session →
-  `concludeInterviewSession(InterviewOutcome.rejected)` path, never a
-  fabricated stage), active+awaitingJoin coexistence (via the real
-  production pre-entry-sales chain up to `recordJuneOrder`, deliberately
-  stopping short of `closeMay` so the applicant is genuinely `juneOrdered`
-  but not yet joined), reading-order check, the joined-summary line's exact
-  text and its absence before any join and its non-fabrication ("no 0名"),
-  a joined+still-active coexistence case, a save/reload (`toJson`/
-  `fromJson`) round-trip preserving the same grouping, a double-tap/
-  duplicate-action smoke test, and 8 360×800/390×844 × TextScaler 1.0/1.3
-  overflow checks. All fixtures are built by chaining real
-  `PublicDemoAggregate` commands (`recruit`/`completeInterview`/interactive
-  interview session/`acceptOffer`/pre-entry-sales chain/`recordJuneOrder`/
-  `closeMay`) — the same technique this suite's neighboring test files
-  (`public_demo_sales_ui_phase1_test.dart`,
-  `public_demo_issue248_applicant_engineer_continuity_test.dart`) already
-  use. No applicant/stage is ever constructed directly.
-- `flutter test test/game/public_demo`: **889 passed**, 0 failed (fully
-  pre-existing — no game-layer file was touched by this change; run to
-  confirm zero regression).
-- `flutter test test/ui/public_demo`: **729 passed**, 0 failed (712
-  pre-existing + 17 new from this Phase). Re-run in full after the new test
-  file was added.
-- `git diff --check`: clean.
-- Manually re-derived the exact bucket mapping against `ac(i)`'s own
-  per-stage button branches line-by-line (see the Fresh Audit table above)
-  to confirm the grouping can never disagree with the card content it
-  groups.
+- `flutter analyze`: **No issues found** (both rounds).
+- `test/ui/public_demo/public_demo_issue245_recruitment_lifecycle_visibility_test.dart`
+  now has **24 tests** (17 from the original round + **7 new** for this P2
+  fix):
+  - the original 17 — active-only grouping, closed-only grouping (via a
+    genuinely rejected applicant driven through the real production
+    `completeInterview` → interactive interview session →
+    `concludeInterviewSession(InterviewOutcome.rejected)` path, never a
+    fabricated stage), active+awaitingJoin coexistence (via the real
+    production pre-entry-sales chain up to `recordJuneOrder`, deliberately
+    stopping short of `closeMay`), reading-order check, the joined-summary
+    line's exact text and its absence/non-fabrication, a joined+still-active
+    coexistence case, save/reload, a double-tap smoke test, and 8
+    360×800/390×844 × TextScaler 1.0/1.3 overflow checks;
+  - **7 new, this round** — a genuine `preEntryPartnerFailed` applicant
+    (`runSeed` 4's real free-medium May candidate, `salesSkillFit` 49,
+    confirmed below the real 60 threshold — never an asserted stage)
+    renders under 結果待ち・入社予定 with its 上位面談不合格 badge/tone
+    unchanged; a genuine `preEntryClientFailed` applicant (`runSeed` 2,
+    `salesSkillFit` 60 — clears the real partner threshold, fails the real
+    client threshold of 65) renders under 結果待ち・入社予定 with its
+    客先面談不合格 badge/tone unchanged; `rejected` and a genuinely declined
+    offer (`offerDeclined`, forced via a real `acceptanceScore: 0` offer —
+    same direct-construction technique the file's own `_juneWithOneJoinedApplicant`
+    fixture already uses for the opposite outcome) still classify as
+    結果確定, and the declined applicant is confirmed never among the
+    genuinely joined at `closeMay` (accounting for `closeMay`'s own,
+    pre-existing, documented `joinAndKeepOnly` May-cohort pruning); two
+    tests drive `closeMay` on top of each failed fixture and confirm the
+    applicant genuinely joins (`hasJoined == true`, `stage` still the
+    failed value — `join()` never rewrites `stage`) and the overview's
+    入社済み summary line takes over while the funnel section disappears;
+    and a save/reload (`toJson`/`fromJson`) round-trip preserving the
+    `preEntryPartnerFailed` → awaitingJoin classification.
+- `flutter test test/game/public_demo`: **889 passed**, 0 failed — re-run
+  after this round's edit (no game-layer file was touched; confirms zero
+  regression, unchanged count from the original round).
+- `flutter test test/ui/public_demo`: **736 passed**, 0 failed (712
+  pre-existing + 24 in the new file, up from 729/17 in the original round).
+- `git diff --check`: clean (both rounds).
+- Independently re-read `PublicDemoApplicant.join`'s own guard,
+  `PublicDemoAggregate.closeMay`'s `accepted()` predicate, and
+  `PublicDemoWorkflowState.joinAcceptedForFiscalClose` before editing —
+  confirming the review comment's claim first, not just applying the
+  suggested fix on faith.
 
 ### Screenshots regenerated as a side effect (expected, unchanged mechanism)
 
@@ -197,10 +262,34 @@ target viewports and both required text scales, with no `takeException()`.
 - **joined/declined/pending**: exactly the three states this Phase's own
   grouping is built around (`awaitingJoin`/`closed`/`active` respectively,
   plus the joined-summary line for genuinely joined) — each traced back to
-  real production commands in the new test file, not fabricated.
+  real production commands in the new test file, not fabricated. **This
+  round's own fix is itself a joined-vs-pending correctness fix**: a
+  `preEntryPartnerFailed`/`preEntryClientFailed` applicant is genuinely
+  `pending → joined` (their binding offer survives the failed pre-entry
+  interview), not `declined` — confirmed by two new tests that drive
+  `closeMay` on top of each and assert `hasJoined == true` afterward, and
+  the overview's 入社済み summary line taking over from the funnel card at
+  that point, exactly like any other accepted offer.
 
 ## Unresolved items / follow-ups
 
+- **PR #252's second Codex review P2 finding is NOT fixed in this round** —
+  out of the scope explicitly given for this fix (which named only the
+  `preEntryPartnerFailed`/`preEntryClientFailed` finding). It concerns an
+  `interviewed` applicant with `interviewScore < 60` whose session is
+  concluded `hired` anyway: `ac(i)`'s offer button stays permanently
+  disabled (`onPressed: a.interviewScore >= 60 ? () => offer(i) : null`)
+  and no other legal action exists for them, yet they classify as `active`
+  ("対応が必要") indefinitely, surviving month boundaries and save/reload —
+  a real dead-end misclassification, structurally analogous to this round's
+  own fix but on the *active/needs-action* side rather than the
+  *closed/awaitingJoin* side. Recommend the same treatment next: either a
+  dedicated bucket (e.g. `stalled`) or folding it into `awaitingJoin`/
+  `closed` depending on whether the team wants to treat a permanently-
+  disabled offer as "still pending player action elsewhere" or "this
+  candidate's story is over." Left open per this round's explicit
+  instructions; flagged here rather than silently fixed or silently
+  dropped.
 - The Issue's own originally-required Fresh Audit deliverable
   (`docs/reports/SES_FIRST-FUN-YEAR_Human-Replay-UX-Findings_Fresh-Audit.md`)
   does not exist on `origin/main` or any remote branch (confirmed by
@@ -223,50 +312,77 @@ target viewports and both required text scales, with no `takeException()`.
 
 ## Current status
 
-Implementation complete, self-hardened (own re-derivation of the bucket
-mapping against every `ac(i)` branch; re-ran the full required test/lint
-matrix after the new test file was added), all required checks green,
-committed and pushed to the designated branch. Codex/Claude broad review
-intentionally **not** run this session per explicit instruction.
+Both rounds complete. Original Finding #12/#13 implementation
+self-hardened and pushed as PR #252. This round: PR #252's Codex review P2
+finding (preEntryPartnerFailed/preEntryClientFailed misclassified as
+`closed`) fixed, re-verified against the live PR HEAD before editing,
+7 new focused regression tests added, full required test/lint matrix
+re-run, committed and pushed to the same branch. Codex broad review
+intentionally **not** re-run this round, per explicit instruction — only
+the already-posted P2 finding was addressed.
 
 ## Next action
 
-Recommend, in order: (1) get a broad review (Codex or equivalent) on this
-diff before it lands, since the task explicitly deferred it rather than
-skipped it permanently; (2) if the team wants Finding #7 (紹介会社/商流)
-pursued, scope it separately as a schema-adding task (today's `Project`/
-`PublicDemoApplicant` genuinely carry no referral-source field — showing
-one would be fabrication); (3) continue the still-open items from
+Recommend, in order: (1) address PR #252's second, still-open Codex P2
+finding (the permanently-disabled, below-threshold `interviewed` applicant
+stuck in `active` — see "Unresolved items" above) in a follow-up round,
+since it was explicitly out of scope for this one; (2) run the (still
+deferred) broad review once both P2 findings are resolved; (3) if the team
+wants Finding #7 (紹介会社/商流) pursued, scope it separately as a schema-
+adding task; (4) continue the still-open items from
 `docs/decisions/SES_FIRST-FUN-YEAR_NEXT-PRIORITIES_2026-09-10.md`.
 
 ## Actual elapsed time / Revised ETA
 
-Actual elapsed time this session: **~2h** (Fresh Audit + implementation +
-new 17-test suite + full required test/lint matrix, run twice). The
-Issue's own estimate for the *overall* Fresh Audit phase was 45–90 minutes
-for audit alone (13 findings); this single-Phase implementation for 2 of
-those 13 findings fits inside that same order of magnitude. No revision to
-the Issue's own remaining-findings estimate is offered here — out of this
-Phase's scope.
+Actual elapsed time, this P2-fix round: **~45min** (re-fetch/verify PR
+HEAD and the two review comments, re-read `join()`/`closeMay`/
+`joinAcceptedForFiscalClose` to independently confirm the claim, implement,
+seed-search two real formula failures for the new fixtures, write and pass
+7 new tests, re-run the full required matrix, update this report).
+Combined with the original round's ~2h, total elapsed for Issue #245
+Finding #12/#13 end-to-end: **~2h45min**. No revision to the Issue's own
+remaining-findings (#4/#6/#7/#10, and now also the second open P2) estimate
+is offered here.
 
 ## SHAs
 
 - **Base (`origin/main`, explicit, not the repo's default-branch pointer):**
-  `b8a58dceb8ccc32d2e45661d46572b55af362b04`
-- **Final HEAD (pushed):** recorded in the session's final chat answer (a
-  report committed on this branch cannot embed the hash of the commit that
-  contains it — same disclosed limitation as PR #244/#249's own reports).
+  `b8a58dceb8ccc32d2e45661d46572b55af362b04` (unchanged from the original
+  round — this round only added commits on top of the same branch).
+- **PR #252 HEAD before this round's fix (verified via `pull_request_read`
+  before editing):** `04c5fd7bbfdb822ffcaa0db455b4f81728be5964`
+- **Final HEAD (pushed, this round):** recorded in the session's final chat
+  answer (a report committed on this branch cannot embed the hash of the
+  commit that contains it — same disclosed limitation as PR #244/#249's
+  own reports).
 
 ## Changed files
 
-- `lib/ui/public_demo/public_demo_01_placeholder_screen.dart` (+117/-4)
+Original round:
+- `lib/ui/public_demo/public_demo_01_placeholder_screen.dart`
 - `test/ui/public_demo/public_demo_issue245_recruitment_lifecycle_visibility_test.dart`
-  (new, 445 lines)
+  (new)
 - `docs/reports/screenshots/ses-core-gameplay-phase2-recruitment-seed{A,B}-{360x800,390x844}.png`
-  (regenerated side effect, see "Screenshots regenerated" above)
+  (regenerated side effect)
 - `docs/reports/SES_FIRST-FUN-YEAR_Recruitment-Lifecycle-Visibility_Result.md`
   (this report)
 
+This P2-fix round (additional changes, same two files):
+- `lib/ui/public_demo/public_demo_01_placeholder_screen.dart` —
+  `_applicantLifecycleBucket`'s `closed`/`awaitingJoin` mapping corrected;
+  doc comments on `_ApplicantLifecycleBucket` and
+  `_salesApplicantProgressCards` updated to match.
+- `test/ui/public_demo/public_demo_issue245_recruitment_lifecycle_visibility_test.dart` —
+  +2 new fixtures (`_mayWithOnePreEntryPartnerFailedApplicant`,
+  `_mayWithOnePreEntryClientFailedApplicant`, both driven through the real
+  `salesSkillFit` formula at a seed confirmed to fail it) + 1
+  (`_mayWithOneDeclinedApplicant`, a genuinely declined offer) + 7 new
+  tests (24 total in the file, up from 17).
+- `docs/reports/SES_FIRST-FUN-YEAR_Recruitment-Lifecycle-Visibility_Result.md`
+  (this report, this section) — no screenshot file changed this round (the
+  seeded-recruitment visual test's fixture predates the pre-entry pipeline,
+  so it was not affected).
+
 ## PR URL
 
-Not created — not requested this session.
+[https://github.com/perusonao/smile_enjoy_story/pull/252](https://github.com/perusonao/smile_enjoy_story/pull/252)

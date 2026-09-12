@@ -9,12 +9,27 @@
 //
 // Finding #13 — every not-yet-joined applicant rendered as one flat,
 // undifferentiated list: a candidate still needing player action sat
-// visually indistinguishable from one whose outcome was already final
-// (不採用/内定辞退/各面談不合格, which render no button at all) and from one
-// simply waiting for the month-end join boundary.
+// visually indistinguishable from one whose *employment* outcome was
+// already final and unsuccessful (不採用/内定辞退, which render no button at
+// all) and from one simply waiting for the month-end join boundary.
 //
-// This suite exercises the two purely-presentational fixes for both
-// findings — `_S._salesOverviewSection`'s new 入社済み summary line, and
+// PR #252 Codex review (P2): the first version of this fix classified
+// `preEntryPartnerFailed`/`preEntryClientFailed` as `closed` alongside
+// `rejected`/`offerDeclined`, reusing `_applicantStatusTone`'s "negative"
+// set. That set is about the *sales* outcome (this one pre-entry interview
+// failed), not the *employment* outcome: `PublicDemoApplicant.join` only
+// excludes `hasJoined` and `stage == offerDeclined` — a failed pre-entry
+// partner/client interview never touches `bindingOffer` (minted once, at
+// offer acceptance, before the pre-entry sales chain even starts) — so
+// `joinAcceptedForFiscalClose` still joins such an applicant at month-end
+// exactly like any other accepted offer. Labeling their card
+// "結果確定（不採用・辞退）" falsely told the player their employment outcome
+// was final and negative when they were, in truth, still `入社予定`. Moved
+// to `awaitingJoin` — see the dedicated group below for the regression
+// tests this added.
+//
+// This suite exercises the purely-presentational fixes for both findings —
+// `_S._salesOverviewSection`'s new 入社済み summary line, and
 // `_S._salesApplicantProgressCards`'s new active/awaitingJoin/closed
 // grouping — entirely through real production `PublicDemoAggregate`
 // commands (`recruit`/`completeInterview`/interactive interview
@@ -209,6 +224,161 @@ PublicDemoAggregate _juneWithOneJoinedApplicant() {
   return next.closeMay(week: 9, monthlyExpenses: _expense);
 }
 
+/// A genuinely declined offer — `PublicDemoSalaryOffer.accepted` is real
+/// (`acceptanceScore >= 60`), so an `acceptanceScore` of 0 (same direct-
+/// construction technique [_juneWithOneJoinedApplicant] already uses with
+/// `acceptanceScore: 100` for the opposite outcome) drives
+/// `PublicDemoOfferAcceptance.accept` to its real `offerDeclined` branch,
+/// never a fabricated stage. Confirms `offerDeclined` still classifies as
+/// `closed` after the PR #252 Codex review P2 fix (unlike
+/// `preEntryPartnerFailed`/`preEntryClientFailed`, a declined offer never
+/// mints a [PublicDemoApplicant.bindingOffer] at all, so it genuinely never
+/// joins — see [PublicDemoApplicant.join]'s own `stage == offerDeclined`
+/// guard).
+PublicDemoAggregate _mayWithOneDeclinedApplicant() {
+  final game = _mayWithOneActiveApplicant();
+  final applicantId = game.workflow.applicants.first.id;
+  final interview = game.completeInterview(applicantId);
+  var next = interview.aggregate;
+  final applicant = next.workflow.applicants.firstWhere(
+    (a) => a.id == applicantId,
+  );
+  next = next.acceptOffer(
+    applicantId: applicantId,
+    offer: PublicDemoSalaryOffer(
+      requestedMonthlySalary: applicant.requestedMonthlySalary,
+      offeredMonthlySalary: applicant.requestedMonthlySalary,
+      acceptanceScore: 0,
+      motivationDelta: 0,
+      trustDelta: 0,
+    ),
+    fiscalCloseId: PublicDemoFiscalCloseId.forMonth(next.state.month),
+  );
+  final declined = next.workflow.applicants.firstWhere(
+    (a) => a.id == applicantId,
+  );
+  expect(declined.stage.name, 'offerDeclined', reason: 'fixture sanity');
+  expect(declined.hasBindingOffer, isFalse, reason: 'fixture sanity');
+  return next;
+}
+
+/// Drives one real, seeded applicant through the actual production
+/// pre-entry-sales chain up to a genuine `recordPreEntryPartnerInterviewResult`
+/// **failure** — `recordPreEntryPartnerInterviewResult` derives pass/fail
+/// itself from the applicant's own real `salesSkillFit` (never a
+/// caller-supplied outcome), so [runSeed] 4's free-medium May candidate
+/// (`salesSkillFit` 49, confirmed below threshold 60) is used specifically
+/// because it fails this real formula, not because a stage is asserted
+/// directly. Deliberately NOT calling `closeMay` — see
+/// [PublicDemoAggregate.join]'s own doc: [PublicDemoApplicant.bindingOffer]
+/// (minted by `acceptOffer`, before this failure) is untouched by a failed
+/// pre-entry interview, so this applicant genuinely still joins at
+/// month-end (PR #252 Codex review P2) — this fixture stops one step short
+/// of `closeMay` so a test can assert the pre-join classification, and a
+/// second test (below) calls `closeMay` on top of it to assert the actual
+/// join.
+PublicDemoAggregate _mayWithOnePreEntryPartnerFailedApplicant() {
+  const seed = 4;
+  var aggregate = PublicDemoAggregate.initial(
+    runSeed: seed,
+  ).closeApril(monthlyExpenses: _expense);
+  final recruited = aggregate.recruit(PublicDemoRecruitmentMedium.free);
+  expect(recruited.isSuccess, isTrue, reason: 'fixture sanity');
+  aggregate = recruited.aggregate!;
+  final id = aggregate.workflow.applicants.first.id;
+  final salesSkillFit = aggregate.workflow.applicants.first.salesSkillFit;
+  expect(
+    salesSkillFit,
+    lessThan(60),
+    reason: 'fixture sanity: runSeed $seed must genuinely fail the real '
+        'partner-interview threshold, not be asserted to fail',
+  );
+
+  aggregate = aggregate.completeInterview(id).aggregate;
+  final interviewed = aggregate.workflow.applicants.firstWhere(
+    (a) => a.id == id,
+  );
+  final offer = PublicDemoSalaryOfferEvaluator.evaluate(
+    applicant: interviewed,
+    offeredMonthlySalary: interviewed.requestedMonthlySalary,
+  );
+  aggregate = aggregate.acceptOffer(
+    applicantId: id,
+    offer: offer,
+    fiscalCloseId: PublicDemoFiscalCloseId.forMonth(aggregate.state.month),
+  );
+  aggregate = aggregate
+      .beginPreEntrySkillSheet(id)
+      .beginPreEntrySelling(id)
+      .introducePreEntryProject(id)
+      .recordPreEntryPartnerInterviewResult(id);
+
+  final failed = aggregate.workflow.applicants.firstWhere((a) => a.id == id);
+  expect(
+    failed.stage.name,
+    'preEntryPartnerFailed',
+    reason: 'fixture sanity',
+  );
+  expect(failed.hasBindingOffer, isTrue, reason: 'fixture sanity');
+  expect(failed.hasJoined, isFalse, reason: 'fixture sanity');
+  return aggregate;
+}
+
+/// Same technique as [_mayWithOnePreEntryPartnerFailedApplicant], but
+/// [runSeed] 2's free-medium May candidate (`salesSkillFit` 60 — clears the
+/// real partner threshold of 60, then genuinely fails the real client
+/// threshold of 65) reaches `recordPreEntryClientInterviewResult`'s
+/// **failure** instead — a genuinely different real-formula outcome, not a
+/// second assertion of the same one.
+PublicDemoAggregate _mayWithOnePreEntryClientFailedApplicant() {
+  const seed = 2;
+  var aggregate = PublicDemoAggregate.initial(
+    runSeed: seed,
+  ).closeApril(monthlyExpenses: _expense);
+  final recruited = aggregate.recruit(PublicDemoRecruitmentMedium.free);
+  expect(recruited.isSuccess, isTrue, reason: 'fixture sanity');
+  aggregate = recruited.aggregate!;
+  final id = aggregate.workflow.applicants.first.id;
+  final salesSkillFit = aggregate.workflow.applicants.first.salesSkillFit;
+  expect(
+    salesSkillFit,
+    allOf(greaterThanOrEqualTo(60), lessThan(65)),
+    reason: 'fixture sanity: runSeed $seed must genuinely pass the real '
+        'partner threshold and fail the real client threshold',
+  );
+
+  aggregate = aggregate.completeInterview(id).aggregate;
+  final interviewed = aggregate.workflow.applicants.firstWhere(
+    (a) => a.id == id,
+  );
+  final offer = PublicDemoSalaryOfferEvaluator.evaluate(
+    applicant: interviewed,
+    offeredMonthlySalary: interviewed.requestedMonthlySalary,
+  );
+  aggregate = aggregate.acceptOffer(
+    applicantId: id,
+    offer: offer,
+    fiscalCloseId: PublicDemoFiscalCloseId.forMonth(aggregate.state.month),
+  );
+  aggregate = aggregate
+      .beginPreEntrySkillSheet(id)
+      .beginPreEntrySelling(id)
+      .introducePreEntryProject(id)
+      .recordPreEntryPartnerInterviewResult(id);
+  expect(
+    aggregate.workflow.applicants.firstWhere((a) => a.id == id).stage.name,
+    'preEntryPartnerPassed',
+    reason: 'fixture sanity',
+  );
+  aggregate = aggregate.recordPreEntryClientInterviewResult(id);
+
+  final failed = aggregate.workflow.applicants.firstWhere((a) => a.id == id);
+  expect(failed.stage.name, 'preEntryClientFailed', reason: 'fixture sanity');
+  expect(failed.hasBindingOffer, isTrue, reason: 'fixture sanity');
+  expect(failed.hasJoined, isFalse, reason: 'fixture sanity');
+  return aggregate;
+}
+
 void main() {
   group('Finding #13: 採用・候補者進捗 lifecycle grouping', () {
     testWidgets(
@@ -283,6 +453,156 @@ void main() {
       },
     );
   });
+
+  group(
+    'PR #252 Codex review P2: preEntryPartnerFailed/preEntryClientFailed '
+    'are 入社予定 (awaitingJoin), not 結果確定 (closed)',
+    () {
+      testWidgets(
+        'a genuine preEntryPartnerFailed applicant renders under '
+        '結果待ち・入社予定, not 結果確定, and keeps its own 上位面談不合格 '
+        'sales-failure badge/tone unchanged',
+        (tester) async {
+          final aggregate = _mayWithOnePreEntryPartnerFailedApplicant();
+          await _pumpSalesTab(tester, aggregate);
+
+          expect(find.text('$_awaitingHeader（1名）'), findsOneWidget);
+          expect(find.textContaining(_closedHeader), findsNothing);
+          expect(find.textContaining(_activeHeader), findsNothing);
+          expect(
+            find.text('上位面談不合格'),
+            findsOneWidget,
+            reason: 'the sales-failure status itself must stay exactly as '
+                'it was -- only the group header changes',
+          );
+          expect(
+            find.text(aggregate.workflow.applicants.first.name),
+            findsOneWidget,
+          );
+        },
+      );
+
+      testWidgets(
+        'a genuine preEntryClientFailed applicant renders under '
+        '結果待ち・入社予定, not 結果確定, and keeps its own 客先面談不合格 '
+        'sales-failure badge/tone unchanged',
+        (tester) async {
+          final aggregate = _mayWithOnePreEntryClientFailedApplicant();
+          await _pumpSalesTab(tester, aggregate);
+
+          expect(find.text('$_awaitingHeader（1名）'), findsOneWidget);
+          expect(find.textContaining(_closedHeader), findsNothing);
+          expect(find.textContaining(_activeHeader), findsNothing);
+          expect(find.text('客先面談不合格'), findsOneWidget);
+        },
+      );
+
+      testWidgets(
+        'rejected and offerDeclined still classify as 結果確定 -- the fix '
+        'narrows `closed` to genuinely-final employment outcomes, it does '
+        'not remove them',
+        (tester) async {
+          await _pumpSalesTab(tester, _mayWithOneRejectedApplicant());
+          expect(find.text('$_closedHeader（1名）'), findsOneWidget);
+        },
+      );
+
+      testWidgets(
+        'a genuinely declined offer (offerDeclined) still classifies as '
+        '結果確定, and never joins at closeMay (unlike the two failed '
+        'pre-entry stages)',
+        (tester) async {
+          final declined = _mayWithOneDeclinedApplicant();
+          await _pumpSalesTab(tester, declined);
+          expect(find.text('$_closedHeader（1名）'), findsOneWidget);
+
+          final applicantId = declined.workflow.applicants.first.id;
+          final closed = declined.closeMay(week: 9, monthlyExpenses: _expense);
+          // `closeMay` specifically prunes `workflow.applicants` down to the
+          // May cohort's accepted subset (`joinAndKeepOnly` -- a documented,
+          // one-time May-to-June cutoff, unrelated to this fix). An
+          // `offerDeclined` applicant is therefore usually pruned out
+          // entirely rather than merely left `hasJoined: false` -- either
+          // way, the one fact this test cares about is that they are never
+          // among the genuinely joined.
+          expect(
+            closed.workflow.applicants
+                .where((a) => a.id == applicantId && a.hasJoined)
+                .toList(),
+            isEmpty,
+            reason: 'an offerDeclined applicant must never join, unlike a '
+                'failed pre-entry interview',
+          );
+        },
+      );
+
+      testWidgets(
+        'month close (closeMay) genuinely joins a preEntryPartnerFailed '
+        'applicant -- the overview\'s 入社済み summary line takes over and '
+        'the funnel section disappears, exactly like any other accepted '
+        'offer',
+        (tester) async {
+          final before = _mayWithOnePreEntryPartnerFailedApplicant();
+          final applicantId = before.workflow.applicants.first.id;
+          final closed = before.closeMay(week: 9, monthlyExpenses: _expense);
+          final joined = closed.workflow.applicants.firstWhere(
+            (a) => a.id == applicantId,
+          );
+          expect(joined.hasJoined, isTrue, reason: 'fixture sanity');
+          expect(
+            joined.stage.name,
+            'preEntryPartnerFailed',
+            reason: 'join() never rewrites stage -- fixture sanity',
+          );
+
+          await _pumpSalesTab(tester, closed);
+
+          final summary = tester.widget<Text>(find.byKey(_joinedSummaryKey));
+          expect(summary.data, '入社済み 1名（社員タブで活動中）');
+          expect(
+            find.byKey(
+              const Key('public-demo-sales-applicant-progress-section'),
+            ),
+            findsNothing,
+          );
+        },
+      );
+
+      testWidgets(
+        'month close (closeMay) genuinely joins a preEntryClientFailed '
+        'applicant the same way',
+        (tester) async {
+          final before = _mayWithOnePreEntryClientFailedApplicant();
+          final applicantId = before.workflow.applicants.first.id;
+          final closed = before.closeMay(week: 9, monthlyExpenses: _expense);
+          expect(
+            closed.workflow.applicants
+                .firstWhere((a) => a.id == applicantId)
+                .hasJoined,
+            isTrue,
+          );
+
+          await _pumpSalesTab(tester, closed);
+          final summary = tester.widget<Text>(find.byKey(_joinedSummaryKey));
+          expect(summary.data, '入社済み 1名（社員タブで活動中）');
+        },
+      );
+
+      testWidgets(
+        'save/reload (toJson -> fromJson) preserves the awaitingJoin '
+        'classification for both preEntryPartnerFailed and '
+        'preEntryClientFailed',
+        (tester) async {
+          final partnerFailed = PublicDemoAggregate.fromJson(
+            _mayWithOnePreEntryPartnerFailedApplicant().toJson(),
+          );
+          await _pumpSalesTab(tester, partnerFailed);
+          expect(find.text('$_awaitingHeader（1名）'), findsOneWidget);
+          expect(find.textContaining(_closedHeader), findsNothing);
+        },
+      );
+    },
+  );
 
   group('Finding #12: 入社済み summary line', () {
     testWidgets(

@@ -32,9 +32,10 @@ non-existent document.
 - Base: `main` (`0b90d556b74746c2f82ac0e9111a95e93bd564b6`)
 - PR: https://github.com/perusonao/smile_enjoy_story/pull/249
 - PR HEAD before this Codex-review-response round: `b18bf4c32849e756d409501c50403caa5e5d979e`
-- Final HEAD SHA (after this round — Codex broad review P1 fixes): *(see
-  chat's final report for the exact value confirmed via `pull_request_read`
-  after push)*
+- Final HEAD SHA (after this round — Codex broad review P1 fixes):
+  `287da2ba82b3b114a397f6729a1d912080d297cb` (confirmed via
+  `pull_request_read` against the live PR after push, matching local
+  `git rev-parse HEAD`)
 
 ## Codex broad review response (this round)
 
@@ -395,10 +396,12 @@ save→reload immediately after join and a duplicate/retry `closeMay` call.
   shown exactly once (not duplicated) once interviewed.
 - `flutter test test/game/public_demo`: **872 passed**, 0 failed (861 +
   11 new, after the round-2 provenance fix).
-- `flutter test test/ui/public_demo`: full suite re-run after the round-2
-  fix — *(see chat's final report for the exact count; the fix only
-  touches `lib/game/public_demo/`, no UI file, so no change to Phase 2's
-  own UI test results was expected or found)*.
+- `flutter test test/ui/public_demo`: **688 passed**, 0 failed — full
+  suite re-run after the round-2 fix (683 pre-existing + 5 from Phase 2's
+  own `public_demo_issue248_recruitment_comparison_display_test.dart`,
+  now included since it already existed on disk when this run started).
+  The round-2 fix only touches `lib/game/public_demo/`, no UI file, so no
+  change to Phase 2's own UI behavior was expected or found.
 - `git diff --check`: clean.
 
 ## Unresolved issues / follow-ups

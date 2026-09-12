@@ -30,9 +30,11 @@ non-existent document.
 - Branch: `claude/ses-248-applicant-engineer-preservation-rlchfl`
 - Base: `main` (`0b90d556b74746c2f82ac0e9111a95e93bd564b6`)
 - PR: https://github.com/perusonao/smile_enjoy_story/pull/249
-- Final HEAD SHA: `00c304e40b4667082e9aaa07556bd9d67d1d5d74` (confirmed via
-  `pull_request_read` against the live PR after push, matching local
-  `git rev-parse HEAD`)
+- Final HEAD SHA: `b70d6972ddd5ee1da7c1afffa26a40926f7ca8c7` (this
+  docs-only commit, filling in the PR URL/SHA into this same report after
+  PR #249 was opened at `00c304e40b4667082e9aaa07556bd9d67d1d5d74` —
+  confirmed via `git rev-parse HEAD` immediately before this final push;
+  no production/test code changed since `00c304e`)
 
 ## Phase 0 — Fresh Audit (traced against current code, not the missing report)
 

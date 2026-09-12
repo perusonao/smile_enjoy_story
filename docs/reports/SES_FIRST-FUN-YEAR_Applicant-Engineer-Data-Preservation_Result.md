@@ -28,9 +28,11 @@ non-existent document.
 ## Final branch / PR / HEAD
 
 - Branch: `claude/ses-248-applicant-engineer-preservation-rlchfl`
-- Base: `main`
-- PR: *(filled in after push — see chat for the live link)*
-- Final HEAD SHA: *(filled in after commit — see chat)*
+- Base: `main` (`0b90d556b74746c2f82ac0e9111a95e93bd564b6`)
+- PR: https://github.com/perusonao/smile_enjoy_story/pull/249
+- Final HEAD SHA: `00c304e40b4667082e9aaa07556bd9d67d1d5d74` (confirmed via
+  `pull_request_read` against the live PR after push, matching local
+  `git rev-parse HEAD`)
 
 ## Phase 0 — Fresh Audit (traced against current code, not the missing report)
 
@@ -308,11 +310,14 @@ exact pre-existing hard-coded-Java behavior — zero behavior change.
   (5 tests) — the new row is present pre-interview at 360×800/390×844 ×
   TextScaler 1.0/1.3 with no overflow, and the fact is shown exactly once
   (not duplicated) once interviewed.
-- `flutter test test/game/public_demo`: **861 passed**, 0 failed.
-- `flutter test test/ui/public_demo`: **[see chat for final count]** — a
-  full run before the `ac(i)` UI edit (domain fix only) passed all existing
-  683 tests; the full re-run after the UI edit is reported in chat/final
-  summary.
+- `flutter test test/game/public_demo`: **861 passed**, 0 failed (run both
+  before and after the `ac(i)` UI edit — domain suite unaffected by the
+  UI-only change).
+- `flutter test test/ui/public_demo`: **683 passed**, 0 failed — run once
+  with the Phase 1 domain fix alone, and again with both the domain fix
+  and the Phase 2 `ac(i)` UI edit applied together; both full runs green.
+  (The two new Issue #248 test files were run separately, +7 and +5
+  respectively, both green — see below.)
 - `git diff --check`: clean.
 
 ## Unresolved issues / follow-ups

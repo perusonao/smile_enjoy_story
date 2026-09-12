@@ -202,7 +202,7 @@ With the P1 fix applied, `offerCandidates` is now a genuinely trustworthy, per-p
 ### Original reviewed HEAD / focused-fix HEAD
 
 - **Original reviewed HEAD (this Broad Review, above):** `e7996e2cf7dc9b786a42d45bb95519441eee3bdc` — confirmed via `git fetch origin` + `pull_request_read` on PR #258 at the start of this focused-fix session; matched the task's own stated confirmed HEAD exactly, no drift.
-- **Focused-fix HEAD:** `_FOCUSED_FIX_HEAD_PLACEHOLDER_` — see the commit this text is part of, on the same branch (`claude/first-fun-year-phase-1b-2zy73j`).
+- **Focused-fix HEAD:** `791e8732d30d6a16e1e17539a49a34934ab50b86` (the commit carrying all code/test changes for this fix, confirmed via `git rev-parse HEAD` immediately after committing it; this doc's own SHA-fill-in lands in a small follow-up docs-only commit on the same branch, `claude/first-fun-year-phase-1b-2zy73j` — no production/test code changed after `791e873`).
 
 ### Composite-identity design
 

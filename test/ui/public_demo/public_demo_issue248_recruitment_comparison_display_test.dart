@@ -23,7 +23,6 @@ import 'package:smile_enjoy_story/game/public_demo/public_demo_recruitment_mediu
 import 'package:smile_enjoy_story/ui/public_demo/public_demo_01_placeholder_screen.dart';
 import 'package:smile_enjoy_story/ui/theme.dart';
 
-import 'public_demo_interview_test_helpers.dart';
 import 'public_demo_tab_test_helpers.dart';
 
 class _FixedSaveService extends PublicDemoSaveService {
@@ -39,8 +38,6 @@ class _FixedSaveService extends PublicDemoSaveService {
   @override
   Future<bool> clear() async => true;
 }
-
-const _expense = 800000;
 
 Future<void> _pumpSalesTab(
   WidgetTester tester,

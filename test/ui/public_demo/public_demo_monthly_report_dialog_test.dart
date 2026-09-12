@@ -122,9 +122,9 @@ void main() {
     });
 
     testWidgets('bankruptcy (isFinanciallyTerminal) with a non-null '
-        'nextActionHeadline still omits the section — the caller is trusted '
-        'to have already gated this, but the dialog never second-guesses a '
-        'value it is handed either way', (tester) async {
+        'nextActionHeadline still renders it — the dialog never '
+        'second-guesses a value it is handed; the actual terminal gate '
+        'lives entirely in the owner screen, not here', (tester) async {
       // This fixture is deliberately inconsistent with real production
       // wiring (the owner screen's own [_recommendedActionSlot] never
       // supplies a headline once `s.isCloseBlocked` holds) — included only
@@ -134,9 +134,12 @@ void main() {
       // .nextActionHeadline]'s own doc.
       await _pump(
         tester,
-        _fixture(isFinanciallyTerminal: true),
+        _fixture(
+          isFinanciallyTerminal: true,
+          nextActionHeadline: '佐藤 健のスキルシートを確認',
+        ),
       );
-      expect(find.text('次に考えること'), findsNothing);
+      expect(find.text('次に考えること'), findsOneWidget);
     });
   });
 

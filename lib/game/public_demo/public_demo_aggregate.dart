@@ -1312,7 +1312,13 @@ class PublicDemoAggregate {
       engineerRuntimes: [
         ...closedState.engineerRuntimes,
         for (final applicant in joinedNow)
-          PublicDemoEngineerRuntime.fromApplicant(applicant),
+          PublicDemoEngineerRuntime.fromApplicant(
+            applicant,
+            sourceApplicant: PublicDemoSeededRecruitmentGenerator.regenerateDomainApplicant(
+              runSeed: state.runSeed,
+              applicantId: applicant.id,
+            ),
+          ),
       ],
     );
     return _copyWith(state: finalState, workflow: grown.workflow);
@@ -1510,7 +1516,13 @@ class PublicDemoAggregate {
           engineerRuntimes: [
             ...state.engineerRuntimes,
             for (final applicant in newlyJoined)
-              PublicDemoEngineerRuntime.fromApplicant(applicant),
+              PublicDemoEngineerRuntime.fromApplicant(
+                applicant,
+                sourceApplicant: PublicDemoSeededRecruitmentGenerator.regenerateDomainApplicant(
+                  runSeed: state.runSeed,
+                  applicantId: applicant.id,
+                ),
+              ),
           ],
         );
 

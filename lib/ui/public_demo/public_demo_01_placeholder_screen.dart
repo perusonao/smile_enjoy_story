@@ -3873,6 +3873,25 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
           ),
           const SizedBox(height: 4),
           Text(a.resumeSummary),
+          const SizedBox(height: 4),
+          // Issue #248 FIRST-FUN-YEAR: experience and salary are both
+          // résumé-level, non-hidden facts (see
+          // docs/reports/SES_CORE-GAMEPLAY_Phase2_Random-Recruitment_Result.md
+          // "Visible vs. interview-hidden fields" — only interviewScore/
+          // acceptanceScore/salesSkillFit require the interview step).
+          // Shown from the very first card render, not only once
+          // interviewed, so the player can compare candidates on experience
+          // and salary before spending an interview action on any of them.
+          Text(
+            '経験 ${formatExperience(a.experienceMonths)} ｜ '
+            '${a.acceptedMonthlySalary != null ? '確定給与' : '希望給与'} '
+            '${(a.acceptedMonthlySalary ?? a.requestedMonthlySalary) ~/ 10000}万円',
+            key: Key('public-demo-applicant-card-compensation-${a.id}'),
+            style: TextStyle(
+              fontSize: 11,
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
+          ),
           if (accepted(a))
             PublicDemoSalesProgress(
               currentStep: applicantStep(a),
@@ -3899,7 +3918,9 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
               'コミュニケーションや仕事への取り組み姿勢など、面談で確認できた内容をもとにした評価です。',
               style: TextStyle(fontSize: 11.5, color: Colors.black54),
             ),
-            Text('希望給与 ${a.requestedMonthlySalary ~/ 10000}万円'),
+            // Issue #248 FIRST-FUN-YEAR: the "経験 ｜ 希望給与" row above
+            // (shown from the very first card render) already carries this
+            // exact fact — no longer duplicated here.
             if (_interviewDecidedHired(a.id))
               FilledButton(
                 onPressed: a.interviewScore >= 60 ? () => offer(i) : null,

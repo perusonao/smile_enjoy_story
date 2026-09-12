@@ -51,6 +51,7 @@ class PublicDemoMonthlyReportDisplayData {
     required this.nextMonthJoinNames,
     required this.isFiscalYearCompleted,
     required this.isFinanciallyTerminal,
+    required this.nextActionHeadline,
   });
 
   /// The internal month number (4-15) this report describes — always the
@@ -113,6 +114,22 @@ class PublicDemoMonthlyReportDisplayData {
   /// construction ([PublicDemoState.completeFiscalYear]'s own doc).
   final bool isFinanciallyTerminal;
 
+  /// SES ISSUE-250: the single next-month decision to consider, or `null`
+  /// when none is currently eligible. This is never a new judgment — the
+  /// caller reads it verbatim from its own already-existing
+  /// `_recommendedActionSlot` getter (`HomeRecommendedActionAvailable
+  /// .candidate.action.headline`), the exact same HOME-RUNTIME-2C authority
+  /// that already decides HOME's own recommended-action slot and already
+  /// gates on `PublicDemoState.isCloseBlocked` (bankruptcy, a March
+  /// cash-shortage failure, or fiscal-year completion) before ever
+  /// producing a candidate — so a terminal/year-end close reaches this
+  /// report with `null` here for exactly the same reason HOME's own slot is
+  /// suppressed then, never a fabricated "no action" sentence. This class
+  /// never invokes the action (no button is rendered for it here) — it only
+  /// displays the same headline text HOME would show for the same
+  /// candidate, so nothing here can mutate any aggregate/state/workflow.
+  final String? nextActionHeadline;
+
   /// Builds this projection from [snapshot] (which must already be
   /// [PublicDemoMonthlyReportSnapshot.isReady] — callers gate on that
   /// before ever constructing this class, exactly like
@@ -129,6 +146,7 @@ class PublicDemoMonthlyReportDisplayData {
     required List<PublicDemoApplicant> applicants,
     required bool isFiscalYearCompleted,
     required bool isFinanciallyTerminal,
+    required String? nextActionHeadline,
   }) {
     final flow = snapshot.cashFlow!;
     final nameById = {
@@ -157,12 +175,13 @@ class PublicDemoMonthlyReportDisplayData {
       ],
       isFiscalYearCompleted: isFiscalYearCompleted,
       isFinanciallyTerminal: isFinanciallyTerminal,
+      nextActionHeadline: nextActionHeadline,
     );
   }
 }
 
-/// A short (1-2 sentence), fact-based comment attributed to ひより, for the
-/// Monthly Management Report — the exact same design precedent as
+/// A short, fact-based comment attributed to ひより, for the Monthly
+/// Management Report — the exact same design precedent as
 /// [publicDemoYearEndHiyoriSummary] (SES YEAR-END-PHASE-1): every sentence
 /// restates a field already on [data], AI-generated text is never used, and
 /// nothing here decides what the dialog shows — this only chooses which
@@ -175,9 +194,12 @@ class PublicDemoMonthlyReportDisplayData {
 /// Codex Broad Review P2 (PR #237), [PublicDemoMonthlyReportDisplayData
 /// .isFinanciallyTerminal]/[PublicDemoMonthlyReportDisplayData
 /// .isFiscalYearCompleted], both already-existing authority (never a new
-/// threshold). Never comments on an in-month delta (application/interview/
-/// order count, or "参画人数が増えた") — no such history is available
-/// (Phase A §6.2/§7.2), so no such claim is made.
+/// threshold) — plus, since SES ISSUE-250,
+/// [PublicDemoMonthlyReportDisplayData.netIncome]'s sign (黒字/赤字) and
+/// [PublicDemoMonthlyReportDisplayData.nextMonthJoinNames] (already resolved
+/// by the presenter). Never comments on an in-month delta (application/
+/// interview/order count, or "参画人数が増えた") — no such history is
+/// available (Phase A §6.2/§7.2), so no such claim is made.
 ///
 /// Codex Broad Review P2 (PR #237): once this close made the game terminal
 /// (bankruptcy/March cash-shortage failure) or genuinely completed the
@@ -192,19 +214,41 @@ class PublicDemoMonthlyReportDisplayData {
 /// appropriate line instead. The cash-movement sentence above is left
 /// exactly as-is in every case (still a true fact about the month that just
 /// closed); only this second sentence's content changes.
+/// SES ISSUE-250: two sentences were added to the original ISSUE-232 Phase B
+/// branches below (cash delta / terminal-or-roster), both still restating an
+/// already-computed fact on [data] rather than any new judgment —
+/// [PublicDemoMonthlyReportDisplayData.netIncome]'s own sign (黒字/赤字,
+/// already a plain derived getter on [PublicDemoMonthlyCashFlow] per Phase
+/// A) and [PublicDemoMonthlyReportDisplayData.nextMonthJoinNames] (already
+/// resolved by the presenter, unchanged). Both stay short (one clause each)
+/// and both are skipped, not fabricated, when they would have nothing true
+/// to say: `netIncome == 0` adds no sentence, and the next-month-join
+/// sentence never appears once the game is terminal/year-end complete (the
+/// same reason [PublicDemoMonthlyReportDisplayData.nextActionHeadline] is
+/// `null` there — "次月" no longer exists).
 String publicDemoMonthlyReportHiyoriComment(
   PublicDemoMonthlyReportDisplayData data,
 ) {
   final sentences = <String>[];
 
+  // SES ISSUE-250: the generic advice clauses this sentence used to carry
+  // ("支出とのバランスに注意しましょう。"/"良いペースです。") were dropped in
+  // favor of the more concrete 黒字/赤字 sentence directly below — both a
+  // One-Screen density saving and less repetitive copy, and no existing
+  // assertion (`test/ui/public_demo/public_demo_monthly_report_display_data_test.dart`
+  // group 3) named that exact wording.
   if (data.cashDelta < 0) {
-    sentences.add(
-      '今月は資金が${formatYen(-data.cashDelta)}減りました。支出とのバランスに注意しましょう。',
-    );
+    sentences.add('今月は資金が${formatYen(-data.cashDelta)}減りました。');
   } else if (data.cashDelta > 0) {
-    sentences.add('今月は資金が${formatYen(data.cashDelta)}増えました。良いペースです。');
+    sentences.add('今月は資金が${formatYen(data.cashDelta)}増えました。');
   } else {
     sentences.add('今月は資金の増減がありませんでした。');
+  }
+
+  if (data.netIncome > 0) {
+    sentences.add('今月の収支は黒字（純利益${formatYen(data.netIncome)}）でした。');
+  } else if (data.netIncome < 0) {
+    sentences.add('今月の収支は赤字（純損失${formatYen(-data.netIncome)}）でした。');
   }
 
   if (data.isFinanciallyTerminal) {
@@ -217,6 +261,13 @@ String publicDemoMonthlyReportHiyoriComment(
     );
   } else if (data.assignedCount > 0) {
     sentences.add('現在、全員が案件に参画しています。');
+  }
+
+  if (!data.isFinanciallyTerminal &&
+      !data.isFiscalYearCompleted &&
+      data.nextMonthJoinNames.isNotEmpty) {
+    final names = data.nextMonthJoinNames.map((name) => '$nameさん').join('・');
+    sentences.add('来月は$namesが入社予定です。');
   }
 
   return sentences.join('');

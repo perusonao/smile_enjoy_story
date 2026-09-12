@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../game/public_demo/public_demo_month_label.dart';
+import '../../presentation/home/models/home_navigator_display.dart';
 import '../theme.dart';
 import 'public_demo_monthly_report_display_data.dart';
 
@@ -11,23 +12,84 @@ import 'public_demo_monthly_report_display_data.dart';
 /// before the flex label gets any space, so a long formatted value can
 /// overflow a `Row` at 360/390px. Stacking vertically cannot overflow at
 /// any width this screen supports.
+///
+/// SES ISSUE-250: an optional [caption] renders one small grey line under
+/// the value — used only for [PublicDemoMonthlyReportDialog]'s 固定費 row, to
+/// name what that single aggregate figure actually covers
+/// ([PublicDemoSalary.otherMonthlyFixedCost]'s own documented composition —
+/// see that field and `SES_FIRST-FUN-YEAR_Seeded-Balance-Fix_Result.md`'s
+/// "rent+utilities+etc. aggregate" note) without inventing a per-category
+/// breakdown no authority actually holds.
 class _ReportStatRow extends StatelessWidget {
-  const _ReportStatRow({required this.label, required this.value});
+  const _ReportStatRow({required this.label, required this.value, this.caption});
 
   final String label;
   final String value;
+  final String? caption;
 
   @override
   Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.symmetric(vertical: 2),
+    padding: EdgeInsets.zero,
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(label, style: Theme.of(context).textTheme.bodySmall),
         Text(value, style: const TextStyle(fontWeight: FontWeight.w600)),
+        if (caption != null)
+          Text(
+            caption!,
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              fontSize: 11,
+              color: Colors.black54,
+            ),
+          ),
       ],
     ),
   );
+}
+
+/// The small ひより portrait shown beside her comment — reusing
+/// [HomeNavigatorIdentity]'s existing normal-expression asset, the same
+/// asset/pattern `PublicDemoOpeningContextScreen`'s own `_NavigatorIntro`
+/// already reuses outside HOME. Sized smaller (36x36) than that screen's own
+/// 64x64 introduction portrait to fit this report's tighter One-Screen
+/// budget — this dialog never introduces her name/role again (the "ひより
+/// から一言" heading above it already does that), only her face beside the
+/// short comment. Falls back to a plain icon on a decode failure, the same
+/// degrade path every other reuse of this asset already takes.
+class _HiyoriPortrait extends StatelessWidget {
+  const _HiyoriPortrait();
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final path = HomeNavigatorIdentity.portraitAssetFor(
+      NavigatorExpression.normal,
+    );
+    return SizedBox(
+      key: const Key('public-demo-monthly-report-hiyori-portrait'),
+      width: 36,
+      height: 36,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: scheme.surfaceContainerHighest,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: scheme.outlineVariant),
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(8),
+          child: path == null
+              ? Icon(Icons.person, size: 20, color: scheme.onSurfaceVariant)
+              : Image.asset(
+                  path,
+                  fit: BoxFit.cover,
+                  errorBuilder: (context, error, stackTrace) =>
+                      Icon(Icons.person, size: 20, color: scheme.onSurfaceVariant),
+                ),
+        ),
+      ),
+    );
+  }
 }
 
 class _ReportSectionHeader extends StatelessWidget {
@@ -37,7 +99,7 @@ class _ReportSectionHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.only(top: 10, bottom: 2),
+    padding: const EdgeInsets.only(top: 4),
     child: Text(
       title,
       style: Theme.of(
@@ -89,6 +151,14 @@ class PublicDemoMonthlyReportDialog extends StatelessWidget {
   Widget build(BuildContext context) {
     return AlertDialog(
       key: const Key('public-demo-monthly-report-dialog'),
+      // SES ISSUE-250 One-Screen: the same compact `insetPadding` technique
+      // `PublicDemoProjectInterviewDialog`/`PublicDemoRecruitmentInterviewDialog`
+      // already use, plus tightened title/content/actions padding — reclaims
+      // vertical room at 360x800 without shrinking any text.
+      insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      titlePadding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+      contentPadding: const EdgeInsets.fromLTRB(20, 6, 20, 6),
+      actionsPadding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
       title: Text('${publicDemoMonthLabel(data.closedMonth)}の経営結果'),
       content: SizedBox(
         width: double.maxFinite,
@@ -99,15 +169,11 @@ class PublicDemoMonthlyReportDialog extends StatelessWidget {
             children: [
               const _ReportSectionHeader('現金'),
               _ReportStatRow(
-                label: '月初 → 月末',
+                label: '月初 → 月末（今月の増減）',
                 value:
-                    '${formatYen(data.openingCash)} → ${formatYen(data.closingCash)}',
-              ),
-              _ReportStatRow(
-                label: '今月の増減',
-                value: data.cashDelta >= 0
-                    ? '+${formatYen(data.cashDelta)}'
-                    : '-${formatYen(-data.cashDelta)}',
+                    '${formatYen(data.openingCash)} → ${formatYen(data.closingCash)}'
+                    '（${data.cashDelta >= 0 ? '+' : '-'}'
+                    '${formatYen(data.cashDelta.abs())}）',
               ),
 
               const _ReportSectionHeader('売上・入金'),
@@ -127,6 +193,7 @@ class PublicDemoMonthlyReportDialog extends StatelessWidget {
               _ReportStatRow(
                 label: '固定費',
                 value: formatYen(data.fixedCostsPaid),
+                caption: '（家賃・水道光熱費など）',
               ),
               if (data.bonusPaid > 0)
                 _ReportStatRow(label: '賞与', value: formatYen(data.bonusPaid)),
@@ -161,10 +228,35 @@ class PublicDemoMonthlyReportDialog extends StatelessWidget {
                 ),
 
               const _ReportSectionHeader('ひよりから一言'),
-              Text(
-                key: const Key('public-demo-monthly-report-hiyori-comment'),
-                publicDemoMonthlyReportHiyoriComment(data),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const _HiyoriPortrait(),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      key: const Key(
+                        'public-demo-monthly-report-hiyori-comment',
+                      ),
+                      publicDemoMonthlyReportHiyoriComment(data),
+                    ),
+                  ),
+                ],
               ),
+
+              // SES ISSUE-250: the single next-month decision to consider —
+              // omitted entirely once [PublicDemoMonthlyReportDisplayData
+              // .nextActionHeadline] is `null` (bankruptcy, a March
+              // cash-shortage failure, or fiscal-year completion; see that
+              // field's own doc), so a terminal/year-end close never shows
+              // an impossible future action here.
+              if (data.nextActionHeadline != null) ...[
+                const _ReportSectionHeader('次に考えること'),
+                Text(
+                  key: const Key('public-demo-monthly-report-next-action'),
+                  data.nextActionHeadline!,
+                ),
+              ],
             ],
           ),
         ),
@@ -172,6 +264,9 @@ class PublicDemoMonthlyReportDialog extends StatelessWidget {
       actions: [
         FilledButton(
           key: const Key('public-demo-monthly-report-dismiss'),
+          style: FilledButton.styleFrom(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+          ),
           onPressed: () => Navigator.of(context).pop(),
           child: Text(_isYearEndClose ? '年度結果を見る' : '翌月へ進む'),
         ),

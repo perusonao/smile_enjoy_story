@@ -501,9 +501,10 @@ void main() {
       expect(codec.fromJson(malformed), isNull);
     });
 
-    test('5. a duplicate session for the same employeeId is rejected — '
-        'startProjectInterviewSession/projectInterviewSessionFor both '
-        'assume at most one session per engineer', () {
+    test('5. a duplicate session for the same (employeeId, projectId) pair '
+        'is rejected — startProjectInterviewSession/'
+        'projectInterviewSessionFor both assume at most one session per '
+        'pair (Issue #257 composite-identity widening)', () {
       final encoded = codec.toJson(readySessionAggregate());
       final aggregateJson = encoded['aggregate'] as Map<String, dynamic>;
       final workflow = aggregateJson['workflow'] as Map<String, dynamic>;
@@ -522,6 +523,42 @@ void main() {
       };
 
       expect(codec.fromJson(duplicated), isNull);
+    });
+
+    test('5b. Issue #257 composite-identity widening: TWO sessions for the '
+        'SAME employeeId but DIFFERENT projectIds are NOT a duplicate — '
+        'the same engineer holding independent sessions for two projects '
+        'is now a normal, legitimate save shape', () {
+      var aggregate = readySessionAggregate();
+      final projectA = aggregate.projectInterviewSessionFor('eng-01')!.projectId;
+      final otherProject = aggregate
+          .projectCandidatesForMonth(aggregate.state.month)
+          .firstWhere((candidate) => candidate.id != projectA);
+      // Re-propose a different project (allowed at partnerInterviewPassed)
+      // and start a second, independent session for it — the OLD session
+      // for projectA is preserved, not discarded (the fix under test).
+      aggregate = aggregate.proposeMatch(
+        engineerId: 'eng-01',
+        projectId: otherProject.id,
+      );
+      aggregate = aggregate.startProjectInterview('eng-01');
+      expect(aggregate.workflow.projectInterviewSessions, hasLength(2));
+
+      final restored = codec.decode(codec.encode(aggregate));
+
+      expect(restored, isNotNull);
+      expect(restored!.workflow.projectInterviewSessions, hasLength(2));
+      expect(
+        restored.workflow.projectInterviewSessionFor('eng-01', projectA),
+        isNotNull,
+      );
+      expect(
+        restored.workflow.projectInterviewSessionFor(
+          'eng-01',
+          otherProject.id,
+        ),
+        isNotNull,
+      );
     });
 
     test('6. a session for an unknown employeeId is rejected', () {

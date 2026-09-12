@@ -217,6 +217,15 @@ Result Reportは履歴・証拠であり、この文書の代わりにはしな�
 
 ## Update history
 
+### 2026-09-12（Issue #245 Finding #4 — Parallel Sales / Offer Selection Phase 1a「Domain Foundation」実装完了 / governing plan sync）
+
+- **前回セッションのFresh Audit（直下のエントリ）で設計されたPhase 1aを実装した。** 開始時`git fetch origin`で`origin/main`が指定base SHA `e6717b8c0f237d1c6ae86f2deebdb823bcbfb728`（前回Fresh Audit + Phase B設計docのマージコミット）と完全一致していることを確認（drift無し）。
+- 新規`PublicDemoOfferCandidate`/`PublicDemoOfferCandidateStage`（`lib/game/public_demo/public_demo_offer_candidate.dart`）と`PublicDemoWorkflowState.offerCandidates`を追加。`(engineerId, projectId)`単位でimmutable identity・lifecycle・serialization・legacy migration・lookup/upsert helper・validationを実装。**既存の`PublicDemoEngineerSales.stage`/`matchingProposals`/`projectInterviewSessions`/`recordOrder`/`assignOrderedForMay`はすべて無変更**——新domainはどの既存callerからも参照されない、純粋additive実装。
+- **セルフレビューで重大な既存save破壊リスクを発見・修正**: 本番のsave/load gateである`PublicDemoSaveCodec`は厳密なround-trip比較を行い、additive fieldごとに専用migration spliceが必要な構造になっている——`offerCandidates`用のspliceを追加しなければ、このPhase 1aがmergeされた瞬間に**既存の全save**が読み込み不可能になっていた。`_withMigratedOfferCandidates`を追加し、専用テストで検証済み。
+- schemaVersionは既存の全additive field（`matchingProposals`等）と同じ前例に従いbumpしていない（`schemaVersion`は"whole-envelope compatibility"のgateであり、per-field追加はsplice機構で扱う既存方針を踏襲）。
+- `flutter analyze`（全体）issue無し、`flutter test test/game/public_demo`（944件）・`test/ui/public_demo`（741件）すべてPASS、`git diff --check`クリーン。詳細・security self-hardening findings・known limitations・Phase 1bへのhandoffは`docs/reports/SES_FIRST-FUN-YEAR_Parallel-Sales_Phase1a_Result.md`。
+- PR #254（`claude/ses-parallel-sales-phase-1a-vo0idf` → `main`）。Phase 1b（既存callerのcutover）/Phase 1c（比較UI）は本セッションでは未着手——次セッションの引き継ぎ事項として上記Result Reportに明記。
+
 ### 2026-09-12（Issue #245 Finding #4 — Parallel Sales / Offer Selection Fresh Audit完了、Phase B「設計のみ」判断 / governing plan sync）
 
 - **Issue #245 Finding #4（並行営業/複数案件面談結果からの受注・辞退判断）についてFresh Auditを実施し、Phase B（詳細設計のみ、schema/domain実装なし）と判断した。** 開始時`git fetch origin`で`origin/main`が指定base SHA `afd34333c0e6a4f3db104e8159317bbdc068b544`と完全一致していることを確認（drift無し）。

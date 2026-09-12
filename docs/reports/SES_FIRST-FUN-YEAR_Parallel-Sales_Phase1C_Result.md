@@ -159,4 +159,8 @@ Status: **Implemented, self-hardened, full regression suite green. Issue #245 Fi
 
 ## Final HEAD SHA / PR
 
-（本ファイルを含むcommitのHEAD、PR URLはcommit/push後に追記）
+- Base `origin/main` SHA: `e46efba0dcf969cbbad138632bc723d21a9ac73c`（PR #258マージコミット、本セッション開始時・PR作成時ともにdrift無し確認済み）。
+- Branch: `claude/parallel-sales-phase-1c-501dpp`
+- Implementation commit: `2437fb81a65e071d464a2e8d2b4883fb4f1804ac`（code/tests/docs一式。`flutter analyze`/`flutter test`/`git diff --check`はすべてこのcommitの内容に対して実行・記録したもの）。
+- Final HEAD SHA: 本ファイルを含む、このブランチの最新commit（PR #260の最新HEAD, `git log -1`で確認可能）。本commit以降、実装内容への変更はない（PR URL/HEAD SHA追記のdocs-onlyフォローアップのみ）。
+- PR: https://github.com/perusonao/smile_enjoy_story/pull/260

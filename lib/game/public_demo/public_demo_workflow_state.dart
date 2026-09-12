@@ -1805,14 +1805,36 @@ class PublicDemoWorkflowState {
           ? offerCandidates
           : [
               ...offerCandidates,
-              _offerCandidateFromLegacy(
-                engineer: engineer,
-                projectId: projectId,
-                proposedMonth: month,
-                legacyStage:
-                    _legacyOfferCandidateStageFor(engineer.stage) ??
-                    PublicDemoOfferCandidateStage.proposed,
-              ),
+              // Only inherit this engineer's CURRENT legacy stage when this
+              // is the engineer's very first candidate ever (no other
+              // (engineerId, *) entry exists yet): in that case the legacy
+              // scalar can only ever have been earned for this one project,
+              // since nothing else has been proposed for this engineer to
+              // attribute it to instead (see this method's own doc). Once a
+              // second or later candidate is created for this engineer,
+              // legacy authority may already be attributed to a DIFFERENT
+              // sibling project (e.g. a genuine partner-interview pass this
+              // engineer earned for project A) — reusing it here would
+              // fraudulently seed a brand-new, never-interviewed project B
+              // candidate already past its own required interview steps.
+              // Bug found in PR #258 review: a plain proposeMatch(A) then
+              // proposeMatch(B) for the same engineer, with a genuine
+              // partner-interview pass recorded on A in between, silently
+              // skipped B's own partner interview entirely.
+              offerCandidatesForEngineer(engineerId).isEmpty
+                  ? _offerCandidateFromLegacy(
+                      engineer: engineer,
+                      projectId: projectId,
+                      proposedMonth: month,
+                      legacyStage:
+                          _legacyOfferCandidateStageFor(engineer.stage) ??
+                          PublicDemoOfferCandidateStage.proposed,
+                    )
+                  : PublicDemoOfferCandidate.propose(
+                      engineerId: engineerId,
+                      projectId: projectId,
+                      proposedMonth: month,
+                    ),
             ],
     );
   }

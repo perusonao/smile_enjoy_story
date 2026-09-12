@@ -418,6 +418,51 @@ class PublicDemoEngineerSales {
       founderFollowUpMonth: founderFollowUpMonth,
     );
   }
+
+  /// Issue #245 Finding #4, Phase 1c (Comparison / Candidate-Aware Order):
+  /// re-derives this engineer's own coarse `stage`/`lastInterviewScore`/
+  /// `interviewRecord` mirror from an ALREADY-VERIFIED genuine
+  /// `PublicDemoOfferCandidate` pass — never a caller-asserted outcome with
+  /// no real interview behind it. The sole caller,
+  /// [PublicDemoWorkflowState.recordOfferCandidateOrder]
+  /// (public_demo_workflow_state.dart), invokes this only after
+  /// independently re-checking the target candidate's own
+  /// `PublicDemoOfferCandidateStage.clientInterviewPassed` stage and genuine
+  /// `PublicDemoOfferCandidate.hasGenuineInterviewRecord` — themselves
+  /// unforgeable, minted only by a real interview evaluation (see
+  /// `public_demo_offer_candidate.dart`'s own doc). This lets the coarse
+  /// per-engineer scalar correctly track WHICHEVER of several candidates the
+  /// player actually chooses to order, instead of silently keeping a stale
+  /// record for a different, now-declined project.
+  ///
+  /// Deliberately mints [interviewRecord] with NO `projectId` bound (the
+  /// same shape the legacy, project-agnostic [evaluateInterview] client pass
+  /// already produces) rather than binding the candidate's own real project
+  /// id: a candidate genuinely reachable through
+  /// [PublicDemoOfferCandidate.evaluateClientInterview] (the plain
+  /// [PublicDemoInterviewEvaluator] formula, deterministic `score >= 60`) or
+  /// through the interactive Project Interview Gameplay engine (a
+  /// stochastic roll, genuinely passable at any score in that engine's own
+  /// range, not only `>= 60`) can reach [score] values
+  /// [PublicDemoSaveCodec._hasConsistentAuthorityFacts] would only accept
+  /// for ONE of those two shapes, never necessarily both — binding a real
+  /// project id here would incorrectly assert this is always a genuine
+  /// Phase 6 stochastic pass. [score] is clamped to this method's own
+  /// project-agnostic floor (`>= 60`, the same floor every legacy
+  /// project-agnostic pass already guarantees) purely so this coarse mirror
+  /// — already documented as "not authoritative proof of anything by
+  /// itself" — never itself becomes an unloadable save; the true score for
+  /// whichever project was actually chosen remains fully visible via that
+  /// candidate's own `PublicDemoOfferCandidate.clientScore`, untouched.
+  /// [PublicDemoWorkflowState.assignOrderedForMay]/[recoverLateYearAssignment]
+  /// resolve the real ordered project id from `offerCandidates` directly
+  /// (see their own doc) precisely because this record cannot carry it.
+  PublicDemoEngineerSales syncOrderedFromCandidate({required int score}) =>
+      copyWith(
+        stage: PublicDemoSalesStage.ordered,
+        lastInterviewScore: score < 60 ? 60 : score,
+        interviewRecord: PublicDemoEngineerInterviewRecord._(engineerId: id),
+      );
 }
 
 const publicDemoInitialEngineers = <PublicDemoEngineerSales>[

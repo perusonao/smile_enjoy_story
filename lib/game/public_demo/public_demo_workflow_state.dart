@@ -1448,7 +1448,20 @@ class PublicDemoWorkflowState {
   PublicDemoAssignment _freshOrderedAssignment(
     PublicDemoEngineerSales engineer,
   ) {
-    if (engineer.genuineInterviewProjectId case final projectId?) {
+    // Issue #245 Finding #4, Phase 1c: a candidate-aware order
+    // ([recordOfferCandidateOrder]) deliberately mints the engineer-level
+    // record with no project id bound (see
+    // [PublicDemoEngineerSales.syncOrderedFromCandidate]'s own doc for why),
+    // so [PublicDemoEngineerSales.genuineInterviewProjectId] alone can no
+    // longer resolve the real ordered project for such an engineer —
+    // [_orderedOfferCandidateFor] is the fallback read of the SAME real
+    // project identity from `offerCandidates`' own authority instead. For
+    // every pre-Phase-1c order path (`recordOrder`), both sources already
+    // agree (Phase 1B's own cutover keeps them atomically in sync), so this
+    // changes nothing for existing saves/behavior.
+    if ((engineer.genuineInterviewProjectId ??
+            _orderedOfferCandidateFor(engineer.id)?.projectId)
+        case final projectId?) {
       return PublicDemoAssignment.forOrderedEngineer(
         engineerId: engineer.id,
         engineerName: engineer.name,
@@ -1514,7 +1527,12 @@ class PublicDemoWorkflowState {
     final existing = assignments
         .where((assignment) => assignment.engineerId == engineerId)
         .firstOrNull;
-    final genuineProjectId = engineer.genuineInterviewProjectId;
+    // See [_freshOrderedAssignment]'s own comment: a candidate-aware order
+    // has no engineer-level project id to read, so this falls back to
+    // `offerCandidates`' own authority the same way.
+    final genuineProjectId =
+        engineer.genuineInterviewProjectId ??
+        _orderedOfferCandidateFor(engineerId)?.projectId;
     // CORE-GAMEPLAY Phase 7A: a genuine, project-bound Phase 6 pass always
     // produces a FRESH entry tied to that exact real project — never a
     // reused `existing`/founding-engineer template, even when one already
@@ -2241,6 +2259,16 @@ class PublicDemoWorkflowState {
       if (candidate.engineerId == engineerId) candidate,
   ];
 
+  /// Public read of [_orderedOfferCandidateFor] — Issue #245 Finding #4,
+  /// Phase 1c: lets a read-only display (e.g.
+  /// `PublicDemoProjectContextResolver`'s own caller) resolve the real
+  /// ordered project for an engineer ordered via
+  /// [recordOfferCandidateOrder], whose own
+  /// [PublicDemoEngineerSales.genuineInterviewProjectId] is always `null`
+  /// (see that method's own doc).
+  PublicDemoOfferCandidate? orderedOfferCandidateFor(String engineerId) =>
+      _orderedOfferCandidateFor(engineerId);
+
   /// Replaces the existing candidate for `(engineerId, projectId)` using
   /// [update] — a no-op when no such candidate exists. Private: see this
   /// section's own doc.
@@ -2380,6 +2408,21 @@ class PublicDemoWorkflowState {
   /// Deliberately never touches [assignments] — `ordered != assigned` is
   /// preserved exactly, exactly like [recordOrder] itself; see
   /// [PublicDemoOfferCandidate.markOrdered]'s own doc.
+  ///
+  /// Issue #245 Finding #4, Phase 1c (Comparison UI): also syncs
+  /// [engineers]' own coarse [PublicDemoEngineerSales.stage]/
+  /// `interviewRecord` to `ordered`, in the SAME atomic step, via
+  /// [PublicDemoEngineerSales.syncOrderedFromCandidate] — the production
+  /// entry point for this ([PublicDemoAggregate.recordOfferCandidateOrder])
+  /// is Phase 1c's own real "この案件を受注" action, letting a player order
+  /// ANY of several concluded candidates, not only whichever one the
+  /// engineer's own single-slot [PublicDemoMatchingProposal] happens to
+  /// still point at (that remains [recordOrder]'s own, narrower contract,
+  /// unchanged). Without this, an engineer ordered through this method would
+  /// never satisfy [assignOrderedForMay]/[recoverLateYearAssignment]'s own
+  /// `engineer.stage == ordered` eligibility gate — see those methods' own
+  /// doc for how they in turn resolve the real ordered project id back out
+  /// of `offerCandidates` (never [engineers] alone) once this method has run.
   PublicDemoWorkflowState recordOfferCandidateOrder({
     required String engineerId,
     required String projectId,
@@ -2390,7 +2433,16 @@ class PublicDemoWorkflowState {
         !target.hasGenuineInterviewRecord) {
       return this;
     }
+    final score = target.clientScore;
+    if (score == null) return this;
     return _copyWith(
+      engineers: [
+        for (final engineer in engineers)
+          if (engineer.id == engineerId)
+            engineer.syncOrderedFromCandidate(score: score)
+          else
+            engineer,
+      ],
       offerCandidates: [
         for (final candidate in offerCandidates)
           if (candidate.engineerId == engineerId &&
@@ -2403,5 +2455,25 @@ class PublicDemoWorkflowState {
             candidate,
       ],
     );
+  }
+
+  /// The candidate genuinely `ordered` for [engineerId], if one exists — see
+  /// [_freshOrderedAssignment]/[recoverLateYearAssignment]'s own doc for why
+  /// this is the fallback project-id source a
+  /// [recordOfferCandidateOrder]-ordered engineer needs (its own
+  /// [PublicDemoEngineerSales.genuineInterviewProjectId] is always `null`).
+  /// At most one candidate can ever be `ordered` for the same engineer at
+  /// once — every order atomically declines every other live sibling (see
+  /// [recordOfferCandidateOrder]/[recordOrder] themselves) — so there is no
+  /// ambiguity to resolve here.
+  PublicDemoOfferCandidate? _orderedOfferCandidateFor(String engineerId) {
+    for (final candidate in offerCandidates) {
+      if (candidate.engineerId == engineerId &&
+          candidate.stage == PublicDemoOfferCandidateStage.ordered &&
+          candidate.hasGenuineInterviewRecord) {
+        return candidate;
+      }
+    }
+    return null;
   }
 }

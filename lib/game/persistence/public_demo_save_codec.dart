@@ -699,13 +699,40 @@ class PublicDemoSaveCodec {
     // vs. its own record), never plausibility, so this is the one place
     // that check belongs, mirroring exactly where the equivalent
     // engineer-level `validScore` check already lives (this same method,
-    // not `_validateForPersistence`). Offer candidates have only one
-    // evaluation path in Phase 1a — [PublicDemoInterviewEvaluator]'s fixed
-    // `passed = score >= 60` threshold (never the richer, stochastic
-    // Phase 6 `ClientInterviewEngine` a genuine project-bound engineer pass
-    // can use) — so `clientScore >= 60` is the correct, unconditional floor
-    // for a genuine record here, unlike the engineer-level check's own
-    // stochastic-path carve-out.
+    // not `_validateForPersistence`).
+    //
+    // Issue #245 Finding #4, Phase 1c (self-hardening fix): Phase 1a's own
+    // original floor here was `clientScore >= 60` — correct ONLY while
+    // [PublicDemoOfferCandidate.evaluateClientInterview]'s fixed
+    // [PublicDemoInterviewEvaluator] threshold (`passed = score >= 60`) was
+    // this list's one and only evaluation path. Phase 1b's own production
+    // cutover (`PublicDemoWorkflowState.concludeProjectInterview` ->
+    // [PublicDemoOfferCandidate.applyClientInterviewResult]) added a SECOND,
+    // genuinely stochastic path — the same interactive Project Interview
+    // Gameplay `ClientInterviewEngine`/`ProjectInterviewEngine.roll` the
+    // engineer-level check above already special-cases — which can
+    // genuinely PASS at any `rate` in its own `[5, 95]` clamp (`roll` is a
+    // probability check, `rng.nextInt(100) < rate`, not a `>= 60`
+    // threshold), never adjusted here. Unlike the engineer-level record,
+    // [PublicDemoOfferInterviewRecord] carries no field distinguishing
+    // which of the two evaluation paths produced a given [candidateClientScore]
+    // (both mint an identically-shaped, project-bound record), so this
+    // floor cannot special-case by path the way the engineer-level check
+    // does — it must instead accept the union of both paths' genuinely
+    // reachable ranges. The deterministic path's own `>= 60` threshold
+    // already implies `>= 5`, so the union collapses to the stochastic
+    // path's own floor alone: `clientScore >= 5`. Found and fixed in this
+    // session after this exact reachable-through-ordinary-gameplay
+    // sequence (propose -> genuine interactive Partner+Client Interview
+    // pass at a low stochastic roll) produced a real save
+    // [PublicDemoSaveCodec.fromJson] then silently rejected outright —
+    // discarding the entire game, not merely this one candidate. No upper
+    // bound is imposed here either, for the same reason the engineer-level
+    // check's own upper bound is conditional: the deterministic path's own
+    // weighted-average formula can itself reach 100, which the stochastic
+    // path's own `<= 95` clamp does not (and, again, cannot be told apart
+    // here) — imposing a `<= 95` ceiling unconditionally would falsely
+    // reject a genuine deterministic pass scoring 96-100.
     final offerCandidatesRaw = workflow['offerCandidates'];
     if (offerCandidatesRaw != null) {
       if (offerCandidatesRaw is! List) return false;
@@ -762,14 +789,32 @@ class PublicDemoSaveCodec {
         final recordProjectId = candidate['interviewRecordProjectId'];
         if (recordEngineerId == null) continue;
         final candidateClientScore = candidate['clientScore'];
-        final clientPassStage =
+        // Issue #245 Finding #4, Phase 1c (self-hardening fix): a genuine
+        // record is also legitimately present on a `declined` candidate —
+        // [PublicDemoOfferCandidate.decline] never clears [interviewRecord]
+        // (only [PublicDemoOfferCandidateStage.clientInterviewPassed]/
+        // [ordered] ever mint one in the first place, and `decline` is
+        // reachable directly FROM `clientInterviewPassed`, both by the
+        // player and automatically whenever a sibling candidate is ordered
+        // instead — see [PublicDemoWorkflowState.recordOrder]/
+        // [recordOfferCandidateOrder]'s own "decline every other live
+        // sibling" step). The ORIGINAL version of this check only accepted
+        // `clientInterviewPassed`/`ordered`, so the single most ordinary
+        // outcome of this entire Finding — two candidates both genuinely
+        // reach `clientInterviewPassed`, the player orders one, the other
+        // is auto-declined while still carrying its own genuine record —
+        // made the resulting save unloadable. Found and fixed in this
+        // session via this exact sequence, through the real production
+        // API, not a forged save.
+        final hasPlausibleRecordStage =
             candidateStage == 'clientInterviewPassed' ||
-            candidateStage == 'ordered';
+            candidateStage == 'ordered' ||
+            candidateStage == 'declined';
         if (recordEngineerId != candidateEngineerId ||
             recordProjectId != candidateProjectId ||
-            !clientPassStage ||
+            !hasPlausibleRecordStage ||
             candidateClientScore is! int ||
-            candidateClientScore < 60) {
+            candidateClientScore < 5) {
           return false;
         }
       }

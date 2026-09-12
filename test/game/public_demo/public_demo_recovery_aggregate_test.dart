@@ -187,6 +187,10 @@ void main() {
         // also unrelated to Recovery, present on every workflow JSON since
         // this phase.
         'projectInterviewSessions',
+        // Issue #255 FIRST-FUN-YEAR Parallel Sales Phase 1A: additive
+        // per-(engineer, project) Offer Candidate list -- also unrelated to
+        // Recovery, present on every workflow JSON since this phase.
+        'offerCandidates',
       });
 
       final assignmentsJson = workflowJson['assignments'] as List;

@@ -11,6 +11,7 @@ import 'public_demo_interview.dart';
 import 'public_demo_internal_training_transaction.dart';
 import 'public_demo_matching_proposal.dart';
 import 'public_demo_monthly_close.dart';
+import 'public_demo_offer_candidate.dart';
 import 'public_demo_project_generator.dart';
 import 'public_demo_project_interview.dart';
 import 'public_demo_raise_transaction.dart';
@@ -269,6 +270,49 @@ class PublicDemoAggregate {
           engineer.interviewRecord!.engineerId != engineer.id) {
         throw const FormatException('Invalid engineer interview record');
       }
+    }
+
+    // Issue #255 FIRST-FUN-YEAR Parallel Sales Phase 1A: per-(engineer,
+    // project) Offer Candidate authority — defense in depth alongside
+    // [PublicDemoWorkflowState.fromJson]'s own canonicalize-on-decode step
+    // (never expected to fire, since that step already guarantees
+    // uniqueness before this runs) and
+    // [PublicDemoOfferCandidate.hasGenuineInterviewRecord]'s own identity
+    // check (re-asserted here so a hand-edited/corrupted save can never
+    // carry a candidate whose unforgeable record was reattached to a
+    // different engineer/project). Also enforces "one engineer can never be
+    // genuinely `ordered` for two projects at once" as a hard save-level
+    // invariant, not merely a convention [recordOfferCandidateOrder]
+    // happens to follow.
+    final offerCandidateIds = workflow.offerCandidates
+        .map(
+          (candidate) => PublicDemoOfferCandidate.idFor(
+            engineerId: candidate.engineerId,
+            projectId: candidate.projectId,
+          ),
+        )
+        .toList();
+    if (!_areUnique(offerCandidateIds)) {
+      throw const FormatException('Invalid offer candidate identities');
+    }
+    final orderedOfferCandidateEngineerIds = <String>[];
+    for (final candidate in workflow.offerCandidates) {
+      if (!engineerIds.contains(candidate.engineerId)) {
+        throw const FormatException('Invalid offer candidate engineer');
+      }
+      if (candidate.interviewRecord != null &&
+          (candidate.interviewRecord!.engineerId != candidate.engineerId ||
+              candidate.interviewRecord!.projectId != candidate.projectId)) {
+        throw const FormatException('Invalid offer candidate interview record');
+      }
+      if (candidate.stage == PublicDemoOfferCandidateStage.ordered) {
+        orderedOfferCandidateEngineerIds.add(candidate.engineerId);
+      }
+    }
+    if (!_areUnique(orderedOfferCandidateEngineerIds)) {
+      throw const FormatException(
+        'Invalid offer candidate ordering: multiple ordered candidates for one engineer',
+      );
     }
 
     final assignedIds = workflow.assignedEngineerIds(month: state.month);

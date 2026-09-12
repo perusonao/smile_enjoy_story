@@ -187,6 +187,10 @@ void main() {
         // also unrelated to Recovery, present on every workflow JSON since
         // this phase.
         'projectInterviewSessions',
+        // Issue #245 Finding #4, Phase 1a: additive offer-candidate list --
+        // also unrelated to Recovery, present on every workflow JSON since
+        // this phase.
+        'offerCandidates',
       });
 
       final assignmentsJson = workflowJson['assignments'] as List;

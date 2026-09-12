@@ -11,6 +11,7 @@ import 'public_demo_interview.dart';
 import 'public_demo_internal_training_transaction.dart';
 import 'public_demo_matching_proposal.dart';
 import 'public_demo_monthly_close.dart';
+import 'public_demo_offer_candidate.dart';
 import 'public_demo_project_generator.dart';
 import 'public_demo_project_interview.dart';
 import 'public_demo_raise_transaction.dart';
@@ -187,6 +188,120 @@ class PublicDemoAggregate {
     );
   }
 
+  /// Issue #245 Finding #4, Phase 1a (Domain Foundation): every offer
+  /// candidate currently held, across every engineer/project — purely
+  /// additive, not read by any existing gameplay authority in this phase
+  /// (see [PublicDemoWorkflowState.offerCandidates]'s own doc).
+  List<PublicDemoOfferCandidate> get offerCandidates => workflow.offerCandidates;
+
+  /// The candidate for this exact `(engineerId, projectId)` pair, if one
+  /// exists (see [PublicDemoWorkflowState.offerCandidateFor]).
+  PublicDemoOfferCandidate? offerCandidateFor(
+    String engineerId,
+    String projectId,
+  ) => workflow.offerCandidateFor(engineerId, projectId);
+
+  /// The Phase 1a analogue of [proposeMatch], validated the same way: a
+  /// no-op unless [projectId] actually names one of the candidates
+  /// currently displayed for [PublicDemoState.month] (the real, seeded
+  /// project pool — never a fabricated or stale-month id, same Codex P2
+  /// guard [proposeMatch] already applies), and unless [engineerId] names a
+  /// known engineer ([PublicDemoWorkflowState.proposeOfferCandidate]'s own
+  /// guard). Unlike [proposeMatch], this deliberately does NOT require
+  /// [engineerId] to be currently unassigned/unavailable — Finding #4's
+  /// entire point is that several candidates can be pursued for one
+  /// engineer at once; that eligibility question belongs to whichever later
+  /// phase wires this into real UI, not to this Phase 1a domain plumbing.
+  PublicDemoAggregate proposeOfferCandidate({
+    required String engineerId,
+    required String projectId,
+  }) {
+    final currentPoolIds = projectCandidatesForMonth(
+      state.month,
+    ).map((candidate) => candidate.id).toSet();
+    if (!currentPoolIds.contains(projectId)) return this;
+    return _copyWith(
+      workflow: workflow.proposeOfferCandidate(
+        engineerId: engineerId,
+        projectId: projectId,
+        month: state.month,
+      ),
+    );
+  }
+
+  /// Codex review fix (PR #254 P1): the Phase 1a analogue of
+  /// [recordEngineerInterviewResult], scoped to one offer candidate instead
+  /// of the coarse per-engineer stage — the safe production entry point for
+  /// a candidate's partner interview.
+  ///
+  /// [PublicDemoWorkflowState.evaluatePartnerInterviewForCandidate] itself
+  /// accepts `profile`/`actualCapability` as plain parameters (it is a
+  /// building block, not a production entry point — exactly like
+  /// [PublicDemoWorkflowState.recordEngineerInterviewResult] itself, which
+  /// this method mirrors one level down): a caller there could supply an
+  /// arbitrarily favorable profile/capability with no real evaluation
+  /// behind it, and no sales slot would ever be consumed. This method
+  /// closes both gaps the same way [recordEngineerInterviewResult] already
+  /// does for the per-engineer path: [engineerId]'s own real
+  /// [PublicDemoEngineerSales.interviewProfile] and
+  /// [PublicDemoEngineerRuntime.actualCapability] are the only sources ever
+  /// used (never a caller-supplied profile/capability), and a real sales
+  /// slot is checked and consumed before the attempt proceeds — a no-op,
+  /// consuming nothing, when none remains.
+  PublicDemoAggregate evaluatePartnerInterviewForCandidate({
+    required String engineerId,
+    required String projectId,
+  }) {
+    final engineer = workflow.engineers
+        .where((candidate) => candidate.id == engineerId)
+        .firstOrNull;
+    final target = workflow.offerCandidateFor(engineerId, projectId);
+    if (engineer == null || target == null) return this;
+    if (target.stage != PublicDemoOfferCandidateStage.proposed &&
+        target.stage != PublicDemoOfferCandidateStage.partnerInterviewFailed) {
+      return this;
+    }
+    if (state.fiscalYearCompleted || state.salesRemaining <= 0) return this;
+    return _copyWith(
+      state: state.useSalesSlot(),
+      workflow: workflow.evaluatePartnerInterviewForCandidate(
+        engineerId: engineerId,
+        projectId: projectId,
+        profile: engineer.interviewProfile,
+        actualCapability: state.runtimeForOrNull(engineerId)?.actualCapability ?? 0,
+      ),
+    );
+  }
+
+  /// The client-interview counterpart of
+  /// [evaluatePartnerInterviewForCandidate] — same derivation contract
+  /// (never a caller-supplied profile/capability), and, mirroring
+  /// [recordEngineerInterviewResult]'s own client branch, consumes no sales
+  /// slot (the existing 0-slot client-interview stage this phase reuses
+  /// as-is).
+  PublicDemoAggregate evaluateClientInterviewForCandidate({
+    required String engineerId,
+    required String projectId,
+  }) {
+    final engineer = workflow.engineers
+        .where((candidate) => candidate.id == engineerId)
+        .firstOrNull;
+    final target = workflow.offerCandidateFor(engineerId, projectId);
+    if (engineer == null || target == null) return this;
+    if (target.stage != PublicDemoOfferCandidateStage.partnerInterviewPassed &&
+        target.stage != PublicDemoOfferCandidateStage.clientInterviewFailed) {
+      return this;
+    }
+    return _copyWith(
+      workflow: workflow.evaluateClientInterviewForCandidate(
+        engineerId: engineerId,
+        projectId: projectId,
+        profile: engineer.interviewProfile,
+        actualCapability: state.runtimeForOrNull(engineerId)?.actualCapability ?? 0,
+      ),
+    );
+  }
+
   /// Complete persistence form for the sole Public Demo authoritative root.
   Map<String, dynamic> toJson() => {
     'state': state.toJson(),
@@ -268,6 +383,34 @@ class PublicDemoAggregate {
       if (engineer.interviewRecord != null &&
           engineer.interviewRecord!.engineerId != engineer.id) {
         throw const FormatException('Invalid engineer interview record');
+      }
+    }
+
+    // Issue #245 Finding #4, Phase 1a: defense in depth alongside
+    // [PublicDemoWorkflowState.fromJson]'s own duplicate-key/unknown-
+    // engineerId checks (mirrors this method's own
+    // `engineerIds.toSet().containsAll(assignmentIds)` pattern above) — a
+    // committed aggregate can never carry an [offerCandidates] entry for an
+    // engineer this workflow does not know about, a duplicate
+    // (engineerId, projectId) identity, or a candidate whose own
+    // [PublicDemoOfferCandidate.interviewRecord] disagrees with its own
+    // (engineerId, projectId) — the exact generalization of the per-engineer
+    // check just above, one level more specific.
+    final offerCandidateKeys = workflow.offerCandidates
+        .map((candidate) => candidate.id)
+        .toList();
+    if (!_areUnique(offerCandidateKeys) ||
+        !engineerIds.toSet().containsAll(
+          workflow.offerCandidates.map((candidate) => candidate.engineerId),
+        )) {
+      throw const FormatException('Invalid offer candidate identities');
+    }
+    for (final candidate in workflow.offerCandidates) {
+      final record = candidate.interviewRecord;
+      if (record != null &&
+          (record.engineerId != candidate.engineerId ||
+              record.projectId != candidate.projectId)) {
+        throw const FormatException('Invalid offer candidate interview record');
       }
     }
 

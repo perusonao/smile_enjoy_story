@@ -842,26 +842,28 @@ class PublicDemoAggregate {
   }
 
   /// The current in-progress/completed project-interview session for
-  /// [engineerId], if any.
+  /// [engineerId], if any — resolved against this engineer's own CURRENT
+  /// [PublicDemoMatchingProposal] project (via [projectInterviewCandidateFor]).
   ///
-  /// [projectId] defaults to [engineerId]'s CURRENT Phase 5
-  /// [PublicDemoMatchingProposal] (via [projectInterviewCandidateFor]) —
-  /// this is what every existing UI/test call site means by "the" session
-  /// for an engineer, since the interactive dialogs only ever drive the
-  /// currently-proposed project. Issue #257 composite-identity widening:
-  /// pass [projectId] explicitly to look up a session for a *different*
-  /// project this engineer may also hold (e.g. a stale, not-yet-resumed
-  /// session left over from before the player re-proposed a different
-  /// project) — [workflow.projectInterviewSessionFor] itself has no
-  /// "current project" concept and always requires an explicit project id.
-  ClientInterviewSession? projectInterviewSessionFor(
-    String engineerId, [
-    String? projectId,
-  ]) {
-    final resolvedProjectId =
-        projectId ?? projectInterviewCandidateFor(engineerId)?.id;
-    if (resolvedProjectId == null) return null;
-    return workflow.projectInterviewSessionFor(engineerId, resolvedProjectId);
+  /// Issue #257 composite-identity widening: [PublicDemoWorkflowState
+  /// .projectInterviewSessionFor] itself is now keyed by `(employeeId,
+  /// projectId)`, not `employeeId` alone — this accessor's own public
+  /// single-argument signature is unchanged (every existing production
+  /// caller, including the UI, only ever cares about "the session for
+  /// whichever project is currently proposed"), so no caller needs to
+  /// change; the composite key now lives entirely underneath this stable
+  /// surface. `null` when no proposal resolves at all, or when the
+  /// resolved project has no session (a genuinely stale session left over
+  /// for a since-replaced proposal's OLD project is correctly no longer
+  /// returned here, matching the guard [concludeProjectInterview]/
+  /// [concludePartnerProjectInterview] already enforced independently). To
+  /// look up a session for a specific, possibly-not-current project
+  /// directly, use `workflow.projectInterviewSessionFor(engineerId,
+  /// projectId)`.
+  ClientInterviewSession? projectInterviewSessionFor(String engineerId) {
+    final projectId = projectInterviewCandidateFor(engineerId)?.id;
+    if (projectId == null) return null;
+    return workflow.projectInterviewSessionFor(engineerId, projectId);
   }
 
   /// Starts (or resumes) the interactive project interview for

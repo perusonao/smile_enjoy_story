@@ -1864,17 +1864,18 @@ class PublicDemoWorkflowState {
   /// exact `(engineerId, projectId)` pair, if one exists — `null` otherwise.
   /// At most one is ever kept per pair (see [startProjectInterviewSession]).
   ///
-  /// Issue #257 composite-identity widening: before this fix, a session was
-  /// identified by [engineerId] alone, so the same engineer could never hold
-  /// independent in-flight/concluded interview sessions for two different
-  /// projects at once — starting a fresh interview for project B silently
-  /// discarded an unfinished (or even completed-but-not-yet-reconciled)
-  /// session for project A. [projectId] is now a required part of this
-  /// lookup's own identity, mirroring [offerCandidateFor]'s own
-  /// `(engineerId, projectId)` key — every production caller that used to
-  /// search by [engineerId] alone has been updated to pass the exact project
-  /// it means (never an ambiguous "whichever session this engineer happens
-  /// to have").
+  /// Issue #257 composite-identity widening (independently converged on by
+  /// two concurrent sessions — this one and PR #256's own carry-over): before
+  /// this fix, a session was identified by [engineerId] alone, so the same
+  /// engineer could never hold independent in-flight/concluded interview
+  /// sessions for two different projects at once — starting a fresh
+  /// interview for project B silently discarded an unfinished (or even
+  /// completed-but-not-yet-reconciled) session for project A. [projectId] is
+  /// now a required part of this lookup's own identity, mirroring
+  /// [offerCandidateFor]'s own `(engineerId, projectId)` key — every
+  /// production caller that used to search by [engineerId] alone has been
+  /// updated to pass the exact project it means (never an ambiguous
+  /// "whichever session this engineer happens to have").
   ClientInterviewSession? projectInterviewSessionFor(
     String engineerId,
     String projectId,

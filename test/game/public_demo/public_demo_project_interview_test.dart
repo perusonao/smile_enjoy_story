@@ -511,8 +511,15 @@ void main() {
       final beforeConclude = _engineer(aggregate);
       final afterConclude = aggregate.concludeProjectInterview('eng-01');
       expect(_engineer(afterConclude).stage, beforeConclude.stage);
+      // Issue #257 PR #256 carry-over (session-keying widening):
+      // `projectInterviewSessionFor('eng-01')` now resolves against the
+      // engineer's CURRENT proposal (newProject), which has no session yet
+      // — correctly `null`, not the stale one. The stale OLD-project
+      // session itself is untouched (never destroyed, per the widening),
+      // verified directly against the full session list.
+      expect(afterConclude.projectInterviewSessionFor('eng-01'), isNull);
       expect(
-        afterConclude
+        afterConclude.workflow
             .projectInterviewSessionFor('eng-01', oldProject.id)!
             .completed,
         isFalse,

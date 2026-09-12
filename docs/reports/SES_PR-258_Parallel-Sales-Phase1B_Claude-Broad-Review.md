@@ -202,7 +202,15 @@ With the P1 fix applied, `offerCandidates` is now a genuinely trustworthy, per-p
 ### Original reviewed HEAD / focused-fix HEAD
 
 - **Original reviewed HEAD (this Broad Review, above):** `e7996e2cf7dc9b786a42d45bb95519441eee3bdc` — confirmed via `git fetch origin` + `pull_request_read` on PR #258 at the start of this focused-fix session; matched the task's own stated confirmed HEAD exactly, no drift.
-- **Focused-fix HEAD:** `791e8732d30d6a16e1e17539a49a34934ab50b86` (the commit carrying all code/test changes for this fix, confirmed via `git rev-parse HEAD` immediately after committing it; this doc's own SHA-fill-in lands in a small follow-up docs-only commit on the same branch, `claude/first-fun-year-phase-1b-2zy73j` — no production/test code changed after `791e873`).
+- **Focused-fix HEAD:** `791e8732d30d6a16e1e17539a49a34934ab50b86` (the commit carrying all code/test changes for this fix, confirmed via `git rev-parse HEAD` immediately after committing it; this doc's own SHA-fill-in lands in a small follow-up docs-only commit on the same branch, `claude/first-fun-year-phase-1b-2zy73j` — no production/test code changed after `791e873`). A concurrent-session merge (below) landed on top of these two commits before the final push.
+
+### Concurrent-session merge
+
+While this fix was in progress, a **second, independent session** (`session_011q8sKy4zSgnsfDshCNbPCB`, commit `7a44149077e57f0ba3be67ead9aa895764f7a16a`) pushed an equivalent composite-identity fix directly to the same branch, on top of the same `e7996e2` base. Both sessions converged on the identical design (composite `(employeeId, projectId)` key, `PublicDemoAggregate.projectInterviewSessionFor` kept single-argument) independently — this itself is a useful cross-check that the design is the correct one. `git push` was rejected (remote had diverged); the branches were merged via `git merge` — never force-pushed over — resolving conflicts by hand and keeping both sessions' non-overlapping test coverage.
+
+One genuine bug was caught during the merge: commit `7a44149` correctly narrowed the session **lookup** in `concludeProjectInterview`/`concludePartnerProjectInterview` to the exact `(engineerId, project.id)` pair, but left the `_copyWith` session-list **replacement** filter unchanged, still matching `existing.employeeId == engineerId` alone. Concluding project A's interview while a sibling project B's own session also existed for the same engineer would have replaced **every** entry matching that employeeId — including B's — with a duplicate of A's own completed session, silently destroying B's independent session data. This session's own implementation of that same replacement filter was already composite-aware (`existing.employeeId == engineerId && existing.projectId == project.id`); git's 3-way merge took it automatically without a conflict, since commit `7a44149` never touched that exact line. This is now covered by this fix's own test suite (group B: independent fail/pass results for two projects held by the same engineer, verified never to mix).
+
+`lib/game/persistence/public_demo_save_codec.dart` was untouched by commit `7a44149` — this session's own fix to it (below) is a non-overlapping, additive contribution: without it, a save with two genuine sessions for the same employee at different projects would have been rejected by the raw-level duplicate check (`seenEmployeeIds` keyed by `employeeId` alone), a real regression the concurrent session's own test suite did not catch since it never exercised save/reload with two coexisting sessions.
 
 ### Composite-identity design
 
@@ -211,7 +219,7 @@ With the P1 fix applied, `offerCandidates` is now a genuinely trustworthy, per-p
 - `PublicDemoWorkflowState.projectInterviewSessionFor(engineerId, projectId)` now requires an explicit `projectId` and matches both fields — the one ambiguous "search by engineerId alone" lookup this whole gap traced back to is gone from the domain layer.
 - `startProjectInterviewSession` now replaces only the existing entry for the SAME `(employeeId, projectId)` pair — every sibling project's own session for the same engineer is left completely untouched. The pre-existing Codex P1/P2 rules (discard a stale/completed/month-mismatched entry for that SAME project, rather than resuming it) are unchanged, just correctly scoped to the one project actually being (re)started.
 - `concludeProjectInterview`/`concludePartnerProjectInterview` now resolve and replace by the exact `(engineerId, project.id)` pair, never by `engineerId` alone — concluding one project's interview can no longer read, overwrite, or discard a different project's own session or result.
-- `PublicDemoAggregate.projectInterviewSessionFor(engineerId, [projectId])` keeps its pre-existing one-argument call shape for every UI/test call site unchanged (it resolves `projectId` from the engineer's CURRENT Phase 5 proposal via `projectInterviewCandidateFor` when omitted, which is what every existing caller already meant by "the" session for an engineer) while accepting an explicit `projectId` for the new composite case. **No `lib/ui/` file needed to change** — every interactive dialog already only ever drives whichever project is currently proposed, and this resolution rule reproduces that exactly.
+- `PublicDemoAggregate.projectInterviewSessionFor(engineerId)` keeps its exact pre-existing single-argument public signature for every UI/test call site — it resolves `projectId` internally from the engineer's CURRENT Phase 5 proposal via `projectInterviewCandidateFor` (which is what every existing caller already meant by "the" session for an engineer); a caller needing a specific, possibly-not-current project calls `workflow.projectInterviewSessionFor(engineerId, projectId)` directly instead. **No `lib/ui/` file needed to change** — every interactive dialog already only ever drives whichever project is currently proposed, and this resolution rule reproduces that exactly.
 
 Every production caller that used to reach `projectInterviewSessions` by `engineerId` alone was traced and updated: `projectInterviewSessionFor`, `startProjectInterviewSession`, `updateProjectInterviewSession` (already composite — no change needed), `concludeProjectInterview`, `concludePartnerProjectInterview`, and both the workflow- and aggregate-level accessors. No remaining production caller performs an ambiguous engineerId-only lookup.
 
@@ -233,7 +241,7 @@ Verification run this session, from a freshly-fetched Flutter 3.47.4 stable inst
 
 - `flutter analyze` (whole project): **No issues found.**
 - Focused composite-session tests (`public_demo_parallel_sales_session_composite_identity_test.dart`): **15/15 passed.**
-- `flutter test test/game/public_demo`: **994/994 passed** (977 pre-existing + 15 new + 2 new in `public_demo_save_codec_test.dart`).
+- `flutter test test/game/public_demo`: **996/996 passed**, after merging with a concurrent session's own equivalent fix (commit `7a44149`, same branch — see this section's own "Concurrent-session merge" note below) — 977 pre-existing + 15 new in this session's own test file + 2 new in `public_demo_save_codec_test.dart` + 2 more carried in from the concurrent session's own test additions.
 - `flutter test test/ui/public_demo`: **741/741 passed** — zero UI regression (no `lib/ui/` file was touched by this fix).
 - `git diff --check`: clean.
 
@@ -247,7 +255,7 @@ Verification run this session, from a freshly-fetched Flutter 3.47.4 stable inst
 
 ### Files changed
 
-`lib/game/public_demo/public_demo_workflow_state.dart`, `lib/game/public_demo/public_demo_aggregate.dart`, `lib/game/persistence/public_demo_save_codec.dart`, plus test files (`public_demo_parallel_sales_session_composite_identity_test.dart` new; `public_demo_project_interview_test.dart` and `public_demo_save_codec_test.dart` updated) and this pair of Result Report docs. No other production file touched.
+`lib/game/public_demo/public_demo_workflow_state.dart`, `lib/game/public_demo/public_demo_aggregate.dart`, `lib/game/persistence/public_demo_save_codec.dart`, plus test files (`public_demo_parallel_sales_session_composite_identity_test.dart` new; `public_demo_project_interview_test.dart` and `public_demo_save_codec_test.dart` updated) and this pair of Result Report docs. Merged in from the concurrent session's own commit `7a44149`: `public_demo_parallel_sales_phase1b_test.dart` (2 additional tests) and `docs/decisions/SES_DEVELOPMENT-PRIORITY_2026-09-02.md`. No other production file touched.
 
 ## FINAL VERDICT (after the focused P2 fix)
 

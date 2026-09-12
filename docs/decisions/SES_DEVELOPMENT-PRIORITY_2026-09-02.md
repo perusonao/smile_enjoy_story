@@ -217,6 +217,16 @@ Result Reportは履歴・証拠であり、この文書の代わりにはしな�
 
 ## Update history
 
+### 2026-09-12（Issue #245 Finding #4 — Parallel Sales / Offer Selection Fresh Audit完了、Phase B「設計のみ」判断 / governing plan sync）
+
+- **Issue #245 Finding #4（並行営業/複数案件面談結果からの受注・辞退判断）についてFresh Auditを実施し、Phase B（詳細設計のみ、schema/domain実装なし）と判断した。** 開始時`git fetch origin`で`origin/main`が指定base SHA `afd34333c0e6a4f3db104e8159317bbdc068b544`と完全一致していることを確認（drift無し）。
+- Fresh Auditの結論: 現行Public Demoの営業pipelineは`PublicDemoEngineerSales.stage`という**エンジニア1人につき1個のscalar**が、面談進行カーソルと受注/アサイン適格性の証明を兼務しており、`matchingProposals`/`projectInterviewSessions`もいずれも1エンジニアにつき1件のみ保持（新規が既存を置換）。`availableEngineersForMatching`は`clientInterviewPassed`/`ordered`のエンジニアをMatching対象から除外するため、1案件に合格すると別案件を並行して面談すること自体が構造的に不可能——これがFinding #4の症状の直接原因であることを、実コード（`public_demo_sales.dart`/`public_demo_workflow_state.dart`/`public_demo_aggregate.dart`）から確認した。
+- 本家Main Game側には`ProjectProposal`+`Offer`（engineerId単位で複数保持、受注時に同一engineerの他offerを自動`declined`にする`game_engine.dart:372-380`）という、まさに同じ要件を満たす実装が既に存在することを確認したが、Issue #245自身の非ゴール（「Main Game側との全面統合はしない」）に従い、統合はせずパターン参照のみとした。
+- 受注適格性の証明をエンジニア単位からエンジニア×案件単位（新設`PublicDemoOfferCandidate`）へ移す設計を提案。これは`assignOrderedForMay`/`recoverLateYearAssignment`/`_validateForPersistence`が依拠する既存のunforgeable-record防御機構（WORKFLOW-STATE-1AB FIX1〜FIX7、PR #214/#215/#216のCodex P1/P2 fix群）に影響する真のschema変更であり、独立設計レビューなしに1セッションで実装することは「無理な実装」のリスク（二重受注・sales slot二重消費・save破損）を伴うと判断した。この判断はIssue #245自身が既に想定していたもの（「大きなstate/schema redesignが必要ならこのIssueで即実装せず、設計Phaseへ分離する」）であり、同日merge済みのPR #247も同じ結論（Finding #4は「未実装（指示通り）」）に達している。
+- Phase 1a（domain-only、`offerCandidates`+migration）/Phase 1b（既存caller切替）/Phase 1c（比較UI）への分割、legacy save migration計画、必須テストmatrix（18シナリオ）まで詳細設計として作成した。production/test codeは無変更（docs-onlyコミット）。
+- 詳細: `docs/reports/SES_FIRST-FUN-YEAR_Parallel-Sales_Result.md`。
+- 本エントリはCurrent execution order・Prioritized backlog tableの構成自体は変更しない。次にParallel Sales/Offer Selectionへ着手する場合は、このエントリが指すResult Reportの「Phase 1a」から開始する。Finance/Payroll/Matching outcome formula・HOME・5-tab構造はいずれも無変更。
+
 ### 2026-09-12（Issue #248完了 — Applicant→Engineer Data Preservation / SkillSheet Expansion、Codex P1修正込み / governing plan sync）
 
 - **Issue #248（PR #249）を実装完了。** First Fun Yearの採用判断を「評価値で選ぶ」から「候補者の経験・技術・給与を比較して採用し、その人物固有の能力が入社後の社員/SkillSheet/案件適性へ継続する」ループへ改善する施策。Fresh Audit（実コードベース。issueが参照した`docs/reports/SES_DATA-ASSET_FULL-INVENTORY_2026-09-12.md`はリポジトリ内に存在しないため、現在のコードを直接追跡）が、`PublicDemoEngineerRuntime.fromApplicant`が経験者採用者全員の`primaryLanguage`を無条件に`ProgrammingLanguage.java`へ、`techSkills`を`TechSkillLevels.zero()`へ固定していたことを確認した——社員タブの実力バー・SkillSheetの主言語チップ/実経験比較/技術スキルチップ・Matchingの言語/技術領域fit次元のいずれも、この既存authorityが常に空/ゼロだったため実際には機能しておらず、採用した人物の技術情報が「Java・スキルなし」という汎用値へ事実上置き換わっていた（本Issueが問題視する「同一汎用社員データへの置き換わり」そのもの）。

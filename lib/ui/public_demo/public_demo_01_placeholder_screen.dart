@@ -92,6 +92,14 @@ typedef _AddCandidate =
 /// into; no new categorization is computed.
 enum _EmployeeStatusFilter { all, waiting, assigned }
 
+/// Issue #245 Finding #13: a purely presentational grouping of the applicant
+/// funnel (営業タブ 採用・候補者進捗) into "still needs a player action",
+/// "done moving but not yet an employee" (研修待ちの内定承諾者/入社・参画予定の
+/// 6月受注者), and "outcome already final and unsuccessful" — see
+/// `_S._applicantLifecycleBucket`'s own doc for the exact stage mapping. Not
+/// a new [PublicDemoApplicantStage] value and not persisted.
+enum _ApplicantLifecycleBucket { active, awaitingJoin, closed }
+
 /// Issue #245 Finding #8: `評価 ${a.interviewScore}` used to render
 /// [PublicDemoApplicant.interviewScore] as a bare number, with the `>= 60`
 /// pass line ([_S.ac]'s own offer-button gate) implicit and undocumented.
@@ -2590,6 +2598,32 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
     PublicDemoApplicantStage.preEntryClientFailed => 4,
     PublicDemoApplicantStage.juneOrdered => 5,
   };
+
+  /// Issue #245 Finding #13 (採用応募者 lifecycle / 所在の可視化): purely a
+  /// presentation-time grouping of the same [PublicDemoApplicantStage] every
+  /// other label/tone/step helper on this screen already switches on — no
+  /// new stage, persisted field, or hiring-decision rule. Buckets applicants
+  /// by whether `ac(i)` currently renders an actionable button for them
+  /// (`active`), by whether they are genuinely done moving but not yet an
+  /// employee (`awaitingJoin` — an accepted-but-not-yet-entered inexperienced
+  /// hire, or a `juneOrdered` hire waiting for the month-end join boundary),
+  /// or by whether the outcome is already final and unsuccessful (`closed`).
+  /// Mirrors `ac(i)`'s own per-stage button conditions and
+  /// [_applicantStatusTone]'s negative set exactly, so this grouping can
+  /// never disagree with the card content it groups.
+  _ApplicantLifecycleBucket _applicantLifecycleBucket(PublicDemoApplicant a) =>
+      switch (a.stage) {
+        PublicDemoApplicantStage.rejected ||
+        PublicDemoApplicantStage.offerDeclined ||
+        PublicDemoApplicantStage.preEntryPartnerFailed ||
+        PublicDemoApplicantStage.preEntryClientFailed =>
+          _ApplicantLifecycleBucket.closed,
+        PublicDemoApplicantStage.juneOrdered =>
+          _ApplicantLifecycleBucket.awaitingJoin,
+        PublicDemoApplicantStage.offerAccepted when !a.canEnterPreJoinSales =>
+          _ApplicantLifecycleBucket.awaitingJoin,
+        _ => _ApplicantLifecycleBucket.active,
+      };
   // HOME-RUNTIME-2A: `monthGoal()` and `stat()` are gone from this screen.
   //
   //  * The month-goal `switch` MOVED to
@@ -4972,6 +5006,9 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
     final pipelineApplicantCount = workflow.applicants
         .where((a) => !a.hasJoined)
         .length;
+    final joinedApplicantCount = workflow.applicants
+        .where((a) => a.hasJoined)
+        .length;
     final pendingAssignmentCount = workflow.assignments
         .where(
           (a) =>
@@ -5040,6 +5077,30 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
               ),
             ],
           ),
+          // Issue #245 Finding #12 (採用応募者 lifecycle / 所在の可視化):
+          // once an applicant joins, [_salesApplicantProgressCards] rightly
+          // stops rendering their funnel card here (Issue #241 — their story
+          // continues on 社員, never a stale pre-join badge) — but before
+          // this line, that meant simply vanishing from 営業 with no
+          // acknowledgement at all, so a player scanning 営業 alone had no
+          // way to tell "採用面談後、この人はどうなったか" from a genuine bug.
+          // This states the one fact truthfully answering that, without
+          // repeating a joined applicant's name here (which the funnel
+          // section is explicitly required never to do again — see Issue
+          // #241's own regression test) and without duplicating anything the
+          // 社員 tab roster already shows in full.
+          if (joinedApplicantCount > 0)
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Text(
+                '入社済み $joinedApplicantCount名（社員タブで活動中）',
+                key: const Key('public-demo-sales-joined-summary'),
+                style: TextStyle(
+                  fontSize: 12,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ),
         ],
       ),
     );
@@ -5097,10 +5158,58 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
   /// authority: once joined, the applicant's story continues via the
   /// existing `workflow.engineers`-based 社員/SkillSheet/営業 tabs, exactly
   /// as [_salesOverviewSection] already documents.
-  List<Widget> _salesApplicantProgressCards() => [
-    for (var i = 0; i < workflow.applicants.length; i++)
-      if (!workflow.applicants[i].hasJoined) ac(i),
-  ];
+  ///
+  /// Issue #245 Finding #13 (採用応募者 lifecycle / 所在の可視化): before this
+  /// change, every not-yet-joined applicant rendered as one undifferentiated
+  /// flat list — a candidate still needing player action (応募/面談中) sat
+  /// visually indistinguishable from one whose outcome is already final
+  /// (不採用/内定辞退/各面談不合格, which render no button at all) and from one
+  /// simply waiting for the month-end join boundary (内定承諾済みで研修待ち,
+  /// 入社・参画予定). [_applicantLifecycleBucket] groups the exact same
+  /// `ac(i)` cards (same widgets/keys/eligibility, same order within each
+  /// bucket) under three read-only headers so the player can tell "誰に対応
+  /// が必要か" from "結果はもう出ているが表示だけ残っている候補者" at a glance,
+  /// without inventing a new stage or hiding/removing any existing card.
+  List<Widget> _salesApplicantProgressCards() {
+    final active = <int>[];
+    final awaitingJoin = <int>[];
+    final closed = <int>[];
+    for (var i = 0; i < workflow.applicants.length; i++) {
+      final a = workflow.applicants[i];
+      if (a.hasJoined) continue;
+      switch (_applicantLifecycleBucket(a)) {
+        case _ApplicantLifecycleBucket.active:
+          active.add(i);
+        case _ApplicantLifecycleBucket.awaitingJoin:
+          awaitingJoin.add(i);
+        case _ApplicantLifecycleBucket.closed:
+          closed.add(i);
+      }
+    }
+    return [
+      ..._applicantLifecycleGroup('対応が必要な候補者', active),
+      ..._applicantLifecycleGroup('結果待ち・入社予定', awaitingJoin),
+      ..._applicantLifecycleGroup('結果確定（不採用・辞退）', closed),
+    ];
+  }
+
+  List<Widget> _applicantLifecycleGroup(String title, List<int> indices) {
+    if (indices.isEmpty) return const [];
+    return [
+      Padding(
+        padding: const EdgeInsets.only(top: 4, bottom: 4),
+        child: Text(
+          '$title（${indices.length}名）',
+          style: TextStyle(
+            fontSize: 12.5,
+            fontWeight: FontWeight.w600,
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
+          ),
+        ),
+      ),
+      for (final i in indices) ac(i),
+    ];
+  }
 
   /// Section 4 — 案件・参画/継続状況: June's assignment decision cards and
   /// July's closing narrative, moved verbatim (same `assignmentCard(i)`/

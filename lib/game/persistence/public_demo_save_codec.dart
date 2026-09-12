@@ -152,17 +152,16 @@ class PublicDemoSaveCodec {
             .toList(),
       );
       baseline = _withMigratedInterviewRecordProjectId(baseline);
-      // Issue #245 Finding #4, Phase 1a: the same additive-top-level-field
-      // gap as `matchingProposals`/`projectInterviewSessions` above, this
-      // time for [PublicDemoWorkflowState.offerCandidates]. A save written
-      // before this field existed has no such key at all; splicing in the
-      // already-decoded, already-migrated resolved value (which may be
-      // NON-empty — see [PublicDemoWorkflowState
-      // .fromLegacyEngineerState]'s own one-time synthesis for an engineer
-      // already at partnerInterviewPassed/clientInterviewPassed/ordered)
-      // is exactly what makes that synthesis actually round-trip through
-      // this strict comparison instead of getting the whole legacy save
-      // rejected outright.
+      // Issue #245 Finding #4, Phase 1b (Production Cutover): unlike every
+      // other splice in this method, this one is UNCONDITIONAL — see
+      // [_withMigratedOfferCandidates]'s own doc for why. [offerCandidates]
+      // is now reconciled against legacy authority on every load (
+      // [PublicDemoWorkflowState._reconcileOfferCandidates]), a real,
+      // repeatable content change this strict byte-exact round-trip
+      // comparison must not reject as "corruption" — the actual integrity
+      // gate for this field is [_hasConsistentAuthorityFacts] (raw-level,
+      // below) plus [PublicDemoAggregate._validateForPersistence]
+      // (post-decode), not this comparison.
       baseline = _withMigratedOfferCandidates(
         baseline,
         aggregate.workflow.offerCandidates
@@ -481,6 +480,9 @@ class PublicDemoSaveCodec {
       }
     }
 
+    // Issue #245 Finding #4, Phase 1b: this engineer's own raw `stage`
+    // string, read for the offer-candidate ordered cross-check below.
+    final engineerStageById = <String, String>{};
     for (final entry in engineersRaw) {
       if (entry is! Map) return false;
       final engineer = entry.cast<String, dynamic>();
@@ -503,6 +505,9 @@ class PublicDemoSaveCodec {
         return false;
       }
       engineerIds.add(id);
+      // Issue #245 Finding #4, Phase 1b: read for the offer-candidate
+      // ordered cross-check below.
+      engineerStageById[id] = stage;
 
       final clientPassStage =
           stage == 'clientInterviewPassed' || stage == 'ordered';
@@ -730,6 +735,32 @@ class PublicDemoSaveCodec {
           return false;
         }
         if (!engineerIds.contains(candidateEngineerId)) return false;
+        // Issue #245 Finding #4, Phase 1b: an offer candidate at `ordered`
+        // is only ever genuine when its OWN engineer is itself genuinely
+        // `ordered` too — both authorities must agree that this engineer
+        // was actually ordered at all, mirroring how every other
+        // `clientPassStage` check in this method cross-checks against
+        // independently-derived facts rather than trusting the candidate's
+        // own shape alone.
+        //
+        // Deliberately does NOT also require `candidateProjectId` to equal
+        // this engineer's CURRENT `proposalProjectIdByEngineer`/
+        // `assignmentProjectIdByEngineer` resolution: unlike every other
+        // legacy authority fact here, `matchingProposals` is single-slot
+        // (replaced, never accumulated — see [PublicDemoWorkflowState
+        // .withMatchingProposal]'s own doc) and only ever names the LATEST
+        // proposal. A genuine, legitimate save can carry an `ordered`
+        // candidate for an EARLIER, already-concluded assignment cycle
+        // (the engineer's own [PublicDemoWorkflowState.endAssignment] →
+        // re-sell → re-`propose`/pass/order sequence a later cycle can
+        // produce — `offerCandidates` never deletes history) alongside a
+        // now-different current proposal/assignment project for whatever
+        // the engineer is pursuing next — requiring exact agreement here
+        // would reject that entirely real, non-forged save.
+        if (candidateStage == 'ordered' &&
+            engineerStageById[candidateEngineerId] != 'ordered') {
+          return false;
+        }
         final recordEngineerId = candidate['interviewRecordEngineerId'];
         final recordProjectId = candidate['interviewRecordProjectId'];
         if (recordEngineerId == null) continue;
@@ -838,21 +869,39 @@ class PublicDemoSaveCodec {
     };
   }
 
-  /// Splices [resolvedOfferCandidates] (the already-decoded, already
-  /// migration-synthesized value — see [PublicDemoWorkflowState
-  /// .fromJson]'s own `_synthesizeLegacyOfferCandidates` doc) into a copy of
-  /// [envelope]'s `aggregate.workflow.offerCandidates` only when that key is
-  /// absent there. Mirrors [_withMigratedMatchingProposals]'s own
-  /// shape/doc — the one difference being that the spliced-in value here can
-  /// genuinely be non-empty for a legacy save (a synthesized candidate for
-  /// an engineer already past partnerInterviewPassed), not merely `[]`.
+  /// Splices [resolvedOfferCandidates] (the already-decoded,
+  /// already-RECONCILED value — see [PublicDemoWorkflowState
+  /// ._reconcileOfferCandidates]'s own doc) into a copy of [envelope]'s
+  /// `aggregate.workflow.offerCandidates` UNCONDITIONALLY — the one
+  /// deliberate exception to every other per-field splice in this file,
+  /// which only ever fill in a backward-compatible DEFAULT for a key a
+  /// legacy save never had, never override a key the save already carries.
+  ///
+  /// [offerCandidates] is different: Phase 1b's own task requires a real,
+  /// repeatable one-time reconciliation against legacy authority on every
+  /// load (Issue #245 Finding #4's own "既存candidateを不用意に巻き戻さない...
+  /// key present == migrated にしない" mandate, and the Codex review on PR
+  /// #254 this replaces — see [PublicDemoWorkflowState
+  /// ._reconcileOfferCandidates]'s own doc for the full history), not merely
+  /// a default for an absent key. That reconciliation can genuinely change
+  /// a save's own `offerCandidates` content even when the raw key was
+  /// already present (upgrading a stale/behind candidate, or synthesizing
+  /// one for a project a save's `offerCandidates` never recorded at all) —
+  /// exactly the class of change this method's caller's strict
+  /// byte-for-byte comparison exists to catch as "corruption" for every
+  /// OTHER field. Always splicing in the resolved value here means this
+  /// one field is deliberately excluded from that byte-exact comparison;
+  /// its own integrity is instead enforced by [_hasConsistentAuthorityFacts]
+  /// (raw-level, structural/plausibility/ordered-cross-check) and
+  /// [PublicDemoAggregate._validateForPersistence] (post-decode identity
+  /// checks) — both of which still run, unchanged in strictness, on
+  /// whatever this field's final reconciled value is.
   static Map<String, dynamic> _withMigratedOfferCandidates(
     Map<String, dynamic> envelope,
     List<Map<String, dynamic>> resolvedOfferCandidates,
   ) {
     final aggregate = (envelope['aggregate'] as Map).cast<String, dynamic>();
     final workflow = (aggregate['workflow'] as Map).cast<String, dynamic>();
-    if (workflow.containsKey('offerCandidates')) return envelope;
     return {
       ...envelope,
       'aggregate': {

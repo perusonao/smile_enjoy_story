@@ -182,15 +182,23 @@ class PublicDemoOfferCandidate {
     proposedMonth: proposedMonth,
   );
 
-  /// One-time, load-time-only migration path (see the SSOT design's own
-  /// "Backward compatibility / migration plan" section): synthesizes
-  /// exactly one candidate from a legacy save's existing
-  /// [PublicDemoEngineerSales.stage]/`interviewRecord` facts, for a save
-  /// written before [PublicDemoWorkflowState.offerCandidates] existed.
-  ///
-  /// Never a live gameplay path — the only caller is
-  /// [PublicDemoWorkflowState.fromJson]'s legacy-upgrade branch. Deliberately
-  /// mints a fresh [PublicDemoOfferInterviewRecord] bound to this
+  /// Builds a candidate directly from legacy authority's own current
+  /// [PublicDemoEngineerSales.stage]/`interviewRecord` facts — originally a
+  /// one-time, load-time-only migration path for a save written before
+  /// [PublicDemoWorkflowState.offerCandidates] existed (see the SSOT
+  /// design's own "Backward compatibility / migration plan" section), now
+  /// also used, via [PublicDemoWorkflowState._offerCandidateFromLegacy], by
+  /// [PublicDemoWorkflowState._reconcileOfferCandidates] (Phase 1b's own
+  /// real, repeatable reconciliation — replacing the one-shot version this
+  /// factory originally served) AND by
+  /// [PublicDemoWorkflowState.withMatchingProposal] itself (Phase 1b
+  /// Production Cutover): a brand-new candidate is seeded at legacy
+  /// authority's CURRENT stage rather than always the bare `proposed` entry
+  /// point, so a freshly-visible candidate for an engineer whose coarse
+  /// stage already outranks `proposed` (a partner pass/fail minted through
+  /// the legacy, project-agnostic path before this exact project was ever
+  /// proposed) is never left transiently behind the engineer it belongs to.
+  /// Deliberately mints a fresh [PublicDemoOfferInterviewRecord] bound to this
   /// candidate's own (engineerId, projectId) whenever
   /// [hasGenuineInterviewRecord] is true, rather than attempting to reuse
   /// the legacy record's own (possibly project-`null`, generic-path)
@@ -338,6 +346,104 @@ class PublicDemoOfferCandidate {
     }
     return copyWith(stage: PublicDemoOfferCandidateStage.declined);
   }
+
+  /// Phase 1b (Production Cutover): applies an ALREADY-COMPUTED partner
+  /// interview outcome to this candidate — never a second, independent
+  /// evaluation. The sole production caller is
+  /// [PublicDemoWorkflowState.concludePartnerProjectInterview] (the
+  /// interactive Partner Interview engine), which derives [passed]/[score]
+  /// from one real [PublicDemoProjectInterview.conclude] call already made
+  /// for the engineer-level pipeline in that same method — mirrors
+  /// [PublicDemoEngineerSales.applyPartnerProjectInterviewResult] exactly
+  /// (same "reuse, never fork, the interview engine" contract), one level
+  /// down. The legacy, project-agnostic
+  /// [PublicDemoWorkflowState.recordEngineerInterviewResult] path has no
+  /// project identity to sync a candidate against, and deliberately does
+  /// not call this. A no-op unless [stage] is currently
+  /// [PublicDemoOfferCandidateStage.proposed] or [PublicDemoOfferCandidateStage
+  /// .partnerInterviewFailed] — same precondition as
+  /// [evaluatePartnerInterview].
+  PublicDemoOfferCandidate applyPartnerInterviewResult({
+    required bool passed,
+    required int score,
+  }) {
+    if (stage != PublicDemoOfferCandidateStage.proposed &&
+        stage != PublicDemoOfferCandidateStage.partnerInterviewFailed) {
+      return this;
+    }
+    return copyWith(
+      stage: passed
+          ? PublicDemoOfferCandidateStage.partnerInterviewPassed
+          : PublicDemoOfferCandidateStage.partnerInterviewFailed,
+      partnerScore: score,
+    );
+  }
+
+  /// The client-interview counterpart of [applyPartnerInterviewResult] — see
+  /// its own doc for the "apply an already-computed outcome, never
+  /// re-evaluate" contract. Mints [interviewRecord] only on a genuine pass,
+  /// mirroring [PublicDemoEngineerSales.applyProjectInterviewResult] exactly.
+  /// A no-op unless [stage] is currently [PublicDemoOfferCandidateStage
+  /// .partnerInterviewPassed] or [PublicDemoOfferCandidateStage
+  /// .clientInterviewFailed] — same precondition as [evaluateClientInterview].
+  PublicDemoOfferCandidate applyClientInterviewResult({
+    required bool passed,
+    required int score,
+  }) {
+    if (stage != PublicDemoOfferCandidateStage.partnerInterviewPassed &&
+        stage != PublicDemoOfferCandidateStage.clientInterviewFailed) {
+      return this;
+    }
+    return copyWith(
+      stage: passed
+          ? PublicDemoOfferCandidateStage.clientInterviewPassed
+          : PublicDemoOfferCandidateStage.clientInterviewFailed,
+      clientScore: score,
+      interviewRecord: passed
+          ? PublicDemoOfferInterviewRecord._(
+              engineerId: engineerId,
+              projectId: projectId,
+            )
+          : null,
+    );
+  }
+
+  /// Phase 1b (Production Cutover) one-time reconciliation upgrade: brings
+  /// this ALREADY-EXISTING candidate's own stage/score/record up to date
+  /// with legacy authority's own facts for this exact (engineerId,
+  /// projectId) pair, for the one case legacy authority has genuinely
+  /// progressed further than this candidate's own stage. Unlike
+  /// [fromLegacyEngineerState] (which builds a brand-new candidate from
+  /// scratch when none exists yet), this starts from this candidate's own
+  /// existing [partnerScore]/[clientScore] (preserved via `?? this.field`
+  /// when the legacy value passed is `null`) and mints a fresh
+  /// [interviewRecord] bound to this exact identity only when
+  /// [hasGenuineInterviewRecord] is true — exactly like
+  /// [fromLegacyEngineerState]'s own record-minting contract.
+  ///
+  /// Callers (see
+  /// [PublicDemoWorkflowState._reconcileOfferCandidates]) are responsible
+  /// for only ever calling this when legacy authority's stage genuinely
+  /// outranks this candidate's own current stage — this method itself does
+  /// not re-check that ordering, so it must never be called to rewind a
+  /// candidate that is already ahead of (or terminal relative to) legacy
+  /// authority.
+  PublicDemoOfferCandidate upgradeFromLegacy({
+    required PublicDemoOfferCandidateStage stage,
+    int? partnerScore,
+    int? clientScore,
+    required bool hasGenuineInterviewRecord,
+  }) => copyWith(
+    stage: stage,
+    partnerScore: partnerScore,
+    clientScore: clientScore,
+    interviewRecord: hasGenuineInterviewRecord
+        ? PublicDemoOfferInterviewRecord._(
+            engineerId: engineerId,
+            projectId: projectId,
+          )
+        : interviewRecord,
+  );
 
   Map<String, dynamic> toJson() => {
     'engineerId': engineerId,

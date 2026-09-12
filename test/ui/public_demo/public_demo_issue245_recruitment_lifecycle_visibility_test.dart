@@ -379,6 +379,167 @@ PublicDemoAggregate _mayWithOnePreEntryClientFailedApplicant() {
   return aggregate;
 }
 
+/// Mirrors `_S._interviewDecidedHired`'s own read exactly
+/// (`workflow.interviewSessions.any((s) => s.applicantId == applicantId &&
+/// s.completed && s.outcome == InterviewOutcome.hired)`) — used only for
+/// fixture-sanity assertions in this file, never as production logic.
+bool _decidedHired(PublicDemoAggregate aggregate, String applicantId) =>
+    aggregate.workflow.interviewSessions.any(
+      (session) =>
+          session.applicantId == applicantId &&
+          session.completed &&
+          session.outcome == InterviewOutcome.hired,
+    );
+
+/// PR #252 Codex review (P2, second finding): drives one real, seeded
+/// applicant through the actual production interactive interview session to
+/// a genuine "採用候補として進める" decision (`concludeInterviewSession
+/// (InterviewOutcome.hired)`) while their real `interviewScore` (`runSeed`
+/// 18's free-medium May candidate — confirmed below 60, never asserted) is
+/// below the real 60 threshold `ac(i)`'s own offer button
+/// (`onPressed: a.interviewScore >= 60 ? () => offer(i) : null`) and
+/// `_addApplicantStageCandidate`'s identical `interviewed` branch both gate
+/// on. `concludeInterviewSession` itself never checks `interviewScore` at
+/// all (only [PublicDemoAggregate.completeInterview]'s slot-consumption
+/// guard applies earlier), so a genuinely low-scoring applicant can reach
+/// this "decided hired, but no legal offer possible" dead end through
+/// ordinary play. Stage stays `interviewed` forever — nothing in this
+/// pipeline ever moves it, and the interview session, once `completed`,
+/// never reopens.
+PublicDemoAggregate _mayWithOneStalledBelowThresholdInterviewedApplicant() {
+  const seed = 18;
+  var aggregate = PublicDemoAggregate.initial(
+    runSeed: seed,
+  ).closeApril(monthlyExpenses: _expense);
+  final recruited = aggregate.recruit(PublicDemoRecruitmentMedium.free);
+  expect(recruited.isSuccess, isTrue, reason: 'fixture sanity');
+  aggregate = recruited.aggregate!;
+  final id = aggregate.workflow.applicants.first.id;
+  final interviewScore = aggregate.workflow.applicants.first.interviewScore;
+  expect(
+    interviewScore,
+    lessThan(60),
+    reason: 'fixture sanity: runSeed $seed must genuinely fall below the '
+        'real offer threshold, not be asserted to',
+  );
+
+  aggregate = aggregate.completeInterview(id).aggregate;
+  aggregate = aggregate
+      .startInterviewSession(id)
+      .askInterviewQuestion(id, InterviewQuestionCategory.technical)
+      .askInterviewQuestion(id, InterviewQuestionCategory.career)
+      .askInterviewQuestion(id, InterviewQuestionCategory.teamwork)
+      .answerInterviewReverseQuestion(id, 0);
+  aggregate = aggregate.concludeInterviewSession(id, InterviewOutcome.hired);
+
+  final stalled = aggregate.workflow.applicants.firstWhere(
+    (a) => a.id == id,
+  );
+  expect(stalled.stage.name, 'interviewed', reason: 'fixture sanity');
+  expect(_decidedHired(aggregate, id), isTrue, reason: 'fixture sanity');
+  expect(stalled.interviewScore, lessThan(60), reason: 'fixture sanity');
+  return aggregate;
+}
+
+/// The non-stalled counterpart: same technique, but `runSeed` 1's real
+/// `interviewScore` clears the real 60 threshold, so the offer button stays
+/// legally pressable (`active`) after the exact same "採用候補として進める"
+/// decision.
+PublicDemoAggregate _mayWithOneDecidedHiredAboveThresholdApplicant() {
+  const seed = 1;
+  var aggregate = PublicDemoAggregate.initial(
+    runSeed: seed,
+  ).closeApril(monthlyExpenses: _expense);
+  final recruited = aggregate.recruit(PublicDemoRecruitmentMedium.free);
+  expect(recruited.isSuccess, isTrue, reason: 'fixture sanity');
+  aggregate = recruited.aggregate!;
+  final id = aggregate.workflow.applicants.first.id;
+  final interviewScore = aggregate.workflow.applicants.first.interviewScore;
+  expect(
+    interviewScore,
+    greaterThanOrEqualTo(60),
+    reason: 'fixture sanity: runSeed $seed must genuinely clear the real '
+        'offer threshold, not be asserted to',
+  );
+
+  aggregate = aggregate.completeInterview(id).aggregate;
+  aggregate = aggregate
+      .startInterviewSession(id)
+      .askInterviewQuestion(id, InterviewQuestionCategory.technical)
+      .askInterviewQuestion(id, InterviewQuestionCategory.career)
+      .askInterviewQuestion(id, InterviewQuestionCategory.teamwork)
+      .answerInterviewReverseQuestion(id, 0);
+  aggregate = aggregate.concludeInterviewSession(id, InterviewOutcome.hired);
+
+  final decided = aggregate.workflow.applicants.firstWhere(
+    (a) => a.id == id,
+  );
+  expect(decided.stage.name, 'interviewed', reason: 'fixture sanity');
+  expect(_decidedHired(aggregate, id), isTrue, reason: 'fixture sanity');
+  expect(decided.interviewScore, greaterThanOrEqualTo(60), reason: 'fixture sanity');
+  return aggregate;
+}
+
+/// Month-boundary regression for the same PR #252 P2 dead end: recruits in
+/// **June** (`runSeed` 3's real free-medium June candidate, `interviewScore`
+/// 48 — confirmed below 60), specifically because `closeMay`'s own
+/// `joinAndKeepOnly` prunes any not-yet-`accepted` May cohort applicant
+/// (a documented, one-time, May-to-June cutoff unrelated to this fix — an
+/// `interviewed`-stage applicant is never in that `accepted()` set either
+/// way), which would make a *May*-recruited stalled applicant vanish at
+/// June regardless of this classification fix and mask what this test
+/// wants to prove. A June-or-later recruit uses
+/// [PublicDemoWorkflowState.joinAcceptedForFiscalClose] at every later
+/// close instead (never pruning), so this fixture drives all the way
+/// through `closeJune` (May is closed first, with zero applicants pending,
+/// so nothing is pruned there) to confirm the stalled applicant survives
+/// the June→July boundary still present and still correctly classified.
+PublicDemoAggregate _juneWithOneStalledBelowThresholdApplicantAfterClose() {
+  const seed = 3;
+  var aggregate = PublicDemoAggregate.initial(runSeed: seed)
+      .closeApril(monthlyExpenses: _expense)
+      .closeMay(week: 9, monthlyExpenses: _expense);
+  expect(aggregate.state.month, 6, reason: 'fixture sanity');
+  final recruited = aggregate.recruit(PublicDemoRecruitmentMedium.free);
+  expect(recruited.isSuccess, isTrue, reason: 'fixture sanity');
+  aggregate = recruited.aggregate!;
+  final id = aggregate.workflow.applicants.first.id;
+  expect(
+    aggregate.workflow.applicants.first.interviewScore,
+    lessThan(60),
+    reason: 'fixture sanity: runSeed $seed must genuinely fall below the '
+        'real offer threshold at June, not be asserted to',
+  );
+
+  aggregate = aggregate.completeInterview(id).aggregate;
+  aggregate = aggregate
+      .startInterviewSession(id)
+      .askInterviewQuestion(id, InterviewQuestionCategory.technical)
+      .askInterviewQuestion(id, InterviewQuestionCategory.career)
+      .askInterviewQuestion(id, InterviewQuestionCategory.teamwork)
+      .answerInterviewReverseQuestion(id, 0);
+  aggregate = aggregate.concludeInterviewSession(id, InterviewOutcome.hired);
+  expect(_decidedHired(aggregate, id), isTrue, reason: 'fixture sanity');
+
+  final closedJune = aggregate.closeJune(
+    assignedInJuly: 0,
+    monthlyExpenses: _expense,
+  );
+  expect(closedJune.state.month, 7, reason: 'fixture sanity');
+  final survived = closedJune.workflow.applicants
+      .where((a) => a.id == id)
+      .toList();
+  expect(
+    survived,
+    hasLength(1),
+    reason: 'fixture sanity: unlike closeMay, closeJune must never prune a '
+        'not-yet-accepted applicant',
+  );
+  expect(survived.first.stage.name, 'interviewed', reason: 'fixture sanity');
+  expect(survived.first.hasJoined, isFalse, reason: 'fixture sanity');
+  return closedJune;
+}
+
 void main() {
   group('Finding #13: 採用・候補者進捗 lifecycle grouping', () {
     testWidgets(
@@ -599,6 +760,115 @@ void main() {
           await _pumpSalesTab(tester, partnerFailed);
           expect(find.text('$_awaitingHeader（1名）'), findsOneWidget);
           expect(find.textContaining(_closedHeader), findsNothing);
+        },
+      );
+    },
+  );
+
+  group(
+    'PR #252 Codex review P2 (second finding, r3995477975): a completed, '
+    'below-threshold interviewed applicant with no legal next action is '
+    'never 対応が必要',
+    () {
+      testWidgets(
+        'interviewed + interviewScore < 60 + decided "採用候補として進める": '
+        'no legal offer button exists (disabled) and no HOME action is '
+        'emitted, so this applicant must not render under 対応が必要',
+        (tester) async {
+          final aggregate =
+              _mayWithOneStalledBelowThresholdInterviewedApplicant();
+          await _pumpSalesTab(tester, aggregate);
+
+          expect(find.textContaining(_activeHeader), findsNothing);
+          expect(find.text('$_closedHeader（1名）'), findsOneWidget);
+          // The card itself is untouched: still renders, still shows the
+          // permanently-disabled offer button -- only its group header
+          // changed.
+          expect(
+            find.text(aggregate.workflow.applicants.first.name),
+            findsOneWidget,
+          );
+          final offerButton = tester.widget<FilledButton>(
+            find.widgetWithText(FilledButton, '合格・給与提示'),
+          );
+          expect(
+            offerButton.onPressed,
+            isNull,
+            reason: 'fixture sanity: the offer button must genuinely have '
+                'no legal action, matching the review finding exactly',
+          );
+        },
+      );
+
+      testWidgets(
+        'interviewed + interviewScore >= 60 + decided "採用候補として進める": '
+        'the real offer button is legally pressable, so this applicant '
+        'stays 対応が必要 -- the fix narrows `closed`, it does not widen it '
+        'to every decided-hired interviewed applicant',
+        (tester) async {
+          final aggregate =
+              _mayWithOneDecidedHiredAboveThresholdApplicant();
+          await _pumpSalesTab(tester, aggregate);
+
+          expect(find.text('$_activeHeader（1名）'), findsOneWidget);
+          expect(find.textContaining(_closedHeader), findsNothing);
+          final offerButton = tester.widget<FilledButton>(
+            find.widgetWithText(FilledButton, '合格・給与提示'),
+          );
+          expect(
+            offerButton.onPressed,
+            isNotNull,
+            reason: 'fixture sanity: a real, legally pressable offer button '
+                'must still exist for this applicant',
+          );
+        },
+      );
+
+      testWidgets(
+        'month boundary: a June-recruited stalled applicant survives '
+        'closeJune (unlike closeMay\'s one-time May-cohort prune) and '
+        'still classifies as 結果確定, not 対応が必要, after the close',
+        (tester) async {
+          final afterClose =
+              _juneWithOneStalledBelowThresholdApplicantAfterClose();
+          await _pumpSalesTab(tester, afterClose);
+
+          expect(find.textContaining(_activeHeader), findsNothing);
+          expect(find.text('$_closedHeader（1名）'), findsOneWidget);
+        },
+      );
+
+      testWidgets(
+        'save/reload (toJson -> fromJson) preserves the closed '
+        'classification for a stalled below-threshold interviewed '
+        'applicant',
+        (tester) async {
+          final reloaded = PublicDemoAggregate.fromJson(
+            _mayWithOneStalledBelowThresholdInterviewedApplicant().toJson(),
+          );
+          await _pumpSalesTab(tester, reloaded);
+
+          expect(find.textContaining(_activeHeader), findsNothing);
+          expect(find.text('$_closedHeader（1名）'), findsOneWidget);
+        },
+      );
+
+      testWidgets(
+        'a stalled below-threshold applicant never joins at closeMay or '
+        'closeJune -- unlike preEntryPartnerFailed/preEntryClientFailed, '
+        'this dead end never had a binding offer at all',
+        (tester) async {
+          final afterClose =
+              _juneWithOneStalledBelowThresholdApplicantAfterClose();
+          final applicantId = afterClose.workflow.applicants.first.id;
+          expect(
+            afterClose.workflow.applicants
+                .where((a) => a.id == applicantId && a.hasJoined)
+                .toList(),
+            isEmpty,
+          );
+          await _pumpSalesTab(tester, afterClose);
+          expect(find.byKey(_joinedSummaryKey), findsNothing);
         },
       );
     },

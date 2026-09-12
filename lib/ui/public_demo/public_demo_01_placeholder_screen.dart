@@ -98,9 +98,12 @@ enum _EmployeeStatusFilter { all, waiting, assigned }
 /// sales/interview outcome, is still pending or already positive" (研修待ちの
 /// 内定承諾者/入社・参画予定の6月受注者/pre-entry営業面談に失敗したが binding
 /// offer は失効せず月末に入社する候補者 — PR #252 Codex review P2), and
-/// "employment outcome already final and unsuccessful" — see
-/// `_S._applicantLifecycleBucket`'s own doc for the exact stage mapping. Not
-/// a new [PublicDemoApplicantStage] value and not persisted.
+/// "no legal next action exists, and the outcome is already final and
+/// unsuccessful" (不採用/内定辞退、および面談で「採用候補として進める」を選んだ
+/// が評価点が採用基準に届かず給与提示が永久に無効な応募者 — PR #252 Codex
+/// review P2, second finding) — see `_S._applicantLifecycleBucket`'s own doc
+/// for the exact stage mapping. Not a new [PublicDemoApplicantStage] value
+/// and not persisted.
 enum _ApplicantLifecycleBucket { active, awaitingJoin, closed }
 
 /// Issue #245 Finding #8: `評価 ${a.interviewScore}` used to render
@@ -2606,23 +2609,26 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
   /// presentation-time grouping of the same [PublicDemoApplicantStage] every
   /// other label/tone/step helper on this screen already switches on — no
   /// new stage, persisted field, or hiring-decision rule. Buckets applicants
-  /// by whether `ac(i)` currently renders an actionable button for them
-  /// (`active`), by whether they are genuinely done moving but not yet an
-  /// employee (`awaitingJoin` — an accepted-but-not-yet-entered inexperienced
-  /// hire, a `juneOrdered` hire waiting for the month-end join boundary, or
-  /// a `preEntryPartnerFailed`/`preEntryClientFailed` hire — see below), or
-  /// by whether the *employment* outcome is already final and unsuccessful
-  /// (`closed`).
+  /// by whether `ac(i)`/[_addApplicantStageCandidate] currently offer them
+  /// an actionable button (`active`), by whether they are genuinely done
+  /// moving but not yet an employee (`awaitingJoin` — an accepted-but-not-
+  /// yet-entered inexperienced hire, a `juneOrdered` hire waiting for the
+  /// month-end join boundary, or a `preEntryPartnerFailed`/
+  /// `preEntryClientFailed` hire — see below), or by whether no legal next
+  /// action exists at all and the outcome (employment, for the pre-entry
+  /// case; the interview's own decided outcome, for the case just below) is
+  /// already final and unsuccessful (`closed`).
   ///
-  /// PR #252 Codex review (P2): `preEntryPartnerFailed`/`preEntryClientFailed`
-  /// were originally grouped into `closed` alongside `rejected`/
-  /// `offerDeclined` — reusing [_applicantStatusTone]'s "negative" set, which
-  /// is about the *sales* outcome (this pre-entry interview failed), not the
-  /// *employment* outcome. [PublicDemoApplicant.join] only excludes
-  /// `hasJoined` and `stage == offerDeclined`; a failed pre-entry partner/
-  /// client interview does not touch [PublicDemoApplicant.bindingOffer] at
-  /// all (it is minted once, at [PublicDemoOfferAcceptance.accept], well
-  /// before the pre-entry sales chain even starts), so
+  /// PR #252 Codex review (P2, thread `r3995465859`):
+  /// `preEntryPartnerFailed`/`preEntryClientFailed` were originally grouped
+  /// into `closed` alongside `rejected`/`offerDeclined` — reusing
+  /// [_applicantStatusTone]'s "negative" set, which is about the *sales*
+  /// outcome (this pre-entry interview failed), not the *employment*
+  /// outcome. [PublicDemoApplicant.join] only excludes `hasJoined` and
+  /// `stage == offerDeclined`; a failed pre-entry partner/client interview
+  /// does not touch [PublicDemoApplicant.bindingOffer] at all (it is minted
+  /// once, at [PublicDemoOfferAcceptance.accept], well before the pre-entry
+  /// sales chain even starts), so
   /// [PublicDemoWorkflowState.joinAcceptedForFiscalClose] still joins such an
   /// applicant at month-end exactly like any other accepted offer — closing
   /// their card under "結果確定（不採用・辞退）" falsely told the player their
@@ -2637,12 +2643,31 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
   /// still a true statement about the sales attempt, only which lifecycle
   /// *group header* it renders under changes.
   ///
+  /// PR #252 Codex review (P2, thread `r3995477975`): a second, genuinely
+  /// different dead end at `interviewed`. [_interviewDecidedHired] true (the
+  /// player chose "採用候補として進める" in the interactive interview) with
+  /// `interviewScore < 60` leaves `ac(i)`'s own offer button rendered but
+  /// permanently `onPressed: null` (`a.interviewScore >= 60 ? ... : null`)
+  /// and [_addApplicantStageCandidate]'s identical `interviewed` branch
+  /// emits no [HomeRecommendedActionKind] at all for this exact combination
+  /// (its own `if (a.interviewScore >= 60)` guard) — genuinely no legal
+  /// action anywhere on screen, and this never changes on its own:
+  /// [PublicDemoAggregate.concludeInterviewSession] locks the interview
+  /// session once `completed`, so "面談を行う"/"面談を続ける" (the *other*
+  /// `interviewed` branch, for a not-yet-decided session) never reappears
+  /// either. Every other `interviewed` applicant — not yet decided, or
+  /// decided-hired with a real offer button available — is unaffected and
+  /// still falls through to `active` below, exactly as before.
+  ///
   /// Mirrors `ac(i)`'s own per-stage button conditions exactly, so this
   /// grouping can never disagree with the card content it groups.
   _ApplicantLifecycleBucket _applicantLifecycleBucket(PublicDemoApplicant a) =>
       switch (a.stage) {
         PublicDemoApplicantStage.rejected ||
         PublicDemoApplicantStage.offerDeclined =>
+          _ApplicantLifecycleBucket.closed,
+        PublicDemoApplicantStage.interviewed
+            when _interviewDecidedHired(a.id) && a.interviewScore < 60 =>
           _ApplicantLifecycleBucket.closed,
         PublicDemoApplicantStage.juneOrdered ||
         PublicDemoApplicantStage.preEntryPartnerFailed ||
@@ -5191,18 +5216,20 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
   /// change, every not-yet-joined applicant rendered as one undifferentiated
   /// flat list — a candidate still needing player action (応募/面談中) sat
   /// visually indistinguishable from one whose *employment* outcome is
-  /// already final and unsuccessful (不採用/内定辞退, which render no button
-  /// at all) and from one simply waiting for the month-end join boundary
-  /// (内定承諾済みで研修待ち, 入社・参画予定, or a pre-entry営業面談に失敗した
-  /// が binding offer は失効せず月末に入社する候補者 — PR #252 Codex review
-  /// P2: 各面談不合格 does NOT belong in the "employment outcome final and
-  /// unsuccessful" group; see [_applicantLifecycleBucket]'s own doc).
-  /// [_applicantLifecycleBucket] groups the exact same `ac(i)` cards (same
-  /// widgets/keys/eligibility, same order within each bucket) under three
-  /// read-only headers so the player can tell "誰に対応が必要か" from
-  /// "入社は確定しているが結果はもう出ている候補者" from "本当に不採用/辞退で
-  /// 終わった候補者" at a glance, without inventing a new stage or hiding/
-  /// removing any existing card.
+  /// already final and unsuccessful (不採用/内定辞退, or a completed,
+  /// below-threshold `interviewed` decision with no legal action anywhere
+  /// on screen — PR #252 Codex review P2, second finding; see
+  /// [_applicantLifecycleBucket]'s own doc — which render no button at all)
+  /// and from one simply waiting for the month-end join boundary (内定承諾
+  /// 済みで研修待ち, 入社・参画予定, or a pre-entry営業面談に失敗したが binding
+  /// offer は失効せず月末に入社する候補者 — PR #252 Codex review P2, first
+  /// finding: 各面談不合格 does NOT belong in the "employment outcome final
+  /// and unsuccessful" group). [_applicantLifecycleBucket] groups the exact
+  /// same `ac(i)` cards (same widgets/keys/eligibility, same order within
+  /// each bucket) under three read-only headers so the player can tell "誰
+  /// に対応が必要か" from "入社は確定しているが結果はもう出ている候補者" from
+  /// "本当に不採用/辞退や採用基準未達で終わった候補者" at a glance, without
+  /// inventing a new stage or hiding/removing any existing card.
   List<Widget> _salesApplicantProgressCards() {
     final active = <int>[];
     final awaitingJoin = <int>[];

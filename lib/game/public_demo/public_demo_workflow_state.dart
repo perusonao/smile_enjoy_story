@@ -9,6 +9,7 @@ import 'public_demo_founder_follow_up.dart';
 import 'public_demo_interview.dart';
 import 'public_demo_join.dart';
 import 'public_demo_matching_proposal.dart';
+import 'public_demo_offer_candidate.dart';
 import 'public_demo_project_interview.dart';
 import 'public_demo_raise_transaction.dart';
 import 'public_demo_recruitment.dart';
@@ -54,6 +55,7 @@ class PublicDemoWorkflowState {
     interviewSessions: const [],
     matchingProposals: const [],
     projectInterviewSessions: const [],
+    offerCandidates: const [],
   );
 
   const PublicDemoWorkflowState._({
@@ -63,6 +65,7 @@ class PublicDemoWorkflowState {
     required this.interviewSessions,
     required this.matchingProposals,
     required this.projectInterviewSessions,
+    required this.offerCandidates,
   });
 
   /// Public Demo 0.1's starting workflow: the founding engineer team
@@ -123,6 +126,24 @@ class PublicDemoWorkflowState {
   /// the save schema — see [fromJson]'s backward-compatible default below.
   final List<ClientInterviewSession> projectInterviewSessions;
 
+  /// Issue #245 Finding #4, Phase 1a (Domain Foundation): at most one
+  /// [PublicDemoOfferCandidate] per `(engineerId, projectId)` pair — see
+  /// [offerCandidateFor]/[proposeOfferCandidate]. Unlike [matchingProposals]
+  /// (at most one per `engineerId` alone), many candidates can coexist for
+  /// the same engineer as long as each names a different project.
+  ///
+  /// Phase 1a scope only (see `public_demo_offer_candidate.dart`'s own class
+  /// doc): purely additive, and not yet read or written by any existing
+  /// production transition below — [PublicDemoEngineerSales.stage],
+  /// [matchingProposals], [projectInterviewSessions], and the real
+  /// order/assignment authority ([recordOrder], [assignOrderedForMay],
+  /// [recoverLateYearAssignment]) remain completely unchanged and are the
+  /// sole authority for gameplay in this phase. Additive to the save
+  /// schema, exactly like [matchingProposals]/[projectInterviewSessions] —
+  /// see [fromJson]'s backward-compatible default and legacy-migration
+  /// synthesis below.
+  final List<PublicDemoOfferCandidate> offerCandidates;
+
   /// Complete workflow persistence representation.  This is intentionally
   /// separate from the production constructor: an assignment roster is only
   /// restored from a validated aggregate save, never supplied by gameplay
@@ -141,6 +162,9 @@ class PublicDemoWorkflowState {
         .toList(),
     'projectInterviewSessions': projectInterviewSessions
         .map((session) => session.toJson())
+        .toList(),
+    'offerCandidates': offerCandidates
+        .map((candidate) => candidate.toJson())
         .toList(),
   };
 
@@ -192,16 +216,62 @@ class PublicDemoWorkflowState {
       );
     }
 
+    // Additive field (Issue #245 Finding #4, Phase 1a): a save written
+    // before this change has no 'offerCandidates' key at all. Absent does
+    // NOT simply mean "empty" here, unlike every other additive list above
+    // — see [_synthesizeLegacyOfferCandidates]'s own doc for why a legacy
+    // save's existing engineer/proposal/assignment facts are instead
+    // upgraded into the equivalent candidate on load.
+    final offerCandidatesRaw = json['offerCandidates'];
+    if (offerCandidatesRaw != null && offerCandidatesRaw is! List) {
+      throw const FormatException('Invalid workflow offerCandidates');
+    }
+
+    final engineers = List<PublicDemoEngineerSales>.unmodifiable(
+      decodeList(requiredList('engineers'), PublicDemoEngineerSales.fromJson),
+    );
+    final assignments = List<PublicDemoAssignment>.unmodifiable(
+      decodeList(requiredList('assignments'), PublicDemoAssignment.fromJson),
+    );
+    final matchingProposals = List<PublicDemoMatchingProposal>.unmodifiable(
+      matchingProposalsRaw == null
+          ? const <PublicDemoMatchingProposal>[]
+          : decodeList(
+              matchingProposalsRaw,
+              PublicDemoMatchingProposal.fromJson,
+            ),
+    );
+
+    final offerCandidates = offerCandidatesRaw == null
+        ? _synthesizeLegacyOfferCandidates(
+            engineers: engineers,
+            matchingProposals: matchingProposals,
+            assignments: assignments,
+          )
+        : decodeList(offerCandidatesRaw, PublicDemoOfferCandidate.fromJson);
+    final offerCandidateKeys = offerCandidates
+        .map((candidate) => candidate.id)
+        .toList();
+    if (offerCandidateKeys.toSet().length != offerCandidateKeys.length) {
+      throw const FormatException(
+        'Duplicate offer candidate (engineerId, projectId) identity',
+      );
+    }
+    final knownEngineerIds = engineers
+        .map((engineer) => engineer.id)
+        .toSet();
+    if (offerCandidates.any(
+      (candidate) => !knownEngineerIds.contains(candidate.engineerId),
+    )) {
+      throw const FormatException('Invalid offer candidate engineerId');
+    }
+
     return PublicDemoWorkflowState._(
       applicants: List.unmodifiable(
         decodeList(requiredList('applicants'), PublicDemoApplicant.fromJson),
       ),
-      engineers: List.unmodifiable(
-        decodeList(requiredList('engineers'), PublicDemoEngineerSales.fromJson),
-      ),
-      assignments: List.unmodifiable(
-        decodeList(requiredList('assignments'), PublicDemoAssignment.fromJson),
-      ),
+      engineers: engineers,
+      assignments: assignments,
       interviewSessions: List.unmodifiable(
         interviewSessionsRaw == null
             ? const <RecruitmentInterviewSession>[]
@@ -210,14 +280,7 @@ class PublicDemoWorkflowState {
                 RecruitmentInterviewSession.fromJson,
               ),
       ),
-      matchingProposals: List.unmodifiable(
-        matchingProposalsRaw == null
-            ? const <PublicDemoMatchingProposal>[]
-            : decodeList(
-                matchingProposalsRaw,
-                PublicDemoMatchingProposal.fromJson,
-              ),
-      ),
+      matchingProposals: matchingProposals,
       projectInterviewSessions: List.unmodifiable(
         projectInterviewSessionsRaw == null
             ? const <ClientInterviewSession>[]
@@ -226,7 +289,87 @@ class PublicDemoWorkflowState {
                 ClientInterviewSession.fromJson,
               ),
       ),
+      offerCandidates: List.unmodifiable(offerCandidates),
     );
+  }
+
+  /// Issue #245 Finding #4, Phase 1a: one-time, load-time-only upgrade for a
+  /// save written before [offerCandidates] existed — see
+  /// [PublicDemoOfferCandidate.fromLegacyEngineerState]'s own doc for why
+  /// this mints a fresh, candidate-scoped
+  /// [PublicDemoOfferInterviewRecord] rather than reusing any legacy record
+  /// verbatim.
+  ///
+  /// For every engineer already at [PublicDemoSalesStage.partnerInterviewPassed],
+  /// [PublicDemoSalesStage.clientInterviewPassed], or
+  /// [PublicDemoSalesStage.ordered], synthesizes exactly one candidate — the
+  /// project id comes from that engineer's own [PublicDemoMatchingProposal]
+  /// when one exists (the normal case: a proposal is what led to the
+  /// interview in the first place), falling back to the engineer's own
+  /// [PublicDemoAssignment.projectId] only when already
+  /// [PublicDemoSalesStage.ordered] with no matching proposal on record
+  /// (an assignment created before Phase 5's own matching-proposal tracking
+  /// existed). An engineer at one of these stages with neither a resolvable
+  /// proposal nor assignment project id is left with no synthesized
+  /// candidate — there is no fabricatable project identity to attach one
+  /// to; this is a pre-existing, already-legacy combination
+  /// [PublicDemoSaveCodec] tolerates today as well, and this Phase 1a
+  /// migration adds nothing that could newly corrupt it (the engineer's own
+  /// legacy `stage`/`interviewRecord` are completely untouched either way).
+  static List<PublicDemoOfferCandidate> _synthesizeLegacyOfferCandidates({
+    required List<PublicDemoEngineerSales> engineers,
+    required List<PublicDemoMatchingProposal> matchingProposals,
+    required List<PublicDemoAssignment> assignments,
+  }) {
+    const relevantStages = {
+      PublicDemoSalesStage.partnerInterviewPassed,
+      PublicDemoSalesStage.clientInterviewPassed,
+      PublicDemoSalesStage.ordered,
+    };
+    final synthesized = <PublicDemoOfferCandidate>[];
+    for (final engineer in engineers) {
+      if (!relevantStages.contains(engineer.stage)) continue;
+      final proposal = matchingProposals
+          .where((candidate) => candidate.engineerId == engineer.id)
+          .firstOrNull;
+      final projectId =
+          proposal?.projectId ??
+          (engineer.stage == PublicDemoSalesStage.ordered
+              ? assignments
+                    .where((assignment) => assignment.engineerId == engineer.id)
+                    .firstOrNull
+                    ?.projectId
+              : null);
+      if (projectId == null) continue;
+      final stage = switch (engineer.stage) {
+        PublicDemoSalesStage.partnerInterviewPassed =>
+          PublicDemoOfferCandidateStage.partnerInterviewPassed,
+        PublicDemoSalesStage.clientInterviewPassed =>
+          PublicDemoOfferCandidateStage.clientInterviewPassed,
+        PublicDemoSalesStage.ordered => PublicDemoOfferCandidateStage.ordered,
+        _ => throw StateError('unreachable: filtered by relevantStages'),
+      };
+      synthesized.add(
+        PublicDemoOfferCandidate.fromLegacyEngineerState(
+          engineerId: engineer.id,
+          projectId: projectId,
+          proposedMonth: proposal?.decidedMonth ?? 0,
+          stage: stage,
+          clientScore:
+              stage == PublicDemoOfferCandidateStage.partnerInterviewPassed
+              ? null
+              : engineer.lastInterviewScore,
+          partnerScore:
+              stage == PublicDemoOfferCandidateStage.partnerInterviewPassed
+              ? engineer.lastInterviewScore
+              : null,
+          hasGenuineInterviewRecord:
+              stage != PublicDemoOfferCandidateStage.partnerInterviewPassed &&
+              engineer.hasGenuineInterviewRecord,
+        ),
+      );
+    }
+    return synthesized;
   }
 
   // WORKFLOW-STATE-1AB FIX4 P1-2: the FIX3 `.restore(...)` reconstruction
@@ -266,6 +409,7 @@ class PublicDemoWorkflowState {
     List<RecruitmentInterviewSession>? interviewSessions,
     List<PublicDemoMatchingProposal>? matchingProposals,
     List<ClientInterviewSession>? projectInterviewSessions,
+    List<PublicDemoOfferCandidate>? offerCandidates,
   }) => PublicDemoWorkflowState._(
     applicants: List.unmodifiable(applicants ?? this.applicants),
     engineers: List.unmodifiable(engineers ?? this.engineers),
@@ -278,6 +422,9 @@ class PublicDemoWorkflowState {
     ),
     projectInterviewSessions: List.unmodifiable(
       projectInterviewSessions ?? this.projectInterviewSessions,
+    ),
+    offerCandidates: List.unmodifiable(
+      offerCandidates ?? this.offerCandidates,
     ),
   );
 
@@ -1639,6 +1786,200 @@ class PublicDemoWorkflowState {
       projectInterviewSessions: [
         for (final existing in projectInterviewSessions)
           if (existing.employeeId == engineerId) completedSession else existing,
+      ],
+    );
+  }
+
+  // ---------------------------------------------------------------------
+  // Issue #245 Finding #4, Phase 1a (Domain Foundation): offer-candidate
+  // list plumbing. See `public_demo_offer_candidate.dart`'s own class doc
+  // and this file's [offerCandidates] field doc for the Phase 1a scope
+  // boundary — everything below is purely additive and not yet called by
+  // any existing production transition. [_withOfferCandidate] is private,
+  // mirroring [_withEngineer]/[_withApplicant]'s own rationale: a
+  // caller-supplied closure could set any field with no precondition check,
+  // so every caller outside this file goes through the named,
+  // precondition-gated methods below instead.
+  // ---------------------------------------------------------------------
+
+  /// The candidate for this exact `(engineerId, projectId)` pair, if one
+  /// exists — `null` otherwise. At most one is ever kept per pair (see
+  /// [proposeOfferCandidate]).
+  PublicDemoOfferCandidate? offerCandidateFor(
+    String engineerId,
+    String projectId,
+  ) {
+    for (final candidate in offerCandidates) {
+      if (candidate.engineerId == engineerId &&
+          candidate.projectId == projectId) {
+        return candidate;
+      }
+    }
+    return null;
+  }
+
+  /// Every candidate currently held for [engineerId], across every project
+  /// — the entire point of this list versus [matchingProposals]' own
+  /// one-per-engineer limit.
+  List<PublicDemoOfferCandidate> offerCandidatesForEngineer(
+    String engineerId,
+  ) => [
+    for (final candidate in offerCandidates)
+      if (candidate.engineerId == engineerId) candidate,
+  ];
+
+  /// Replaces the existing candidate for `(engineerId, projectId)` using
+  /// [update] — a no-op when no such candidate exists. Private: see this
+  /// section's own doc.
+  PublicDemoWorkflowState _withOfferCandidate(
+    String engineerId,
+    String projectId,
+    PublicDemoOfferCandidate Function(PublicDemoOfferCandidate candidate)
+    update,
+  ) {
+    final index = offerCandidates.indexWhere(
+      (candidate) =>
+          candidate.engineerId == engineerId &&
+          candidate.projectId == projectId,
+    );
+    if (index < 0) return this;
+    final next = [...offerCandidates];
+    next[index] = update(next[index]);
+    return _copyWith(offerCandidates: next);
+  }
+
+  /// Records a new candidate — this [engineerId], for [projectId], proposed
+  /// during [month]. A no-op unless [engineerId] actually names a known
+  /// engineer in [engineers] (this file's own precondition-gated-transition
+  /// convention — see this class's own doc — so a caller cannot record a
+  /// candidate for a fabricated engineer id), and unless no candidate
+  /// already exists for this exact `(engineerId, projectId)` pair — a
+  /// duplicate call is a safe no-op, never a second entry for the same
+  /// identity (the domain invariant [PublicDemoWorkflowState.fromJson]'s own
+  /// duplicate-key check also enforces on load). Unlike
+  /// [withMatchingProposal], a fresh proposal for a *different* project
+  /// never replaces an existing candidate for another project — both
+  /// coexist, since this list's entire purpose is holding several
+  /// candidates per engineer at once.
+  PublicDemoWorkflowState proposeOfferCandidate({
+    required String engineerId,
+    required String projectId,
+    required int month,
+  }) {
+    if (engineers.every((engineer) => engineer.id != engineerId)) return this;
+    if (offerCandidateFor(engineerId, projectId) != null) return this;
+    return _copyWith(
+      offerCandidates: [
+        ...offerCandidates,
+        PublicDemoOfferCandidate.propose(
+          engineerId: engineerId,
+          projectId: projectId,
+          proposedMonth: month,
+        ),
+      ],
+    );
+  }
+
+  /// Attempts (or retries) the partner interview for the candidate at
+  /// `(engineerId, projectId)` — see
+  /// [PublicDemoOfferCandidate.evaluatePartnerInterview]'s own doc for the
+  /// precondition/derivation contract. A no-op when no such candidate
+  /// exists.
+  PublicDemoWorkflowState evaluatePartnerInterviewForCandidate({
+    required String engineerId,
+    required String projectId,
+    required PublicDemoInterviewProfile profile,
+    int? actualCapability,
+  }) => _withOfferCandidate(
+    engineerId,
+    projectId,
+    (candidate) => candidate.evaluatePartnerInterview(
+      profile: profile,
+      actualCapability: actualCapability,
+    ),
+  );
+
+  /// Attempts (or retries) the client interview for the candidate at
+  /// `(engineerId, projectId)` — see
+  /// [PublicDemoOfferCandidate.evaluateClientInterview]'s own doc. A no-op
+  /// when no such candidate exists.
+  PublicDemoWorkflowState evaluateClientInterviewForCandidate({
+    required String engineerId,
+    required String projectId,
+    required PublicDemoInterviewProfile profile,
+    int? actualCapability,
+  }) => _withOfferCandidate(
+    engineerId,
+    projectId,
+    (candidate) => candidate.evaluateClientInterview(
+      profile: profile,
+      actualCapability: actualCapability,
+    ),
+  );
+
+  /// Explicitly closes the candidate at `(engineerId, projectId)` without
+  /// an order — see [PublicDemoOfferCandidate.decline]'s own doc. A no-op
+  /// when no such candidate exists.
+  PublicDemoWorkflowState declineOfferCandidate({
+    required String engineerId,
+    required String projectId,
+  }) => _withOfferCandidate(
+    engineerId,
+    projectId,
+    (candidate) => candidate.decline(),
+  );
+
+  /// Orders the candidate at `(engineerId, projectId)` and, in the same
+  /// atomic step, explicitly closes every *other* live candidate for the
+  /// same [engineerId] — the direct analogue of the Main Game's own
+  /// `game_engine.dart` auto-decline (see the SSOT design's own
+  /// "Recommended design" section) — so accepting one offer always leaves
+  /// every sibling candidate in a terminal, visibly-closed state rather
+  /// than silently abandoned mid-pipeline. "Live" here means
+  /// [PublicDemoOfferCandidateStage.proposed],
+  /// [PublicDemoOfferCandidateStage.partnerInterviewPassed], or
+  /// [PublicDemoOfferCandidateStage.clientInterviewPassed] — a sibling
+  /// already at [PublicDemoOfferCandidateStage.partnerInterviewFailed]/
+  /// [PublicDemoOfferCandidateStage.clientInterviewFailed] is left
+  /// untouched (not a live competing candidate; already failed on its own).
+  ///
+  /// A no-op unless the target candidate exists, is currently at
+  /// [PublicDemoOfferCandidateStage.clientInterviewPassed], and genuinely
+  /// holds its own [PublicDemoOfferCandidate.hasGenuineInterviewRecord] —
+  /// checked here too, defense in depth alongside
+  /// [PublicDemoOfferCandidate.markOrdered]'s own identical guard, mirroring
+  /// [recordOrder]'s own "required current stage, never trusted from a
+  /// caller-supplied stage alone" contract.
+  ///
+  /// Deliberately never touches [assignments] — `ordered != assigned` is
+  /// preserved exactly, exactly like [recordOrder] itself; see
+  /// [PublicDemoOfferCandidate.markOrdered]'s own doc.
+  PublicDemoWorkflowState recordOfferCandidateOrder({
+    required String engineerId,
+    required String projectId,
+  }) {
+    final target = offerCandidateFor(engineerId, projectId);
+    if (target == null ||
+        target.stage != PublicDemoOfferCandidateStage.clientInterviewPassed ||
+        !target.hasGenuineInterviewRecord) {
+      return this;
+    }
+    const liveSiblingStages = {
+      PublicDemoOfferCandidateStage.proposed,
+      PublicDemoOfferCandidateStage.partnerInterviewPassed,
+      PublicDemoOfferCandidateStage.clientInterviewPassed,
+    };
+    return _copyWith(
+      offerCandidates: [
+        for (final candidate in offerCandidates)
+          if (candidate.engineerId == engineerId &&
+              candidate.projectId == projectId)
+            candidate.markOrdered()
+          else if (candidate.engineerId == engineerId &&
+              liveSiblingStages.contains(candidate.stage))
+            candidate.decline()
+          else
+            candidate,
       ],
     );
   }

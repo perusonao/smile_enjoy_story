@@ -152,6 +152,23 @@ class PublicDemoSaveCodec {
             .toList(),
       );
       baseline = _withMigratedInterviewRecordProjectId(baseline);
+      // Issue #245 Finding #4, Phase 1a: the same additive-top-level-field
+      // gap as `matchingProposals`/`projectInterviewSessions` above, this
+      // time for [PublicDemoWorkflowState.offerCandidates]. A save written
+      // before this field existed has no such key at all; splicing in the
+      // already-decoded, already-migrated resolved value (which may be
+      // NON-empty — see [PublicDemoWorkflowState
+      // .fromLegacyEngineerState]'s own one-time synthesis for an engineer
+      // already at partnerInterviewPassed/clientInterviewPassed/ordered)
+      // is exactly what makes that synthesis actually round-trip through
+      // this strict comparison instead of getting the whole legacy save
+      // rejected outright.
+      baseline = _withMigratedOfferCandidates(
+        baseline,
+        aggregate.workflow.offerCandidates
+            .map((candidate) => candidate.toJson())
+            .toList(),
+      );
       // CORE-GAMEPLAY Phase 7A: the same additive-new-key-inside-each-entry
       // gap as `interviewRecordProjectId` above, this time for
       // `workflow.assignments[*].projectId` (see [PublicDemoAssignment
@@ -757,6 +774,30 @@ class PublicDemoSaveCodec {
           ...workflow,
           'projectInterviewSessions': resolvedProjectInterviewSessions,
         },
+      },
+    };
+  }
+
+  /// Splices [resolvedOfferCandidates] (the already-decoded, already
+  /// migration-synthesized value — see [PublicDemoWorkflowState
+  /// .fromJson]'s own `_synthesizeLegacyOfferCandidates` doc) into a copy of
+  /// [envelope]'s `aggregate.workflow.offerCandidates` only when that key is
+  /// absent there. Mirrors [_withMigratedMatchingProposals]'s own
+  /// shape/doc — the one difference being that the spliced-in value here can
+  /// genuinely be non-empty for a legacy save (a synthesized candidate for
+  /// an engineer already past partnerInterviewPassed), not merely `[]`.
+  static Map<String, dynamic> _withMigratedOfferCandidates(
+    Map<String, dynamic> envelope,
+    List<Map<String, dynamic>> resolvedOfferCandidates,
+  ) {
+    final aggregate = (envelope['aggregate'] as Map).cast<String, dynamic>();
+    final workflow = (aggregate['workflow'] as Map).cast<String, dynamic>();
+    if (workflow.containsKey('offerCandidates')) return envelope;
+    return {
+      ...envelope,
+      'aggregate': {
+        ...aggregate,
+        'workflow': {...workflow, 'offerCandidates': resolvedOfferCandidates},
       },
     };
   }

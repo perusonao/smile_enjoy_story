@@ -687,6 +687,66 @@ class PublicDemoSaveCodec {
       }
     }
 
+    // Codex review fix (PR #254 P2) "Reject unbacked interview records
+    // during restore": the composite-key generalization of this method's
+    // own engineer-record checks above. Without this, a hand-edited save
+    // could assert `interviewRecordEngineerId`/`interviewRecordProjectId`
+    // matching a candidate's own identity, with an invented `clientScore`
+    // and no real evaluation ever having produced it — [PublicDemoAggregate
+    // ._validateForPersistence] only checks identity agreement (candidate
+    // vs. its own record), never plausibility, so this is the one place
+    // that check belongs, mirroring exactly where the equivalent
+    // engineer-level `validScore` check already lives (this same method,
+    // not `_validateForPersistence`). Offer candidates have only one
+    // evaluation path in Phase 1a — [PublicDemoInterviewEvaluator]'s fixed
+    // `passed = score >= 60` threshold (never the richer, stochastic
+    // Phase 6 `ClientInterviewEngine` a genuine project-bound engineer pass
+    // can use) — so `clientScore >= 60` is the correct, unconditional floor
+    // for a genuine record here, unlike the engineer-level check's own
+    // stochastic-path carve-out.
+    final offerCandidatesRaw = workflow['offerCandidates'];
+    if (offerCandidatesRaw != null) {
+      if (offerCandidatesRaw is! List) return false;
+      final seenOfferCandidateKeys = <String>{};
+      for (final entry in offerCandidatesRaw) {
+        if (entry is! Map) return false;
+        final candidate = entry.cast<String, dynamic>();
+        final candidateEngineerId = candidate['engineerId'];
+        final candidateProjectId = candidate['projectId'];
+        final candidateStage = candidate['stage'];
+        if (candidateEngineerId is! String ||
+            candidateProjectId is! String ||
+            candidateStage is! String) {
+          return false;
+        }
+        // Duplicate composite identity: [PublicDemoWorkflowState
+        // .proposeOfferCandidate] assumes at most one candidate per
+        // `(engineerId, projectId)` pair; a second entry for the same pair
+        // is unreachable from any real command path — mirrors the
+        // duplicate-proposal/duplicate-session checks already above.
+        if (!seenOfferCandidateKeys.add(
+          '$candidateEngineerId::$candidateProjectId',
+        )) {
+          return false;
+        }
+        if (!engineerIds.contains(candidateEngineerId)) return false;
+        final recordEngineerId = candidate['interviewRecordEngineerId'];
+        final recordProjectId = candidate['interviewRecordProjectId'];
+        if (recordEngineerId == null) continue;
+        final candidateClientScore = candidate['clientScore'];
+        final clientPassStage =
+            candidateStage == 'clientInterviewPassed' ||
+            candidateStage == 'ordered';
+        if (recordEngineerId != candidateEngineerId ||
+            recordProjectId != candidateProjectId ||
+            !clientPassStage ||
+            candidateClientScore is! int ||
+            candidateClientScore < 60) {
+          return false;
+        }
+      }
+    }
+
     return true;
   }
 

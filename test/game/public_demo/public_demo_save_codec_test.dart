@@ -1256,6 +1256,98 @@ void main() {
 
       expect(codec.fromJson(forged), isNull);
     });
+
+    test('Codex review fix (PR #254 P2): an offerCandidates entry claiming '
+        'a genuine interviewRecord (identity matches its own engineerId/'
+        'projectId) with an implausible clientScore below '
+        'PublicDemoInterviewEvaluator\'s real pass floor is rejected — a '
+        'hand-edited save cannot fabricate a passing client interview that '
+        'never actually happened merely by matching the identity fields', () {
+      final encoded = codec.toJson(PublicDemoAggregate.initial());
+      final aggregate = (encoded['aggregate'] as Map<String, dynamic>);
+      final workflow = Map<String, dynamic>.from(
+        aggregate['workflow'] as Map,
+      );
+      workflow['offerCandidates'] = [
+        {
+          'engineerId': 'eng-01',
+          'projectId': 'project-4-1',
+          'proposedMonth': 4,
+          'stage': 'clientInterviewPassed',
+          'partnerScore': 80,
+          // Implausible: PublicDemoInterviewEvaluator never mints a genuine
+          // pass below 60 — this score could only ever come from a real
+          // fail, which never mints an interviewRecord.
+          'clientScore': 10,
+          'interviewRecordEngineerId': 'eng-01',
+          'interviewRecordProjectId': 'project-4-1',
+        },
+      ];
+      final forged = {
+        ...encoded,
+        'aggregate': {...aggregate, 'workflow': workflow},
+      };
+
+      expect(codec.fromJson(forged), isNull);
+    });
+
+    test('a duplicate offerCandidates entry for the same '
+        '(engineerId, projectId) is rejected at the raw-envelope '
+        'pre-check', () {
+      final encoded = codec.toJson(PublicDemoAggregate.initial());
+      final aggregate = (encoded['aggregate'] as Map<String, dynamic>);
+      final workflow = Map<String, dynamic>.from(
+        aggregate['workflow'] as Map,
+      );
+      final entry = {
+        'engineerId': 'eng-01',
+        'projectId': 'project-4-1',
+        'proposedMonth': 4,
+        'stage': 'proposed',
+        'partnerScore': null,
+        'clientScore': null,
+        'interviewRecordEngineerId': null,
+        'interviewRecordProjectId': null,
+      };
+      workflow['offerCandidates'] = [entry, entry];
+      final forged = {
+        ...encoded,
+        'aggregate': {...aggregate, 'workflow': workflow},
+      };
+
+      expect(codec.fromJson(forged), isNull);
+    });
+
+    test('a genuine end-to-end offer-candidate client pass (real evaluator, '
+        'score >= 60, minted only via '
+        'PublicDemoAggregate.evaluateClientInterviewForCandidate) round-'
+        'trips normally — this check rejects nothing a real command path '
+        'produces', () {
+      var aggregate = PublicDemoAggregate.initial();
+      final candidateProject = aggregate.projectCandidatesForMonth(4).first;
+      aggregate = aggregate
+          .proposeOfferCandidate(
+            engineerId: 'eng-01',
+            projectId: candidateProject.id,
+          )
+          .evaluatePartnerInterviewForCandidate(
+            engineerId: 'eng-01',
+            projectId: candidateProject.id,
+          )
+          .evaluateClientInterviewForCandidate(
+            engineerId: 'eng-01',
+            projectId: candidateProject.id,
+          );
+      expect(
+        aggregate.offerCandidateFor('eng-01', candidateProject.id)?.stage.name,
+        'clientInterviewPassed',
+      );
+
+      final restored = codec.decode(codec.encode(aggregate));
+
+      expect(restored, isNotNull);
+      expect(codec.toJson(restored!), codec.toJson(aggregate));
+    });
   });
 }
 

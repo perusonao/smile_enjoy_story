@@ -217,11 +217,24 @@ class PublicDemoWorkflowState {
     }
 
     // Additive field (Issue #245 Finding #4, Phase 1a): a save written
-    // before this change has no 'offerCandidates' key at all. Absent does
-    // NOT simply mean "empty" here, unlike every other additive list above
-    // — see [_synthesizeLegacyOfferCandidates]'s own doc for why a legacy
-    // save's existing engineer/proposal/assignment facts are instead
-    // upgraded into the equivalent candidate on load.
+    // before this change has no 'offerCandidates' key at all. Absent means
+    // "no candidate was ever recorded through the new command path AND no
+    // migration has run yet for this save" — synthesized once, from the
+    // legacy authority, the first time such a save is loaded. See
+    // [_synthesizeLegacyOfferCandidates]'s own doc, and its doc's own
+    // "Known limitation" paragraph for the one gap this one-shot,
+    // key-presence-gated trigger cannot close on its own (a Codex review
+    // finding on PR #254, deliberately NOT "fixed" by synthesizing on every
+    // load instead — doing so was tried and reverted because it broke this
+    // codec's own strict round-trip guarantee for every save with an
+    // engineer at a relevant legacy stage: [PublicDemoWorkflowState.toJson]
+    // always writes a present `offerCandidates` key, including an empty
+    // one, so re-deriving on every load would make a freshly re-decoded
+    // aggregate disagree with its own just-encoded envelope purely because
+    // legacy-authority facts unrelated to any real edit happened to still
+    // exist — exactly the "normalized away" class of corruption this
+    // codec's round-trip check exists to catch. See that doc for the
+    // Phase 1b-scoped correct fix instead).
     final offerCandidatesRaw = json['offerCandidates'];
     if (offerCandidatesRaw != null && offerCandidatesRaw is! List) {
       throw const FormatException('Invalid workflow offerCandidates');
@@ -249,6 +262,8 @@ class PublicDemoWorkflowState {
             assignments: assignments,
           )
         : decodeList(offerCandidatesRaw, PublicDemoOfferCandidate.fromJson);
+    // A malformed/corrupted save can assert a duplicate composite key
+    // directly in the raw payload — reject that outright.
     final offerCandidateKeys = offerCandidates
         .map((candidate) => candidate.id)
         .toList();
@@ -296,9 +311,37 @@ class PublicDemoWorkflowState {
   /// Issue #245 Finding #4, Phase 1a: one-time, load-time-only upgrade for a
   /// save written before [offerCandidates] existed — see
   /// [PublicDemoOfferCandidate.fromLegacyEngineerState]'s own doc for why
-  /// this mints a fresh, candidate-scoped
-  /// [PublicDemoOfferInterviewRecord] rather than reusing any legacy record
-  /// verbatim.
+  /// this mints a fresh, candidate-scoped [PublicDemoOfferInterviewRecord]
+  /// rather than reusing any legacy record verbatim.
+  ///
+  /// **Known limitation (Codex review finding on PR #254, deliberately not
+  /// "fixed" — see below for why):** this only ever fires once per save,
+  /// gated on the raw `offerCandidates` key being entirely absent. From the
+  /// very first save [toJson] writes after this field existed (which always
+  /// includes the key, even as `[]`), that gate can never fire again for
+  /// this save — so an engineer who reaches a relevant stage *after* that
+  /// first post-Phase-1a save, but before some later Phase 1b actually
+  /// starts reading/writing [offerCandidates] for real gameplay, will not
+  /// get a synthesized candidate merely by being loaded again. This is
+  /// real, and was not fixed here: an early attempt at this same fix made
+  /// synthesis re-run on every load, gated on absence *of a specific
+  /// candidate* rather than the whole key — direct experiment (all
+  /// pre-existing Public Demo tests) showed this breaks
+  /// [PublicDemoSaveCodec]'s own strict round-trip check for **every**
+  /// existing save with an engineer at a relevant legacy stage: [toJson]
+  /// always emits an explicit `offerCandidates` (`[]` when nothing has ever
+  /// used the new command path, which is every real Phase 1a save), so
+  /// re-deriving non-empty content from legacy facts on decode makes the
+  /// freshly re-decoded aggregate disagree with the very envelope it was
+  /// just decoded from — indistinguishable, to that round-trip check, from
+  /// genuine corruption. Fixing the staleness properly needs a real,
+  /// one-time reconciliation pass Phase 1b performs itself at cutover
+  /// (when it starts actually trusting/writing this list for gameplay),
+  /// not a per-load re-derivation Phase 1a's own additive-only,
+  /// no-caller-cutover mandate has no safe way to perform. The engineer's
+  /// own legacy `stage`/`interviewRecord` remain the complete, correct,
+  /// unaffected record of every relevant fact regardless — nothing is ever
+  /// lost, only not yet mirrored into this new list.
   ///
   /// For every engineer already at [PublicDemoSalesStage.partnerInterviewPassed],
   /// [PublicDemoSalesStage.clientInterviewPassed], or
@@ -1885,6 +1928,15 @@ class PublicDemoWorkflowState {
   /// [PublicDemoOfferCandidate.evaluatePartnerInterview]'s own doc for the
   /// precondition/derivation contract. A no-op when no such candidate
   /// exists.
+  ///
+  /// This is a building block, not a production entry point (mirrors
+  /// [recordEngineerInterviewResult]'s own doc): [profile]/[actualCapability]
+  /// are accepted verbatim, and no sales slot is consumed here. The safe
+  /// production caller is [PublicDemoAggregate
+  /// .evaluatePartnerInterviewForCandidate], which derives both from this
+  /// engineer's own authoritative state and consumes a real sales slot —
+  /// exactly like [PublicDemoAggregate.recordEngineerInterviewResult] does
+  /// for [recordEngineerInterviewResult] itself.
   PublicDemoWorkflowState evaluatePartnerInterviewForCandidate({
     required String engineerId,
     required String projectId,
@@ -1903,6 +1955,10 @@ class PublicDemoWorkflowState {
   /// `(engineerId, projectId)` — see
   /// [PublicDemoOfferCandidate.evaluateClientInterview]'s own doc. A no-op
   /// when no such candidate exists.
+  ///
+  /// Same building-block caveat as [evaluatePartnerInterviewForCandidate]:
+  /// the safe production caller is [PublicDemoAggregate
+  /// .evaluateClientInterviewForCandidate].
   PublicDemoWorkflowState evaluateClientInterviewForCandidate({
     required String engineerId,
     required String projectId,

@@ -229,6 +229,79 @@ class PublicDemoAggregate {
     );
   }
 
+  /// Codex review fix (PR #254 P1): the Phase 1a analogue of
+  /// [recordEngineerInterviewResult], scoped to one offer candidate instead
+  /// of the coarse per-engineer stage — the safe production entry point for
+  /// a candidate's partner interview.
+  ///
+  /// [PublicDemoWorkflowState.evaluatePartnerInterviewForCandidate] itself
+  /// accepts `profile`/`actualCapability` as plain parameters (it is a
+  /// building block, not a production entry point — exactly like
+  /// [PublicDemoWorkflowState.recordEngineerInterviewResult] itself, which
+  /// this method mirrors one level down): a caller there could supply an
+  /// arbitrarily favorable profile/capability with no real evaluation
+  /// behind it, and no sales slot would ever be consumed. This method
+  /// closes both gaps the same way [recordEngineerInterviewResult] already
+  /// does for the per-engineer path: [engineerId]'s own real
+  /// [PublicDemoEngineerSales.interviewProfile] and
+  /// [PublicDemoEngineerRuntime.actualCapability] are the only sources ever
+  /// used (never a caller-supplied profile/capability), and a real sales
+  /// slot is checked and consumed before the attempt proceeds — a no-op,
+  /// consuming nothing, when none remains.
+  PublicDemoAggregate evaluatePartnerInterviewForCandidate({
+    required String engineerId,
+    required String projectId,
+  }) {
+    final engineer = workflow.engineers
+        .where((candidate) => candidate.id == engineerId)
+        .firstOrNull;
+    final target = workflow.offerCandidateFor(engineerId, projectId);
+    if (engineer == null || target == null) return this;
+    if (target.stage != PublicDemoOfferCandidateStage.proposed &&
+        target.stage != PublicDemoOfferCandidateStage.partnerInterviewFailed) {
+      return this;
+    }
+    if (state.fiscalYearCompleted || state.salesRemaining <= 0) return this;
+    return _copyWith(
+      state: state.useSalesSlot(),
+      workflow: workflow.evaluatePartnerInterviewForCandidate(
+        engineerId: engineerId,
+        projectId: projectId,
+        profile: engineer.interviewProfile,
+        actualCapability: state.runtimeForOrNull(engineerId)?.actualCapability ?? 0,
+      ),
+    );
+  }
+
+  /// The client-interview counterpart of
+  /// [evaluatePartnerInterviewForCandidate] — same derivation contract
+  /// (never a caller-supplied profile/capability), and, mirroring
+  /// [recordEngineerInterviewResult]'s own client branch, consumes no sales
+  /// slot (the existing 0-slot client-interview stage this phase reuses
+  /// as-is).
+  PublicDemoAggregate evaluateClientInterviewForCandidate({
+    required String engineerId,
+    required String projectId,
+  }) {
+    final engineer = workflow.engineers
+        .where((candidate) => candidate.id == engineerId)
+        .firstOrNull;
+    final target = workflow.offerCandidateFor(engineerId, projectId);
+    if (engineer == null || target == null) return this;
+    if (target.stage != PublicDemoOfferCandidateStage.partnerInterviewPassed &&
+        target.stage != PublicDemoOfferCandidateStage.clientInterviewFailed) {
+      return this;
+    }
+    return _copyWith(
+      workflow: workflow.evaluateClientInterviewForCandidate(
+        engineerId: engineerId,
+        projectId: projectId,
+        profile: engineer.interviewProfile,
+        actualCapability: state.runtimeForOrNull(engineerId)?.actualCapability ?? 0,
+      ),
+    );
+  }
+
   /// Complete persistence form for the sole Public Demo authoritative root.
   Map<String, dynamic> toJson() => {
     'state': state.toJson(),

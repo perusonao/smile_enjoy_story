@@ -1169,4 +1169,127 @@ void main() {
       expect(next.offerCandidates, hasLength(2));
     });
   });
+
+  group('PublicDemoAggregate candidate interview safe entry points (Codex '
+      'review fix, PR #254 P1)', () {
+    test('evaluatePartnerInterviewForCandidate derives profile/capability '
+        'from the engineer\'s own authoritative state (never a caller-'
+        'supplied value — the method takes no such parameter at all) and '
+        'consumes one real sales slot per attempt', () {
+      var aggregate = PublicDemoAggregate.initial();
+      final candidateProject = aggregate.projectCandidatesForMonth(4).first;
+      aggregate = aggregate.proposeOfferCandidate(
+        engineerId: 'eng-01',
+        projectId: candidateProject.id,
+      );
+      final before = aggregate.state.salesRemaining;
+
+      aggregate = aggregate.evaluatePartnerInterviewForCandidate(
+        engineerId: 'eng-01',
+        projectId: candidateProject.id,
+      );
+
+      expect(aggregate.state.salesRemaining, before - 1);
+      final candidate = aggregate.offerCandidateFor(
+        'eng-01',
+        candidateProject.id,
+      )!;
+      expect(
+        candidate.stage,
+        PublicDemoOfferCandidateStage.partnerInterviewPassed,
+      );
+      expect(candidate.partnerScore, isNotNull);
+    });
+
+    test('evaluatePartnerInterviewForCandidate is a no-op — consuming no '
+        'slot — when no candidate exists for the pair', () {
+      final aggregate = PublicDemoAggregate.initial();
+      final before = aggregate.state.salesRemaining;
+      final next = aggregate.evaluatePartnerInterviewForCandidate(
+        engineerId: 'eng-01',
+        projectId: 'project-4-1',
+      );
+      expect(next.offerCandidates, isEmpty);
+      expect(next.state.salesRemaining, before);
+    });
+
+    test('evaluatePartnerInterviewForCandidate is a no-op once no sales '
+        'slots remain — checked before consumption, so a rejected attempt '
+        'never partially consumes the budget', () {
+      var aggregate = PublicDemoAggregate.initial();
+      final candidates = aggregate.projectCandidatesForMonth(4, count: 5);
+      for (final candidate in candidates.take(4)) {
+        aggregate = aggregate
+            .proposeOfferCandidate(
+              engineerId: 'eng-01',
+              projectId: candidate.id,
+            )
+            .evaluatePartnerInterviewForCandidate(
+              engineerId: 'eng-01',
+              projectId: candidate.id,
+            );
+      }
+      expect(aggregate.state.salesRemaining, 0);
+
+      final fifth = candidates[4];
+      aggregate = aggregate.proposeOfferCandidate(
+        engineerId: 'eng-01',
+        projectId: fifth.id,
+      );
+      final beforeAttempt = aggregate.offerCandidateFor('eng-01', fifth.id);
+      aggregate = aggregate.evaluatePartnerInterviewForCandidate(
+        engineerId: 'eng-01',
+        projectId: fifth.id,
+      );
+      expect(aggregate.offerCandidateFor('eng-01', fifth.id), beforeAttempt);
+      expect(aggregate.state.salesRemaining, 0);
+    });
+
+    test('evaluateClientInterviewForCandidate derives profile/capability '
+        'from authoritative state and consumes no sales slot (the existing '
+        '0-slot client-interview stage this phase reuses as-is)', () {
+      var aggregate = PublicDemoAggregate.initial();
+      final candidateProject = aggregate.projectCandidatesForMonth(4).first;
+      aggregate = aggregate
+          .proposeOfferCandidate(
+            engineerId: 'eng-01',
+            projectId: candidateProject.id,
+          )
+          .evaluatePartnerInterviewForCandidate(
+            engineerId: 'eng-01',
+            projectId: candidateProject.id,
+          );
+      expect(
+        aggregate.offerCandidateFor('eng-01', candidateProject.id)!.stage,
+        PublicDemoOfferCandidateStage.partnerInterviewPassed,
+      );
+      final before = aggregate.state.salesRemaining;
+
+      aggregate = aggregate.evaluateClientInterviewForCandidate(
+        engineerId: 'eng-01',
+        projectId: candidateProject.id,
+      );
+
+      expect(aggregate.state.salesRemaining, before);
+      final candidate = aggregate.offerCandidateFor(
+        'eng-01',
+        candidateProject.id,
+      )!;
+      expect(
+        candidate.stage,
+        PublicDemoOfferCandidateStage.clientInterviewPassed,
+      );
+      expect(candidate.hasGenuineInterviewRecord, isTrue);
+    });
+
+    test('evaluateClientInterviewForCandidate is a no-op when no candidate '
+        'exists for the pair', () {
+      final aggregate = PublicDemoAggregate.initial();
+      final next = aggregate.evaluateClientInterviewForCandidate(
+        engineerId: 'eng-01',
+        projectId: 'project-4-1',
+      );
+      expect(next.offerCandidates, isEmpty);
+    });
+  });
 }

@@ -454,31 +454,25 @@ class PublicDemoSaveCodec {
         proposalProjectIdByEngineer[proposalEngineerId] = proposalProjectId;
       }
     }
-    // A *completed* [ClientInterviewSession] is the other real, derived
-    // fact of which project this engineer was actually interviewed for
-    // (see [PublicDemoWorkflowState.concludeProjectInterview]'s own
-    // `session.projectId != project.id` guard) — cross-checked too, when
-    // present, exactly like the proposal above. Read defensively (not the
-    // full structural validation the dedicated block below already
-    // performs) since only `employeeId`/`projectId`/`completed` are needed
-    // here; a genuinely malformed entry is still rejected by that block
-    // regardless of what this lookup does with it.
-    final projectInterviewSessionsForCrossCheck =
-        workflow['projectInterviewSessions'];
-    final completedSessionProjectIdByEngineer = <String, String>{};
-    if (projectInterviewSessionsForCrossCheck is List) {
-      for (final entry in projectInterviewSessionsForCrossCheck) {
-        if (entry is! Map) continue;
-        final session = entry.cast<String, dynamic>();
-        if (session['completed'] != true) continue;
-        final sessionEmployeeId = session['employeeId'];
-        final sessionProjectId = session['projectId'];
-        if (sessionEmployeeId is String && sessionProjectId is String) {
-          completedSessionProjectIdByEngineer[sessionEmployeeId] =
-              sessionProjectId;
-        }
-      }
-    }
+    // A *completed* [ClientInterviewSession] used to be the other real,
+    // derived fact of which SINGLE project an engineer was actually
+    // interviewed for (see [PublicDemoWorkflowState.concludeProjectInterview]
+    // 's own `session.projectId != project.id` guard) — cross-checked here,
+    // when present, against the proposal above.
+    //
+    // Issue #257 composite-identity widening: [projectInterviewSessions] is
+    // now keyed by `(employeeId, projectId)`, not `employeeId` alone (see
+    // the dedicated structural-validation block below, which now dedupes on
+    // that same composite pair). A completed session's own `projectId` is
+    // therefore *always* exactly the project that specific entry belongs
+    // to — there is no longer a distinct "employeeId → single completed
+    // project" fact this cross-check could ever disagree with: a
+    // genuinely different, independently-completed session for a SECOND
+    // project is an expected, legitimate shape now (the entire point of
+    // this widening), not a contradiction of `recordProjectId`. The
+    // structural block below (composite-key dedup + `engineerIds.contains`)
+    // is what still rejects a forged/duplicate session; no separate
+    // per-employee lookup is needed here any more.
 
     // Issue #245 Finding #4, Phase 1b: this engineer's own raw `stage`
     // string, read for the offer-candidate ordered cross-check below.
@@ -547,19 +541,17 @@ class PublicDemoSaveCodec {
       }
       // Codex P2 fix (PR #214) "Validate restored passes against their
       // proposals": having survived every check above, this is a genuine
-      // project-bound pass — its own recorded project must agree with both
-      // the (locked, never-replaceable-post-pass) proposal and, when one
-      // exists, the completed interview session, for this same engineer.
-      // Legacy generic-path records (`recordProjectId == null`) have no
-      // project to cross-check at all and are left exactly as before.
-      if (recordProjectId != null) {
-        if (proposalProjectIdByEngineer[id] != recordProjectId) return false;
-        final completedSessionProjectId =
-            completedSessionProjectIdByEngineer[id];
-        if (completedSessionProjectId != null &&
-            completedSessionProjectId != recordProjectId) {
-          return false;
-        }
+      // project-bound pass — its own recorded project must agree with the
+      // (locked, never-replaceable-post-pass) proposal for this same
+      // engineer. Legacy generic-path records (`recordProjectId == null`)
+      // have no project to cross-check at all and are left exactly as
+      // before. (Issue #257 composite-identity widening: the completed-
+      // session cross-check that used to also run here was removed — see
+      // this method's own comment just above `engineerStageById` for why it
+      // is now structurally vacuous rather than silently dropped.)
+      if (recordProjectId != null &&
+          proposalProjectIdByEngineer[id] != recordProjectId) {
+        return false;
       }
       // CORE-GAMEPLAY Phase 7A: "projectId / engineerId / assignment
       // identity不一致を許可しない" — a present [PublicDemoAssignment
@@ -599,7 +591,7 @@ class PublicDemoSaveCodec {
     final projectInterviewSessionsRaw = workflow['projectInterviewSessions'];
     if (projectInterviewSessionsRaw != null) {
       if (projectInterviewSessionsRaw is! List) return false;
-      final seenEmployeeIds = <String>{};
+      final seenSessionKeys = <String>{};
       for (final entry in projectInterviewSessionsRaw) {
         if (entry is! Map) return false;
         final session = entry.cast<String, dynamic>();
@@ -641,9 +633,14 @@ class PublicDemoSaveCodec {
         }
         // Duplicate session identity: [projectInterviewSessionFor]/
         // [startProjectInterviewSession] both assume at most one session per
-        // engineer; a second entry for the same `employeeId` is unreachable
-        // from any real command path.
-        if (!seenEmployeeIds.add(employeeId)) return false;
+        // `(employeeId, projectId)` pair (Issue #257 composite-identity
+        // widening — see [PublicDemoWorkflowState.projectInterviewSessions]'
+        // own field doc); a second entry for the same PAIR is unreachable
+        // from any real command path. Two entries for the same `employeeId`
+        // with DIFFERENT `projectId`s are now a normal, expected shape (the
+        // same engineer holding independent sessions for two projects at
+        // once) and must not be rejected here.
+        if (!seenSessionKeys.add('$employeeId::$projectId')) return false;
         // The engineer this session belongs to must actually exist in this
         // same save.
         if (!engineerIds.contains(employeeId)) return false;

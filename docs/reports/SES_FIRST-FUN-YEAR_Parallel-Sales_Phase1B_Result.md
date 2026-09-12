@@ -118,6 +118,89 @@ No other issues were found. No production code outside `lib/game/public_demo/pub
 - 1-turn-1-week: not touched.
 - Phase 1C comparison UI: not started (see below).
 
+## Post-review focused fix: `projectInterviewSessions` composite-identity widening (Issue #257 own "必須" item, PR #258 Claude Broad Review blocking P2)
+
+**Status: resolved in this session, on the same PR #258 branch. This is a focused fix following up on PR #258's own Claude Independent Broad Review — that review is not re-run here; see `docs/reports/SES_PR-258_Parallel-Sales-Phase1B_Claude-Broad-Review.md`'s own appended section for the fix's own before/after HEAD and verdict.**
+
+### The gap
+
+Issue #257 itself required widening `projectInterviewSessions` from an `engineerId`-only identity to `(engineerId, projectId)` composite identity — the same widening this Phase already gave `offerCandidates` in Phase 1a. This PR's own original implementation (above) left `projectInterviewSessions` untouched: `PublicDemoWorkflowState.projectInterviewSessionFor`/`startProjectInterviewSession` still matched by `employeeId` alone, so starting an interactive interview for a second project silently discarded any in-progress (or even completed-but-not-yet-reconciled) session the same engineer already held for a different project. Concluded pass/fail *results* already coexisted correctly per project via `offerCandidates` (Phase 1a/1B's own authority) — only the raw, in-progress `ClientInterviewSession` transcript was ever at risk of being swept away by switching Matching focus to a different project mid-interview.
+
+### Design
+
+`ClientInterviewSession` already carried its own `projectId` field on every entry (`PublicDemoProjectInterview.start` always sets `id: 'public-demo-project-interview:$employeeId:$projectId'`, `projectId: candidate.id`) — the composite key was always structurally present in the data; only the container's own "at most one per employee" *enforcement* needed relaxing to "at most one per `(employeeId, projectId)` pair", mirroring `offerCandidates`' own identity exactly:
+
+- `PublicDemoWorkflowState.projectInterviewSessionFor(engineerId, projectId)` now requires an explicit `projectId` and matches both fields — no ambiguous employeeId-only lookup remains at the workflow layer.
+- `startProjectInterviewSession` now replaces only the existing entry for the SAME `(employeeId, projectId)` pair (still discarding a stale/completed entry for that exact project, per the pre-existing Codex P1/P2 rules — unchanged), leaving every sibling project's own session for the same engineer completely untouched.
+- `concludeProjectInterview`/`concludePartnerProjectInterview` now look up and replace by the exact `(engineerId, project.id)` pair, never by `engineerId` alone — concluding one project's interview can no longer read, overwrite, or discard a different project's own session.
+- `PublicDemoAggregate.projectInterviewSessionFor(engineerId, [projectId])` keeps its existing one-argument call shape for every pre-existing UI/test call site (it resolves `projectId` from the engineer's CURRENT Phase 5 proposal via `projectInterviewCandidateFor` when omitted — exactly what "the" session for an engineer already meant to every existing caller) while accepting an explicit `projectId` for the new composite case. No `lib/ui/` file needed to change: the interactive dialog always drives whichever project is currently proposed, which this resolution already matches.
+
+### Migration
+
+**None needed.** Every `ClientInterviewSession` ever persisted already carries its own `projectId` (a required field since before this Phase existed) — the composite key was always present in the save data; only the in-memory enforcement rule changed. A save with exactly one session per employee (the shape every pre-existing save has) trivially satisfies the new "at most one per pair" invariant unchanged, and round-trips byte-identical. `PublicDemoSaveCodec._withMigratedProjectInterviewSessions`'s splice (absence-gated, unchanged) and `schemaVersion` (still `1`, unchanged) needed no changes — confirmed by test (see "G. legacy save migration" below).
+
+`PublicDemoSaveCodec._hasConsistentAuthorityFacts` was updated for the composite shape:
+- The raw-level duplicate check now dedupes on `'$employeeId::$projectId'` instead of `employeeId` alone — a genuine second session for the same employee at a *different* project is no longer rejected as a forged duplicate (it is now the normal, expected shape); an actual duplicate `(employeeId, projectId)` pair is still rejected exactly as before.
+- The engineer-level `recordProjectId`-vs-completed-session cross-check (which used to compare against a single per-employee "the one completed session's project" fact) was removed — under composite identity this check became structurally vacuous: a completed session's own `projectId` is now, by construction of its own composite key, always exactly the project that entry belongs to, so there is no longer a distinct fact it could ever disagree with. The proposal-vs-record cross-check (`proposalProjectIdByEngineer`) and every other authority check in this method are unchanged.
+
+### Authority / security re-verification for the new shape
+
+- **Forged engineerId / unknown engineerId**: unchanged, still rejected by `engineerIds.contains(employeeId)`.
+- **Forged projectId / session-identity mismatch**: unchanged, still rejected by the existing `id == 'public-demo-project-interview:$employeeId:$projectId'` structural check.
+- **Duplicate composite identity**: now dedupes on the composite pair (was: `employeeId` alone) — a real duplicate for the same pair is still rejected; two genuinely different pairs for the same employee are now correctly accepted.
+- **Stale session / session-vs-project mismatch (conclude authority)**: `concludeProjectInterview`/`concludePartnerProjectInterview` resolve the session via the exact `(engineerId, project.id)` pair before any other check runs — a session for a different project can never be reached, let alone concluded, for the wrong one. `test/game/public_demo/public_demo_parallel_sales_session_composite_identity_test.dart`'s group E covers both the aggregate-level no-op and a direct workflow-level call with a deliberately mismatched `project`.
+- **Candidate/session/matching-proposal project agreement**: unaffected — `offerCandidates`' own `(engineerId, projectId)` authority (Phase 1a/1B, unchanged) and the session's own composite key are independently keyed by the same real project identity; nothing here lets a caller forge a mismatch between them.
+- **`salesCapacity` exactly-once**: `startPartnerInterview`'s existing `identical(nextWorkflow, workflow)` no-op-detection (used to decide whether to charge a slot) is unaffected — it still keys off whether `startProjectInterviewSession` for the CALLER'S OWN `(employeeId, projectId)` pair genuinely changed anything, which composite widening does not alter for a same-pair retry/resume. Verified by test (group F): retrying the same pair never re-charges; starting a second, different project's interview is correctly treated as its own genuinely new attempt.
+- **Duplicate/retry conclude**: unaffected — every conclude method's own precondition (current engineer stage + a genuine, ready-to-conclude session for the exact pair) is unchanged, still a no-op on a second call.
+- **Partner/Client Interview authority already established in this PR (Scope B/C) and Phase 1a's `offerCandidates` reconciliation/candidate-aware `recordOrder`/sibling-decline**: unaffected — none of those methods' own logic changed; only the container `projectInterviewSessions` itself widened.
+
+### Tests
+
+New file `test/game/public_demo/public_demo_parallel_sales_session_composite_identity_test.dart` (15 tests), covering the full verification matrix this fix's own task required:
+
+- **A.** Same engineer / two projects: starting a fresh interview for project B no longer discards project A's still-incomplete session — both held at once.
+- **B.** Independent results: a genuine partner-interview FAIL for project A followed by a genuine PASS for project B (via the real `beginSelling` failure-recovery path) leaves each project's own session/candidate authority independently correct, never mixed.
+- **C.** Both pass: a genuine order → April/May assignment → `notOffered` decision → `endAssignment` release (at month ≥ 7, the real production precondition for `assignedEngineerIds` to stop counting a `notOffered` row) → resell cycle, followed by a second genuine pass for project B, leaves BOTH sessions completed/passed and both candidates correctly resolved (A stays `ordered`, never rewound by the later, unrelated cycle; B is the engineer's new current pass).
+- **D.** Save/reload: two held sessions (one failed, one passed) round-trip byte-identically, resolvable independently by their own composite keys.
+- **E.** Stale identity: `concludeProjectInterview` is a no-op when the CURRENT proposal's project has no session of its own yet (even though a fully-answered session exists for a DIFFERENT project); a direct workflow-level call naming a genuinely different, unrelated project is also rejected.
+- **F.** Duplicate/retry: resuming the same `(engineer, project)` interview never creates a duplicate entry or re-charges a sales slot; two different projects' interviews are correctly treated as independent, genuinely-new attempts; concluding an already-completed session a second time is a no-op.
+- **G.** Legacy save migration: a single-session save (the pre-existing shape every real save has) still decodes and round-trips byte-identical — no migration needed, confirming the "every entry already carried its own projectId" design claim above.
+- **H.** Malformed/forged save rejection: a raw duplicate `(employeeId, projectId)` pair is rejected; a session naming an unknown `employeeId` is rejected; two genuinely different `(employeeId, projectId)` pairs for the same employee are correctly *accepted* (the new legitimate shape, not a forgery).
+- **I.** Month boundary: reopening the CURRENTLY-proposed project's own stale-month session discards and restarts only that one; a sibling project's own same-month session (started earlier, before the close) is left completely untouched.
+- **J.** Existing single-project gameplay regression: unaffected.
+
+Two pre-existing tests were updated to match the new, intentionally-changed semantics (not weakened — the old assertions encoded exactly the single-slot behavior this fix replaces):
+- `test/game/public_demo/public_demo_project_interview_test.dart`'s "2. changing the matching proposal mid-interview" test and its neighbor now look up the old project's own session by its explicit composite key rather than the ambiguous single-argument accessor, and their prose reflects that the old session is now preserved, not discarded.
+- `test/game/public_demo/public_demo_save_codec_test.dart`'s duplicate-session test title/comment now says "pair" instead of "engineer", and a new companion test ("5b") confirms two sessions for the same employee at different projects round-trip correctly rather than being rejected.
+
+Full-suite results from this session (Flutter 3.47.4 stable, freshly fetched — no SDK was preinstalled in this session's container, mirroring the Broad Review session's own environment note):
+- `flutter analyze` (whole project): **No issues found.**
+- `flutter test test/game/public_demo`: **994/994 passed** (977 pre-existing + 15 new composite-identity tests + 2 new save-codec tests).
+- `flutter test test/ui/public_demo`: **741/741 passed** — zero UI regression (no `lib/ui/` file was touched by this fix).
+- `git diff --check`: clean.
+
+### Guardrails re-confirmed for this fix
+
+- `PublicDemoEngineerSales.stage` remains the coarse, unmodified compatibility scalar — zero diff to `public_demo_sales.dart`.
+- `matchingProposals` remains single-slot per engineer, unchanged — this fix does not widen it (out of the task's own stated scope).
+- `offerCandidates`/reconciliation/candidate-aware `recordOrder`/sibling-decline (Phase 1a/1B) — zero diff, all pre-existing tests re-run green.
+- Finance/Payroll/Matching/Interview-outcome formulas — zero diff.
+- HOME — zero diff (no `lib/ui/public_demo/public_demo_home_*` file touched).
+- Phase 1C comparison UI — not implemented, not started; out of scope for this fix exactly as for the rest of this Phase.
+- `ordered != assigned` — unaffected, unchanged.
+- Schema version — still `1`; not bumped (no migration was needed — see above).
+
+### Files changed by this fix
+
+- `lib/game/public_demo/public_demo_workflow_state.dart` (`projectInterviewSessionFor`, `startProjectInterviewSession`, `concludeProjectInterview`, `concludePartnerProjectInterview`, plus doc updates)
+- `lib/game/public_demo/public_demo_aggregate.dart` (`projectInterviewSessionFor` — optional `projectId` parameter added, default resolution preserved)
+- `lib/game/persistence/public_demo_save_codec.dart` (`_hasConsistentAuthorityFacts` — composite-key dedup, removal of the now-vacuous single-employee completed-session cross-check)
+- `test/game/public_demo/public_demo_parallel_sales_session_composite_identity_test.dart` (new, 15 tests)
+- `test/game/public_demo/public_demo_project_interview_test.dart` (2 tests updated for the new, intentional semantics)
+- `test/game/public_demo/public_demo_save_codec_test.dart` (1 test title/comment updated, 1 new companion test added)
+
+No other file was touched. `Blocking P2 (Issue #257/PR #258 Broad Review): RESOLVED.`
+
 ## Known limitations / unresolved Phase 1C
 
 - **Comparison UI (Phase 1C) is unimplemented**, exactly as scoped. `offerCandidates` is now a live, correctly-synchronized, per-project authority, but no screen surfaces it — a player cannot yet see or choose between multiple concluded candidates for one engineer. `PublicDemoAggregate.offerCandidates`/`offerCandidateFor` (already public since Phase 1a) are the read surface Phase 1c should build on.

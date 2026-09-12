@@ -843,8 +843,26 @@ class PublicDemoAggregate {
 
   /// The current in-progress/completed project-interview session for
   /// [engineerId], if any.
-  ClientInterviewSession? projectInterviewSessionFor(String engineerId) =>
-      workflow.projectInterviewSessionFor(engineerId);
+  ///
+  /// [projectId] defaults to [engineerId]'s CURRENT Phase 5
+  /// [PublicDemoMatchingProposal] (via [projectInterviewCandidateFor]) —
+  /// this is what every existing UI/test call site means by "the" session
+  /// for an engineer, since the interactive dialogs only ever drive the
+  /// currently-proposed project. Issue #257 composite-identity widening:
+  /// pass [projectId] explicitly to look up a session for a *different*
+  /// project this engineer may also hold (e.g. a stale, not-yet-resumed
+  /// session left over from before the player re-proposed a different
+  /// project) — [workflow.projectInterviewSessionFor] itself has no
+  /// "current project" concept and always requires an explicit project id.
+  ClientInterviewSession? projectInterviewSessionFor(
+    String engineerId, [
+    String? projectId,
+  ]) {
+    final resolvedProjectId =
+        projectId ?? projectInterviewCandidateFor(engineerId)?.id;
+    if (resolvedProjectId == null) return null;
+    return workflow.projectInterviewSessionFor(engineerId, resolvedProjectId);
+  }
 
   /// Starts (or resumes) the interactive project interview for
   /// [engineerId] — Phase 6's entry point from Phase 5's matching-proposal

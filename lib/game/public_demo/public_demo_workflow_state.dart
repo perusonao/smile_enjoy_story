@@ -117,13 +117,24 @@ class PublicDemoWorkflowState {
   final List<PublicDemoMatchingProposal> matchingProposals;
 
   /// CORE-GAMEPLAY Phase 6 (Project Interview Gameplay): at most one
-  /// in-progress/completed [ClientInterviewSession] per engineer id (its
-  /// own [ClientInterviewSession.employeeId]) — the interactive project
-  /// interview reused from the main game's own
+  /// in-progress/completed [ClientInterviewSession] per `(employeeId,
+  /// projectId)` pair (see [projectInterviewSessionFor]/
+  /// [startProjectInterviewSession]) — the interactive project interview
+  /// reused from the main game's own
   /// [ClientInterviewEngine]/[ProjectInterviewEngine]
   /// (`public_demo_project_interview.dart`), exactly like
   /// [interviewSessions] reuses [RecruitmentInterviewEngine]. Additive to
   /// the save schema — see [fromJson]'s backward-compatible default below.
+  ///
+  /// Issue #257 composite-identity widening: unlike [matchingProposals]
+  /// (at most one per `engineerId` alone), many sessions can coexist for
+  /// the same engineer as long as each names a different `projectId` —
+  /// mirrors [offerCandidates]' own `(engineerId, projectId)` identity.
+  /// Every entry already carried its own `projectId` even before this
+  /// widening (see [ClientInterviewSession.projectId]), so no save-schema
+  /// migration is needed: only the in-memory "at most one per employee"
+  /// invariant this list's own production callers used to enforce has been
+  /// relaxed to "at most one per `(employeeId, projectId)` pair".
   final List<ClientInterviewSession> projectInterviewSessions;
 
   /// Issue #245 Finding #4, Phase 1a (Domain Foundation): at most one
@@ -1849,20 +1860,37 @@ class PublicDemoWorkflowState {
   // gives a failed attempt a dead-end-free way back to selling.
   // ---------------------------------------------------------------------
 
-  /// The current in-progress/completed project-interview session for
-  /// [engineerId], if one exists — `null` otherwise. At most one is ever
-  /// kept per engineer (see [startProjectInterviewSession]).
-  ClientInterviewSession? projectInterviewSessionFor(String engineerId) {
+  /// The current in-progress/completed project-interview session for the
+  /// exact `(engineerId, projectId)` pair, if one exists — `null` otherwise.
+  /// At most one is ever kept per pair (see [startProjectInterviewSession]).
+  ///
+  /// Issue #257 composite-identity widening: before this fix, a session was
+  /// identified by [engineerId] alone, so the same engineer could never hold
+  /// independent in-flight/concluded interview sessions for two different
+  /// projects at once — starting a fresh interview for project B silently
+  /// discarded an unfinished (or even completed-but-not-yet-reconciled)
+  /// session for project A. [projectId] is now a required part of this
+  /// lookup's own identity, mirroring [offerCandidateFor]'s own
+  /// `(engineerId, projectId)` key — every production caller that used to
+  /// search by [engineerId] alone has been updated to pass the exact project
+  /// it means (never an ambiguous "whichever session this engineer happens
+  /// to have").
+  ClientInterviewSession? projectInterviewSessionFor(
+    String engineerId,
+    String projectId,
+  ) {
     for (final session in projectInterviewSessions) {
-      if (session.employeeId == engineerId) return session;
+      if (session.employeeId == engineerId && session.projectId == projectId) {
+        return session;
+      }
     }
     return null;
   }
 
   /// Starts [session] as the project-interview session for its own
-  /// [ClientInterviewSession.employeeId] — a no-op (resume) only when an
-  /// incomplete session for that engineer **already exists for the same
-  /// [ClientInterviewSession.projectId]** — mirrors
+  /// `(employeeId, projectId)` pair — a no-op (resume) only when an
+  /// incomplete session for that exact pair **already exists with the same
+  /// [ClientInterviewSession.startedWeek]** — mirrors
   /// [startInterviewSession]'s own idempotency convention, but additionally
   /// keyed by project (Codex P1 fix, PR #214): resuming an incomplete
   /// session purely by employee id was unsafe — if the player closed an
@@ -1873,16 +1901,23 @@ class PublicDemoWorkflowState {
   /// project's fit/requirements by [chooseFollowUp]/[conclude] — old
   /// questions and new-project scoring must never mix.
   ///
-  /// A prior session for the same engineer is replaced (never resumed)
-  /// whenever it is already *completed* (a past pass/fail attempt — a
-  /// failed project interview must be retryable after the engineer returns
-  /// to selling and reaches `partnerInterviewPassed` again, for the same or
-  /// a newly proposed project — never a dead end), when it names a
-  /// *different* [ClientInterviewSession.projectId] than [session] (the
-  /// Codex P1 case above: the stale, project-mismatched session is safely
-  /// discarded in favor of this fresh one for the currently proposed
-  /// project, rather than either resuming it or leaving two sessions
-  /// around for the same engineer), or when it names a *different*
+  /// Issue #257 composite-identity widening: only the existing entry for
+  /// the exact SAME `(employeeId, projectId)` pair as [session] is ever
+  /// replaced — every other project's session for this same engineer is
+  /// left completely untouched, so a player who switches Matching focus to
+  /// a different project no longer silently loses an unfinished (or
+  /// completed) interview for the project they came from. This is the
+  /// P2 gap Issue #257's own "必須" item and PR #258's Claude Broad Review
+  /// both flagged: sessions used to be identified by [ClientInterviewSession
+  /// .employeeId] alone (see git history), so starting a session for ANY
+  /// project unconditionally swept away every other entry for the same
+  /// employee.
+  ///
+  /// The entry for the SAME `(employeeId, projectId)` pair is replaced
+  /// (never resumed) whenever it is already *completed* (a past pass/fail
+  /// attempt — a failed project interview must be retryable after the
+  /// engineer returns to selling and is proposed to this same project
+  /// again — never a dead end), or when it names a *different*
   /// [ClientInterviewSession.startedWeek] (Codex P2 fix, PR #214): Public
   /// Demo's own engineer runtime only ever changes at a month-close
   /// boundary ([PublicDemoState.applyMonthlyGrowth]/`selectInternalTraining`
@@ -1898,7 +1933,7 @@ class PublicDemoWorkflowState {
   /// [chooseFollowUp]/[conclude] time. No new persisted field is needed —
   /// this compares [ClientInterviewSession.startedWeek], which already
   /// exists — and the stale session is safely discarded for a fresh
-  /// restart, never resumed, exactly like the projectId case above.
+  /// restart, never resumed.
   PublicDemoWorkflowState startProjectInterviewSession(
     ClientInterviewSession session,
   ) {
@@ -1913,7 +1948,9 @@ class PublicDemoWorkflowState {
     return _copyWith(
       projectInterviewSessions: [
         for (final existing in projectInterviewSessions)
-          if (existing.employeeId != session.employeeId) existing,
+          if (existing.employeeId != session.employeeId ||
+              existing.projectId != session.projectId)
+            existing,
         session,
       ],
     );
@@ -1986,10 +2023,13 @@ class PublicDemoWorkflowState {
         engineer.stage != PublicDemoSalesStage.partnerInterviewPassed) {
       return this;
     }
-    final session = projectInterviewSessionFor(engineerId);
+    // Issue #257 composite-identity widening: looked up by the exact
+    // `(engineerId, project.id)` pair, never by [engineerId] alone — this
+    // engineer may hold other, independent sessions for other projects at
+    // the same time, and none of them may ever be picked up here.
+    final session = projectInterviewSessionFor(engineerId, project.id);
     if (session == null ||
         session.completed ||
-        session.projectId != project.id ||
         session.startedWeek != currentMonth ||
         !PublicDemoProjectInterview.isReadyToConclude(session)) {
       return this;
@@ -2019,9 +2059,18 @@ class PublicDemoWorkflowState {
           else
             candidate,
       ],
+      // Composite-identity widening: only THIS exact (engineerId,
+      // project.id) entry is replaced with the concluded session — every
+      // other project's session this engineer holds is left untouched, so
+      // concluding project A's interview can never overwrite or discard an
+      // independent, unrelated session for project B.
       projectInterviewSessions: [
         for (final existing in projectInterviewSessions)
-          if (existing.employeeId == engineerId) completedSession else existing,
+          if (existing.employeeId == engineerId &&
+              existing.projectId == project.id)
+            completedSession
+          else
+            existing,
       ],
       // Phase 1b (Production Cutover), Scope C: syncs the same
       // already-computed [outcome] — never a second, independent
@@ -2054,11 +2103,16 @@ class PublicDemoWorkflowState {
   /// `partnerInterviewPassed` → `clientInterviewPassed`/
   /// `clientInterviewFailed`), reusing the exact same
   /// [projectInterviewSessions] list/[ClientInterviewSession] shape — no new
-  /// persisted field. A partner session and a later client session for the
-  /// same engineer never coexist: [startProjectInterviewSession]'s own
-  /// "at most one entry per employeeId" replace rule (invoked identically by
-  /// both this phase and Phase 6) discards the completed partner session the
-  /// moment a fresh client-interview session starts for the same engineer.
+  /// persisted field. A partner session and a later client session *for the
+  /// same project* never coexist: [startProjectInterviewSession]'s own "at
+  /// most one entry per `(employeeId, projectId)` pair" replace rule
+  /// (invoked identically by both this phase and Phase 6) discards the
+  /// completed partner session the moment a fresh client-interview session
+  /// starts for that exact project. Issue #257 composite-identity widening:
+  /// a partner session for one project and an independent (partner or
+  /// client) session for a genuinely *different* project the same engineer
+  /// has also been proposed to now DO coexist, by design — see
+  /// [startProjectInterviewSession]'s own doc.
   ///
   /// A no-op unless: [engineerId] is currently at `introduced` (the stage
   /// this phase's own interactive mini-game requires); a genuine, started
@@ -2080,10 +2134,12 @@ class PublicDemoWorkflowState {
         engineer.stage != PublicDemoSalesStage.introduced) {
       return this;
     }
-    final session = projectInterviewSessionFor(engineerId);
+    // Issue #257 composite-identity widening: looked up by the exact
+    // `(engineerId, project.id)` pair — see [concludeProjectInterview]'s
+    // own identical comment.
+    final session = projectInterviewSessionFor(engineerId, project.id);
     if (session == null ||
         session.completed ||
-        session.projectId != project.id ||
         session.startedWeek != currentMonth ||
         !PublicDemoProjectInterview.isReadyToConclude(session)) {
       return this;
@@ -2112,9 +2168,16 @@ class PublicDemoWorkflowState {
           else
             candidate,
       ],
+      // Composite-identity widening: only THIS exact (engineerId,
+      // project.id) entry is replaced — see [concludeProjectInterview]'s
+      // own identical comment.
       projectInterviewSessions: [
         for (final existing in projectInterviewSessions)
-          if (existing.employeeId == engineerId) completedSession else existing,
+          if (existing.employeeId == engineerId &&
+              existing.projectId == project.id)
+            completedSession
+          else
+            existing,
       ],
       // Phase 1b (Production Cutover), Scope B: syncs the same
       // already-computed [outcome] — never a second, independent

@@ -391,7 +391,10 @@ void main() {
 
     test('2. changing the matching proposal mid-interview: the stale '
         'old-project session is never resumed against the new project — a '
-        'fresh session for the new project replaces it instead', () {
+        'fresh, independent session is started for the new project instead '
+        '(the old-project session is preserved untouched, not resurfaced by '
+        'the current-project accessor — Issue #257 composite-identity '
+        'widening)', () {
       var aggregate = _advanceToPartnerPassed(
         PublicDemoAggregate.initial(runSeed: 82),
       );
@@ -499,18 +502,26 @@ void main() {
       // session against the NEW project: the stale, mismatched session is
       // not concluded (it is a no-op — the engineer stays
       // partnerInterviewPassed) rather than silently mixing old questions
-      // with the new project's fit.
+      // with the new project's fit. Issue #257 composite-identity widening:
+      // the OLD project's own session is no longer discarded by the
+      // re-proposal — it is looked up here by its own explicit
+      // `(engineerId, oldProject.id)` pair, never the ambiguous
+      // single-argument "whichever session this engineer happens to have"
+      // form.
       final beforeConclude = _engineer(aggregate);
       final afterConclude = aggregate.concludeProjectInterview('eng-01');
       expect(_engineer(afterConclude).stage, beforeConclude.stage);
       expect(
-        afterConclude.projectInterviewSessionFor('eng-01')!.completed,
+        afterConclude
+            .projectInterviewSessionFor('eng-01', oldProject.id)!
+            .completed,
         isFalse,
       );
 
-      // Reopening the interview instead replaces the stale session with a
-      // fresh one bound to the new project, which can then be concluded
-      // normally, and failureReasons always reads the current (new)
+      // Reopening the interview starts a genuinely fresh session bound to
+      // the new project (composite-identity widening: the OLD project's own
+      // still-unconcluded session above is preserved untouched alongside it,
+      // not discarded), and failureReasons always reads the current (new)
       // project's own fit — never the stale one's.
       final restarted = afterConclude.startProjectInterview('eng-01');
       final newSession = restarted.projectInterviewSessionFor('eng-01')!;

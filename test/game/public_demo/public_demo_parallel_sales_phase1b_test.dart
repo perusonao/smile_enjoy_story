@@ -3,6 +3,7 @@ import 'package:smile_enjoy_story/game/persistence/public_demo_save_codec.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_aggregate.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_interview.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_offer_candidate.dart';
+import 'package:smile_enjoy_story/game/public_demo/public_demo_project_generator.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_project_interview.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_sales.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_workflow_state.dart';
@@ -817,6 +818,186 @@ void main() {
         (c) => c.stage == PublicDemoOfferCandidateStage.ordered,
       );
       expect(orderedCandidates, hasLength(1));
+    });
+  });
+
+  group('Issue #257 PR #256 carry-over: session keying / engine reuse', () {
+    test('same engineer x two projects can hold two in-flight partner '
+        'interview sessions concurrently, through the real production API '
+        '— starting project B\'s session never discards project A\'s '
+        'still-incomplete one', () {
+      var aggregate = PublicDemoAggregate.initial(runSeed: 3);
+      final projects = aggregate.projectCandidatesForMonth(4);
+      final projectA = projects[0];
+      final projectB = projects[1];
+
+      aggregate = aggregate.proposeMatch(
+        engineerId: 'eng-01',
+        projectId: projectA.id,
+      );
+      aggregate = advanceToIntroduced(aggregate, 'eng-01');
+      aggregate = aggregate.startPartnerInterview('eng-01');
+      expect(
+        aggregate.workflow.projectInterviewSessionFor('eng-01', projectA.id),
+        isNotNull,
+      );
+      // Answer one question (but not all) for A, leaving it genuinely
+      // in-flight.
+      var sessionA = aggregate.workflow.projectInterviewSessionFor(
+        'eng-01',
+        projectA.id,
+      )!;
+      final firstChoice = PublicDemoProjectInterview.choicesFor(
+        sessionA,
+      ).first;
+      aggregate = aggregate.chooseProjectInterviewFollowUp(
+        'eng-01',
+        sessionA.currentQuestionIndex,
+        firstChoice,
+      );
+      sessionA = aggregate.workflow.projectInterviewSessionFor(
+        'eng-01',
+        projectA.id,
+      )!;
+      expect(sessionA.completed, isFalse);
+
+      // Engineer is still `introduced` (A's session was never concluded),
+      // so a second, genuine proposal + partner-interview attempt for a
+      // DIFFERENT project is real, ordinary production gameplay — not a
+      // forged/edge scenario.
+      aggregate = aggregate.proposeMatch(
+        engineerId: 'eng-01',
+        projectId: projectB.id,
+      );
+      final salesUsedBeforeB = aggregate.state.salesUsed;
+      aggregate = aggregate.startPartnerInterview('eng-01');
+      expect(aggregate.state.salesUsed, salesUsedBeforeB + 1);
+
+      // Both sessions now genuinely coexist — starting B's did not touch
+      // A's.
+      final sessionAAfter = aggregate.workflow.projectInterviewSessionFor(
+        'eng-01',
+        projectA.id,
+      );
+      final sessionBAfter = aggregate.workflow.projectInterviewSessionFor(
+        'eng-01',
+        projectB.id,
+      );
+      expect(sessionAAfter, isNotNull);
+      expect(sessionAAfter!.completed, isFalse);
+      expect(sessionAAfter.playerFollowUps, hasLength(1));
+      expect(sessionBAfter, isNotNull);
+      expect(sessionBAfter!.playerFollowUps, isEmpty);
+      expect(
+        aggregate.workflow.projectInterviewSessions
+            .where((session) => session.employeeId == 'eng-01')
+            .length,
+        2,
+      );
+
+      // Advancing B's session does not touch A's.
+      final sessionBChoice = PublicDemoProjectInterview.choicesFor(
+        sessionBAfter,
+      ).first;
+      aggregate = aggregate.chooseProjectInterviewFollowUp(
+        'eng-01',
+        sessionBAfter.currentQuestionIndex,
+        sessionBChoice,
+      );
+      expect(
+        aggregate.workflow
+            .projectInterviewSessionFor('eng-01', projectA.id)!
+            .playerFollowUps,
+        hasLength(1),
+      );
+      expect(
+        aggregate.workflow
+            .projectInterviewSessionFor('eng-01', projectB.id)!
+            .playerFollowUps,
+        hasLength(1),
+      );
+    });
+
+    test('same (employeeId, projectId) stale/completed session replacement '
+        'is deterministic and never touches a sibling project\'s session',
+        () {
+      // Searches seeds until eng-02's genuine interactive partner interview
+      // fails for project A (same seed-search style used elsewhere in this
+      // file for the stochastic interactive engine) — the retry branch
+      // this test exercises requires a real failure, not an assumed one.
+      PublicDemoAggregate? aggregateAfterFailure;
+      late PublicDemoProjectCandidate projectA;
+      late PublicDemoProjectCandidate projectB;
+      for (var seed = 0; seed < 60; seed++) {
+        var candidate = PublicDemoAggregate.initial(runSeed: seed);
+        final projects = candidate.projectCandidatesForMonth(4);
+        projectA = projects[0];
+        projectB = projects[1];
+        candidate = candidate.proposeMatch(
+          engineerId: 'eng-02',
+          projectId: projectA.id,
+        );
+        candidate = advanceToIntroduced(candidate, 'eng-02');
+        candidate = runPartnerInterviewToConclusion(candidate, 'eng-02');
+        if (engineer(candidate, 'eng-02').stage ==
+            PublicDemoSalesStage.partnerInterviewFailed) {
+          aggregateAfterFailure = candidate;
+          break;
+        }
+      }
+      expect(
+        aggregateAfterFailure,
+        isNotNull,
+        reason: 'expected at least one genuine partner failure across 60 seeds',
+      );
+      var aggregate = aggregateAfterFailure!;
+
+      // Recover from the failure once (beginSelling -> introduceProject),
+      // reaching `introduced` again — the same real recovery cycle any
+      // failed partner interview requires, regardless of which project is
+      // currently proposed.
+      aggregate = aggregate.beginSelling('eng-02').introduceProject('eng-02');
+
+      // A second, independent candidate/project (B) for the SAME engineer,
+      // with its own live session, coexists throughout.
+      aggregate = aggregate.proposeMatch(
+        engineerId: 'eng-02',
+        projectId: projectB.id,
+      );
+      aggregate = aggregate.startPartnerInterview('eng-02');
+      final sessionBBefore = aggregate.workflow.projectInterviewSessionFor(
+        'eng-02',
+        projectB.id,
+      )!;
+      expect(sessionBBefore.completed, isFalse);
+
+      // Retry A: re-propose it (moving the single-slot matchingProposal
+      // back to A, mirroring a real player switching Matching focus back)
+      // and start a fresh attempt — a fresh session for the SAME
+      // (employeeId, projectId) pair replaces the completed one, while B's
+      // independent session is untouched.
+      aggregate = aggregate.proposeMatch(
+        engineerId: 'eng-02',
+        projectId: projectA.id,
+      );
+      aggregate = aggregate.startPartnerInterview('eng-02');
+      final freshSessionA = aggregate.workflow.projectInterviewSessionFor(
+        'eng-02',
+        projectA.id,
+      )!;
+      expect(freshSessionA.completed, isFalse);
+      expect(
+        aggregate.workflow
+            .projectInterviewSessionFor('eng-02', projectB.id)!
+            .completed,
+        isFalse,
+      );
+      expect(
+        aggregate.workflow.projectInterviewSessions
+            .where((session) => session.employeeId == 'eng-02')
+            .length,
+        2,
+      );
     });
   });
 }

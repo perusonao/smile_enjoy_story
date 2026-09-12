@@ -1,12 +1,21 @@
 # SES First Fun Year — Parallel Sales Phase 1B (Production Cutover / Dual Authority Reconciliation)
 
-Status: **Implemented. Production Public Demo sales/interview/order flow cut over to `(engineerId, projectId)` candidate authority, with real, repeatable legacy reconciliation. Comparison UI (Phase 1C) is explicitly out of scope and remains unimplemented.**
+Status: **Implemented, independently reviewed, and hardened. Production Public Demo sales/interview/order flow cut over to `(engineerId, projectId)` candidate authority, with real, repeatable legacy reconciliation, and `projectInterviewSessions` widened to the same composite key. Comparison UI (Phase 1C) is explicitly out of scope and remains unimplemented.**
 
 ## Audited explicit main SHA
 
 - `git fetch origin` performed at session start; `origin/main` HEAD confirmed to be **exactly** `3dffd5c78b5c956dfc4f0804eb12887d17042eb1` (PR #254's own merge commit), matching Issue #257's own stated starting-point SHA — no drift to report.
 - The designated branch `claude/first-fun-year-phase-1b-2zy73j` existed but carried no commits ahead of `origin/main` and was missing everything back through `f4ca78f` (857+ commits behind) — confirmed (`git log origin/claude/...-2zy73j..origin/main`) to be a stale leftover with no unmerged work. Reset via `git reset --hard origin/main`, mirroring this task's own branch-recovery instructions and every prior session's identical handling of the same situation.
 - Governing docs read in full before any code change: `docs/reports/SES_FIRST-FUN-YEAR_Parallel-Sales_Result.md` (Fresh Audit / design), `docs/reports/SES_FIRST-FUN-YEAR_Parallel-Sales_Phase1a_Result.md` (Phase 1a domain foundation + its own Codex review responses), `docs/decisions/SES_DEVELOPMENT-PRIORITY_2026-09-02.md`, Issue #257, and PR #254's Codex review threads (all four findings and their resolutions).
+- **Note on Issue #257 scope drift:** Issue #257's body was edited after this session's initial research pass (adding a "PR #256 Review Carry-over" section — PR #256 was an independent, since-closed duplicate implementation of PR #254's own Issue #255, whose reviewable ideas were selectively carried into Issue #257). The initial implementation and PR #258 did not reflect that addition. An independent Claude Broad Review session (see "Independent Broad Review" below) caught this gap directly from the then-current issue body and it was closed out in a follow-up commit on this same branch — see "PR #256 selected-change extraction summary" below.
+
+## Independent Broad Review (Codex unavailable)
+
+Per this task's own review policy ("実装 → Claude self-hardening → 一回だけの broad Codex review → P0/P1 + relevant P2 fixes"), a Codex Broad Review was requested on PR #258 but returned only a usage-limit notice — no actual review content. A separate Claude session then performed an **independent broad review** of PR #258 against the live repository (its own fresh Flutter install, not this session's numbers) and is the designated one-time substitute for the Codex review this task calls for. Its own report is `docs/reports/SES_PR-258_Parallel-Sales-Phase1B_Claude-Broad-Review.md`; it found and fixed one P1 (see below) directly on this branch, and flagged one P2 (`projectInterviewSessions` composite-key widening) which this session subsequently closed out as full scope (see below), not merely documented.
+
+### P1 (found + fixed by the independent review, commit `e7996e2`)
+
+`withMatchingProposal`'s candidate-creation branch fraudulently seeded a **brand-new** offer candidate at an unrelated project's already-earned interview stage/score whenever the engineer already held a genuine result for a *different* project — reachable via ordinary `proposeMatch(A) → interview → proposeMatch(B)` gameplay, not a forged save, and it let candidate B skip its own mandatory interview step and sales-slot cost. Fixed by restricting the "inherit legacy stage" behavior (`_offerCandidateFromLegacy`) to only the engineer's very **first-ever** candidate (`offerCandidatesForEngineer(engineerId).isEmpty`) — every later sibling candidate now always starts fresh at `proposed`, regardless of the engineer's current coarse stage. A dedicated regression test, `test/game/public_demo/public_demo_parallel_sales_offer_candidate_seed_isolation_test.dart`, reproduces the exact sequence and was confirmed failing before the fix, passing after.
 
 ## Authority before/after
 
@@ -58,6 +67,34 @@ For every engineer whose coarse `PublicDemoSalesStage` maps to a resolvable `Pub
 
 No `lib/ui/` file was touched. Every cutover above lives entirely inside `PublicDemoWorkflowState`/`PublicDemoAggregate` methods the existing UI already calls with the exact same signatures — the production UI's own call sites (`proposeMatch`, `recordOrder`, `startPartnerInterview`/`_openProjectInterview`, `recordEngineerInterviewResult`) are unmodified and automatically pick up the cutover.
 
+## PR #256 selected-change extraction summary
+
+PR #256 was an independent, duplicate implementation of PR #254's own Issue #255, closed without merge (merge conflict + missing `SaveCodec` hardening). Issue #257 carries forward five selected ideas from its review; each is addressed here:
+
+| Item | Disposition |
+|---|---|
+| **A. `projectInterviewSessions` composite-key widening** | **Implemented this session** (see "Session-keying verification" below) — `PublicDemoWorkflowState.projectInterviewSessionFor` is now keyed by `(employeeId, projectId)`, and `startProjectInterviewSession`'s replace logic only ever removes the entry for that exact pair, never a sibling project's session. `PublicDemoAggregate.projectInterviewSessionFor(engineerId)`'s public signature is unchanged (resolves the engineer's current proposal's project internally), so no UI/test call site needed to change. |
+| **B. Existing interview engine reuse** | Already satisfied by the original cutover, re-verified after the widening: `concludeProjectInterview`/`concludePartnerProjectInterview` still call `PublicDemoProjectInterview.conclude` exactly once and apply the one result to both the engineer-level and candidate-level state — see "Existing interview-engine reuse verification" below. |
+| **C. Re-apply PR #254 hardening when porting selected ideas** | Confirmed still intact: aggregate-level safe wrapper (`evaluatePartnerInterviewForCandidate`/`evaluateClientInterviewForCandidate` remain the only safe entry points, unwired to any UI), partner-only slot consumption, client zero-slot, `_hasConsistentAuthorityFacts` score/identity checks, and `_withMigratedOfferCandidates` save compatibility are all unchanged in strictness. |
+| **D. Duplicate identity policy** | **Explicit decision: keep the current `main` reject-on-duplicate policy.** PR #256's "silently canonicalize a duplicate pair" idea was NOT adopted — `PublicDemoWorkflowState.fromJson` continues to throw a `FormatException` on a duplicate `(engineerId, projectId)` composite key in a raw save (verified by test), exactly as it already did before this Phase. |
+| **E. Report SSOT** | Followed — Phase 1a's own report (`..._Phase1a_Result.md`) was not touched or duplicated; this Phase's own record is this file. |
+
+## Session-keying verification (`(employeeId, projectId)`)
+
+`projectInterviewSessions` (the interactive Partner/Client Interview session list) was widened the same way `offerCandidates` already was in Phase 1a: from a single `employeeId` key to a composite `(employeeId, projectId)` key.
+
+- `PublicDemoWorkflowState.projectInterviewSessionFor(engineerId, projectId)` now matches both fields (previously `employeeId` alone, returning the first — and only ever — match).
+- `startProjectInterviewSession`'s replacement logic now removes only the entry for the exact same `(employeeId, projectId)` pair — previously it discarded **every** entry for that `employeeId`, regardless of project, the moment any new session started.
+- `updateProjectInterviewSession` and `concludeProjectInterview`/`concludePartnerProjectInterview` were **already** composite-key-aware (a pre-existing Codex P1/P2 defense-in-depth guard from PR #214) — only the lookup/replace half needed widening.
+- `PublicDemoAggregate.projectInterviewSessionFor(engineerId)` keeps its exact existing single-argument public signature (every production/UI caller only ever needs "the session for whichever project is currently proposed") — it now resolves that project internally via `projectInterviewCandidateFor(engineerId)` and calls the widened workflow method. **Zero UI or test call-site changes were needed anywhere in the codebase** — confirmed by `flutter analyze` passing clean with no signature-mismatch errors across all 14 files that reference this method.
+- Verified directly by test (`public_demo_parallel_sales_phase1b_test.dart`, "Session keying / engine reuse" group): the same engineer can hold two genuinely concurrent, independently-progressing in-progress Partner Interview sessions for two different projects through the real production API (`proposeMatch`/`startPartnerInterview`/`chooseProjectInterviewFollowUp`) — starting/advancing one never touches the other, and retrying a failed attempt for one project replaces only that project's own stale session.
+
+## Existing interview-engine reuse verification
+
+- `concludeProjectInterview`/`concludePartnerProjectInterview` each call `PublicDemoProjectInterview.conclude` (itself `ClientInterviewEngine.finalRate` + `ProjectInterviewEngine.roll`) **exactly once** per conclusion and apply that single result object to both the engineer-level (`applyProjectInterviewResult`/`applyPartnerProjectInterviewResult`) and candidate-level (`applyClientInterviewResult`/`applyPartnerInterviewResult`) state, in the same `_copyWith` call — confirmed by direct code reading, not merely by doc comment, both before and after the session-keying widening.
+- `PublicDemoInterviewEvaluator`'s original generic formula (Phase 1a's own building-block `evaluatePartnerInterviewForCandidate`/`evaluateClientInterviewForCandidate`) was not replaced or forked; it remains the separate, still-unwired-to-UI generic path.
+- No new RNG stream, no duplicated scoring formula, anywhere in this diff.
+
 ## Partner/client sales-slot verification
 
 - Partner interview (interactive engine): exactly one real slot consumed on a genuinely new attempt at the `PublicDemoAggregate` layer — unaffected by whether a matching candidate exists to sync (test: "partner interview slot semantics").
@@ -94,8 +131,8 @@ All of the following are covered by `test/game/public_demo/public_demo_parallel_
 ## Tests
 
 - `flutter analyze` (whole project): **No issues found.**
-- `flutter test test/game/public_demo`: **977/977 passed** (952 pre-existing + 25 in the new `public_demo_parallel_sales_phase1b_test.dart` file, covering Scopes A–D, reconciliation, and integrity).
-- `flutter test test/ui/public_demo`: **741/741 passed** — zero UI regression (no `lib/ui/` file touched; production UI call sites automatically exercise the cutover through their existing, unmodified signatures).
+- `flutter test test/game/public_demo`: **980/980 passed** (952 pre-existing + 25 in `public_demo_parallel_sales_phase1b_test.dart` covering Scopes A–D/reconciliation/integrity + 2 new "session keying / engine reuse" tests in the same file + 1 focused regression test from the independent review's own P1 fix, `public_demo_parallel_sales_offer_candidate_seed_isolation_test.dart`). One pre-existing test (`public_demo_project_interview_test.dart`, "conclude and failureReasons never mix a stale session with a different current project") was updated to check the widened, more precise session-keying semantics directly against the full session list rather than the now-narrower single-argument convenience accessor — a mechanical update to reflect the more precise composite key, not a behavior regression (the stale session itself is still preserved, exactly as the test always required).
+- `flutter test test/ui/public_demo`: **741/741 passed** — zero UI regression (no `lib/ui/` file touched; production UI call sites automatically exercise the cutover through their existing, unmodified signatures; the session-keying widening required zero UI/test call-site changes anywhere).
 - `git diff --check`: clean, no whitespace errors.
 
 ## Security / self-hardening findings (this session)
@@ -106,8 +143,10 @@ All of the following are covered by `test/game/public_demo/public_demo_parallel_
 4. **Duplicate composite identity, unknown engineerId** — re-verified at both `PublicDemoWorkflowState.fromJson` (checked once on the raw decoded list before reconciliation, once more on reconciliation's own output) and `PublicDemoAggregate._validateForPersistence` (defense in depth, unchanged from Phase 1a).
 5. **Retry/idempotency** — every cutover transition (`withMatchingProposal`'s candidate creation, `concludePartnerProjectInterview`/`concludeProjectInterview`'s candidate sync, `recordOrder`'s candidate order+decline) is a no-op-unless-precondition-holds addition layered onto each method's own pre-existing engineer-level precondition gate, so every existing double-tap/reload/retry safety this file already had is inherited unchanged, not re-derived.
 6. **Atomicity** — every cutover writes both the legacy engineer-level field and the candidate-level field in the SAME `_copyWith` call; there is no intermediate, persistable state where one authority has advanced and the other has not (mirrors Phase 1a's own `recordOfferCandidateOrder` atomicity guarantee, now extended to the real production callers).
+7. **Found by an independent Claude Broad Review, fixed on this branch (P1):** `withMatchingProposal`'s candidate-creation cross-project stage/score leak — see "Independent Broad Review" above for the full mechanism/fix.
+8. **Own follow-up after the independent review (`projectInterviewSessions` composite-key widening):** the reviewer's own P2 finding was that Issue #257's "PR #256 carry-over" section (added to the issue after this session's initial research — see the scope-drift note above) explicitly marks this **必須** and it was neither implemented nor documented as deferred. Rather than merely recording it as a known limitation, this session implemented the full widening (see "Session-keying verification" above) — a scoped, low-risk change once traced: the only non-composite-aware code was the lookup/replace half of `projectInterviewSessionFor`/`startProjectInterviewSession`; the conclude/update paths already had Codex P1/P2 composite guards from PR #214. Verified via a dedicated regression test group and the full suite re-run (980/980 game, 741/741 UI, both green).
 
-No other issues were found. No production code outside `lib/game/public_demo/public_demo_offer_candidate.dart`, `lib/game/public_demo/public_demo_workflow_state.dart`, and `lib/game/persistence/public_demo_save_codec.dart` was touched.
+No other issues were found. No production code outside `lib/game/public_demo/public_demo_offer_candidate.dart`, `lib/game/public_demo/public_demo_workflow_state.dart`, `lib/game/public_demo/public_demo_aggregate.dart`, and `lib/game/persistence/public_demo_save_codec.dart` was touched.
 
 ## Guardrails confirmed unchanged
 
@@ -125,6 +164,8 @@ No other issues were found. No production code outside `lib/game/public_demo/pub
 - **The generic, project-agnostic `recordEngineerInterviewResult` path remains uncut-over** — by design, since it has no project identity to sync a candidate against. An engineer who reaches a relevant stage through this path alone (no proposal ever made) continues to synthesize no candidate, exactly matching Phase 1a's own documented limitation.
 - **The declined-vs-legacy-advance edge case documented in self-hardening finding #3's neighbor** (a candidate manually `declined` while legacy authority is later driven past it through the generic path) is handled by never resurrecting the decline — this is a deliberate design choice (a decline is final), not a gap, but is worth Phase 1c's awareness if a future UI ever lets a player "undo" a decline.
 - One considered-and-declined hardening (full ordered-project cross-check across historical order cycles) is documented above (self-hardening finding #3) rather than implemented, with its residual-risk reasoning recorded for a future session to revisit if `offerCandidates` ever becomes load-bearing for assignment materialization itself.
+- **New, from the independent Broad Review:** a theoretical, currently-**unreachable** dual-authority shape — a `declined` candidate for the exact `(engineerId, projectId)` pair legacy authority currently resolves to `ordered` is not proactively caught by either reconciliation (declines are deliberately never touched) or `_hasConsistentAuthorityFacts` (which only checks the reverse direction). Unreachable today because `declineOfferCandidate` has zero UI call sites; becomes relevant once Phase 1c exposes a manual decline action, at which point a save-codec hardening pass should close it.
+- **`projectInterviewSessions` composite-key widening (Issue #257's own "必須" PR #256 carry-over item) is now implemented** (this was the independent review's own P2 finding; closed out in this session rather than left as a documented gap — see "Session-keying verification" above). The one remaining, explicitly-deferred piece is Phase 1c's own comparison UI actually letting a player drive two concurrent in-flight interviews through the real screen — the underlying domain/workflow capability is what this session delivers; no UI exists yet to exercise it end-to-end.
 
 ## Final HEAD SHA / PR
 

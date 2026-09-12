@@ -842,9 +842,26 @@ class PublicDemoAggregate {
   }
 
   /// The current in-progress/completed project-interview session for
-  /// [engineerId], if any.
-  ClientInterviewSession? projectInterviewSessionFor(String engineerId) =>
-      workflow.projectInterviewSessionFor(engineerId);
+  /// [engineerId], if any — resolved against this engineer's own CURRENT
+  /// [PublicDemoMatchingProposal] project (via [projectInterviewCandidateFor]).
+  ///
+  /// Issue #257 PR #256 carry-over (Scope A): [PublicDemoWorkflowState
+  /// .projectInterviewSessionFor] itself is now keyed by `(employeeId,
+  /// projectId)`, not `employeeId` alone — this accessor's own public
+  /// single-argument signature is unchanged (every existing production
+  /// caller, including the UI, only ever cares about "the session for
+  /// whichever project is currently proposed"), so no caller needs to
+  /// change; the composite key now lives entirely underneath this stable
+  /// surface. `null` when no proposal resolves at all, or when the
+  /// resolved project has no session (a genuinely stale session left over
+  /// for a since-replaced proposal's OLD project is correctly no longer
+  /// returned here, matching the guard [concludeProjectInterview]/
+  /// [concludePartnerProjectInterview] already enforced independently).
+  ClientInterviewSession? projectInterviewSessionFor(String engineerId) {
+    final projectId = projectInterviewCandidateFor(engineerId)?.id;
+    if (projectId == null) return null;
+    return workflow.projectInterviewSessionFor(engineerId, projectId);
+  }
 
   /// Starts (or resumes) the interactive project interview for
   /// [engineerId] — Phase 6's entry point from Phase 5's matching-proposal

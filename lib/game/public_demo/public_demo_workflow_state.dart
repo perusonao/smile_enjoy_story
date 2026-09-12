@@ -1849,20 +1849,31 @@ class PublicDemoWorkflowState {
   // gives a failed attempt a dead-end-free way back to selling.
   // ---------------------------------------------------------------------
 
-  /// The current in-progress/completed project-interview session for
-  /// [engineerId], if one exists — `null` otherwise. At most one is ever
-  /// kept per engineer (see [startProjectInterviewSession]).
-  ClientInterviewSession? projectInterviewSessionFor(String engineerId) {
+  /// The current in-progress/completed project-interview session for the
+  /// exact `(engineerId, projectId)` pair, if one exists — `null` otherwise.
+  ///
+  /// Issue #257 PR #256 carry-over (Scope A, session-keying widening): at
+  /// most one session is kept per `(employeeId, projectId)` pair — WIDENED
+  /// from the original per-`employeeId`-alone key (see
+  /// [startProjectInterviewSession]'s own doc for why) so the same engineer
+  /// can hold genuinely independent in-progress interactive interview
+  /// sessions for two different projects at once, mirroring
+  /// [offerCandidates]' own per-project independence.
+  ClientInterviewSession? projectInterviewSessionFor(
+    String engineerId,
+    String projectId,
+  ) {
     for (final session in projectInterviewSessions) {
-      if (session.employeeId == engineerId) return session;
+      if (session.employeeId == engineerId && session.projectId == projectId) {
+        return session;
+      }
     }
     return null;
   }
 
   /// Starts [session] as the project-interview session for its own
-  /// [ClientInterviewSession.employeeId] — a no-op (resume) only when an
-  /// incomplete session for that engineer **already exists for the same
-  /// [ClientInterviewSession.projectId]** — mirrors
+  /// `(employeeId, projectId)` pair — a no-op (resume) only when an
+  /// incomplete session for that exact pair **already exists** — mirrors
   /// [startInterviewSession]'s own idempotency convention, but additionally
   /// keyed by project (Codex P1 fix, PR #214): resuming an incomplete
   /// session purely by employee id was unsafe — if the player closed an
@@ -1873,16 +1884,12 @@ class PublicDemoWorkflowState {
   /// project's fit/requirements by [chooseFollowUp]/[conclude] — old
   /// questions and new-project scoring must never mix.
   ///
-  /// A prior session for the same engineer is replaced (never resumed)
-  /// whenever it is already *completed* (a past pass/fail attempt — a
-  /// failed project interview must be retryable after the engineer returns
-  /// to selling and reaches `partnerInterviewPassed` again, for the same or
-  /// a newly proposed project — never a dead end), when it names a
-  /// *different* [ClientInterviewSession.projectId] than [session] (the
-  /// Codex P1 case above: the stale, project-mismatched session is safely
-  /// discarded in favor of this fresh one for the currently proposed
-  /// project, rather than either resuming it or leaving two sessions
-  /// around for the same engineer), or when it names a *different*
+  /// A prior session for the exact same `(employeeId, projectId)` pair is
+  /// replaced (never resumed) whenever it is already *completed* (a past
+  /// pass/fail attempt — a failed project interview must be retryable
+  /// after the engineer returns to selling and reaches
+  /// `partnerInterviewPassed` again, for the same or a newly proposed
+  /// project — never a dead end), or when it names a *different*
   /// [ClientInterviewSession.startedWeek] (Codex P2 fix, PR #214): Public
   /// Demo's own engineer runtime only ever changes at a month-close
   /// boundary ([PublicDemoState.applyMonthlyGrowth]/`selectInternalTraining`
@@ -1898,7 +1905,18 @@ class PublicDemoWorkflowState {
   /// [chooseFollowUp]/[conclude] time. No new persisted field is needed —
   /// this compares [ClientInterviewSession.startedWeek], which already
   /// exists — and the stale session is safely discarded for a fresh
-  /// restart, never resumed, exactly like the projectId case above.
+  /// restart, never resumed.
+  ///
+  /// Issue #257 PR #256 carry-over (Scope A, session-keying widening): the
+  /// replacement below now removes only the entry for this EXACT
+  /// `(employeeId, projectId)` pair — a sibling, genuinely in-progress
+  /// session this same engineer holds for a DIFFERENT project is left
+  /// completely untouched, so two concurrent in-flight interactive
+  /// interviews for the same engineer can now genuinely coexist. Before
+  /// this widening, starting a session for ANY project silently discarded
+  /// every other in-progress session this engineer held, regardless of
+  /// project — the exact "同一engineerの別project in-flight sessionを上書き
+  /// しない" gap Issue #257 calls out.
   PublicDemoWorkflowState startProjectInterviewSession(
     ClientInterviewSession session,
   ) {
@@ -1913,7 +1931,9 @@ class PublicDemoWorkflowState {
     return _copyWith(
       projectInterviewSessions: [
         for (final existing in projectInterviewSessions)
-          if (existing.employeeId != session.employeeId) existing,
+          if (existing.employeeId != session.employeeId ||
+              existing.projectId != session.projectId)
+            existing,
         session,
       ],
     );
@@ -1986,7 +2006,7 @@ class PublicDemoWorkflowState {
         engineer.stage != PublicDemoSalesStage.partnerInterviewPassed) {
       return this;
     }
-    final session = projectInterviewSessionFor(engineerId);
+    final session = projectInterviewSessionFor(engineerId, project.id);
     if (session == null ||
         session.completed ||
         session.projectId != project.id ||
@@ -2080,7 +2100,7 @@ class PublicDemoWorkflowState {
         engineer.stage != PublicDemoSalesStage.introduced) {
       return this;
     }
-    final session = projectInterviewSessionFor(engineerId);
+    final session = projectInterviewSessionFor(engineerId, project.id);
     if (session == null ||
         session.completed ||
         session.projectId != project.id ||

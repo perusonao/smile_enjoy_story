@@ -5,7 +5,7 @@ Issue: #250 — FIRST-FUN-YEAR Monthly Management Report Polish — 固定費内
 Status: **Completed**
 
 BASE: `origin/main` @ `01829f30f00fc7e923bacd355c4e4ffca131cc4e` (post-merge of PR #249)
-HEAD: _(filled in after final push — see "Final HEAD SHA" at the end of this report)_
+HEAD: `2536f08dde923363485902683b7f9bc3fc6db070`
 
 Branch: `claude/first-fun-year-report-polish-ql76ss`
 
@@ -91,7 +91,7 @@ No `lib/game/public_demo/**` file was touched — Finance/Payroll/Recruitment/As
 
 - `flutter analyze` (whole project): **No issues found.**
 - `flutter test test/game/public_demo`: **872/872 passed** (unchanged from baseline — no game-layer file was touched).
-- `flutter test test/ui/public_demo`: _(full-suite run recorded below once complete; every individually targeted file below is green)_
+- `flutter test test/ui/public_demo`: **703/703 passed** (full suite, includes every file below).
   - `public_demo_monthly_report_display_data_test.dart`: **16/16 passed** (7 groups; new groups 6/7 for 黒字/赤字 and 次月入社).
   - `public_demo_01_monthly_report_test.dart`: **15/15 passed** (all 5 close handlers, dismiss-once, blocked/no-op, Bankruptcy, Year-End, save/reload, mobile widths — including the new 固定費 caption/ひより portrait/next-action-absent assertions).
   - `public_demo_monthly_report_dialog_test.dart` (new): **10/10 passed**.
@@ -128,10 +128,10 @@ No `lib/game/public_demo/**` file was touched — Finance/Payroll/Recruitment/As
 
 ## PR
 
-- URL: _(filled in after `create_pull_request` — see final response)_
+- URL: https://github.com/perusonao/smile_enjoy_story/pull/251
 - Base: `main`
 - Head: `claude/first-fun-year-report-polish-ql76ss`
 
 ## Final HEAD SHA
 
-_(filled in after push)_
+`2536f08dde923363485902683b7f9bc3fc6db070`

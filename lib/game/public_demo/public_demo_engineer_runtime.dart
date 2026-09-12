@@ -1,3 +1,4 @@
+import '../../domain/models/applicant.dart';
 import '../../domain/models/career_history_entry.dart';
 import '../../domain/models/hidden_parameters.dart';
 import '../../domain/models/language_skill.dart';
@@ -86,37 +87,63 @@ class PublicDemoEngineerRuntime {
   /// joins. Experienced applicants retain the pre-JUNIOR-3 `actualSkill`
   /// value exactly.
   ///
-  /// SKILLSHEET-UX-2A P2 fix (round 2): [PublicDemoApplicant] carries no
-  /// confirmed per-language breakdown — only one aggregate
-  /// `experienceMonths` figure and a free-text `resumeSummary` — so an
-  /// experienced hire's capability is still seeded under
-  /// [ProgrammingLanguage.java] (needed for [actualCapability]/
-  /// [isReadyForFieldSales] and EG-2 growth, which key off
-  /// `languageSkills[primaryLanguage]`), but that entry is deliberately
-  /// NOT added to [confirmedLanguages] and its experience-months fields
-  /// stay `0` rather than [PublicDemoApplicant.experienceMonths]: copying
-  /// the applicant's total IT experience onto Java would fabricate
-  /// language-specific experience for a non-Java hire (e.g. app-02's
-  /// Flutter/JavaScript résumé). The SkillSheet display projection reads
-  /// [confirmedLanguages] and shows an honest "not confirmed" empty state
-  /// instead of this unconfirmed entry — see
-  /// PublicDemoSkillSheetDisplayFactory.create.
+  /// [sourceApplicant] is the full main-engine domain [Applicant] this hire
+  /// was actually generated from — recovered via
+  /// `PublicDemoSeededRecruitmentGenerator.regenerateDomainApplicant`
+  /// (`(runSeed, applicant.id)`, the exact same recovery Public Demo's own
+  /// interview step already relies on, see `PublicDemoRecruitmentInterview
+  /// .domainApplicantFor`) — or `null` for the hand-authored legacy pool
+  /// (`app-01`/`app-02`/`free-template-*`) that predates that generator and
+  /// cannot be recovered this way (see [regenerateDomainApplicant]'s own
+  /// doc). Passing `null` reproduces the exact pre-existing behavior below,
+  /// so every legacy save keeps materializing engineers exactly as it
+  /// always did.
+  ///
+  /// FIRST-FUN-YEAR Issue #248 fix: before this, every experienced hire's
+  /// [primaryLanguage] was unconditionally hard-coded to
+  /// [ProgrammingLanguage.java] regardless of which language they were
+  /// actually generated/hired for (SKILLSHEET-UX-2A P2's own doc explains
+  /// why — [PublicDemoApplicant] alone carries no per-language breakdown,
+  /// only one aggregate `experienceMonths` figure). This made the roster
+  /// skill bar (`_primarySkillDisplayFor`), the SkillSheet's primary
+  /// language chip/experience comparison
+  /// (`PublicDemoSkillSheetDisplayFactory`), and Matching's language/
+  /// tech-domain fit dimensions (`PublicDemoEngineerProjectFit
+  /// ._placeholderEngineerFor`) all present a generic "Java, zero tech
+  /// skill" identity for every hire instead of the actual person's
+  /// generated technology and tech-domain profile — the exact "generic
+  /// replacement" this issue exists to close. When [sourceApplicant] is
+  /// available, [primaryLanguage]/[languageSkills]/[confirmedLanguages]/
+  /// [techSkills] now come from that same real, seed-reproducible domain
+  /// [Applicant] instead — never a new stat, never inferred, always the
+  /// exact record `ApplicantGenerator` produced for this hire. Confirming
+  /// the language is now safe (the SKILLSHEET-UX-2A concern this doc
+  /// describes no longer applies once the *real* main language is used
+  /// instead of a hard-coded placeholder). [hidden] and
+  /// [totalItExperienceMonths] are deliberately left untouched here — see
+  /// this method's own Result Report for why (Finance/Payroll/growth
+  /// balance is out of this issue's scope; only the already-visible
+  /// résumé-level facts the issue's P1 list names are wired through).
   factory PublicDemoEngineerRuntime.fromApplicant(
-    PublicDemoApplicant applicant,
-  ) {
+    PublicDemoApplicant applicant, {
+    Applicant? sourceApplicant,
+  }) {
     if (!applicant.isInexperienced) {
+      final mainLanguage = sourceApplicant?.mainLanguage;
+      final primaryLanguage = mainLanguage ?? ProgrammingLanguage.java;
+      final languageSkill = sourceApplicant == null || mainLanguage == null
+          ? LanguageSkill(
+              language: primaryLanguage,
+              displayedExperienceMonths: 0,
+              actualExperienceMonths: 0,
+              actualSkill: applicant.salesSkillFit,
+            )
+          : sourceApplicant.skillFor(mainLanguage);
       return PublicDemoEngineerRuntime(
         engineerId: applicant.id,
-        primaryLanguage: ProgrammingLanguage.java,
-        languageSkills: {
-          ProgrammingLanguage.java: LanguageSkill(
-            language: ProgrammingLanguage.java,
-            displayedExperienceMonths: 0,
-            actualExperienceMonths: 0,
-            actualSkill: applicant.salesSkillFit,
-          ),
-        },
-        techSkills: const TechSkillLevels.zero(),
+        primaryLanguage: primaryLanguage,
+        languageSkills: {primaryLanguage: languageSkill},
+        techSkills: sourceApplicant?.techSkills ?? const TechSkillLevels.zero(),
         hidden: const HiddenParameters(
           growthPotential: 3,
           stressTolerance: 3,
@@ -124,6 +151,10 @@ class PublicDemoEngineerRuntime {
           projectInterviewSkill: 3,
           turnoverIntent: 50,
         ),
+        // Issue #248: once the language is the hire's real, generator-
+        // sourced main language (not a hard-coded placeholder), confirming
+        // it is truthful, not fabricated — see this factory's own doc.
+        confirmedLanguages: sourceApplicant == null ? const {} : {primaryLanguage},
         // Codex P1 fix (PR #212): the applicant's real, authoritative
         // résumé total — carried forward here even though it is not
         // attributed to any single confirmed language (see

@@ -202,7 +202,7 @@ With the P1 fix applied, `offerCandidates` is now a genuinely trustworthy, per-p
 ### Original reviewed HEAD / focused-fix HEAD
 
 - **Original reviewed HEAD (this Broad Review, above):** `e7996e2cf7dc9b786a42d45bb95519441eee3bdc` — confirmed via `git fetch origin` + `pull_request_read` on PR #258 at the start of this focused-fix session; matched the task's own stated confirmed HEAD exactly, no drift.
-- **Focused-fix HEAD:** `791e8732d30d6a16e1e17539a49a34934ab50b86` (the commit carrying all code/test changes for this fix, confirmed via `git rev-parse HEAD` immediately after committing it; this doc's own SHA-fill-in lands in a small follow-up docs-only commit on the same branch, `claude/first-fun-year-phase-1b-2zy73j` — no production/test code changed after `791e873`). A concurrent-session merge (below) landed on top of these two commits before the final push.
+- **Focused-fix HEAD (as first recorded by this section):** `791e8732d30d6a16e1e17539a49a34934ab50b86` (the commit carrying all code/test changes for this fix, confirmed via `git rev-parse HEAD` immediately after committing it). **Superseded** — see "Documentation reconciliation pass" at the end of this document for the actual final branch HEAD after the concurrent-session merge described immediately below was pushed.
 
 ### Concurrent-session merge
 
@@ -260,3 +260,45 @@ Verification run this session, from a freshly-fetched Flutter 3.47.4 stable inst
 ## FINAL VERDICT (after the focused P2 fix)
 
 **READY.** The one blocking P2 this Broad Review identified (`projectInterviewSessions` composite-identity widening) is now resolved, verified by a dedicated, real-production-command-driven test suite, with zero regression across the full `test/game/public_demo`/`test/ui/public_demo` suites and zero diff to any Finance/Payroll/Matching/HOME/Phase-1c-scoped file. Phase 1C's comparison UI remains the only unimplemented, explicitly-out-of-scope item — no other prerequisite blocks it now.
+
+---
+
+## Documentation reconciliation pass (this session — docs-only, no Broad Review re-run)
+
+This is a **docs-only reconciliation pass**, not a re-review: it does not re-open, re-run, or re-request a Broad Review. Its only purpose is to (a) correct a stale HEAD value the "Post-Broad-Review focused fix" section above recorded before a later concurrent-session merge landed, and (b) restate this document's own final state in one unambiguous block, using only test results this session personally executed and observed (not copied from an earlier session's own report).
+
+### HEAD lineage (exact, per this task's own required terminology)
+
+- **Original reviewed HEAD:** `2f6f367f216856521171f6bd0be7b7aa5037cd85` (PR #258's HEAD at the start of the Claude Independent Broad Review, above).
+- **Broad Review P1 fix HEAD:** `e7996e2cf7dc9b786a42d45bb95519441eee3bdc` (HEAD after the Broad Review's own P1 fix — the "Original reviewed HEAD (this Broad Review, above)" cited by the focused-fix section further up).
+- **Focused-fix HEAD (corrected):** `ea08e6e161b8ce3b776644eac06674ca31123f5d` — the merge commit that reconciled this session's own composite-identity fix (`791e8732d30d6a16e1e17539a49a34934ab50b86`) with the concurrent independent session's equivalent fix (`7a44149077e57f0ba3be67ead9aa895764f7a16a`), per the "Concurrent-session merge" note above. This supersedes the pre-merge `791e873` value first recorded in that section; `ea08e6e` is confirmed, in this reconciliation pass, to be both this session's local HEAD and the remote `origin/claude/first-fun-year-phase-1b-2zy73j` HEAD (`git fetch` + `git rev-parse`, both sides identical, no drift).
+
+### P2 tracked by this document
+
+- **Broad Reviewで指摘されたP2:** `projectInterviewSessions` composite-key widening (Issue #257's own "必須" PR #256 carry-over item — same finding as the P2 section above).
+- **Resolution:** RESOLVED.
+- **実装 (per the "Composite-identity design" section above, re-confirmed unchanged in this pass):**
+  - `(engineerId, projectId)` composite identity for `ClientInterviewSession` lookup/replacement (`projectInterviewSessionFor`, `startProjectInterviewSession`, `concludeProjectInterview`, `concludePartnerProjectInterview`).
+  - Same engineer / two projects: sessions coexist independently (verified by the composite-identity test suite's group A/B).
+  - Stale/wrong-project identity is rejected, never silently resumed against the wrong project (group E).
+  - Save/reload round-trips a two-session-per-employee shape correctly, including the raw-level duplicate check now keyed on `'$employeeId::$projectId'` (group D, G, H).
+  - Exactly-once sales-slot consumption is preserved per genuine new attempt (group F).
+  - Duplicate/retry conclude is safe and idempotent (group F).
+  - Phase 1C's own comparison UI remains **not implemented** — out of this fix's scope, unchanged.
+
+### Verification actually performed in this reconciliation pass (this session, on HEAD `ea08e6e161b8ce3b776644eac06674ca31123f5d`)
+
+Recorded here only because this session personally ran each command against the final merged HEAD above — not copied from an earlier session's own numbers:
+
+- `flutter analyze`: **No issues found.**
+- `flutter test test/game/public_demo`: **996/996 passed**, exit code 0.
+- `flutter test test/ui/public_demo`: **741/741 passed**, exit code 0.
+- `git diff --check`: clean, exit code 0.
+
+### Final state
+
+- Blocking P2: **RESOLVED**
+- Remaining P0: **0**
+- Remaining P1: **0**
+- Remaining blocking P2: **0**
+- FINAL VERDICT: **READY**

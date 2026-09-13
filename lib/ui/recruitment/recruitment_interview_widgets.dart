@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../domain/domain.dart';
 import '../../game/game.dart';
+import '../../presentation/home/models/home_office_stage_display.dart';
 import '../widgets/labels.dart';
 import 'interview_presentation.dart';
 
@@ -90,20 +91,65 @@ class ApplicantPersonaHeader extends StatelessWidget {
   }
 }
 
+/// FIRST-FUN-QUARTER-VISUAL-POLISH P1-C: shows the same bundled portrait
+/// [homeOfficeStagePortraitFor] already picks for this exact applicant id on
+/// the 採用 tab's candidate card ([PublicDemoSalesAvatar] in
+/// `public_demo_01_placeholder_screen.dart`'s `ac(i)`), so the face the
+/// player interviews here is the same one they saw on the card and — once
+/// hired — will see again on the employee roster
+/// ([PublicDemoEmployeeAvatar]/[EngineerAvatar]), reinforcing "this is one
+/// real candidate becoming one real colleague" rather than three unrelated
+/// silhouettes. Falls back to the previous colored-circle-plus-reaction-
+/// emoji look if the portrait ever fails to decode (mirrors every other
+/// bundled-image `errorBuilder` in this app — never a dead image, never a
+/// crash), and always keeps the live [emoji] reaction as a small corner
+/// badge, since that is the one piece of information this widget conveyed
+/// that a static portrait cannot.
 class _PersonaAvatar extends StatelessWidget {
   const _PersonaAvatar({required this.seed, required this.emoji});
   final String seed;
   final String emoji;
 
   static const _palette = [Color(0xFF90CAF9), Color(0xFFA5D6A7), Color(0xFFFFCC80), Color(0xFFCE93D8), Color(0xFF80CBC4), Color(0xFFEF9A9A)];
+  static const _radius = 22.0;
 
   @override
   Widget build(BuildContext context) {
     final color = _palette[seed.hashCode.abs() % _palette.length];
-    return CircleAvatar(
-      radius: 22,
+    final fallback = CircleAvatar(
+      radius: _radius,
       backgroundColor: color.withValues(alpha: 0.45),
       child: Text(emoji, style: const TextStyle(fontSize: 20)),
+    );
+    return SizedBox(
+      width: _radius * 2,
+      height: _radius * 2,
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          ClipOval(
+            child: Image.asset(
+              homeOfficeStagePortraitFor(seed),
+              width: _radius * 2,
+              height: _radius * 2,
+              fit: BoxFit.cover,
+              errorBuilder: (context, error, stackTrace) => fallback,
+            ),
+          ),
+          Positioned(
+            right: -2,
+            bottom: -2,
+            child: Container(
+              padding: const EdgeInsets.all(1.5),
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.surface,
+                shape: BoxShape.circle,
+              ),
+              child: Text(emoji, style: const TextStyle(fontSize: 13, height: 1)),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

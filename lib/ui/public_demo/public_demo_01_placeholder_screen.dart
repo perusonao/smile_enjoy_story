@@ -14,6 +14,7 @@ import '../../game/public_demo/public_demo_internal_training_transaction.dart';
 import '../../game/public_demo/public_demo_matching_fit.dart';
 import '../../game/public_demo/public_demo_month_guard.dart';
 import '../../game/public_demo/public_demo_month_label.dart';
+import '../../game/public_demo/public_demo_monthly_close.dart';
 import '../../game/public_demo/public_demo_monthly_growth.dart';
 import '../../game/public_demo/public_demo_monthly_report_snapshot.dart';
 import '../../game/public_demo/public_demo_project_generator.dart';
@@ -1818,6 +1819,21 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
     } catch (_) {}
   }
 
+  /// FIRST-FUN-QUARTER-VISUAL-POLISH P1-A: the single place every
+  /// 上位会社面談/客先面談 surface (the legacy [PublicDemoInterviewResultDialog] path
+  /// and the interactive [PublicDemoProjectInterviewDialog]) picks its scene
+  /// image from, so the two events can never drift back to sharing one
+  /// indistinguishable photo. [partner] `true` is 上位会社面談 (the boardroom
+  /// negotiation with the prime/partner company); `false` is 客先面談 (the
+  /// end client).
+  String _interviewSceneAsset(bool partner) =>
+      partner ? AssetPaths.locationMeetingRoom : AssetPaths.locationCafeMeeting;
+
+  /// Companion to [_interviewSceneAsset] — the icon each scene's own
+  /// `errorBuilder` falls back to if the real photo ever fails to decode.
+  IconData _interviewSceneFallbackIcon(bool partner) =>
+      partner ? Icons.meeting_room_outlined : Icons.storefront_outlined;
+
   Future<void> ei(int i, PublicDemoInterviewType t) async {
     if (t == PublicDemoInterviewType.partner && s.salesRemaining <= 0) return;
     final e = workflow.engineers[i],
@@ -1836,7 +1852,7 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
     );
     if (!mounted) return;
     final partner = t == PublicDemoInterviewType.partner;
-    await _precacheEventImage(AssetPaths.eventClientInterview);
+    await _precacheEventImage(_interviewSceneAsset(partner));
     if (!mounted) return;
     // Issue #245 Finding #3 (HIDDEN-PARAMS-1): the raw `r.score`/a numeric
     // "基準点60点" threshold are never shown to the player — only the
@@ -1849,6 +1865,8 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
         interviewName: partner ? '上位会社面談' : '客先面談',
         personName: e.name,
         passed: r.passed,
+        imageAsset: _interviewSceneAsset(partner),
+        fallbackIcon: _interviewSceneFallbackIcon(partner),
         points: [
           partner ? '経歴・スキルの案件適合度を確認' : '技術力と現場での適合度を確認',
           r.passed ? '総合的な適性が評価されました' : '総合的な適性が基準に届きませんでした',
@@ -1936,7 +1954,9 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
     if (_projectInterviewLaunchInProgress) return;
     _projectInterviewLaunchInProgress = true;
     try {
-      await _precacheEventImage(AssetPaths.eventClientInterview);
+      await _precacheEventImage(
+        _interviewSceneAsset(type == PublicDemoInterviewType.partner),
+      );
       if (!mounted) return;
       await showDialog<void>(
         context: context,
@@ -2089,7 +2109,7 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
     // computed identically, purely for this dialog's own display text.
     _commitAggregate(_game.recordPreEntryPartnerInterviewResult(a.id));
     if (!mounted) return;
-    await _precacheEventImage(AssetPaths.eventClientInterview);
+    await _precacheEventImage(_interviewSceneAsset(true));
     if (!mounted) return;
     await showDialog<void>(
       context: context,
@@ -2098,6 +2118,8 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
         personName: a.name,
         score: score,
         passed: passed,
+        imageAsset: _interviewSceneAsset(true),
+        fallbackIcon: _interviewSceneFallbackIcon(true),
         points: ['入社前スキルシートと案件要件の適合度を確認', passed ? '基準点60点をクリア' : '基準点60点に届かず'],
         nextAction: passed ? '次は客先面談へ進みます' : '別案件へ再営業しましょう',
       ),
@@ -2113,7 +2135,7 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
     // computed identically, purely for this dialog's own display text.
     _commitAggregate(_game.recordPreEntryClientInterviewResult(a.id));
     if (!mounted) return;
-    await _precacheEventImage(AssetPaths.eventClientInterview);
+    await _precacheEventImage(_interviewSceneAsset(false));
     if (!mounted) return;
     await showDialog<void>(
       context: context,
@@ -2122,6 +2144,8 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
         personName: a.name,
         score: score,
         passed: passed,
+        imageAsset: _interviewSceneAsset(false),
+        fallbackIcon: _interviewSceneFallbackIcon(false),
         points: [
           '入社前の技術力と案件適合度を確認',
           passed ? '入社前営業の通過基準65点をクリア' : '入社前営業の通過基準65点に届かず',
@@ -2414,7 +2438,38 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
       ),
     );
     if (!mounted || decision == null) return;
+    // FIRST-FUN-QUARTER-VISUAL-POLISH P1-E: computed from the same
+    // pre-commit `s`/`workflow` this method already closes over, via the
+    // exact same [PublicDemoMonthlyClose.previewJuly] call
+    // [PublicDemoSummerBonusDialog] itself just used to render this same
+    // `decision`'s own "支給総額" line — never a second, independently
+    // derived amount — so the confirmation below can never disagree with
+    // what the player just saw and chose.
+    final preview = PublicDemoMonthlyClose.previewJuly(
+      state: s,
+      monthlyExpenses: _julyMonthlyExpenses,
+      applicants: workflow.joinedApplicants,
+      plan: decision,
+    );
     _commitAggregate(_game.confirmSummerBonusDecision(decision));
+    if (!mounted) return;
+    // Confirms the decision was actually recorded — until now, closing this
+    // dialog silently committed with no feedback at all; the player had to
+    // notice the accounting card's own text refresh from "未決定" to
+    // "選択済み" to know anything happened.
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          decision == PublicDemoSummerBonusPlan.none
+              ? '夏季賞与を「なし」に決定しました。'
+              : '夏季賞与を「${switch (decision) {
+                  PublicDemoSummerBonusPlan.none => 'なし',
+                  PublicDemoSummerBonusPlan.half => '0.5か月',
+                  PublicDemoSummerBonusPlan.one => '1か月',
+                }}」に決定しました（支給総額 ${formatYen(preview.bonusAmount)}）。',
+        ),
+      ),
+    );
   }
 
   /// Issue #119 PLAYTHROUGH-BLOCKER-1: asks before a month-close attempt

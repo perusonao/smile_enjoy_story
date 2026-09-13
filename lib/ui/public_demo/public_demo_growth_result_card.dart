@@ -49,6 +49,25 @@ class PublicDemoGrowthResultCard extends StatelessWidget {
           Text(
             '$language ${result.capabilityBefore} → ${result.capabilityAfter}  (+$delta)',
           ),
+          // FIRST-FUN-QUARTER-VISUAL-POLISH P1-D: the text above already
+          // states the exact before/after numbers — this bar makes "研修す
+          // ると成長する" legible at a glance too, not just to a player who
+          // stops to read digits. Reuses the same 0-100 capability scale and
+          // fill-bar language [PublicDemoEmployeeSkillBar] already renders
+          // on every employee roster row ([_employeeRosterCard] in
+          // `public_demo_01_placeholder_screen.dart`), plus a thin marker at
+          // the pre-training level so the *gain* — not just the destination
+          // — reads visually. Only shown when something actually grew
+          // (`delta == 0` keeps its own plain-text "変化なし" line below,
+          // unchanged): a flat bar would visually claim a gain that did not
+          // happen.
+          if (delta > 0) ...[
+            const SizedBox(height: 4),
+            _CapabilityGrowthBar(
+              before: result.capabilityBefore,
+              after: result.capabilityAfter,
+            ),
+          ],
           if (result.actualExperienceMonthsDelta > 0)
             Text('実務経験 +${result.actualExperienceMonthsDelta}か月'),
           const SizedBox(height: 2),
@@ -57,6 +76,55 @@ class PublicDemoGrowthResultCard extends StatelessWidget {
             Text('今月は大きな変化なし', style: Theme.of(context).textTheme.bodySmall),
         ],
       ),
+    );
+  }
+}
+
+/// A 0-100 capability fill bar with a thin marker at [before], so a growth
+/// result reads as "grew from here to here" rather than just "is now at
+/// this level" — see [PublicDemoGrowthResultCard]'s own doc for why this
+/// exists alongside (not instead of) the plain-text before/after line.
+class _CapabilityGrowthBar extends StatelessWidget {
+  const _CapabilityGrowthBar({required this.before, required this.after});
+
+  final int before;
+  final int after;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final beforeFraction = (before / 100).clamp(0.0, 1.0);
+    final afterFraction = (after / 100).clamp(0.0, 1.0);
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final width = constraints.maxWidth;
+        return SizedBox(
+          height: 8,
+          width: double.infinity,
+          child: Stack(
+            children: [
+              ClipRRect(
+                borderRadius: BorderRadius.circular(4),
+                child: LinearProgressIndicator(
+                  value: afterFraction,
+                  minHeight: 8,
+                  backgroundColor: scheme.surfaceContainerHighest,
+                  valueColor: AlwaysStoppedAnimation<Color>(scheme.primary),
+                ),
+              ),
+              Positioned(
+                left: (width * beforeFraction - 1).clamp(0.0, width - 2),
+                top: 0,
+                bottom: 0,
+                child: Container(
+                  width: 2,
+                  color: scheme.onPrimary.withValues(alpha: 0.9),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 }

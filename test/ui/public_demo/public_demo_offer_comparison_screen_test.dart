@@ -49,6 +49,26 @@ PublicDemoAggregate twoPassedCandidatesFixture() {
   return aggregate;
 }
 
+/// FIRST-FUN-QUARTER-VISUAL-POLISH: mirrors `tapAndSettle`'s own real-time
+/// decode window in `public_demo_01_playthrough_test.dart` — in this
+/// Flutter SDK, `MultiFrameImageStreamCompleter` only resolves via real
+/// wall-clock scheduling, which the fake clock `tester.pump()`/
+/// `pumpAndSettle()` drives never completes on its own. The confirm-yes tap
+/// below runs `_recordOfferCandidateOrder`, which awaits
+/// `_precacheEventImage(AssetPaths.eventOrderDecision)` before its own
+/// `showDialog` — needed now that P1-B repointed that asset from a corrupt
+/// file (which failed to decode near-instantly, incidentally making the
+/// unpatched fake clock "work") to a real, decodable photo.
+Future<void> _awaitRealImageDecode(WidgetTester tester) async {
+  for (var i = 0; i < 10; i++) {
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 150)),
+    );
+    await tester.pump();
+  }
+  await tester.pumpAndSettle();
+}
+
 Future<void> pumpEmployeesTabAt(
   WidgetTester tester,
   PublicDemoAggregate aggregate, {
@@ -159,7 +179,7 @@ void main() {
       await tester.tap(
         find.byKey(const Key('public-demo-offer-comparison-order-confirm-yes')),
       );
-      await tester.pumpAndSettle();
+      await _awaitRealImageDecode(tester);
 
       // SES First Fun Quarter Fresh Audit fix: ordering through
       // 候補案件を比較 now shows the same order-decision celebration

@@ -122,11 +122,33 @@ class PublicDemoEmployeeStatusResolver {
   /// selected" fact remains available to a caller that wants to show it
   /// (`PublicDemoState.trainingSelections.containsKey(id)`) but it is
   /// deliberately not this resolver's concern.
+  /// SES First Fun Quarter AI Replay Audit #2 P1-2 Fresh Audit fix:
+  /// [isActivelyAssignedAtWaitingStage] names the one case a `waiting`
+  /// engineer is genuinely, currently participating in a project despite
+  /// [stage] never having reached [PublicDemoSalesStage.ordered] — an
+  /// applicant who joins already carrying a pre-entry order becomes an
+  /// engineer at `waiting` in the very same close that
+  /// [PublicDemoWorkflowState.assignOrderedForMay] also adds them to the
+  /// assignment roster ([PublicDemoEngineerSales.fromApplicant] never
+  /// inherits the applicant's own pipeline stage). Deliberately a distinct
+  /// parameter from [isCurrentlyAssigned], not a widened meaning of it: the
+  /// existing `ordered` branch below must keep treating even a
+  /// `nextOrderStatus == notOffered` still-`ordered` engineer as 参画中 (they
+  /// are still genuinely working this month right up until
+  /// [PublicDemoWorkflowState.endAssignment] actually releases them) —
+  /// changing what [isCurrentlyAssigned] itself means would regress that.
+  /// The caller is expected to set this only when [stage] is already
+  /// `waiting` (see [PublicDemoEmployeeStatusResolver]'s own top-of-file
+  /// authority note) — this resolver does not re-derive it from
+  /// [PublicDemoAssignment.nextOrderStatus] itself, staying a pure function
+  /// of exactly the facts its caller already computed. Defaults `false` so
+  /// every pre-existing caller/test keeps its exact prior behavior.
   static PublicDemoEmployeeStatusDisplay resolve({
     required PublicDemoSalesStage stage,
     required bool isCurrentlyAssigned,
     required bool isReadyForFieldSales,
     required bool fieldSalesActionReachableThisMonth,
+    bool isActivelyAssignedAtWaitingStage = false,
   }) {
     switch (stage) {
       case PublicDemoSalesStage.ordered:
@@ -140,6 +162,12 @@ class PublicDemoEmployeeStatusResolver {
                 tone: PublicDemoEmployeeStatusTone.waiting,
               );
       case PublicDemoSalesStage.waiting:
+        if (isActivelyAssignedAtWaitingStage) {
+          return const PublicDemoEmployeeStatusDisplay(
+            label: '参画中',
+            tone: PublicDemoEmployeeStatusTone.assigned,
+          );
+        }
         if (!isReadyForFieldSales) {
           return const PublicDemoEmployeeStatusDisplay(
             label: '研修が必要',

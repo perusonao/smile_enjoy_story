@@ -190,6 +190,10 @@ Future<void> _hireAppOneWithoutPreEntrySales(WidgetTester tester) async {
   await _tapAndSettle(tester, '合格・給与提示');
   await tester.tap(find.byKey(const Key('public-demo-salary-offer-370000')));
   await tester.pumpAndSettle();
+  // SES First Fun Quarter AI Replay Audit #2 P1-3: a one-time result
+  // confirmation now appears before any further action is reachable.
+  await tester.tap(find.byKey(const Key('public-demo-offer-result-close')));
+  await tester.pumpAndSettle();
 }
 
 /// Runs app-01's full post-join sales pipeline (identical shape to a

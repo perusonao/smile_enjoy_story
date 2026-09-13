@@ -77,7 +77,7 @@ void main() {
     // now (PUBLIC-DEMO-HOME-UI-3B moved growth results off HOME). Both
     // engineers waited, so no practical experience is claimed.
     await switchPublicDemoTab(tester, PublicDemoTab.employees);
-    expect(find.text('今月の成長'), findsOneWidget);
+    expect(find.text('先月の成長結果'), findsOneWidget);
     expect(find.text('待機中の自己学習'), findsNWidgets(2));
     expect(find.textContaining('実務経験'), findsNothing);
 

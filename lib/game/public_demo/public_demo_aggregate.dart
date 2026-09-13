@@ -201,6 +201,24 @@ class PublicDemoAggregate {
     String projectId,
   ) => workflow.offerCandidateFor(engineerId, projectId);
 
+  /// Every candidate currently held for [engineerId] (see
+  /// [PublicDemoWorkflowState.offerCandidatesForEngineer]) — the read
+  /// surface Phase 1c's own comparison screen is built on.
+  List<PublicDemoOfferCandidate> offerCandidatesForEngineer(
+    String engineerId,
+  ) => workflow.offerCandidatesForEngineer(engineerId);
+
+  /// Issue #245 Finding #4, Phase 1c: the real ordered project id for
+  /// [engineerId], resolved from `offerCandidates` rather than the
+  /// engineer's own coarse [PublicDemoEngineerSales.genuineInterviewProjectId]
+  /// (always `null` for an engineer ordered via
+  /// [recordOfferCandidateOrder] — see its own doc) — the same fallback
+  /// [PublicDemoWorkflowState.assignOrderedForMay]/[recoverLateYearAssignment]
+  /// already use internally, exposed read-only for display callers such as
+  /// `PublicDemoProjectContextResolver`.
+  String? orderedOfferCandidateProjectIdFor(String engineerId) =>
+      workflow.orderedOfferCandidateFor(engineerId)?.projectId;
+
   /// The Phase 1a analogue of [proposeMatch], validated the same way: a
   /// no-op unless [projectId] actually names one of the candidates
   /// currently displayed for [PublicDemoState.month] (the real, seeded
@@ -298,6 +316,111 @@ class PublicDemoAggregate {
         projectId: projectId,
         profile: engineer.interviewProfile,
         actualCapability: state.runtimeForOrNull(engineerId)?.actualCapability ?? 0,
+      ),
+    );
+  }
+
+  /// Issue #245 Finding #4, Phase 1c (Comparison UI): whether [engineerId]
+  /// can be proposed for an ADDITIONAL project — a genuinely second (or
+  /// later) parallel [PublicDemoOfferCandidate] — alongside whatever
+  /// candidate(s) they already hold, via [proposeAdditionalOfferCandidate].
+  ///
+  /// Deliberately a NARROWER, separate eligibility check from
+  /// [availableEngineersForMatching] (unchanged by this phase, per its own
+  /// scope) rather than a relaxation of it: this only ever matters once an
+  /// engineer is already actively pursuing sales (not `waiting`/`skillSheet`
+  /// — those still funnel through the existing 営業開始/案件紹介 flow
+  /// unchanged), not yet genuinely `ordered` for any project, and not
+  /// already staffed this month. Never true for a `waiting`/`skillSheet`
+  /// engineer, so the existing single-project onboarding flow this task's
+  /// own guardrail requires ("既存の受注導線がある場合は、無理に比較操作を
+  /// 増やさない") is completely unaffected — this is purely an ADDITIONAL
+  /// option once a player already has a live candidate to compare against.
+  ///
+  /// Codex Broad Review (PR #260) Finding #2 fix: [engineer.stage] alone is
+  /// the correct, sufficient "is this engineer CURRENTLY committed" signal —
+  /// every real order path ([PublicDemoWorkflowState.recordOrder]/
+  /// [recordOfferCandidateOrder]) sets it to [PublicDemoSalesStage.ordered]
+  /// in the exact same atomic step it marks a candidate ordered, and
+  /// [PublicDemoEngineerSales.releaseFromAssignment] (the sole production
+  /// path back out of it, via [PublicDemoWorkflowState.endAssignment])
+  /// resets it to `waiting` once a real assignment genuinely ends. An OLDER
+  /// version of this method also separately checked
+  /// `offerCandidatesForEngineer(...).any(ordered)` — redundant with the
+  /// [engineer.stage] check above for a CURRENTLY ordered engineer, and
+  /// actively WRONG for one who already completed a full order →
+  /// assignment → release cycle: `offerCandidates` never deletes history (by
+  /// design — see `public_demo_offer_candidate.dart`'s own doc), so that
+  /// historical, already-superseded `ordered` entry permanently blocked
+  /// every later sales cycle's own additional-proposal action, even though
+  /// the engineer had genuinely returned to `waiting` and started completely
+  /// fresh. Removed rather than "fixed", since it added no eligibility case
+  /// the [engineer.stage] check does not already cover correctly.
+  bool canProposeAdditionalOfferCandidate(String engineerId) {
+    final engineer = workflow.engineers
+        .where((candidate) => candidate.id == engineerId)
+        .firstOrNull;
+    if (engineer == null) return false;
+    if (workflow.assignedEngineerIds(month: state.month).contains(engineerId)) {
+      return false;
+    }
+    if (engineer.stage == PublicDemoSalesStage.waiting ||
+        engineer.stage == PublicDemoSalesStage.skillSheet ||
+        engineer.stage == PublicDemoSalesStage.ordered) {
+      return false;
+    }
+    return true;
+  }
+
+  /// Issue #245 Finding #4, Phase 1c: the player-facing "別の案件も提案する"
+  /// action from the comparison screen — proposes [engineerId] for
+  /// [projectId] as a genuinely new, independent
+  /// [PublicDemoOfferCandidate] alongside whatever this engineer already
+  /// holds, gated by [canProposeAdditionalOfferCandidate] (never bypassed by
+  /// calling [proposeOfferCandidate] directly from UI code — that method's
+  /// own doc explicitly leaves eligibility to whichever phase wires it into
+  /// real UI; this is that wiring). Deliberately reuses [proposeOfferCandidate]
+  /// verbatim rather than duplicating its own real-project-pool validation —
+  /// never [proposeMatch]/[PublicDemoWorkflowState.withMatchingProposal],
+  /// which stay completely untouched by this phase and remain the sole path
+  /// for a `waiting`/`skillSheet`/`selling` engineer's FIRST proposal.
+  PublicDemoAggregate proposeAdditionalOfferCandidate({
+    required String engineerId,
+    required String projectId,
+  }) {
+    if (!canProposeAdditionalOfferCandidate(engineerId)) return this;
+    return proposeOfferCandidate(engineerId: engineerId, projectId: projectId);
+  }
+
+  /// Issue #245 Finding #4, Phase 1c: the safe production entry point for
+  /// the comparison screen's own "この案件を受注" action — lets the player
+  /// order ANY of [engineerId]'s several concluded candidates, not only
+  /// whichever one [recordOrder] would resolve from the engineer's single
+  /// current [PublicDemoWorkflowState.matchingProposalFor]. Re-verifies the
+  /// target candidate's own identity/stage/genuine-record independently
+  /// (defense in depth alongside
+  /// [PublicDemoWorkflowState.recordOfferCandidateOrder]'s own identical
+  /// guard — never trusts a caller-supplied outcome) and refuses when
+  /// [engineerId] is already staffed this month (mirrors [proposeMatch]/
+  /// [recordOrder]'s own "never mutate a currently-assigned engineer's sales
+  /// pipeline" precondition).
+  PublicDemoAggregate recordOfferCandidateOrder({
+    required String engineerId,
+    required String projectId,
+  }) {
+    if (workflow.assignedEngineerIds(month: state.month).contains(engineerId)) {
+      return this;
+    }
+    final target = workflow.offerCandidateFor(engineerId, projectId);
+    if (target == null ||
+        target.stage != PublicDemoOfferCandidateStage.clientInterviewPassed ||
+        !target.hasGenuineInterviewRecord) {
+      return this;
+    }
+    return _copyWith(
+      workflow: workflow.recordOfferCandidateOrder(
+        engineerId: engineerId,
+        projectId: projectId,
       ),
     );
   }

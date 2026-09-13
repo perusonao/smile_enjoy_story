@@ -723,8 +723,17 @@ void main() {
   );
 
   group('Integrity: fake/mismatched proof, duplicate, multiple ordered', () {
-    test('a raw save asserting stage: ordered on a candidate whose OWN '
-        'engineer is not itself genuinely ordered is rejected', () {
+    test('Codex Broad Review (PR #260) Finding #2 fix: a raw save asserting '
+        'stage: ordered on a candidate whose OWN engineer is NOT currently '
+        '`ordered` is no longer rejected outright — this is the exact same '
+        'raw shape a genuine multi-cycle history now legitimately produces '
+        '(see Finding #2: order -> assignment -> release -> a fresh cycle '
+        'reaching any OTHER stage while an earlier project stays '
+        'historically `ordered` forever). The engineer\'s own `stage` gate '
+        'on assignOrderedForMay/recoverLateYearAssignment — never this raw-'
+        'envelope check — is what actually keeps a genuinely-forged claim '
+        'of this shape inert; this test now verifies THAT keeps holding.',
+        () {
       final passed = clientPassed();
       final json = codec.toJson(passed.aggregate);
       final workflow =
@@ -737,8 +746,25 @@ void main() {
       );
       candidates[index] = {...candidates[index], 'stage': 'ordered'};
       workflow['offerCandidates'] = candidates;
-      // engineer.stage is still clientInterviewPassed, not ordered.
-      expect(codec.fromJson(json), isNull);
+      // engineer.stage is still clientInterviewPassed, not ordered — this
+      // save now loads successfully (see this test's own updated doc).
+      final reloaded = codec.fromJson(json);
+      expect(reloaded, isNotNull);
+      expect(
+        reloaded!.offerCandidateFor('eng-01', passed.projectId)!.stage,
+        PublicDemoOfferCandidateStage.ordered,
+      );
+      // Inert: assignOrderedForMay's own FIRST, unconditional precondition
+      // (`engineer.stage == ordered`) is untouched by the mutation above —
+      // this candidate-level claim alone can never materialize a real
+      // assignment for an engineer whose own stage disagrees.
+      final assigned = reloaded.closeApril(monthlyExpenses: 0);
+      expect(
+        assigned.workflow.assignments.where(
+          (assignment) => assignment.engineerId == 'eng-01',
+        ),
+        isEmpty,
+      );
     });
 
     test('a fake interview proof (clientInterviewPassed with no genuine '

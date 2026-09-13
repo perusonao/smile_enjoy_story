@@ -59,6 +59,7 @@ import 'public_demo_month_guard_warning_dialog.dart';
 import 'public_demo_monthly_cash_flow_card.dart';
 import 'public_demo_monthly_report_dialog.dart';
 import 'public_demo_monthly_report_display_data.dart';
+import 'public_demo_offer_comparison_screen.dart';
 import 'public_demo_project_context.dart';
 import 'public_demo_project_context_resolver.dart';
 import 'public_demo_project_interview_dialog.dart';
@@ -1351,6 +1352,67 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
         imageKey: const Key('public-demo-order-decision-image'),
         message: '${e.name}さんの5月分案件を受注しました。',
         nextAction: '翌月からの参画に備え、残りの営業状況も確認しましょう。',
+      ),
+    );
+  }
+
+  /// Issue #245 Finding #4, Phase 1c: opens "候補案件を比較" — the real
+  /// player-facing loop this Finding exists for (技術者 → 候補案件一覧 →
+  /// 案件ごとの面談結果 → 条件比較 → 受注案件を選択). Every callback below
+  /// wraps an existing, unchanged [PublicDemoAggregate] production method
+  /// (never a new order/interview authority) and re-commits through
+  /// [_commitAggregate] exactly like every other action on this screen, so
+  /// save/reload, month-boundary, and every other cross-cutting invariant
+  /// this screen already enforces apply unchanged. `setState(() {})` after
+  /// each action re-reads the LIVE `_game`/`s` fields the callbacks close
+  /// over (never a snapshot), so the pushed screen reflects the just-
+  /// committed state on its very next rebuild — the same pattern
+  /// [_openProjectMatching]'s own pushed screen already relies on.
+  void _openOfferComparison(PublicDemoEngineerSales engineer) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => PublicDemoOfferComparisonScreen(
+          engineerId: engineer.id,
+          engineerName: engineer.name,
+          runSeed: s.runSeed,
+          candidatesFor: () => _game.offerCandidatesForEngineer(engineer.id),
+          canProposeAdditional: () =>
+              _game.canProposeAdditionalOfferCandidate(engineer.id),
+          additionalProjectPoolFor: () {
+            final heldProjectIds = _game
+                .offerCandidatesForEngineer(engineer.id)
+                .map((candidate) => candidate.projectId)
+                .toSet();
+            return [
+              for (final project in _game.projectCandidatesForMonth(s.month))
+                if (!heldProjectIds.contains(project.id)) project,
+            ];
+          },
+          onProposeAdditional: (projectId) => _commitAggregate(
+            _game.proposeAdditionalOfferCandidate(
+              engineerId: engineer.id,
+              projectId: projectId,
+            ),
+          ),
+          onInterviewPartner: (projectId) => _commitAggregate(
+            _game.evaluatePartnerInterviewForCandidate(
+              engineerId: engineer.id,
+              projectId: projectId,
+            ),
+          ),
+          onInterviewClient: (projectId) => _commitAggregate(
+            _game.evaluateClientInterviewForCandidate(
+              engineerId: engineer.id,
+              projectId: projectId,
+            ),
+          ),
+          onOrder: (projectId) => _commitAggregate(
+            _game.recordOfferCandidateOrder(
+              engineerId: engineer.id,
+              projectId: projectId,
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -3814,6 +3876,33 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
+            // Issue #245 Finding #4, Phase 1c: "候補が複数ある技術者について
+            // 明確なCTAを表示" — only once a genuinely second candidate
+            // exists does this become "候補案件を比較"; a single-candidate
+            // (or zero-candidate but already mid-pipeline) engineer instead
+            // gets the lighter "他の案件も提案する" entry into the same
+            // screen, per this task's own "既存の受注導線がある場合は、
+            // 無理に比較操作を増やさない" guardrail — the existing single-
+            // project buttons below are completely unchanged either way.
+            if (_game.offerCandidatesForEngineer(e.id).length > 1)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 6),
+                child: FilledButton.tonalIcon(
+                  key: Key('public-demo-offer-comparison-open-${e.id}'),
+                  onPressed: () => _openOfferComparison(e),
+                  icon: const Icon(Icons.compare_arrows),
+                  label: const Text('候補案件を比較'),
+                ),
+              )
+            else if (_game.canProposeAdditionalOfferCandidate(e.id))
+              Padding(
+                padding: const EdgeInsets.only(bottom: 6),
+                child: OutlinedButton(
+                  key: Key('public-demo-offer-comparison-open-${e.id}'),
+                  onPressed: () => _openOfferComparison(e),
+                  child: const Text('他の案件も提案する'),
+                ),
+              ),
             const SizedBox(height: 6),
             if (!readyForFieldSales(e.id) &&
                 (e.stage == PublicDemoSalesStage.waiting ||
@@ -4619,7 +4708,9 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
       assignmentProjectId: assignment == null
           ? null
           : _authoritativeProjectIdFor(assignment),
-      genuineInterviewProjectId: engineer.genuineInterviewProjectId,
+      genuineInterviewProjectId:
+          engineer.genuineInterviewProjectId ??
+          _game.orderedOfferCandidateProjectIdFor(engineer.id),
       matchingProposalProjectId: workflow
           .matchingProposalFor(engineer.id)
           ?.projectId,

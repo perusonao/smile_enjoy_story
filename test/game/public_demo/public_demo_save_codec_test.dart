@@ -1312,10 +1312,16 @@ void main() {
           'proposedMonth': 4,
           'stage': 'clientInterviewPassed',
           'partnerScore': 80,
-          // Implausible: PublicDemoInterviewEvaluator never mints a genuine
-          // pass below 60 — this score could only ever come from a real
-          // fail, which never mints an interviewRecord.
-          'clientScore': 10,
+          // Implausible: Issue #245 Finding #4, Phase 1c self-hardening fix
+          // — an offer candidate's own genuine clientScore can legitimately
+          // come from EITHER PublicDemoInterviewEvaluator's fixed `>= 60`
+          // threshold OR a genuine, low-rate Project Interview Gameplay
+          // stochastic pass (as low as `5`, its own real clamp floor — see
+          // PublicDemoSaveCodec's own doc), so `10` alone is no longer
+          // implausible by itself (this test used to assert exactly that,
+          // before this fix). Below `5`, no real evaluation path — genuine
+          // or stochastic — can ever produce a pass at all.
+          'clientScore': 2,
           'interviewRecordEngineerId': 'eng-01',
           'interviewRecordProjectId': 'project-4-1',
         },

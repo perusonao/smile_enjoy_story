@@ -60,13 +60,27 @@ class _FixedSaveService extends PublicDemoSaveService {
   Future<bool> clear() async => true;
 }
 
-/// `runSeed` 1's real free-medium May candidate (山本智子, `interviewScore`
-/// 61 — clears the real 60 offer threshold, confirmed below, never
-/// asserted to) driven to a genuine "採用候補として進める" decision, exactly
-/// like `public_demo_issue245_recruitment_lifecycle_visibility_test.dart`'s
-/// own `_mayWithOneDecidedHiredAboveThresholdApplicant` fixture.
+/// `runSeed` 9's real free-medium May candidate (佐藤亮, `interviewScore`
+/// 76 — clears the real 60 offer threshold, confirmed below, never
+/// asserted to) driven to a genuine "採用候補として進める" decision through
+/// the real interactive Q&A, exactly like `public_demo_issue245_
+/// recruitment_lifecycle_visibility_test.dart`'s own
+/// `_mayWithOneDecidedHiredAboveThresholdApplicant` fixture.
+///
+/// AI Replay Audit #3 P1 fix: the real eligibility gate is now
+/// [PublicDemoRecruitmentInterview.finalEvaluationScore] (baseline
+/// `interviewScore` folded with this candidate's actual Q&A answer
+/// credibility for technical/career/teamwork), not `interviewScore` alone
+/// -- this seed was picked specifically because that final evaluation (87)
+/// clears 60 with a wide margin, unlike the previous `runSeed` 1 fixture
+/// (baseline 61, but this candidate's real answers land the final
+/// evaluation at 54 for every possible 3-question combination, so it can no
+/// longer reach this fixture's own "genuinely eligible" precondition). This
+/// file's own tests are about the offer-result dialog, not interview
+/// scoring, so the seed was swapped for one where eligibility is robust,
+/// rather than fabricating a session.
 PublicDemoAggregate _mayWithOneInterviewedHiredApplicant() {
-  const seed = 1;
+  const seed = 9;
   var aggregate = PublicDemoAggregate.initial(
     runSeed: seed,
   ).closeApril(monthlyExpenses: _expense);
@@ -214,17 +228,17 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('給与を提示'), findsOneWidget);
 
-      // requested 270,000 + 40,000 = above-request offer -> accepted.
-      await tester.tap(find.byKey(const Key('public-demo-salary-offer-310000')));
+      // requested 220,000 + 40,000 = above-request offer -> accepted.
+      await tester.tap(find.byKey(const Key('public-demo-salary-offer-260000')));
       await tester.pumpAndSettle();
 
       expect(
-        find.byKey(const Key('public-demo-offer-result-dialog-山本 智子')),
+        find.byKey(const Key('public-demo-offer-result-dialog-佐藤 亮')),
         findsOneWidget,
       );
       expect(find.text('内定承諾'), findsOneWidget);
-      expect(find.text('山本 智子'), findsWidgets);
-      expect(find.text('提示給与 ${formatYen(310000)}'), findsOneWidget);
+      expect(find.text('佐藤 亮'), findsWidgets);
+      expect(find.text('提示給与 ${formatYen(260000)}'), findsOneWidget);
       expect(find.text('希望給与を上回る条件で入社'), findsOneWidget);
       // Still modal -- the barrier blocks any tap from reaching whatever
       // HOME renders underneath, so the guided flow cannot have moved on.
@@ -252,14 +266,14 @@ void main() {
       await tester.tap(_ctaFinder);
       await tester.pumpAndSettle();
 
-      // requested 270,000 - 40,000 = below-request offer -> declined
-      // (acceptanceScore 70 - 16 = 54, confirmed by construction).
-      await tester.tap(find.byKey(const Key('public-demo-salary-offer-230000')));
+      // requested 220,000 - 40,000 = below-request offer -> declined
+      // (acceptanceScore 62 - 16 = 46, confirmed by construction).
+      await tester.tap(find.byKey(const Key('public-demo-salary-offer-180000')));
       await tester.pumpAndSettle();
 
       expect(find.text('内定辞退'), findsOneWidget);
-      expect(find.text('山本 智子'), findsWidgets);
-      expect(find.text('提示給与 ${formatYen(230000)}'), findsOneWidget);
+      expect(find.text('佐藤 亮'), findsWidgets);
+      expect(find.text('提示給与 ${formatYen(180000)}'), findsOneWidget);
       expect(find.text('希望給与を下回る条件で入社'), findsOneWidget);
 
       await tester.tap(_resultCloseFinder);
@@ -286,11 +300,11 @@ void main() {
       await switchPublicDemoTab(tester, PublicDemoTab.sales);
       await tester.tap(find.widgetWithText(FilledButton, '合格・給与提示'));
       await tester.pumpAndSettle();
-      await tester.tap(find.byKey(const Key('public-demo-salary-offer-310000')));
+      await tester.tap(find.byKey(const Key('public-demo-salary-offer-260000')));
       await tester.pumpAndSettle();
 
       expect(
-        find.byKey(const Key('public-demo-offer-result-dialog-山本 智子')),
+        find.byKey(const Key('public-demo-offer-result-dialog-佐藤 亮')),
         findsOneWidget,
       );
       await tester.tap(_resultCloseFinder);
@@ -314,7 +328,7 @@ void main() {
 
       await tester.tap(_ctaFinder);
       await tester.pumpAndSettle();
-      await tester.tap(find.byKey(const Key('public-demo-salary-offer-310000')));
+      await tester.tap(find.byKey(const Key('public-demo-salary-offer-260000')));
       await tester.pumpAndSettle();
       await tester.tap(_resultCloseFinder);
       await tester.pumpAndSettle();

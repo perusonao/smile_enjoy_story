@@ -441,12 +441,23 @@ PublicDemoAggregate _mayWithOneStalledBelowThresholdInterviewedApplicant() {
   return aggregate;
 }
 
-/// The non-stalled counterpart: same technique, but `runSeed` 1's real
+/// The non-stalled counterpart: same technique, but `runSeed` 9's real
 /// `interviewScore` clears the real 60 threshold, so the offer button stays
 /// legally pressable (`active`) after the exact same "採用候補として進める"
 /// decision.
+///
+/// AI Replay Audit #3 P1 fix: the real gate is now
+/// [PublicDemoRecruitmentInterview.finalEvaluationScore] (baseline
+/// `interviewScore` folded with this candidate's actual technical/career/
+/// teamwork Q&A answer credibility), not `interviewScore` alone -- `runSeed`
+/// 9 was picked because that final evaluation (87) clears 60 with a wide
+/// margin. The previous `runSeed` 1 fixture's baseline (61) no longer
+/// suffices: that candidate's real answers land the final evaluation at 54
+/// for every possible 3-question combination, so it can no longer reach
+/// this fixture's own "genuinely eligible" precondition -- exactly the
+/// outcome this P1 fix exists to make possible.
 PublicDemoAggregate _mayWithOneDecidedHiredAboveThresholdApplicant() {
-  const seed = 1;
+  const seed = 9;
   var aggregate = PublicDemoAggregate.initial(
     runSeed: seed,
   ).closeApril(monthlyExpenses: _expense);

@@ -185,8 +185,13 @@ Future<void> _hireAppOneWithoutPreEntrySales(WidgetTester tester) async {
   await tester.pumpAndSettle();
   await _tapAndSettle(tester, 'スキルシート確認');
   await _tapAndSettle(tester, '採用面談');
-  expect(find.text('評価: 採用基準を満たしています'), findsOneWidget);
+  // AI Replay Audit #3 P1 fix: the "評価" no longer appears at this point --
+  // it would reveal the pass/fail read before the interactive interview
+  // (and its real effect on the outcome) has even happened. It only
+  // appears once the interview is actually decided below.
+  expect(find.textContaining('評価:'), findsNothing);
   await driveRecruitmentInterviewToHireDecision(tester);
+  expect(find.text('評価: 採用基準を満たしています'), findsOneWidget);
   await _tapAndSettle(tester, '合格・給与提示');
   await tester.tap(find.byKey(const Key('public-demo-salary-offer-370000')));
   await tester.pumpAndSettle();

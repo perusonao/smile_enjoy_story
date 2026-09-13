@@ -467,4 +467,173 @@ void main() {
       expect(closed.state.month, 6);
     });
   });
+
+  group(
+    'AI Replay Audit #3 P1 fix: finalEvaluationScore folds real Q&A '
+    'answer credibility into the pre-interview interviewScore baseline',
+    () {
+      const baseline = PublicDemoApplicant(
+        id: 'probe-applicant',
+        name: 'Probe',
+        resumeSummary: 'n/a',
+        interviewScore: 50,
+        acceptanceScore: 50,
+        salesSkillFit: 50,
+      );
+
+      ApplicantAnswer answerWithCredibility(
+        InterviewQuestionCategory category,
+        int credibility,
+      ) => ApplicantAnswer(
+        category: category,
+        question: 'q',
+        answer: 'a',
+        specificity: credibility,
+        consistency: credibility,
+        confidence: credibility,
+        credibility: credibility,
+      );
+
+      RecruitmentInterviewSession completedSession(List<int> credibilities) =>
+          RecruitmentInterviewSession(
+            id: 'probe-session',
+            applicantId: baseline.id,
+            startedWeek: 1,
+            applicantValue: ApplicantValue.careerFocused,
+            selectedQuestions: const [
+              InterviewQuestionCategory.technical,
+              InterviewQuestionCategory.career,
+              InterviewQuestionCategory.reasonForChange,
+            ],
+            applicantAnswers: [
+              answerWithCredibility(
+                InterviewQuestionCategory.technical,
+                credibilities[0],
+              ),
+              answerWithCredibility(
+                InterviewQuestionCategory.career,
+                credibilities[1],
+              ),
+              answerWithCredibility(
+                InterviewQuestionCategory.reasonForChange,
+                credibilities[2],
+              ),
+            ],
+            companyImpression: 50,
+            completed: true,
+          );
+
+      test('null before the session is completed -- never displays or '
+          'gates on an evaluation before the Q&A genuinely concludes', () {
+        expect(
+          PublicDemoRecruitmentInterview.finalEvaluationScore(
+            applicant: baseline,
+            session: null,
+          ),
+          isNull,
+        );
+        final inProgress = completedSession([80, 80, 80]).copyWith(
+          completed: false,
+        );
+        expect(
+          PublicDemoRecruitmentInterview.finalEvaluationScore(
+            applicant: baseline,
+            session: inProgress,
+          ),
+          isNull,
+        );
+      });
+
+      test(
+        'consistently credible (good) answers push the score above the '
+        'interviewScore baseline; consistently poor answers push it below',
+        () {
+          final good = PublicDemoRecruitmentInterview.finalEvaluationScore(
+            applicant: baseline,
+            session: completedSession([95, 90, 92]),
+          )!;
+          final poor = PublicDemoRecruitmentInterview.finalEvaluationScore(
+            applicant: baseline,
+            session: completedSession([8, 12, 10]),
+          )!;
+          expect(
+            good,
+            greaterThan(baseline.interviewScore),
+            reason: 'good answers must be advantageous, not neutral',
+          );
+          expect(
+            poor,
+            lessThan(baseline.interviewScore),
+            reason: 'poor answers must be disadvantageous, not neutral',
+          );
+          expect(
+            good,
+            greaterThan(poor),
+            reason:
+                'the same candidate must score higher for good answers '
+                'than for poor ones -- this is what makes the Q&A '
+                'genuinely decide the outcome instead of a coin flip',
+          );
+        },
+      );
+
+      test(
+        'deterministic: the exact same answers always produce the exact '
+        'same final evaluation -- never a fresh random roll',
+        () {
+          final first = PublicDemoRecruitmentInterview.finalEvaluationScore(
+            applicant: baseline,
+            session: completedSession([70, 65, 72]),
+          );
+          final second = PublicDemoRecruitmentInterview.finalEvaluationScore(
+            applicant: baseline,
+            session: completedSession([70, 65, 72]),
+          );
+          expect(first, second);
+        },
+      );
+
+      test('clamps to the valid 0-100 evaluation range at both ends', () {
+        const strongBaseline = PublicDemoApplicant(
+          id: 'probe-applicant',
+          name: 'Probe',
+          resumeSummary: 'n/a',
+          interviewScore: 95,
+          acceptanceScore: 50,
+          salesSkillFit: 50,
+        );
+        expect(
+          PublicDemoRecruitmentInterview.finalEvaluationScore(
+            applicant: strongBaseline,
+            session: completedSession([95, 95, 95]),
+          ),
+          lessThanOrEqualTo(100),
+        );
+        const weakBaseline = PublicDemoApplicant(
+          id: 'probe-applicant',
+          name: 'Probe',
+          resumeSummary: 'n/a',
+          interviewScore: 5,
+          acceptanceScore: 50,
+          salesSkillFit: 50,
+        );
+        expect(
+          PublicDemoRecruitmentInterview.finalEvaluationScore(
+            applicant: weakBaseline,
+            session: completedSession([5, 5, 5]),
+          ),
+          greaterThanOrEqualTo(0),
+        );
+      });
+
+      test('does not mutate PublicDemoApplicant.interviewScore itself -- no '
+          'second authority, purely an additive read', () {
+        PublicDemoRecruitmentInterview.finalEvaluationScore(
+          applicant: baseline,
+          session: completedSession([95, 90, 92]),
+        );
+        expect(baseline.interviewScore, 50);
+      });
+    },
+  );
 }

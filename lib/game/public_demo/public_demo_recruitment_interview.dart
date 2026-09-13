@@ -151,4 +151,50 @@ class PublicDemoRecruitmentInterview {
     RecruitmentInterviewSession session,
     int choiceIndex,
   ) => RecruitmentInterviewEngine.answerReverse(session, choiceIndex);
+
+  /// SES First Fun Quarter AI Replay Audit #3 P1 fix: the actual, final
+  /// evaluation used for the offer-eligibility gate and the post-interview
+  /// "評価" card label -- once [session] is genuinely finished, this is no
+  /// longer [PublicDemoApplicant.interviewScore] alone (a résumé/personality
+  /// read fixed at candidate generation, before any interactive interview
+  /// even starts).
+  ///
+  /// Instead it folds in how credible the candidate's own answers actually
+  /// were across the 3 questions the player chose to ask
+  /// ([RecruitmentInterviewEngine.generateAnswer]'s `credibility`, already
+  /// computed and persisted per [ApplicantAnswer] -- no new authority, no
+  /// new save-schema field, no new RNG roll here). A candidate who gives
+  /// specific, consistent answers to the categories probed pushes this score
+  /// up from the baseline; one who is vague, inconsistent, or over-confident
+  /// pulls it down -- so which questions the player picks, and how honestly
+  /// this particular candidate answers them, now has a real, deterministic
+  /// (reload-safe) effect on whether a salary offer ever becomes possible,
+  /// instead of zero effect. `interviewScore` itself stays exactly as it
+  /// was generated -- still read as-is by
+  /// [PublicDemoEngineerRuntime._usesPotentialTemplate] and anywhere else
+  /// that is not this offer-eligibility decision -- so this is purely an
+  /// additive read, not a redefinition of the existing field.
+  ///
+  /// Returns `null` before [session] is completed (or if it has no
+  /// applicant answers yet): callers must not display or gate on any
+  /// evaluation before the interactive interview genuinely concludes -- see
+  /// the Result Report's "面談前に結果を先取りして見せない" requirement.
+  static int? finalEvaluationScore({
+    required PublicDemoApplicant applicant,
+    required RecruitmentInterviewSession? session,
+  }) {
+    if (session == null ||
+        !session.completed ||
+        session.applicantAnswers.isEmpty) {
+      return null;
+    }
+    final totalCredibility = session.applicantAnswers.fold<int>(
+      0,
+      (sum, answer) => sum + answer.credibility,
+    );
+    final averageCredibility =
+        totalCredibility / session.applicantAnswers.length;
+    final credibilityDelta = ((averageCredibility - 50) / 2.5).round();
+    return (applicant.interviewScore + credibilityDelta).clamp(0, 100);
+  }
 }

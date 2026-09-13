@@ -223,8 +223,13 @@ void main() {
     // requested salary and wins a June order before joining.
     await tapAndSettle(tester, 'スキルシート確認');
     await tapAndSettle(tester, '採用面談');
-    expect(find.text('評価: 採用基準を満たしています'), findsOneWidget);
+    // AI Replay Audit #3 P1 fix: the "評価" no longer appears at this point
+    // -- it would reveal the pass/fail read before the interactive
+    // interview (and its real effect on the outcome) has even happened.
+    // It only appears once the interview is actually decided below.
+    expect(find.textContaining('評価:'), findsNothing);
     await driveRecruitmentInterviewToHireDecision(tester);
+    expect(find.text('評価: 採用基準を満たしています'), findsOneWidget);
     await tapAndSettle(tester, '合格・給与提示');
     expect(find.text('給与を提示'), findsOneWidget);
     expect(find.text('月給 ¥37万'), findsWidgets);

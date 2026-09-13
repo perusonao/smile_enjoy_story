@@ -233,4 +233,75 @@ reasons already established by prior work on this codebase.
 
 ## Test results
 
-<!-- filled in after flutter analyze / full suite -->
+- `flutter analyze` (whole repo) — no issues found.
+- `git diff --check` — clean, no whitespace errors.
+- New focused tests (all green):
+  - `public_demo_growth_section_label_p1_1_test.dart` (P1-1: training未選択
+    / training選択直後 / month close後 / assignment由来growthとの混同なし)
+  - `public_demo_home_employee_status_p1_2_test.dart` (P1-2: join +
+    assignment at the month boundary / save-reload / assignment終了・待機復帰
+    regression guard)
+  - `public_demo_offer_result_feedback_test.dart` (P1-3: HOME経由
+    acceptance / HOME経由 decline / Sales直接経由 / 二重判定防止 / save-reload)
+  - `public_demo_offer_result_dialog_test.dart` (P1-3: 360×800 / 390×844
+    overflow check, accepted + declined)
+- Existing tests updated for the P1-1 rename and P1-3's new modal step
+  (`public_demo_01_playthrough_test.dart`,
+  `public_demo_01_success_playthrough_test.dart`,
+  `public_demo_growth_result_card_test.dart`,
+  `public_demo_01_suzuki_sales_yearend_boundary_test.dart`,
+  `public_demo_01_recovery_ui_test.dart`,
+  `public_demo_01_home_runtime_read_test.dart`) — all green after the
+  update; no assertion's underlying behavior was weakened, only extended
+  for the new dialog step or the renamed heading.
+- Full `flutter test test/game/public_demo test/ui/public_demo` — **1789
+  tests, all green**, zero regressions. (One first-pass failure was found
+  and fixed during this work: `public_demo_01_success_playthrough_test
+  .dart`'s own updated assertion initially matched both the new result
+  dialog's title and the underlying Sales-tab card's already-updated status
+  badge simultaneously — narrowed to the dialog's own key; not a product
+  bug.)
+- Overflow (360×800 / 390×844): covered by the new `public_demo_offer_
+  result_dialog_test.dart` directly, and by the many existing overflow
+  suites in the full run above (e.g. `public_demo_01_month_start_status_
+  recommended_action_test.dart`, `public_demo_01_home3_integration_test
+  .dart`) which stayed green with the P1-1/P1-2 changes in place.
+- HOME vs 社員 status agreement, training's false +0/変化なし claim, decline
+  confirmed before advancing, no accept/decline double-processing, and
+  save/reload stability — each directly asserted in the three new P1
+  focused-test files above, not just implied by the full suite staying
+  green.
+
+## Self-review (Broad-Review-equivalent hardening pass)
+
+Performed per task instructions in lieu of a separate Codex Broad Review
+(deferred to a later, separate pass on the PR per task instructions):
+
+- Re-read every changed production line adversarially for a P0/P1: none
+  found. The three fixes are each either a pure text/label change (P1-1),
+  an additive fact read from already-existing, already-persisted data with
+  no new authority and a regression test pinning the one case that could
+  have broken (P1-2), or a pure read-only display of an already-committed
+  domain decision with no new domain call (P1-3).
+- Checked every changed/added file for save-schema impact:
+  `PublicDemoMonthlyGrowth`, `PublicDemoAssignment`, `PublicDemoApplicant`,
+  and `PublicDemoEngineerSales` are all byte-for-byte unchanged — no
+  `toJson`/`fromJson` touched anywhere in this change.
+- Checked every changed/added file for domain-authority impact:
+  `PublicDemoGrowthEngine`, `PublicDemoState.applyMonthlyGrowth`,
+  `PublicDemoOfferAcceptance.accept`,
+  `PublicDemoWorkflowState.assignOrderedForMay`/`endAssignment`, and
+  `PublicDemoEmployeeStatusResolver`'s existing branches are all
+  byte-for-byte unchanged except the one additive, default-`false`
+  parameter on the resolver (verified not to change any existing test's
+  expected output, since every pre-existing call site/test omits it).
+  Assignment start conditions, recruitment/acceptance judgement, training
+  effect values, and monthly accounting are untouched.
+- No P2 with progression/save/authority/data-integrity relevance was found
+  in the diff to flag — the only P2 addressed (P2-6) is a wording
+  consequence of the P1-1 fix itself, already covered above.
+
+## Base / Final commits
+
+- Base `main`: `f955f88accfb3324098126f13fdde30bb6f1d83e`
+- Final HEAD: recorded in the PR description and the final chat answer.

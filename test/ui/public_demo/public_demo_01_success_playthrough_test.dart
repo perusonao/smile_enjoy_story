@@ -232,8 +232,14 @@ void main() {
     await tester.pumpAndSettle();
     // SES First Fun Quarter AI Replay Audit #2 P1-3: accepting/declining a
     // salary offer now shows a one-time result confirmation before any
-    // further action is reachable.
-    expect(find.text('内定承諾'), findsOneWidget);
+    // further action is reachable. The underlying card's own status badge
+    // already reads 内定承諾 too (both are on screen at once, the dialog on
+    // top of it), so this checks the dialog's own key rather than the text
+    // alone.
+    expect(
+      find.byKey(const Key('public-demo-offer-result-dialog-斎藤 拓也')),
+      findsOneWidget,
+    );
     await tester.tap(find.byKey(const Key('public-demo-offer-result-close')));
     await tester.pumpAndSettle();
     await tapAndSettle(tester, '入社前スキルシートを確認');

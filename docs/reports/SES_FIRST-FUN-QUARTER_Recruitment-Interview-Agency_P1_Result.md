@@ -203,6 +203,27 @@ disadvantageous relative to the same baseline, and that it clamps to
   with the label text re-verified against the fixture's real seed-9 numbers
   (baseline 80 + this fixture's fixed question set → 83, still "満たしてい
   ます", so the surrounding success-path assertions are unaffected).
+- `test/ui/public_demo/public_demo_issue245_recruitment_lifecycle_visibility_test.dart`
+  / `public_demo_offer_result_feedback_test.dart` — running the **full**
+  `test/ui/public_demo` suite (not just the focused files) surfaced two
+  fixtures whose own "genuinely eligible" precondition was written against
+  the old authority (`runSeed` 1's free-medium May candidate, baseline
+  `interviewScore` 61): under the fix, this specific candidate's real Q&A
+  answers land the final evaluation at 54 for every one of the 20 possible
+  3-question combinations (verified exhaustively before touching the
+  fixture, not assumed) — so it can no longer reach "genuinely eligible",
+  which is exactly the outcome this P1 fix exists to make possible, not a
+  bug in the fix. Swapped both fixtures to `runSeed` 9 (baseline 76, final
+  evaluation 87 for the fixture's own technical/career/teamwork question
+  set — a wide, robust margin), and updated every literal the swap
+  necessarily changes: the candidate's own name (山本智子 → 佐藤亮),
+  requested salary (270,000 → 220,000) and the two derived offer-button
+  amounts/keys (310,000/230,000 → 260,000/180,000), re-deriving the
+  accept/decline math from the existing, untouched
+  `PublicDemoSalaryOfferEvaluator` formula rather than guessing (confirmed:
+  above-request offer accepts, below-request offer declines, exactly like
+  the original fixture). No assertion's *intent* changed in either file —
+  only the concrete seed/candidate needed to keep satisfying it.
 
 ## Tests
 
@@ -215,7 +236,15 @@ disadvantageous relative to the same baseline, and that it clamps to
 - `test/ui/public_demo/public_demo_01_success_playthrough_test.dart` +
   `public_demo_01_recovery_ui_test.dart` — 3/3 pass after the assertion move.
 - Full `flutter test test/game/public_demo` — **1022/1022 pass**.
-- Full `flutter test test/ui/public_demo` — see final HEAD section below.
+- Full `flutter test test/ui/public_demo` — first run (before the fixture
+  fix above) surfaced exactly the 5 failures described in "Files changed"
+  (774 total: 769 passed / 5 failed), confirming those two files' own
+  fixtures, not a defect in `finalEvaluationScore` itself (every other
+  file in the suite, including every other seed-1/9-unrelated interview
+  fixture, passed unchanged). After the fixture fix: both affected files
+  re-verified in full isolation at **34/34 pass**; the full-suite re-run
+  was in progress at report-writing time — if it surfaces anything further
+  a follow-up commit will be pushed and this line updated.
 - Mobile overflow (360x800, 390x844): already covered by the untouched
   `public_demo_recruitment_interview_visual_test.dart` (no overflow across
   both viewports × 3 textScale factors for the full flow, reject path, and
@@ -272,13 +301,24 @@ P1's root cause — it is preserved as-is, just now keyed off
 
 ## Current status
 
-Fix implemented, tested, and verified. Committing and pushing to the
-designated branch next; PR to be opened against `main`.
+Fix implemented, tested (analyze clean, focused + full `test/game/public_demo`
+green, both regressions found by the full `test/ui/public_demo` run fixed
+and re-verified), committed, pushed, and PR opened against `main`.
 
 ## Next action
 
-Commit → push → open PR → report final HEAD SHA and PR URL.
+Watch the full `flutter test test/ui/public_demo` re-run (in progress at
+report-writing time) to completion; push a follow-up commit only if it
+surfaces anything beyond the two fixture fixes already made.
 
 ## Base main SHA
 
 `55b6c64086032e9fdbe2ce19e7821170dd3902d0`
+
+## Final HEAD SHA
+
+`e914dc0c962ec3c63c4f5f0bc41a623935203673`
+
+## PR URL
+
+https://github.com/perusonao/smile_enjoy_story/pull/264

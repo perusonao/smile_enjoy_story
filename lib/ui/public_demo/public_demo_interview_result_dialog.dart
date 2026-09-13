@@ -1,6 +1,13 @@
 import 'package:flutter/material.dart';
-import '../asset_paths.dart';
 
+/// FIRST-FUN-QUARTER-VISUAL-POLISH P1-A: [imageAsset]/[fallbackIcon] let each
+/// caller show a scene that actually matches its own [interviewName] —
+/// 上位会社面談 and 客先面談 used to hardcode the exact same handshake photo
+/// here regardless of which one this dialog was reporting on, so the two
+/// events were visually indistinguishable. Every call site now passes
+/// `AssetPaths.locationMeetingRoom`/`AssetPaths.locationCafeMeeting` by
+/// interview type — see `public_demo_01_placeholder_screen.dart`'s
+/// `_interviewSceneAsset`/`_interviewSceneFallbackIcon`.
 class PublicDemoInterviewResultDialog extends StatelessWidget {
   const PublicDemoInterviewResultDialog({
     super.key,
@@ -10,6 +17,8 @@ class PublicDemoInterviewResultDialog extends StatelessWidget {
     required this.passed,
     required this.points,
     required this.nextAction,
+    required this.imageAsset,
+    this.fallbackIcon = Icons.groups_2_outlined,
   });
 
   final String interviewName;
@@ -23,6 +32,8 @@ class PublicDemoInterviewResultDialog extends StatelessWidget {
   final bool passed;
   final List<String> points;
   final String nextAction;
+  final String imageAsset;
+  final IconData fallbackIcon;
 
   @override
   Widget build(BuildContext context) {
@@ -40,13 +51,13 @@ class PublicDemoInterviewResultDialog extends StatelessWidget {
               child: AspectRatio(
                 aspectRatio: 16 / 9,
                 child: Image.asset(
-                  AssetPaths.eventClientInterview,
+                  imageAsset,
                   key: const Key('public-demo-interview-event-image'),
                   fit: BoxFit.cover,
                   errorBuilder: (context, error, stackTrace) => Container(
                     color: scheme.surfaceContainerHighest,
                     alignment: Alignment.center,
-                    child: const Icon(Icons.groups_2_outlined, size: 48),
+                    child: Icon(fallbackIcon, size: 48),
                   ),
                 ),
               ),

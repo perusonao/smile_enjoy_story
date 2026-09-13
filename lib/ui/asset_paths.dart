@@ -26,17 +26,58 @@ class AssetPaths {
 
   static const String eventCompanyManagement =
       '$_eventsDir/company_management.jpg';
+
+  /// The two-businessmen handshake photo. FIRST-FUN-QUARTER-VISUAL-POLISH:
+  /// no longer referenced by any interview screen — every 上位会社面談/
+  /// 客先面談 surface now shows [locationMeetingRoom]/[locationCafeMeeting]
+  /// instead, so this same photo could be freed up as [eventOrderDecision]'s
+  /// replacement image (a handshake reads as "a deal was made" — a natural
+  /// fit for 受注成功 — and is a strictly better, and now unique, use of the
+  /// asset than being the one interchangeable photo behind every interview
+  /// step). Kept as its own named constant since it is still a distinct,
+  /// valid piece of art in the catalogue, independent of which event(s)
+  /// reference it.
   static const String eventClientInterview = '$_eventsDir/client_interview.jpg';
   static const String eventClientContact = '$_eventsDir/client_contact.jpg';
   static const String eventRecruitmentApplication =
       '$_eventsDir/recruitment_application.jpg';
   static const String eventSystemIncident = '$_eventsDir/system_incident.jpg';
-  static const String eventOrderDecision = '$_eventsDir/order_decision.jpg';
+
+  /// FIRST-FUN-QUARTER-VISUAL-POLISH P1-B: the original `order_decision.jpg`
+  /// this constant pointed to is corrupt on disk (a truncated JPEG missing
+  /// its SOF marker — confirmed with a manual marker walk and with Pillow's
+  /// decoder, both of which fail to identify it as an image at all).
+  /// `Image.asset` therefore never decoded it and every "受注成功" moment
+  /// (`_recordEngineerOrder`/`_recordOfferCandidateOrder`/
+  /// `_recordApplicantJuneOrder` in `public_demo_01_placeholder_screen.dart`)
+  /// silently fell back to `GameEventModal`'s generic bell-icon
+  /// `errorBuilder` — the single biggest visual gap this audit found, and
+  /// invisible to `test/ui/asset_paths_test.dart`'s own smoke test, which
+  /// only checks the bundled bytes are non-empty, never that they decode.
+  /// Repointed to reuse [eventClientInterview]'s handshake photo (see that
+  /// constant's own doc for why it was free to reuse) rather than
+  /// fabricating a new placeholder image; the broken source file has been
+  /// deleted from `assets/images/events/`.
+  static const String eventOrderDecision = '$_eventsDir/client_interview.jpg';
   static const String eventFirstAssignment = '$_eventsDir/first_assignment.jpg';
 
   static const String locationOfficeDay = '$_locationsDir/office_day.jpg';
+
+  /// FIRST-FUN-QUARTER-VISUAL-POLISH P1-A: 上位会社面談 (the formal
+  /// negotiation with the prime/partner company one pipeline stage before
+  /// the end client) — a boardroom conference table, distinct from
+  /// [locationCafeMeeting]'s more relaxed client-facing setting below.
   static const String locationMeetingRoom = '$_locationsDir/meeting_room.jpg';
   static const String locationOfficeNight = '$_locationsDir/office_night.jpg';
+
+  /// FIRST-FUN-QUARTER-VISUAL-POLISH P1-A: 客先面談 (the interview with the
+  /// actual end client) — previously indistinguishable from 上位会社面談,
+  /// which shared the exact same [eventClientInterview] handshake photo
+  /// regardless of interview type. Every interview surface (the legacy
+  /// `PublicDemoInterviewResultDialog` and the interactive
+  /// `PublicDemoProjectInterviewDialog`) now picks between this and
+  /// [locationMeetingRoom] by `PublicDemoInterviewType`, so the two events
+  /// read as visually distinct at a glance.
   static const String locationCafeMeeting = '$_locationsDir/cafe_meeting.jpg';
 
   /// HOME-COMPACT-1B.3 — a dedicated wide-aspect office banner for the

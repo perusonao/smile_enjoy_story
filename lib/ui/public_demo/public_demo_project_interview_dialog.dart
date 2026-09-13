@@ -8,6 +8,7 @@ import '../../game/public_demo/public_demo_interview.dart';
 import '../../game/public_demo/public_demo_project_generator.dart';
 import '../../game/public_demo/public_demo_project_interview.dart';
 import '../../game/public_demo/public_demo_sales.dart';
+import '../asset_paths.dart';
 import '../theme.dart';
 
 /// CORE-GAMEPLAY Phase 6 (Project Interview Gameplay) / Issue #245 Phase B2
@@ -172,6 +173,7 @@ class _PublicDemoProjectInterviewDialogState
               closeKey: Key('$_keyPrefix-close'),
               onClose: () => Navigator.of(context).pop(),
             ),
+            _InterviewLocationBanner(isPartner: _isPartner),
             const Divider(height: 1),
             Flexible(
               child: session.completed
@@ -237,6 +239,51 @@ class _TitleBar extends StatelessWidget {
           ),
           IconButton(key: closeKey, onPressed: onClose, icon: const Icon(Icons.close)),
         ],
+      ),
+    );
+  }
+}
+
+/// FIRST-FUN-QUARTER-VISUAL-POLISH P1-A: a compact scene banner so
+/// 上位会社面談 (boardroom) and 客先面談 (client-facing) read as visually
+/// distinct events even inside this shared interactive dialog shell, which
+/// otherwise renders identically for both ([_Header] below only differs by
+/// its label text). Reuses the exact same [AssetPaths.locationMeetingRoom]/
+/// [AssetPaths.locationCafeMeeting] photos [PublicDemoInterviewResultDialog]
+/// now shows for the legacy (non-interactive) leg of the same two events —
+/// see `public_demo_01_placeholder_screen.dart`'s `_interviewSceneAsset` —
+/// so a player sees the same location whichever path their save reached
+/// this interview through.
+class _InterviewLocationBanner extends StatelessWidget {
+  const _InterviewLocationBanner({required this.isPartner});
+
+  final bool isPartner;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(10),
+        child: SizedBox(
+          height: 72,
+          width: double.infinity,
+          child: Image.asset(
+            isPartner
+                ? AssetPaths.locationMeetingRoom
+                : AssetPaths.locationCafeMeeting,
+            fit: BoxFit.cover,
+            errorBuilder: (context, error, stackTrace) => Container(
+              color: scheme.surfaceContainerHighest,
+              alignment: Alignment.center,
+              child: Icon(
+                isPartner ? Icons.meeting_room_outlined : Icons.storefront_outlined,
+                size: 28,
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }

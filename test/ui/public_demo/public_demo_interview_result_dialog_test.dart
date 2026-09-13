@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:smile_enjoy_story/ui/asset_paths.dart';
 import 'package:smile_enjoy_story/ui/public_demo/public_demo_interview_result_dialog.dart';
 
 void main() {
@@ -14,6 +15,7 @@ void main() {
             passed: true,
             points: ['案件とのスキル適合が高評価', '人物面も基準を満たしています'],
             nextAction: '次は客先面談です。',
+            imageAsset: AssetPaths.locationMeetingRoom,
           ),
         ),
       ),
@@ -38,6 +40,7 @@ void main() {
             passed: false,
             points: ['スキル適合が通過基準に届きませんでした'],
             nextAction: '別案件へ再営業しましょう。',
+            imageAsset: AssetPaths.locationCafeMeeting,
           ),
         ),
       ),

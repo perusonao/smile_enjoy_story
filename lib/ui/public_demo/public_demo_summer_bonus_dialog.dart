@@ -20,8 +20,23 @@ class PublicDemoSummerBonusDialog extends StatelessWidget {
   final Iterable<PublicDemoApplicant> applicants;
   final int monthlyExpenses;
 
+  /// FIRST-FUN-QUARTER-VISUAL-POLISH P1-E: one icon per plan so the three
+  /// choices are visually scannable, not three identically-styled buttons
+  /// distinguished only by their numbers. Reuses the exact
+  /// `Icons.card_giftcard_outlined` this feature's own entry-point card
+  /// already shows (`_accountingDecisionSection` in
+  /// `public_demo_01_placeholder_screen.dart`) for the largest, headline
+  /// plan, and two related Material icons already used elsewhere in this
+  /// app's own icon language — never a new asset, never an emoji.
+  static const _planIcons = {
+    PublicDemoSummerBonusPlan.none: Icons.money_off_outlined,
+    PublicDemoSummerBonusPlan.half: Icons.paid_outlined,
+    PublicDemoSummerBonusPlan.one: Icons.card_giftcard_outlined,
+  };
+
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     Widget choice(PublicDemoSummerBonusPlan plan, String label) {
       final preview = PublicDemoMonthlyClose.previewJuly(
         state: state,
@@ -38,15 +53,24 @@ class PublicDemoSummerBonusDialog extends StatelessWidget {
               : null,
           child: Align(
             alignment: Alignment.centerLeft,
-            child: Column(
+            child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(label),
-                Text('支給総額 ${formatYen(preview.bonusAmount)}'),
-                Text('支給後の予想現預金 ${formatYen(preview.projectedCash)}'),
-                if (preview.eligibility ==
-                    PublicDemoSummerBonusEligibility.insufficientCash)
-                  const Text('現預金不足のため選択できません'),
+                Icon(_planIcons[plan], size: 20, color: scheme.primary),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(label, style: const TextStyle(fontWeight: FontWeight.bold)),
+                      Text('支給総額 ${formatYen(preview.bonusAmount)}'),
+                      Text('支給後の予想現預金 ${formatYen(preview.projectedCash)}'),
+                      if (preview.eligibility ==
+                          PublicDemoSummerBonusEligibility.insufficientCash)
+                        const Text('現預金不足のため選択できません'),
+                    ],
+                  ),
+                ),
               ],
             ),
           ),
@@ -55,7 +79,13 @@ class PublicDemoSummerBonusDialog extends StatelessWidget {
     }
 
     return AlertDialog(
-      title: const Text('夏季賞与'),
+      title: const Row(
+        children: [
+          Icon(Icons.card_giftcard_outlined, color: Color(0xFF8A5A00)),
+          SizedBox(width: 8),
+          Text('夏季賞与'),
+        ],
+      ),
       content: SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,

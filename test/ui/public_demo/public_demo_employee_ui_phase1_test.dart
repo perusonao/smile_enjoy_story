@@ -135,7 +135,12 @@ void main() {
         );
 
         expect(
-          find.text('待機 2・参画中 0・合計 2'),
+          // SES First Fun Quarter P1-1: this line was relabeled
+          // '技術者: 待機...' (was '待機...') so it reads as a technician-only
+          // count next to the new HOME-社員-count reconciliation line below
+          // it — the underlying counts (engineersWaiting/engineersAssigned/
+          // engineers.length) are unchanged.
+          find.text('技術者: 待機 2・参画中 0・合計 2'),
           findsOneWidget,
           reason:
               'the roster summary must read straight off '

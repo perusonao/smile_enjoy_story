@@ -251,14 +251,14 @@ void main() {
         final aggregate = oneAssignedOneWaitingAtMonth(8);
         await pumpDemoWith(tester, aggregate);
 
-        expect(find.text('待機 1・参画中 1・合計 2'), findsOneWidget);
+        expect(find.text('技術者: 待機 1・参画中 1・合計 2'), findsOneWidget);
         await tester.tap(
           find.byKey(
             const Key('public-demo-employee-status-filter-assigned'),
           ),
         );
         await tester.pumpAndSettle();
-        expect(find.text('待機 1・参画中 1・合計 2'), findsOneWidget);
+        expect(find.text('技術者: 待機 1・参画中 1・合計 2'), findsOneWidget);
       },
     );
 

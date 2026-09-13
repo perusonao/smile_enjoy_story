@@ -304,4 +304,5 @@ Performed per task instructions in lieu of a separate Codex Broad Review
 ## Base / Final commits
 
 - Base `main`: `f955f88accfb3324098126f13fdde30bb6f1d83e`
-- Final HEAD: recorded in the PR description and the final chat answer.
+- Final HEAD: `313d6a621b00e041d6caae491482f4748e3a8b2f`
+- PR: https://github.com/perusonao/smile_enjoy_story/pull/263

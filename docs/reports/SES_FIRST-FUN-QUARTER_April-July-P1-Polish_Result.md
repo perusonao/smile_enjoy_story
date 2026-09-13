@@ -11,7 +11,7 @@ Status: **Implemented, self-hardened, focused + full public_demo regression suit
 
 ## Final HEAD SHA
 
-`<PENDING — filled in after the Result Report commit itself, see the final chat reply for the actual value>`
+`2b220aac65ec5f0cc54f9e5c8e74a539f760510a`（実装コミット。本PR: https://github.com/perusonao/smile_enjoy_story/pull/261）
 
 ## Fresh Audit（今回の判断根拠）
 
@@ -389,10 +389,10 @@ Claude Code側では高品質な新規画像を生成できないため、以下
 
 ## Current status
 
-実装・self-hardening・focusedテスト・flutter analyze・git diff --check
-完了。Full public_demo regression suite（157ファイル）は実行完了・結果は
-本レポートの該当箇所に反映済み（下記参照）。Result Reportをcommitし、
-`claude/ses-first-fun-quarter-p1-fqw6ca`へpush、mainへのPRを作成した。
+実装・self-hardening・focusedテスト・flutter analyze・git diff --check・
+Full public_demo regression suite（157ファイル、1764テスト、全green）完了。
+Result Reportをcommitし、`claude/ses-first-fun-quarter-p1-fqw6ca`へpush、
+mainへのPR（#261）を作成した。
 
 ## Next action
 

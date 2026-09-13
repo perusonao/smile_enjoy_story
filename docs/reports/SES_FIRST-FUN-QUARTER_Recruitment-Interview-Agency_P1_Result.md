@@ -414,8 +414,10 @@ unaffected.
   decision path; without it they now hit the new grandfather branch
   instead).
 - Full `flutter test test/game/public_demo`: **1029/1029 pass**.
-- Full `flutter test test/ui/public_demo`: run in progress at
-  report-writing time — see "CI status" below for the confirmed result.
+- Full `flutter test test/ui/public_demo`: **776/776 pass** (774 existing
+  + the 2 new compat widget tests), confirmed twice — once immediately
+  after the P1-1 model/aggregate/workflow change, and again after the
+  save-codec splice fix was added on top.
 - The pre-existing AI Replay Audit #3 proof (same candidate, different
   real question sets → pass/fail flip) re-verified unaffected.
 - Claude self-hardening review performed — it is what surfaced the save
@@ -424,10 +426,14 @@ unaffected.
 
 ### CI status
 
-Both Codex review threads (P1-1, P1-2) replied to with root
-cause/fix/test summaries and resolved. Full `test/ui/public_demo` re-run
-confirmed green — see the note appended just below this section once the
-in-progress run completed.
+Both Codex review threads (P1-1, P1-2) replied to with root cause/fix/test
+summaries and resolved on GitHub. Full `flutter test test/game/public_demo`
+(1029/1029) and `flutter test test/ui/public_demo` (776/776) both
+confirmed green locally after every change in this follow-up, including
+the save-codec splice fix. `flutter analyze` and `git diff --check` clean.
+GitHub Actions CI status on the pushed commit was not separately polled
+in this session — check the PR's own Checks tab for the authoritative CI
+result.
 
 ### Remaining blockers
 
@@ -438,9 +444,9 @@ recruitment-interview agency fix and its backward-compat path) → PASS
 
 ## Next action
 
-Confirm the full `test/ui/public_demo` re-run is green, then this PR is
-ready for merge — no further action planned from this session unless the
-user asks to watch/merge it.
+Both P1s fixed, tested, committed, pushed, and both Codex threads replied
+to and resolved. No further action planned from this session unless the
+user asks to watch/merge PR #264 or check GitHub Actions CI.
 
 ## Base main SHA
 
@@ -448,8 +454,7 @@ user asks to watch/merge it.
 
 ## Final HEAD SHA
 
-(updated after the P1-1/P1-2 follow-up commit — see PR #264 for the exact
-current SHA)
+`f50d15c4ff8cd842c5c02cd3df7343c3a9069ffb`
 
 ## PR URL
 

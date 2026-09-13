@@ -162,7 +162,18 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('受注済みの案件です。'), findsOneWidget);
-      expect(find.text('見送り済みのため、この案件は受注できません。'), findsOneWidget);
+      // Codex Broad Review (PR #260) Finding #3 fix: the declined sibling
+      // GENUINELY passed its client interview before being auto-declined —
+      // the message must say so, never the generic "見送り済みのため、この
+      // 案件は受注できません。" (which would falsely read as "never
+      // qualified"), and the interview-result line above it must still say
+      // "合格", never "不合格".
+      expect(
+        find.text('客先面談に合格していましたが、他の案件を受注したため見送りになりました。'),
+        findsOneWidget,
+      );
+      expect(find.text('見送り済みのため、この案件は受注できません。'), findsNothing);
+      expect(find.textContaining('客先面談：不合格'), findsNothing);
       expect(
         find.byKey(Key('public-demo-offer-comparison-order-${other.projectId}')),
         findsNothing,
@@ -174,6 +185,86 @@ void main() {
       expect(
         find.byKey(Key('public-demo-offer-comparison-order-${chosen.projectId}')),
         findsNothing,
+      );
+    },
+  );
+
+  testWidgets(
+    'Codex Broad Review (PR #260) Finding #1 fix: パートナー面談を実施した'
+    '直後に画面を閉じずにボタンが客先面談へ切り替わり、客先面談を実施した直後'
+    'に受注ボタンが現れる（画面を閉じて開き直す必要がない）',
+    (tester) async {
+      var aggregate = PublicDemoAggregate.initial();
+      final projects = aggregate.projectCandidatesForMonth(4, count: 2);
+      // Two candidates so the CTA reads "候補案件を比較" (this task's own
+      // required label once 2+ exist) rather than the lighter single-
+      // candidate entry point — the SECOND candidate here is the one this
+      // test actually drives through its interviews without closing the
+      // screen; the first only exists to make the multi-candidate CTA the
+      // one under test.
+      aggregate = aggregate
+          .proposeOfferCandidate(engineerId: 'eng-01', projectId: projects[0].id)
+          .proposeOfferCandidate(engineerId: 'eng-01', projectId: projects[1].id);
+      final targetProjectId = projects[1].id;
+
+      await pumpEmployeesTabAt(tester, aggregate);
+      await tester.tap(find.byKey(const Key('public-demo-offer-comparison-open-eng-01')));
+      await tester.pumpAndSettle();
+
+      final partnerKey = Key(
+        'public-demo-offer-comparison-partner-interview-$targetProjectId',
+      );
+      final clientKey = Key(
+        'public-demo-offer-comparison-client-interview-$targetProjectId',
+      );
+      final orderKey = Key(
+        'public-demo-offer-comparison-order-$targetProjectId',
+      );
+
+      expect(find.byKey(partnerKey), findsOneWidget);
+      expect(find.byKey(clientKey), findsNothing);
+      expect(find.byKey(orderKey), findsNothing);
+
+      // Partner interview — without any navigation away from this screen.
+      await tester.tap(find.byKey(partnerKey));
+      await tester.pump();
+
+      // Before the fix: this screen never rebuilt, so the SAME partner
+      // button (now stale) would still be the only one present, and a
+      // second tap on it would silently re-run the already-completed
+      // transition instead of doing nothing useful.
+      expect(
+        find.byKey(clientKey),
+        findsOneWidget,
+        reason:
+            'the screen must rebuild on its own after a partner interview '
+            'action — no navigation away and back should be required',
+      );
+      expect(find.byKey(partnerKey), findsNothing);
+      expect(find.byKey(orderKey), findsNothing);
+
+      // Client interview — again, no navigation away from this screen.
+      await tester.tap(find.byKey(clientKey));
+      await tester.pump();
+
+      expect(
+        find.byKey(orderKey),
+        findsOneWidget,
+        reason:
+            'the screen must rebuild on its own after a client interview '
+            'action too, surfacing the order CTA immediately',
+      );
+      expect(find.byKey(clientKey), findsNothing);
+
+      // Duplicate tap safety on the newly-appeared order CTA itself: two
+      // rapid taps before any dialog can appear (`pump()`, not
+      // `pumpAndSettle()`, so the dialog's own animation has not settled
+      // yet) never open two stacked confirmation dialogs.
+      await tester.tap(find.byKey(orderKey));
+      await tester.pump();
+      expect(
+        find.byKey(const Key('public-demo-offer-comparison-order-confirm')),
+        findsOneWidget,
       );
     },
   );

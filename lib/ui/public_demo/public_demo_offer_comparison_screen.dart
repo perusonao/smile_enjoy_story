@@ -75,6 +75,35 @@ class _PublicDemoOfferComparisonScreenState
         projectId: projectId,
       );
 
+  /// Codex Broad Review (PR #260) Finding #1 fix: [widget.onInterviewPartner]/
+  /// [widget.onInterviewClient] only commit the mutated aggregate on the
+  /// PARENT screen (`_openOfferComparison`'s own `_commitAggregate`) — they
+  /// never by themselves trigger a rebuild of THIS screen, whose [build]
+  /// re-reads [widget.candidatesFor]/[widget.canProposeAdditional] fresh
+  /// every time it runs. Without an explicit [setState] here, the card kept
+  /// showing the pre-interview stage/CTA until the player closed and
+  /// reopened this screen (or triggered some OTHER rebuild, e.g. the order
+  /// confirmation flow, which already called [setState] correctly) — and a
+  /// second tap on the now-stale button re-ran the same, already-completed
+  /// transition (harmless, since every domain transition below is its own
+  /// precondition-gated no-op once already applied, but still surfaced as a
+  /// silently-inert button rather than the next real action).
+  ///
+  /// Both calls are synchronous (no `await` in the parent's own commit
+  /// chain), so [mounted] is checked defensively — mirroring [_confirmOrder]'s
+  /// own convention — rather than because a real async gap exists here
+  /// today; if a future caller ever makes the commit path asynchronous, this
+  /// guard is already in place.
+  void _runInterviewPartner(String projectId) {
+    widget.onInterviewPartner(projectId);
+    if (mounted) setState(() {});
+  }
+
+  void _runInterviewClient(String projectId) {
+    widget.onInterviewClient(projectId);
+    if (mounted) setState(() {});
+  }
+
   @override
   Widget build(BuildContext context) {
     final candidates = widget.candidatesFor();
@@ -103,9 +132,9 @@ class _PublicDemoOfferComparisonScreenState
                 candidate: candidate,
                 project: _resolve(candidate.projectId),
                 onInterviewPartner: () =>
-                    widget.onInterviewPartner(candidate.projectId),
+                    _runInterviewPartner(candidate.projectId),
                 onInterviewClient: () =>
-                    widget.onInterviewClient(candidate.projectId),
+                    _runInterviewClient(candidate.projectId),
                 onOrder: () => _confirmOrder(context, candidate),
               ),
           if (canAddMore) ...[
@@ -270,7 +299,17 @@ class _OfferCandidateCard extends StatelessWidget {
               style: const TextStyle(fontSize: 12.5),
             ),
             Text(
-              '客先面談：${_interviewResultLabel(candidate.clientScore, candidate.stage == PublicDemoOfferCandidateStage.clientInterviewPassed || candidate.stage == PublicDemoOfferCandidateStage.ordered)}',
+              // Codex Broad Review (PR #260) Finding #3 fix: a `declined`
+              // candidate that genuinely passed its client interview before
+              // being auto-declined (a sibling ordered instead) still
+              // carries its own genuine [PublicDemoOfferInterviewRecord] —
+              // [candidate.hasGenuineInterviewRecord] is the unforgeable,
+              // stage-independent authority for "did this pass", exactly
+              // like [PublicDemoOfferCandidate.markOrdered]'s own gate uses
+              // it. The OLD check here (`stage == clientInterviewPassed ||
+              // stage == ordered`) was `false` for a genuinely-passed
+              // `declined` candidate, mislabeling a real pass as "不合格".
+              '客先面談：${_interviewResultLabel(candidate.clientScore, candidate.hasGenuineInterviewRecord)}',
               style: const TextStyle(fontSize: 12.5),
             ),
             const SizedBox(height: 10),
@@ -323,9 +362,15 @@ class _OfferCandidateCard extends StatelessWidget {
           style: TextStyle(fontSize: 12, color: Colors.black54),
         );
       case PublicDemoOfferCandidateStage.declined:
-        return const Text(
-          '見送り済みのため、この案件は受注できません。',
-          style: TextStyle(fontSize: 12, color: Colors.black54),
+        // Codex Broad Review (PR #260) Finding #3 fix: distinguish "passed,
+        // but a sibling was ordered instead" from "declined without ever
+        // genuinely passing" — both are `declined`, but only the former
+        // means the player actually won this interview.
+        return Text(
+          candidate.hasGenuineInterviewRecord
+              ? '客先面談に合格していましたが、他の案件を受注したため見送りになりました。'
+              : '見送り済みのため、この案件は受注できません。',
+          style: const TextStyle(fontSize: 12, color: Colors.black54),
         );
     }
   }

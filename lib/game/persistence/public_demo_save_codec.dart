@@ -474,9 +474,6 @@ class PublicDemoSaveCodec {
     // is what still rejects a forged/duplicate session; no separate
     // per-employee lookup is needed here any more.
 
-    // Issue #245 Finding #4, Phase 1b: this engineer's own raw `stage`
-    // string, read for the offer-candidate ordered cross-check below.
-    final engineerStageById = <String, String>{};
     for (final entry in engineersRaw) {
       if (entry is! Map) return false;
       final engineer = entry.cast<String, dynamic>();
@@ -499,9 +496,6 @@ class PublicDemoSaveCodec {
         return false;
       }
       engineerIds.add(id);
-      // Issue #245 Finding #4, Phase 1b: read for the offer-candidate
-      // ordered cross-check below.
-      engineerStageById[id] = stage;
 
       final clientPassStage =
           stage == 'clientInterviewPassed' || stage == 'ordered';
@@ -547,8 +541,9 @@ class PublicDemoSaveCodec {
       // have no project to cross-check at all and are left exactly as
       // before. (Issue #257 composite-identity widening: the completed-
       // session cross-check that used to also run here was removed — see
-      // this method's own comment just above `engineerStageById` for why it
-      // is now structurally vacuous rather than silently dropped.)
+      // this method's own "Issue #257 composite-identity widening" comment
+      // above, just before this `for` loop, for why it is now structurally
+      // vacuous rather than silently dropped.)
       if (recordProjectId != null &&
           proposalProjectIdByEngineer[id] != recordProjectId) {
         return false;
@@ -759,32 +754,38 @@ class PublicDemoSaveCodec {
           return false;
         }
         if (!engineerIds.contains(candidateEngineerId)) return false;
-        // Issue #245 Finding #4, Phase 1b: an offer candidate at `ordered`
-        // is only ever genuine when its OWN engineer is itself genuinely
-        // `ordered` too — both authorities must agree that this engineer
-        // was actually ordered at all, mirroring how every other
-        // `clientPassStage` check in this method cross-checks against
-        // independently-derived facts rather than trusting the candidate's
-        // own shape alone.
+        // Issue #245 Finding #4, Phase 1b originally added a check here
+        // requiring the candidate's own engineer to currently BE
+        // `ordered` too, whenever `candidateStage == 'ordered'` —
+        // reasoning that both authorities must always agree "this engineer
+        // was actually ordered at all". Codex Broad Review (PR #260)
+        // Finding #2's own required verification ("save/reloadを途中に入れた
+        // ケースも確認") caught that this was already too strict the moment
+        // Phase 1c gave a HISTORICAL `ordered` candidate any real meaning:
+        // an engineer who genuinely completed order → assignment →
+        // [PublicDemoWorkflowState.endAssignment] release is correctly back
+        // at `waiting` (or later `selling`/`introduced`/... for a fresh
+        // cycle) — [PublicDemoEngineerSales.releaseFromAssignment] only
+        // ever resets the ENGINEER side, by design (`offerCandidates` never
+        // deletes history, exactly like the projectId relaxation just above
+        // this comment already established) — while that earlier cycle's
+        // own candidate correctly, permanently stays `ordered`. The OLD
+        // check rejected this entirely real, non-forged save outright.
         //
-        // Deliberately does NOT also require `candidateProjectId` to equal
-        // this engineer's CURRENT `proposalProjectIdByEngineer`/
-        // `assignmentProjectIdByEngineer` resolution: unlike every other
-        // legacy authority fact here, `matchingProposals` is single-slot
-        // (replaced, never accumulated — see [PublicDemoWorkflowState
-        // .withMatchingProposal]'s own doc) and only ever names the LATEST
-        // proposal. A genuine, legitimate save can carry an `ordered`
-        // candidate for an EARLIER, already-concluded assignment cycle
-        // (the engineer's own [PublicDemoWorkflowState.endAssignment] →
-        // re-sell → re-`propose`/pass/order sequence a later cycle can
-        // produce — `offerCandidates` never deletes history) alongside a
-        // now-different current proposal/assignment project for whatever
-        // the engineer is pursuing next — requiring exact agreement here
-        // would reject that entirely real, non-forged save.
-        if (candidateStage == 'ordered' &&
-            engineerStageById[candidateEngineerId] != 'ordered') {
-          return false;
-        }
+        // Removed rather than narrowed further: the residual risk (a
+        // candidate falsely claiming `ordered` for an engineer who was
+        // NEVER actually ordered through any real command) is inert for the
+        // same reason Phase 1b's own self-hardening finding #3 already
+        // reasoned about a related case — [PublicDemoWorkflowState
+        // .assignOrderedForMay]/[recoverLateYearAssignment] (including
+        // Phase 1c's own `_orderedOfferCandidateFor` fallback) still gate
+        // exclusively on `engineer.stage == ordered` as their FIRST,
+        // unconditional precondition; a candidate-level `ordered` entry can
+        // never materialize an assignment for an engineer whose own current
+        // stage disagrees. `hasGenuineInterviewRecord`/identity/score
+        // plausibility (checked below and via [PublicDemoAggregate
+        // ._validateForPersistence]) remain the actual anti-forgery
+        // boundary for the candidate's own claimed outcome.
         final recordEngineerId = candidate['interviewRecordEngineerId'];
         final recordProjectId = candidate['interviewRecordProjectId'];
         if (recordEngineerId == null) continue;

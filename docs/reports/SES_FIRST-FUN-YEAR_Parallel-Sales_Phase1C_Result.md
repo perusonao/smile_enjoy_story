@@ -102,6 +102,15 @@ Status: **Implemented, self-hardened, full regression suite green. Issue #245 Fi
 
 他のproduction/testファイルは無変更（HOME/Finance/Payroll/Matching式/Interview outcome式/`projectInterviewSessions`は無diff）。
 
+### Codex Review Follow-upで追加変更されたファイル（既出3指摘対応）
+
+- `lib/ui/public_demo/public_demo_offer_comparison_screen.dart`（変更）— Finding 1（`setState`によるrebuild修正）、Finding 3（`hasGenuineInterviewRecord`ベースの表示修正）。
+- `lib/game/public_demo/public_demo_aggregate.dart`（変更）— Finding 2（`canProposeAdditionalOfferCandidate`のhistorical candidateチェック削除）。
+- `lib/game/persistence/public_demo_save_codec.dart`（変更）— Finding 2関連で発見した追加バグの修正（`ordered`候補のengineer-stage cross-checkがhistorical candidateを誤ってreject）。
+- `test/game/public_demo/public_demo_parallel_sales_phase1c_test.dart`（変更）— Finding 2の回帰テスト追加。
+- `test/game/public_demo/public_demo_parallel_sales_phase1b_test.dart`（変更）— Finding 2関連の既存テスト1件を、新しい正しい期待値へ更新。
+- `test/ui/public_demo/public_demo_offer_comparison_screen_test.dart`（変更）— Finding 1の回帰テスト追加、Finding 3のアサーション更新。
+
 ## Tests
 
 - 新規: `test/game/public_demo/public_demo_parallel_sales_phase1c_test.dart`（19 tests）— 比較読み取り、candidate-aware order、save/reload、追加提案ゲート、既存単一案件flow回帰、replacement sales無関係性確認、self-hardeningのcodec修正の直接回帰テストを含む。
@@ -144,10 +153,50 @@ Status: **Implemented, self-hardened, full regression suite green. Issue #245 Fi
 
 ## Known limitations
 
-- **2件目以降の候補の面談は、対話式follow-up質問ミニゲームではなく、既存の確定的評価式（`PublicDemoInterviewEvaluator`）による簡易面談。** 1件目（`matchingProposal`経由でMatching画面から提案された候補）は引き続き対話式ミニゲームを使う。UI体験としては非対称だが、両方とも実在するauthorityの再利用であり、捏造・二重評価ではない。
+- **2件目以降の候補の面談は、対話式follow-up質問ミニゲームではなく、既存の確定的評価式（`PublicDemoInterviewEvaluator`）による簡易面談。** 1件目（`matchingProposal`経由でMatching画面から提案された候補）は引き続き対話式ミニゲームを使う。UI体験としては非対称だが、両方とも実在するauthorityの再利用であり、捏造・二重評価ではない。**（Codex Broad Reviewの指摘を受けた今回のフォローアップでも、この制約は変更していない——意図的に維持している。）**
 - **`PublicDemoProjectContextResolver`は`orderedOfferCandidateProjectIdFor`フォールバックを追加したのみ**——全画面のcandidate authority統一は本Phaseのスコープ外（タスク自身の指示どおり）。
 - **候補数に上限を設けていない**——`salesCapacity`/月4回の制約が自然な抑制として働くが、明示的なUI上限は設計判断として見送った（Fresh Audit時点のUnresolvedで指摘されていた製品判断であり、本Phaseで確定させるものではない）。
 - **`declined`候補を「取り消す」UIはない**——`declineOfferCandidate`（Phase1a由来）にはUI導線を追加していない。declineは既存仕様どおり終端。
+
+## Codex Review Follow-up（PR #260, 既出3指摘への対応）
+
+Codex Broad Reviewは本フォローアップより前に既に1回完了済み。本フォローアップはその3指摘への修正・focused verificationのみを行い、**新しいBroad Reviewは要求していない**。
+
+### Finding 1 — P1（必須）: 比較画面が面談実行後にrebuildされない
+
+- **Severity**: P1
+- **Root cause**: `public_demo_offer_comparison_screen.dart`の`_OfferCandidateCard`へ渡す`onInterviewPartner`/`onInterviewClient`コールバックが、親画面（`_openOfferComparison`）の`_commitAggregate`を呼ぶだけで、比較画面自身の`State`に対する`setState`を一切呼んでいなかった。`build()`は`widget.candidatesFor()`を毎回再読するため、外部から`setState`されない限り再描画されず、stage表示・次アクションのCTA（客先面談ボタン・受注ボタン）が古いままになり、再タップすると完了済みのtransitionを無害だが無意味に再実行していた。
+- **Fix**: `_PublicDemoOfferComparisonScreenState`に`_runInterviewPartner`/`_runInterviewClient`を追加し、`widget.onInterviewPartner`/`onInterviewClient`を呼んだ直後に`if (mounted) setState(() {})`する。既存の`_confirmOrder`（受注確定後に`setState`する実装）と同じ規約に統一。両呼び出しは現状同期的だが、将来非同期化されても安全なよう`mounted`チェックを維持。
+- **Tests**: `test/ui/public_demo/public_demo_offer_comparison_screen_test.dart`に新規テスト追加（パートナー面談実行→画面を閉じずに客先面談CTA出現を確認→客先面談実行→画面を閉じずに受注CTA出現を確認→受注CTAへの二重タップで確認ダイアログが1つだけ開くことを確認）。
+- **RESOLVED**
+
+### Finding 2 — P2: historical ordered candidateが新sales cycleの追加提案を永久にブロック
+
+- **Severity**: P2
+- **Root cause**: `PublicDemoAggregate.canProposeAdditionalOfferCandidate`が`engineer.stage`チェックに加え、`offerCandidatesForEngineer(engineerId).any(stage==ordered)`という冗長かつ誤った追加チェックを持っていた。`offerCandidates`は履歴を削除しない設計のため、一度でも受注→assignment→`endAssignment`でreleaseされたengineerは、新しいsales cycleへ進んでも過去のhistorical ordered candidateがこのチェックに引っかかり、`canProposeAdditionalOfferCandidate`が永久にfalseになっていた。
+- **Fix**: 当該チェックを削除。`engineer.stage`（`recordOrder`/`recordOfferCandidateOrder`が候補の受注と同一`_copyWith`で同期し、`releaseFromAssignment`が解放時に`waiting`へ確実にリセットする、既存の正しい authority）のみで判定するよう変更。履歴データ自体は一切削除・変更していない。
+  - **追加で発見した関連バグ（save codec）**: 上記修正の検証（save/reloadを途中に挟むケース）で、`PublicDemoSaveCodec._hasConsistentAuthorityFacts`の別チェック（「candidateが`ordered`ならOWN engineerも現在`ordered`でなければならない」）が、まさにこの正当なhistorical candidateシナリオ（release後は`waiting`に戻る）を**save全体rejectとして誤検出**することを発見した。この2つのチェックはFinding 2の同じ根本原因（historical ordered candidateの認識不足）に由来するため、あわせて修正した。この経緯は既存テスト`public_demo_parallel_sales_phase1b_test.dart`の1件（「a raw save asserting stage: ordered...is rejected」）の前提と矛盾するため、当該テストを「rejectされない・かつengineer.stage gateにより実害が出ない（inert）ことを確認する」内容へ更新した——テストを削除して問題を隠してはいない。
+- **Save compatibility**: 維持。schema変更なし、migration不要（両チェックとも既存フィールドの検証ロジックの変更のみ）。`ordered != assigned`は無変更（`assignOrderedForMay`/`recoverLateYearAssignment`は自身の`engineer.stage == ordered`という第一条件を無変更で維持しており、historical candidateだけでは絶対にassignmentを作れない）。Replacement salesは無変更（`PublicDemoReplacementStage`/`public_demo_assignment.dart`にdiff無し）。
+- **Tests**: `test/game/public_demo/public_demo_parallel_sales_phase1c_test.dart`に新規テスト追加——`propose→partner+client合格→受注→closeApril/closeMay→closeJune/closeJuly（month 8まで）→7月分「発注なし」決定→endAssignment release→新sales cycleの最初の提案→追加提案可能`を実際の本番コマンドで再現し、save/reloadを途中に挟んでも成立することを確認。`public_demo_parallel_sales_phase1b_test.dart`の既存テスト1件を上記のとおり更新。
+- **RESOLVED**
+
+### Finding 3 — P2: declined siblingの客先面談結果を「不合格」と偽表示
+
+- **Severity**: P2
+- **Root cause**: `_OfferCandidateCard`の客先面談結果表示が`candidate.stage == clientInterviewPassed || candidate.stage == ordered`で「合格」判定していた。`decline()`は`interviewRecord`を一切clearしないため、`clientInterviewPassed`から直接（他候補の受注により）自動declineされたcandidateは、真にgenuine interviewRecordを保持したまま`stage`だけが`declined`になる——このcandidateは上記の条件式では「不合格」表示になり、実際には合格していたという事実を偽って伝えていた。
+- **Fix**: 判定を`candidate.hasGenuineInterviewRecord`（stage非依存の、unforgeableな authority）へ変更。あわせて`declined`状態の説明文を、`hasGenuineInterviewRecord`の有無で分岐: 合格していた場合は「客先面談に合格していましたが、他の案件を受注したため見送りになりました。」、合格していなかった場合は既存の「見送り済みのため、この案件は受注できません。」のまま。パートナー面談側の表示ロジックは、現行のUI配線（自動declineは`proposed`/`partnerInterviewPassed`/`clientInterviewPassed`の3つのliveステージのみが対象で、手動declineのUI導線が存在しない）の下では既に正しいことを確認し、変更していない。
+- **Tests**: 既存テスト（`test/ui/public_demo/public_demo_offer_comparison_screen_test.dart`の受注確認フロー）のアサーションを、declined siblingが正しく「客先面談：合格」+「客先面談に合格していましたが...」を表示し、「不合格」という文字列がどこにも現れないことを確認する内容へ更新。
+- **RESOLVED**
+
+### Focused verification（本フォローアップ）
+
+- Focused Phase1c domain tests（`public_demo_parallel_sales_phase1c_test.dart`）: 20/20 passed（Finding 2回帰テスト含む）。
+- Focused Phase1c UI tests（`public_demo_offer_comparison_screen_test.dart`）: 7/7 passed（Finding 1回帰テスト含む、Finding 3のアサーション更新含む）。
+- Focused save codec tests（`public_demo_save_codec_test.dart`/`public_demo_parallel_sales_phase1b_test.dart`/`public_demo_offer_candidate_test.dart`/`public_demo_parallel_sales_session_composite_identity_test.dart`）: 168/168 passed（Finding 2関連のcodec修正・既存テスト更新含む）。
+- `flutter analyze`（全体）: No issues found。
+- `flutter test test/game/public_demo`: 1016/1016 passed（フルスイート、Finding 2の新規テスト1件を含む正味+1）。
+- `flutter test test/ui/public_demo`: **748/748 passed**（フルスイート、Finding 1/3の新規・更新テスト含む）。
+- `git diff --check`: clean。
 
 ## Next task
 
@@ -155,12 +204,14 @@ Status: **Implemented, self-hardened, full regression suite green. Issue #245 Fi
 
 ## FINAL VERDICT
 
-**READY.** `flutter analyze`clean、`flutter test test/game/public_demo`1015/1015 green、`flutter test test/ui/public_demo`747/747 green（フルスイート実行）、`git diff --check`clean。本セッションで発見した2件のP0級既存バグ（save codec のscore floor誤り、declined候補のrecord誤reject）は同セッション内で修正・回帰テスト追加済み。HOME/Finance/Payroll/Matching式/Interview outcome式/`ordered != assigned`/`salesCapacity` semanticsはいずれも無変更。Broad Review（Codex）は本タスクの指示によりこのセッションでは実施しない——PR作成後に別途1回だけ実施する。
+**READY.** Codex Broad Review（PR #260）の既出3指摘（P1×1、P2×2）はすべてRESOLVED。`flutter analyze`clean、`flutter test test/game/public_demo`1016/1016 green（フルスイート）、`flutter test test/ui/public_demo`748/748 green（フルスイート）、`git diff --check`clean。本フォローアップ中に追加で発見したsave codecの関連バグ（historical ordered candidateを誤ってreject）も同セッション内で修正・回帰テスト追加済み。HOME/Finance/Payroll/Matching式/Interview outcome式/`ordered != assigned`/`salesCapacity` semanticsはいずれも無変更。**新しいBroad Reviewはこのフォローアップでは要求していない**（本タスクの指示どおり）。「2件目以降は簡易面談」というKnown Limitationは意図的に維持し、変更していない。
 
 ## Final HEAD SHA / PR
 
 - Base `origin/main` SHA: `e46efba0dcf969cbbad138632bc723d21a9ac73c`（PR #258マージコミット、本セッション開始時・PR作成時ともにdrift無し確認済み）。
 - Branch: `claude/parallel-sales-phase-1c-501dpp`
-- Implementation commit: `2437fb81a65e071d464a2e8d2b4883fb4f1804ac`（code/tests/docs一式。`flutter analyze`/`flutter test`/`git diff --check`はすべてこのcommitの内容に対して実行・記録したもの）。
-- Final HEAD SHA: 本ファイルを含む、このブランチの最新commit（PR #260の最新HEAD, `git log -1`で確認可能）。本commit以降、実装内容への変更はない（PR URL/HEAD SHA追記のdocs-onlyフォローアップのみ）。
+- Original Broad Review対象HEAD（本フォローアップ開始時点）: `0e4aa9492ae86dd8a8135d3203aaa322e544a446`
+- Implementation commit（Phase 1C本体）: `2437fb81a65e071d464a2e8d2b4883fb4f1804ac`
+- Codex Review Follow-up commit（本フォローアップの修正一式）: `8245f364d7358288a138820c7542d131642c5d27`
+- Final HEAD SHA（本ファイルを含む、このブランチの最新commit）: 本行を含むcommit以降、実装内容への変更はない（PR URL/HEAD SHA記載のdocs-onlyフォローアップのみ）——`git log -1`で確認可能。
 - PR: https://github.com/perusonao/smile_enjoy_story/pull/260

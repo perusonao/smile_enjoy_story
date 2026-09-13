@@ -336,6 +336,26 @@ class PublicDemoAggregate {
   /// own guardrail requires ("既存の受注導線がある場合は、無理に比較操作を
   /// 増やさない") is completely unaffected — this is purely an ADDITIONAL
   /// option once a player already has a live candidate to compare against.
+  ///
+  /// Codex Broad Review (PR #260) Finding #2 fix: [engineer.stage] alone is
+  /// the correct, sufficient "is this engineer CURRENTLY committed" signal —
+  /// every real order path ([PublicDemoWorkflowState.recordOrder]/
+  /// [recordOfferCandidateOrder]) sets it to [PublicDemoSalesStage.ordered]
+  /// in the exact same atomic step it marks a candidate ordered, and
+  /// [PublicDemoEngineerSales.releaseFromAssignment] (the sole production
+  /// path back out of it, via [PublicDemoWorkflowState.endAssignment])
+  /// resets it to `waiting` once a real assignment genuinely ends. An OLDER
+  /// version of this method also separately checked
+  /// `offerCandidatesForEngineer(...).any(ordered)` — redundant with the
+  /// [engineer.stage] check above for a CURRENTLY ordered engineer, and
+  /// actively WRONG for one who already completed a full order →
+  /// assignment → release cycle: `offerCandidates` never deletes history (by
+  /// design — see `public_demo_offer_candidate.dart`'s own doc), so that
+  /// historical, already-superseded `ordered` entry permanently blocked
+  /// every later sales cycle's own additional-proposal action, even though
+  /// the engineer had genuinely returned to `waiting` and started completely
+  /// fresh. Removed rather than "fixed", since it added no eligibility case
+  /// the [engineer.stage] check does not already cover correctly.
   bool canProposeAdditionalOfferCandidate(String engineerId) {
     final engineer = workflow.engineers
         .where((candidate) => candidate.id == engineerId)
@@ -347,11 +367,6 @@ class PublicDemoAggregate {
     if (engineer.stage == PublicDemoSalesStage.waiting ||
         engineer.stage == PublicDemoSalesStage.skillSheet ||
         engineer.stage == PublicDemoSalesStage.ordered) {
-      return false;
-    }
-    if (workflow
-        .offerCandidatesForEngineer(engineerId)
-        .any((candidate) => candidate.stage == PublicDemoOfferCandidateStage.ordered)) {
       return false;
     }
     return true;

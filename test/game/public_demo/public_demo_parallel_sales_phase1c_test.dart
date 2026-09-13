@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:smile_enjoy_story/game/persistence/public_demo_save_codec.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_aggregate.dart';
+import 'package:smile_enjoy_story/game/public_demo/public_demo_assignment.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_interview.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_offer_candidate.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_project_generator.dart';
@@ -516,6 +517,155 @@ void main() {
         withCandidate.offerCandidateFor('eng-01', project.id)!.stage,
         PublicDemoOfferCandidateStage.proposed,
       );
+    });
+
+    test('Codex Broad Review (PR #260) Finding #2 fix: a HISTORICAL ordered '
+        'candidate from a genuinely completed, already-released assignment '
+        'cycle never blocks a later, fresh sales cycle\'s own additional '
+        'proposal — offerCandidates never deletes history, but only the '
+        'engineer\'s CURRENT stage decides current eligibility', () {
+      // Drives eng-01 through a full, real production cycle: propose ->
+      // partner+client pass -> order -> April/May assignment -> July close
+      // -> a genuine "not offered" continuation decision -> endAssignment
+      // release back to `waiting` — mirrors
+      // `public_demo_parallel_sales_session_composite_identity_test.dart`'s
+      // own proven `findBothPass` fixture, stopping after the FIRST release
+      // (this test does not need a second genuine pass).
+      ({PublicDemoAggregate aggregate, String projectId})? released;
+      for (var seed = 0; seed < 60; seed++) {
+        var aggregate = PublicDemoAggregate.initial(runSeed: seed);
+        final project = aggregate.projectCandidatesForMonth(4).first;
+        aggregate = aggregate.proposeMatch(
+          engineerId: 'eng-01',
+          projectId: project.id,
+        );
+        aggregate = aggregate
+            .startSkillSheetReview('eng-01')
+            .beginSelling('eng-01')
+            .introduceProject('eng-01');
+        aggregate = aggregate.startPartnerInterview('eng-01');
+        var session = aggregate.projectInterviewSessionFor('eng-01')!;
+        while (session.playerFollowUps.length < session.questions.length) {
+          final choice = PublicDemoProjectInterview.choicesFor(session).first;
+          aggregate = aggregate.chooseProjectInterviewFollowUp(
+            'eng-01',
+            session.currentQuestionIndex,
+            choice,
+          );
+          session = aggregate.projectInterviewSessionFor('eng-01')!;
+        }
+        aggregate = aggregate.concludePartnerInterview('eng-01');
+        if (aggregate.workflow.engineers
+                .firstWhere((e) => e.id == 'eng-01')
+                .stage !=
+            PublicDemoSalesStage.partnerInterviewPassed) {
+          continue;
+        }
+        aggregate = aggregate.startProjectInterview('eng-01');
+        session = aggregate.projectInterviewSessionFor('eng-01')!;
+        while (session.playerFollowUps.length < session.questions.length) {
+          final choice = PublicDemoProjectInterview.choicesFor(session).first;
+          aggregate = aggregate.chooseProjectInterviewFollowUp(
+            'eng-01',
+            session.currentQuestionIndex,
+            choice,
+          );
+          session = aggregate.projectInterviewSessionFor('eng-01')!;
+        }
+        aggregate = aggregate.concludeProjectInterview('eng-01');
+        if (aggregate.workflow.engineers
+                .firstWhere((e) => e.id == 'eng-01')
+                .stage !=
+            PublicDemoSalesStage.clientInterviewPassed) {
+          continue;
+        }
+
+        aggregate = aggregate.recordOfferCandidateOrder(
+          engineerId: 'eng-01',
+          projectId: project.id,
+        );
+        aggregate = aggregate.closeApril(monthlyExpenses: 0);
+        aggregate = aggregate.closeMay(week: 9, monthlyExpenses: 0);
+        final assignment = aggregate.workflow.assignments
+            .where((a) => a.engineerId == 'eng-01')
+            .firstOrNull;
+        if (assignment?.projectId != project.id) continue;
+        // Before month 7, `assignedEngineerIds` counts every assignment row
+        // unconditionally regardless of `nextOrderStatus` (this month's
+        // revenue is already earned) — only from month 7 does a genuine
+        // `notOffered` row stop counting AND get physically removed by
+        // `endAssignment`, exactly like the composite-identity test's own
+        // fixture requires.
+        aggregate = aggregate.closeJune(assignedInJuly: 1, monthlyExpenses: 0);
+        aggregate = aggregate.closeJuly(monthlyExpenses: 0);
+        if (aggregate.state.month < 8) continue;
+
+        aggregate = aggregate.withAssignmentUpdate(
+          'eng-01',
+          nextOrderStatus: PublicDemoNextOrderStatus.notOffered,
+        );
+        final beforeEnd = aggregate;
+        aggregate = aggregate.endAssignment('eng-01');
+        if (identical(aggregate, beforeEnd)) continue;
+        if (aggregate.workflow.engineers
+                .firstWhere((e) => e.id == 'eng-01')
+                .stage !=
+            PublicDemoSalesStage.waiting) {
+          continue;
+        }
+        released = (aggregate: aggregate, projectId: project.id);
+        break;
+      }
+      expect(
+        released,
+        isNotNull,
+        reason: 'no seed under 60 produced a genuine order->release cycle',
+      );
+      final (aggregate: releasedAggregate, projectId: releasedProjectId) =
+          released!;
+
+      // The historical candidate is STILL genuinely `ordered` — history is
+      // never deleted.
+      expect(
+        releasedAggregate.offerCandidateFor('eng-01', releasedProjectId)!.stage,
+        PublicDemoOfferCandidateStage.ordered,
+      );
+      // The engineer is genuinely back to `waiting` — a completely fresh
+      // sales cycle.
+      expect(
+        engineer(releasedAggregate, 'eng-01').stage,
+        PublicDemoSalesStage.waiting,
+      );
+      // Before this fix: canProposeAdditionalOfferCandidate would remain
+      // FALSE forever from here, because of the stale, now-superseded
+      // ordered candidate above — even after a brand-new first proposal for
+      // this fresh cycle.
+      var aggregate = releasedAggregate;
+      final newProject = aggregate
+          .projectCandidatesForMonth(aggregate.state.month)
+          .firstWhere((p) => p.id != releasedProjectId);
+      aggregate = aggregate.proposeMatch(
+        engineerId: 'eng-01',
+        projectId: newProject.id,
+      );
+      aggregate = aggregate.startSkillSheetReview('eng-01').beginSelling(
+        'eng-01',
+      );
+      expect(
+        aggregate.canProposeAdditionalOfferCandidate('eng-01'),
+        isTrue,
+        reason:
+            'a historical ordered candidate from a released, ended cycle '
+            'must never block a fresh cycle\'s own additional proposal',
+      );
+
+      // Save/reload mid-way: the eligibility fact survives a round-trip
+      // (it is derived live from engineer.stage + offerCandidates, never
+      // itself persisted).
+      const codec = PublicDemoSaveCodec();
+      final reloaded = codec.fromJson(codec.toJson(aggregate));
+      expect(reloaded, isNotNull);
+      expect(reloaded!.canProposeAdditionalOfferCandidate('eng-01'), isTrue);
     });
   });
 

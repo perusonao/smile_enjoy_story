@@ -715,6 +715,16 @@ class PublicDemoAggregate {
   /// additionally moves the applicant to [PublicDemoApplicantStage.rejected]
   /// via [PublicDemoWorkflowState.rejectApplicant], since a rejected
   /// candidate has no further pipeline step to reach on their own.
+  ///
+  /// AI Replay Audit #3 P1-1 backward-compatibility fix: a `hired` decision
+  /// also marks [PublicDemoWorkflowState.markInterviewEvaluationApplied] —
+  /// this is the one moment that decides whether
+  /// [PublicDemoRecruitmentInterview.finalEvaluationScore] gates this
+  /// specific applicant's later offer eligibility on the real Q&A-derived
+  /// evaluation (this decision, made by the current code) or grandfathers
+  /// them to the original [PublicDemoApplicant.interviewScore] promise (a
+  /// decision already recorded by a save written before this evaluation
+  /// existed). See that field's own doc for the full rationale.
   PublicDemoAggregate concludeInterviewSession(
     String applicantId,
     InterviewOutcome outcome,
@@ -725,10 +735,13 @@ class PublicDemoAggregate {
     if (index < 0 || !workflow.interviewSessions[index].conversationComplete) {
       return this;
     }
-    final decided = workflow.updateInterviewSession(
+    var decided = workflow.updateInterviewSession(
       applicantId,
       (session) => session.copyWith(completed: true, outcome: outcome),
     );
+    if (outcome == InterviewOutcome.hired) {
+      decided = decided.markInterviewEvaluationApplied(applicantId);
+    }
     return _copyWith(
       workflow: outcome == InterviewOutcome.rejected
           ? decided.rejectApplicant(applicantId)

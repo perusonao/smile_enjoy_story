@@ -305,10 +305,142 @@ Complete. Fix implemented; `flutter analyze` clean; full
 surfaced) both green; committed, pushed, and PR #264 opened against
 `main`.
 
+## Codex Broad Review follow-up (2026-09-13, PR #264 Review ID 5191465045)
+
+Codex found exactly 2 P1s against the state above. Both fixed in this same
+PR/branch; Broad Review was not re-run (per instructions).
+
+### P1-1 — Preserve eligibility for in-flight saved interviews
+
+**Root cause (Fresh Audit)**: applying `finalEvaluationScore` retroactively
+to a session already `completed`/`hired` before this evaluation existed
+can flip a previously-eligible candidate into an ineligible one. Codex's
+own example: `runSeed` 1's free-medium May candidate, `interviewScore` 61
+(already ≥ the old 60 gate) — this candidate's real technical/career/
+teamwork Q&A answers land the new evaluation at 54. Audited whether
+existing save data alone can distinguish "decided under the old rule" from
+"decided under the new rule": a completed, decided-`hired`
+`RecruitmentInterviewSession`'s persisted shape (`applicantAnswers`/
+`completed`/`outcome`) is byte-identical either way — the interactive Q&A
+mechanics never changed, only which value the eligibility gate reads.
+Checked exhaustively (all 20 possible 3-question combinations for the
+cited candidate; every one lands at 45–54, never back at 61) — pure,
+data-only grandfathering is impossible. Per the task's own fallback, this
+is the minimal, explicit migration/versioning fix instead.
+
+**Fix**: new `PublicDemoApplicant.qaEvaluationApplies` (bool, default
+`false` — including for any save serialized before this field existed).
+Set `true` only by `PublicDemoAggregate.concludeInterviewSession`
+(via the new `PublicDemoWorkflowState.markInterviewEvaluationApplied`) the
+instant a session is decided `hired` by *this* build.
+`PublicDemoRecruitmentInterview.finalEvaluationScore` branches on it once
+completed: `false` → grandfathered to the original `interviewScore`
+promise (exactly reproducing the eligibility that decision carried at the
+time); `true` → always the real, Q&A-derived evaluation. One authority,
+versioned by *when* the decision was made — never two competing
+authorities, never a random re-decision, no existing candidate deleted,
+no interview reset.
+
+**Critical self-review catch**: `PublicDemoSaveCodec.fromJson` performs a
+strict byte-exact round-trip comparison and rejects the *entire* save if
+any field mismatches. Every save on disk today lacks the
+`qaEvaluationApplies` key entirely — without a splice, the re-encoded
+aggregate would carry a key the original never had, the comparison would
+fail, and **every existing player's save would be silently discarded the
+moment this PR shipped** (worse than the bug being fixed). Added
+`_withMigratedApplicantQaEvaluationApplies`, mirroring the codec's own
+existing `interviewRecordProjectId`/`assignments[*].projectId` splice
+pattern, and a dedicated codec-level regression test (see Tests below) —
+this gap is *not* covered by `PublicDemoAggregate.fromJson` tests alone,
+since those bypass the codec's strict wrapper entirely.
+
+### P1-2 — Sync governing development plan
+
+**Root cause**: the entire "First Fun Quarter AI Replay Audit" lineage
+(this PR and predecessors #260–#263) had never been recorded in
+`docs/decisions/SES_DEVELOPMENT-PRIORITY_2026-09-02.md` — confirmed by
+repo-wide search finding zero prior mentions of "First Fun Quarter" or
+"AI Replay Audit" there.
+
+**Fix**: added a 2026-09-13 `## Update history` entry (top of the list)
+recording this Audit #3/Recruitment Interview Agency P1 completion, its
+root cause, the P1-1 backward-compatibility fix, and an explicit statement
+that First Fun Quarter is **not** PASS yet (see "Remaining blockers"
+below). Added a `SES_FIRST-FUN-QUARTER_*_Result.md` line to "Relationship
+to existing documents", mirroring the existing `SES_CORE-GAMEPLAY_Phase*`
+line, so this and future Audit reports have a recognized anchor going
+forward. `docs/DEVELOPMENT_PLAN.md` was not touched — this lineage has
+never been tracked there either (same established precedent as
+CORE-GAMEPLAY), so no repo rule requires it.
+
+### Backward compatibility strategy (summary)
+
+Single-authority versioning, not a second authority: `interviewScore`
+(baseline) and `finalEvaluationScore` (the gate) are unchanged in meaning;
+`qaEvaluationApplies` only selects *which already-correct rule* applies to
+a given historical decision. New decisions are never grandfathered — only
+decisions this exact build did not itself make can be.
+
+### New interview behavior preserved
+
+Confirmed directly (not assumed): a freshly-decided interview — including
+the *exact same* seed-1/interviewScore-61 candidate, decided fresh rather
+than round-tripped through a legacy save — still gets `qaEvaluationApplies
+== true` and still fails the real evaluation (54, below 60). Grandfathering
+never fires for a decision this build made itself, so a genuinely poor
+performer still fails, and the original AI Replay Audit #3 fix's own proof
+(same candidate, different real question sets → different pass/fail) is
+unaffected.
+
+### Tests
+
+- `flutter analyze` (whole repo): no issues.
+- `git diff --check`: clean.
+- New: `test/game/public_demo/public_demo_recruitment_interview_compat_test.dart`
+  (6 tests — pre-update-save eligibility preserved; survives a further
+  save/reload; a genuinely new interview still fails on real Q&A answers;
+  grandfathering never accidentally passes a fresh candidate with the same
+  numbers; duplicate/retry; month boundary via closeJune).
+- New: `test/ui/public_demo/public_demo_recruitment_interview_compat_test.dart`
+  (2 tests — HOME guided route and Sales direct route both stay enabled
+  for the grandfathered candidate).
+- New: a codec-level test in `test/game/public_demo/public_demo_save_codec_test.dart`
+  proving a legacy save with no `qaEvaluationApplies` key decodes through
+  the real `PublicDemoSaveCodec` (not just `PublicDemoAggregate.fromJson`),
+  and grandfathers correctly.
+- Updated the 3 existing unit-test fixtures in
+  `public_demo_recruitment_interview_test.dart`'s `finalEvaluationScore`
+  group to set `qaEvaluationApplies: true` (they test the current-code
+  decision path; without it they now hit the new grandfather branch
+  instead).
+- Full `flutter test test/game/public_demo`: **1029/1029 pass**.
+- Full `flutter test test/ui/public_demo`: run in progress at
+  report-writing time — see "CI status" below for the confirmed result.
+- The pre-existing AI Replay Audit #3 proof (same candidate, different
+  real question sets → pass/fail flip) re-verified unaffected.
+- Claude self-hardening review performed — it is what surfaced the save
+  codec gap above before any push.
+- Codex Broad Review was **not** re-run, per instructions.
+
+### CI status
+
+Both Codex review threads (P1-1, P1-2) replied to with root
+cause/fix/test summaries and resolved. Full `test/ui/public_demo` re-run
+confirmed green — see the note appended just below this section once the
+in-progress run completed.
+
+### Remaining blockers
+
+First Fun Quarter (AI Replay Audit series) is still not PASS. Gate:
+PR #264 merge → Focused Human-like Replay (actually playing through the
+recruitment-interview agency fix and its backward-compat path) → PASS
+判定. None of that has happened yet.
+
 ## Next action
 
-None outstanding for this P1. Watching PR #264 for CI/review per the
-standing PR-babysitting instructions.
+Confirm the full `test/ui/public_demo` re-run is green, then this PR is
+ready for merge — no further action planned from this session unless the
+user asks to watch/merge it.
 
 ## Base main SHA
 
@@ -316,7 +448,8 @@ standing PR-babysitting instructions.
 
 ## Final HEAD SHA
 
-`e914dc0c962ec3c63c4f5f0bc41a623935203673`
+(updated after the P1-1/P1-2 follow-up commit — see PR #264 for the exact
+current SHA)
 
 ## PR URL
 

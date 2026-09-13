@@ -179,14 +179,31 @@ class PublicDemoRecruitmentInterview {
   /// applicant answers yet): callers must not display or gate on any
   /// evaluation before the interactive interview genuinely concludes -- see
   /// the Result Report's "面談前に結果を先取りして見せない" requirement.
+  ///
+  /// AI Replay Audit #3 P1-1 backward-compatibility fix: once completed,
+  /// [applicant.qaEvaluationApplies] decides which single rule this
+  /// applicant's decision is scored under -- never both, never a coin
+  /// flip. `false` (a decision made and persisted before this evaluation
+  /// existed, including any save from before this field itself existed --
+  /// see [PublicDemoApplicant.fromJson]'s default) grandfathers this
+  /// applicant to the original, already-promised [interviewScore] alone,
+  /// exactly reproducing the eligibility that decision carried at the time
+  /// it was made. `true` (a decision this exact build made, via
+  /// [PublicDemoAggregate.concludeInterviewSession]) always uses the real,
+  /// Q&A-derived evaluation below -- a newly-decided candidate is never
+  /// grandfathered, so a genuinely poor performer still fails.
   static int? finalEvaluationScore({
     required PublicDemoApplicant applicant,
     required RecruitmentInterviewSession? session,
   }) {
-    if (session == null ||
-        !session.completed ||
-        session.applicantAnswers.isEmpty) {
+    if (session == null || !session.completed) {
       return null;
+    }
+    if (!applicant.qaEvaluationApplies) {
+      return applicant.interviewScore;
+    }
+    if (session.applicantAnswers.isEmpty) {
+      return applicant.interviewScore;
     }
     final totalCredibility = session.applicantAnswers.fold<int>(
       0,

@@ -472,6 +472,11 @@ void main() {
     'AI Replay Audit #3 P1 fix: finalEvaluationScore folds real Q&A '
     'answer credibility into the pre-interview interviewScore baseline',
     () {
+      // qaEvaluationApplies: true -- these fixtures test the current-code
+      // decision path (AI Replay Audit #3 P1-1 backward-compat fix); a
+      // grandfathered (false) applicant would bypass all of this and
+      // always return the raw interviewScore instead, which is covered by
+      // its own dedicated group below.
       const baseline = PublicDemoApplicant(
         id: 'probe-applicant',
         name: 'Probe',
@@ -479,6 +484,7 @@ void main() {
         interviewScore: 50,
         acceptanceScore: 50,
         salesSkillFit: 50,
+        qaEvaluationApplies: true,
       );
 
       ApplicantAnswer answerWithCredibility(
@@ -601,6 +607,7 @@ void main() {
           interviewScore: 95,
           acceptanceScore: 50,
           salesSkillFit: 50,
+          qaEvaluationApplies: true,
         );
         expect(
           PublicDemoRecruitmentInterview.finalEvaluationScore(
@@ -616,6 +623,7 @@ void main() {
           interviewScore: 5,
           acceptanceScore: 50,
           salesSkillFit: 50,
+          qaEvaluationApplies: true,
         );
         expect(
           PublicDemoRecruitmentInterview.finalEvaluationScore(

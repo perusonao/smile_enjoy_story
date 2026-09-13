@@ -782,6 +782,23 @@ class PublicDemoWorkflowState {
         to: PublicDemoApplicantStage.rejected,
       );
 
+  /// AI Replay Audit #3 P1-1 backward-compatibility fix: marks
+  /// [applicantId]'s [PublicDemoApplicant.qaEvaluationApplies] `true` —
+  /// called only by [PublicDemoAggregate.concludeInterviewSession], the
+  /// instant a session is decided `hired`, so that (and only that) decision
+  /// is gated on the real, Q&A-derived evaluation going forward. Idempotent
+  /// (a no-op once already `true`) and never reachable from outside this
+  /// file's sanctioned callers — see [qaEvaluationApplies]'s own doc for why
+  /// this must never be set any other way, and never reset back to `false`.
+  PublicDemoWorkflowState markInterviewEvaluationApplied(
+    String applicantId,
+  ) => _withApplicant(
+    applicantId,
+    (applicant) => applicant.qaEvaluationApplies
+        ? applicant
+        : applicant.copyWith(qaEvaluationApplies: true),
+  );
+
   // ---------------------------------------------------------------------
   // Interactive recruitment-interview sessions (CORE-GAMEPLAY Phase 3)
   // ---------------------------------------------------------------------

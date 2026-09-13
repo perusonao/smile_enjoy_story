@@ -101,6 +101,7 @@ class PublicDemoApplicant {
     this.bindingOffer,
     this.interviewRecord,
     this.joinRecord,
+    this.qaEvaluationApplies = false,
   }) : assert(experienceMonths >= 0, 'experienceMonths must not be negative');
 
   final String id;
@@ -145,6 +146,30 @@ class PublicDemoApplicant {
   /// P1-4).
   final PublicDemoJoinRecord? joinRecord;
 
+  /// AI Replay Audit #3 P1-1 backward-compatibility fix: whether this
+  /// applicant's "採用候補として進める" decision was made under the version of
+  /// the game where [PublicDemoRecruitmentInterview.finalEvaluationScore]
+  /// folds real Q&A answer credibility into the offer-eligibility gate,
+  /// rather than gating on [interviewScore] alone.
+  ///
+  /// Set to `true` only by [PublicDemoAggregate.concludeInterviewSession]
+  /// (via [PublicDemoWorkflowState.markInterviewEvaluationApplied]) the
+  /// moment a session is decided `hired` — never by [copyWith] alone, and
+  /// never reset back to `false`. Defaults to `false` both for a
+  /// newly-constructed applicant and, critically, for any applicant
+  /// deserialized from a save written before this field existed (see
+  /// [fromJson]): a pre-existing save's already-completed, already-decided
+  /// "hired" session predates this evaluation entirely, so
+  /// [finalEvaluationScore] must keep gating that specific decision on the
+  /// original, already-promised [interviewScore] alone rather than
+  /// retroactively re-deriving a possibly-lower score from the same
+  /// interview answers under a rule that did not exist when the player
+  /// made the decision. A session decided by the current code (this field
+  /// `true`) always uses the real, Q&A-derived evaluation — this flag only
+  /// ever widens which historical decisions are grandfathered, it never
+  /// changes how a *new* decision is scored.
+  final bool qaEvaluationApplies;
+
   PublicDemoApplicant copyWith({
     PublicDemoApplicantStage? stage,
     int? acceptedMonthlySalary,
@@ -160,6 +185,7 @@ class PublicDemoApplicant {
     PublicDemoBindingOffer? bindingOffer,
     PublicDemoInterviewRecord? interviewRecord,
     PublicDemoJoinRecord? joinRecord,
+    bool? qaEvaluationApplies,
   }) => PublicDemoApplicant(
     id: id,
     name: name,
@@ -184,6 +210,7 @@ class PublicDemoApplicant {
     bindingOffer: bindingOffer ?? this.bindingOffer,
     interviewRecord: interviewRecord ?? this.interviewRecord,
     joinRecord: joinRecord ?? this.joinRecord,
+    qaEvaluationApplies: qaEvaluationApplies ?? this.qaEvaluationApplies,
   );
 
   /// Complete persistence form for this workflow entity.  The record IDs are
@@ -212,6 +239,7 @@ class PublicDemoApplicant {
     'bindingOffer': bindingOffer?.toJson(),
     'interviewRecordApplicantId': interviewRecord?.applicantId,
     'joinRecordApplicantId': joinRecord?.applicantId,
+    'qaEvaluationApplies': qaEvaluationApplies,
   };
 
   factory PublicDemoApplicant.fromJson(Map<String, dynamic> json) {
@@ -274,6 +302,10 @@ class PublicDemoApplicant {
           ? null
           : PublicDemoInterviewRecord._(applicantId: interviewId),
       joinRecord: joinId == null ? null : PublicDemoJoinRecord._(applicantId: joinId),
+      // Absent for any save written before this field existed -- defaults
+      // to `false`, which is exactly the "grandfathered" state this P1-1
+      // fix requires (see this field's own doc).
+      qaEvaluationApplies: json['qaEvaluationApplies'] as bool? ?? false,
     );
   }
 

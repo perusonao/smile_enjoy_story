@@ -241,10 +241,8 @@ disadvantageous relative to the same baseline, and that it clamps to
   (774 total: 769 passed / 5 failed), confirming those two files' own
   fixtures, not a defect in `finalEvaluationScore` itself (every other
   file in the suite, including every other seed-1/9-unrelated interview
-  fixture, passed unchanged). After the fixture fix: both affected files
-  re-verified in full isolation at **34/34 pass**; the full-suite re-run
-  was in progress at report-writing time — if it surfaces anything further
-  a follow-up commit will be pushed and this line updated.
+  fixture, passed unchanged). After the fixture fix: re-run in full —
+  **774/774 pass**.
 - Mobile overflow (360x800, 390x844): already covered by the untouched
   `public_demo_recruitment_interview_visual_test.dart` (no overflow across
   both viewports × 3 textScale factors for the full flow, reject path, and
@@ -301,15 +299,16 @@ P1's root cause — it is preserved as-is, just now keyed off
 
 ## Current status
 
-Fix implemented, tested (analyze clean, focused + full `test/game/public_demo`
-green, both regressions found by the full `test/ui/public_demo` run fixed
-and re-verified), committed, pushed, and PR opened against `main`.
+Complete. Fix implemented; `flutter analyze` clean; full
+`test/game/public_demo` (1022/1022) and full `test/ui/public_demo`
+(774/774, after fixing the two fixture regressions the first full run
+surfaced) both green; committed, pushed, and PR #264 opened against
+`main`.
 
 ## Next action
 
-Watch the full `flutter test test/ui/public_demo` re-run (in progress at
-report-writing time) to completion; push a follow-up commit only if it
-surfaces anything beyond the two fixture fixes already made.
+None outstanding for this P1. Watching PR #264 for CI/review per the
+standing PR-babysitting instructions.
 
 ## Base main SHA
 

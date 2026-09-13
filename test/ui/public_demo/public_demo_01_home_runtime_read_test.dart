@@ -350,6 +350,10 @@ void main() {
         find.byKey(const Key('public-demo-salary-offer-370000')),
       );
       await tester.pumpAndSettle();
+      // SES First Fun Quarter AI Replay Audit #2 P1-3: a one-time result
+      // confirmation now appears before any further action is reachable.
+      await tester.tap(find.byKey(const Key('public-demo-offer-result-close')));
+      await tester.pumpAndSettle();
       await switchPublicDemoTab(tester, PublicDemoTab.home);
 
       final beforeJoin = homeData(tester);

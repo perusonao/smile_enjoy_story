@@ -72,8 +72,18 @@ class PublicDemoGrowthResultCard extends StatelessWidget {
             Text('実務経験 +${result.actualExperienceMonthsDelta}か月'),
           const SizedBox(height: 2),
           Text(sourceLabel, style: Theme.of(context).textTheme.bodySmall),
+          // SES First Fun Quarter AI Replay Audit #2 P1-1 Fresh Audit fix:
+          // this card is rendered only inside `_growthResultsSection`
+          // (先月の成長結果, see that method's own doc), never for the month
+          // currently in progress — "今月は" here previously described a
+          // completed PAST month while sitting directly above the still-
+          // open training-selection card for the CURRENT month, which is
+          // exactly the false-preview misreading Finding P1-1 describes.
+          // Dropping "今月は" makes this line correct regardless of which
+          // month it is actually describing, with no change to when/whether
+          // it renders (still gated on `delta == 0` alone).
           if (delta == 0)
-            Text('今月は大きな変化なし', style: Theme.of(context).textTheme.bodySmall),
+            Text('大きな変化はありませんでした', style: Theme.of(context).textTheme.bodySmall),
         ],
       ),
     );

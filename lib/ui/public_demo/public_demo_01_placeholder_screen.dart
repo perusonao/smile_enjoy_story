@@ -68,6 +68,7 @@ import 'public_demo_recruitment_interview_dialog.dart';
 import 'public_demo_sales_progress.dart';
 import 'public_demo_sales_visual.dart';
 import 'public_demo_skill_sheet_sheet.dart';
+import 'public_demo_offer_result_dialog.dart';
 import 'public_demo_salary_offer_dialog.dart';
 import 'public_demo_raise_dialog.dart';
 import 'public_demo_summer_bonus_dialog.dart';
@@ -619,7 +620,51 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
         _currentlyAssignedEngineerIds.contains(engineer.id)) {
       return '参画中';
     }
+    // SES First Fun Quarter AI Replay Audit #2 P1-2 Fresh Audit fix: an
+    // applicant who joins already carrying a pre-entry order becomes an
+    // engineer at `PublicDemoSalesStage.waiting`
+    // ([PublicDemoEngineerSales.fromApplicant] never inherits the
+    // applicant's own pipeline stage) in the very same close that
+    // [PublicDemoWorkflowState.assignOrderedForMay] also adds them to the
+    // assignment roster — see that method's own doc for this exact
+    // "stage == waiting alone does not mean not currently on a project"
+    // case, already documented above [_cashForecastAdvice]. The `if` above
+    // only ever matched `stage == ordered`, so this genuinely-participating
+    // new joiner fell through to the stale `engineerStatus(engineer)` raw
+    // waiting label (待機/研修が必要) here, while the 社員 tab's own
+    // 参画中案件 section (`activeProjectStatusCard`, gated purely on
+    // assignment membership, never `stage`) already showed 参画中 for the
+    // same person — the exact HOME/社員タブ mismatch the audit reported.
+    // [_hasActiveAssignmentDespiteWaitingStage] reads the same
+    // `_currentlyAssignedEngineerIds` fact this method already reads, plus
+    // the existing [PublicDemoAssignment.nextOrderStatus] field, to tell
+    // this case apart from the one other way a `waiting` engineer can be
+    // "currently assigned" — [PublicDemoWorkflowState.endAssignment]'s own
+    // documented pre-July "row kept, stage reset to waiting" release, whose
+    // precondition guarantees `nextOrderStatus == notOffered` on that row.
+    // No new domain authority, cache, or persisted field — assignment start
+    // conditions and `PublicDemoWorkflowState.endAssignment` are unchanged.
+    if (engineer.stage == PublicDemoSalesStage.waiting &&
+        _hasActiveAssignmentDespiteWaitingStage(engineer.id)) {
+      return '参画中';
+    }
     return engineerStatus(engineer);
+  }
+
+  /// Shared by [_officeStageStatusFor] (HOME) and [_employeeStatusDisplayFor]
+  /// (社員タブ/SkillSheet) — see the P1-2 Fresh Audit fix note on
+  /// [_officeStageStatusFor] for why this exists and which two real cases it
+  /// tells apart. Not HOME-owned code (mirrors [_currentlyAssignedEngineerIds]
+  /// itself, already shared the same way), so both surfaces reading it is
+  /// exactly "the same authoritative assignment/status", never a second,
+  /// independently-invented one.
+  bool _hasActiveAssignmentDespiteWaitingStage(String engineerId) {
+    if (!_currentlyAssignedEngineerIds.contains(engineerId)) return false;
+    final assignment = workflow.assignments
+        .where((a) => a.engineerId == engineerId)
+        .firstOrNull;
+    return assignment != null &&
+        assignment.nextOrderStatus != PublicDemoNextOrderStatus.notOffered;
   }
 
   /// Issue #148 Phase 1B.3 — connects the existing confirmed-information
@@ -2097,6 +2142,55 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
         fiscalCloseId: PublicDemoFiscalCloseId.forMonth(s.month),
       ),
     );
+    if (!mounted) return;
+    await _showOfferResultIfDecided(a.id);
+  }
+
+  /// SES First Fun Quarter AI Replay Audit #2 P1-3 Fresh Audit fix: shown
+  /// after [offer] commits, identically whether `offer(i)` was reached
+  /// through HOME's guided "次にやること" card
+  /// ([_addApplicantStageCandidate]'s `applicantSalaryOffer` emission,
+  /// `unawaited(offer(index))`) or 営業's own `合格・給与提示` button — one
+  /// call site, one dialog, no per-entry-point special case.
+  ///
+  /// Purely reads back the applicant's already-committed
+  /// [PublicDemoApplicantStage]/[PublicDemoApplicant.acceptedMonthlySalary]/
+  /// [PublicDemoApplicant.salaryRelationshipReason] — every one of those
+  /// fields was already written by [PublicDemoOfferAcceptance.accept] before
+  /// this method is ever called (see [offer]'s own `_commitAggregate` call
+  /// just above), so this never re-runs or duplicates that judgement, and
+  /// closing the dialog cannot change or recompute it. Silently does
+  /// nothing when [applicantId]'s stage is not (yet) `offerAccepted`/
+  /// `offerDeclined` — the one real case being
+  /// [PublicDemoAggregate.acceptOffer]'s existing
+  /// `state.isFinanciallyRestricted` no-op guard, where nothing was
+  /// actually decided and showing a result would be fabricating one.
+  /// Reusing `context` after the `await showDialog` above is guarded by the
+  /// same `if (!mounted) return` every other post-await call site on this
+  /// screen already uses.
+  Future<void> _showOfferResultIfDecided(String applicantId) async {
+    final applicant = workflow.applicants
+        .where((candidate) => candidate.id == applicantId)
+        .firstOrNull;
+    if (applicant == null) return;
+    final accepted = switch (applicant.stage) {
+      PublicDemoApplicantStage.offerAccepted => true,
+      PublicDemoApplicantStage.offerDeclined => false,
+      _ => null,
+    };
+    if (accepted == null) return;
+    final salary = applicant.acceptedMonthlySalary;
+    if (salary == null) return;
+    await showDialog<void>(
+      context: context,
+      builder: (context) => PublicDemoOfferResultDialog(
+        applicantName: applicant.name,
+        portraitAssetPath: homeOfficeStagePortraitFor(applicant.id),
+        accepted: accepted,
+        offeredMonthlySalary: salary,
+        reason: applicant.salaryRelationshipReason ?? '給与条件で入社',
+      ),
+    );
   }
 
   Future<void> pi(int i) async {
@@ -2668,6 +2762,15 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
     fieldSalesActionReachableThisMonth: _fieldSalesActionReachableThisMonth(
       engineer,
     ),
+    // SES First Fun Quarter AI Replay Audit #2 P1-2 Fresh Audit fix: see
+    // [_officeStageStatusFor]'s own doc and
+    // [PublicDemoEmployeeStatusResolver.resolve]'s `isActivelyAssignedAtWaitingStage`
+    // doc for the exact case this covers (a pre-entry-order joiner, still
+    // `stage == waiting`). Reads the same shared, non-HOME-owned helper HOME
+    // itself now reads — one authoritative fact, not two.
+    isActivelyAssignedAtWaitingStage: engineer.stage ==
+            PublicDemoSalesStage.waiting &&
+        _hasActiveAssignmentDespiteWaitingStage(engineer.id),
   );
 
   /// PR #233 Codex review (P2): [_employeeStatusDisplayFor]'s '営業可能'
@@ -2852,12 +2955,35 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
           ),
         );
 
+  // SES First Fun Quarter AI Replay Audit #2 P1-1 Fresh Audit fix:
+  // [PublicDemoState.latestGrowthResults] is only ever written by
+  // [PublicDemoState.applyMonthlyGrowth] at the PRIOR month's close (see that
+  // method's own doc — "called only by the month-end commands ... before the
+  // next month transition"), so every month this section renders, it is
+  // always showing last month's already-closed record, never a live
+  // computation for the month currently in progress. The old heading "今月の
+  // 成長" ("this month's growth") sat directly above this month's still-open
+  // `internalTrainingCard` selection in the same section (Section 4), so a
+  // player who selected training this month and then read a stale prior
+  // month's flat (`+0`) result directly above it reasonably mistook it for a
+  // preview of their just-made choice that failed to update — a
+  // misunderstanding, not a stale-data or wrong-number bug: every number
+  // shown was already true for the month it actually described.
+  // [PublicDemoGrowthEngine]/[PublicDemoState.applyMonthlyGrowth] (the real
+  // growth calculation) and [PublicDemoMonthlyGrowth] (its persisted record,
+  // part of the save schema) are unchanged — only this heading's wording, so
+  // the section can no longer be misread as describing the in-progress
+  // month. This also resolves Audit #2 P2-6 (a currently-assigned engineer's
+  // still-visible prior-month record reading "社内研修を通じて成長"): that
+  // label was always accurate for the month it recorded, and misreading it
+  // as describing the engineer's current status was the same "今月の成長"
+  // heading ambiguity, not a second, independent resolver bug.
   Widget _growthResultsSection() {
     if (s.latestGrowthResults.isEmpty) return const SizedBox.shrink();
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text('今月の成長', style: TextStyle(fontWeight: FontWeight.bold)),
+        const Text('先月の成長結果', style: TextStyle(fontWeight: FontWeight.bold)),
         const SizedBox(height: 4),
         for (final result in s.latestGrowthResults)
           PublicDemoGrowthResultCard(
@@ -5217,7 +5343,7 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
     );
   }
 
-  /// Section 4 — 成長・SkillSheet・研修: `_growthResultsSection` (今月の成長,
+  /// Section 4 — 成長・SkillSheet・研修: `_growthResultsSection` (先月の成長結果,
   /// its own internal sub-heading unchanged) and the internal-training
   /// loop, moved verbatim. Issue #168 Finding B: May used to be the one gap
   /// in the training loop — April's `ec(i)` embeds its own training card

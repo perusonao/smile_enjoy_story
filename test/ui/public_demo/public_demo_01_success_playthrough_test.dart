@@ -230,6 +230,18 @@ void main() {
     expect(find.text('月給 ¥37万'), findsWidgets);
     await tester.tap(find.byKey(const Key('public-demo-salary-offer-370000')));
     await tester.pumpAndSettle();
+    // SES First Fun Quarter AI Replay Audit #2 P1-3: accepting/declining a
+    // salary offer now shows a one-time result confirmation before any
+    // further action is reachable. The underlying card's own status badge
+    // already reads 内定承諾 too (both are on screen at once, the dialog on
+    // top of it), so this checks the dialog's own key rather than the text
+    // alone.
+    expect(
+      find.byKey(const Key('public-demo-offer-result-dialog-斎藤 拓也')),
+      findsOneWidget,
+    );
+    await tester.tap(find.byKey(const Key('public-demo-offer-result-close')));
+    await tester.pumpAndSettle();
     await tapAndSettle(tester, '入社前スキルシートを確認');
     await tapAndSettle(tester, '入社前営業');
     // 斎藤拓也 is still a not-yet-joined applicant here — the separate
@@ -319,7 +331,7 @@ void main() {
     // The completed June growth is on 社員; Sato's assigned result
     // includes practical work.
     await switchPublicDemoTab(tester, PublicDemoTab.employees);
-    expect(find.text('今月の成長'), findsOneWidget);
+    expect(find.text('先月の成長結果'), findsOneWidget);
     expect(find.text('案件参画を通じて成長'), findsWidgets);
     expect(find.text('実務経験 +1か月'), findsWidgets);
     // The July assignment-result narrative is on 営業.

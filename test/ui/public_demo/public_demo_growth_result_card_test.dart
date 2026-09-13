@@ -70,7 +70,7 @@ void main() {
 
     expect(find.text('Java 78 → 78  (+0)'), findsOneWidget);
     expect(find.text('待機中の自己学習'), findsOneWidget);
-    expect(find.text('今月は大きな変化なし'), findsOneWidget);
+    expect(find.text('大きな変化はありませんでした'), findsOneWidget);
     expect(find.textContaining('実務経験'), findsNothing);
     expect(find.textContaining('業界経験'), findsNothing);
   });

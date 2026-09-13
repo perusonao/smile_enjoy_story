@@ -213,6 +213,9 @@ void main() {
         find.byKey(const Key('public-demo-salary-offer-370000')),
       );
       await tester.pumpAndSettle();
+      // SES First Fun Quarter AI Replay Audit #2 P1-3: a one-time result
+      // confirmation now appears before any further action is reachable.
+      await dismissDialog(tester, '閉じる');
       await tapAndSettle(tester, '入社前スキルシートを確認');
       await tapAndSettle(tester, '入社前営業');
       await tapAndSettle(tester, '案件紹介');

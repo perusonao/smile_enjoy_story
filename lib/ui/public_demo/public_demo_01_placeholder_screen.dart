@@ -1406,13 +1406,42 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
               projectId: projectId,
             ),
           ),
-          onOrder: (projectId) => _commitAggregate(
-            _game.recordOfferCandidateOrder(
-              engineerId: engineer.id,
-              projectId: projectId,
-            ),
-          ),
+          onOrder: (projectId) =>
+              _recordOfferCandidateOrder(engineer: engineer, projectId: projectId),
         ),
+      ),
+    );
+  }
+
+  /// Records a Phase 1c (候補案件を比較) order, then shows the same
+  /// order-decision celebration the single-candidate `受注` flow
+  /// (`_recordEngineerOrder`) has always shown. SES First Fun Quarter
+  /// Fresh Audit: before this method existed,
+  /// [PublicDemoOfferComparisonScreen.onOrder] committed the aggregate
+  /// with no image/dialog at all — the only order path in the game with no
+  /// "受注成功" moment. Reuses `AssetPaths.eventOrderDecision`
+  /// (`order_decision.jpg`) verbatim; no new asset or event authority.
+  Future<void> _recordOfferCandidateOrder({
+    required PublicDemoEngineerSales engineer,
+    required String projectId,
+  }) async {
+    _commitAggregate(
+      _game.recordOfferCandidateOrder(
+        engineerId: engineer.id,
+        projectId: projectId,
+      ),
+    );
+    if (!mounted) return;
+    await _precacheEventImage(AssetPaths.eventOrderDecision);
+    if (!mounted) return;
+    await showDialog<void>(
+      context: context,
+      builder: (context) => PublicDemoEventDialog(
+        title: '案件を受注しました',
+        imageAsset: AssetPaths.eventOrderDecision,
+        imageKey: const Key('public-demo-offer-comparison-order-decision-image'),
+        message: '${engineer.name}さんの案件を受注しました。',
+        nextAction: '翌月からの参画に備え、残りの営業状況も確認しましょう。',
       ),
     );
   }
@@ -2999,7 +3028,23 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
     // mirrors the domain-level guard already enforced by
     // PublicDemoInternalTrainingTransaction regardless of this UI check
     // (WORKFLOW-STATE-1's "never rely on UI alone" contract).
-    final showAction = !selected && !s.isCloseBlocked;
+    //
+    // SES First Fun Quarter P1-3 Fresh Audit fix: `s.isFinanciallyRestricted`
+    // (the FINANCE-FAILURE-1A+1B cash-shortage grace period) was missing
+    // from this gate even though
+    // [PublicDemoInternalTrainingTransaction.execute] already rejects a
+    // purchase attempted during it
+    // (`PublicDemoInternalTrainingStatus.blockedByFinancialShortage`) —
+    // and [PublicDemoAggregate.selectInternalTraining] is a silent no-op on
+    // that rejection (by design, "mirroring every other simple
+    // no-op-on-failure command on this class"), so a player who tapped
+    // 研修する during a cash shortage saw the button do nothing with zero
+    // feedback. This is not a training-rule change: it makes the already
+    // enabled/disabled prediction the button's own visibility gives match
+    // the domain rule that already existed, exactly like the `isCloseBlocked`
+    // check right above it.
+    final financiallyRestricted = s.isFinanciallyRestricted;
+    final showAction = !selected && !s.isCloseBlocked && !financiallyRestricted;
     return Card(
       key: Key('public-demo-internal-training-$engineerId'),
       margin: const EdgeInsets.symmetric(vertical: 4),
@@ -3059,6 +3104,18 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
                   // time on this screen is gone.
                   if (showAction && !affordable)
                     const Text('現預金が不足しています。', style: TextStyle(fontSize: 11)),
+                  // SES First Fun Quarter P1-3: states why the button is
+                  // hidden (not just that it is) and when it comes back —
+                  // the same cash-shortage grace period every other
+                  // optional-spending action on this screen already names
+                  // with this exact phrase (`_openRecruitmentMedia`'s
+                  // `blockedByFinancialShortage` message).
+                  if (!selected && financiallyRestricted && !s.isCloseBlocked)
+                    const Text(
+                      '資金繰りが悪化しているため、今月は社内研修を利用できません。'
+                      '現預金が回復すると再び利用できます。',
+                      style: TextStyle(fontSize: 11),
+                    ),
                 ],
               ),
             ),
@@ -4369,6 +4426,7 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _employeeRosterSection(),
+          _pendingJoinRosterSection(),
           _employeeNextActionsSection(),
           _employeeActiveProjectsSection(),
           _employeeGrowthSection(),
@@ -4403,9 +4461,50 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
           _employeeStatusFilterChips(engineers.length),
           const SizedBox(height: 6),
           Text(
-            '待機 ${s.engineersWaiting}・参画中 ${s.engineersAssigned}'
+            '技術者: 待機 ${s.engineersWaiting}・参画中 ${s.engineersAssigned}'
             '・合計 ${engineers.length}',
             style: const TextStyle(fontSize: 12),
+          ),
+          // SES First Fun Quarter P1-1 (Issue #122 follow-up): HOME's 社員
+          // KPI (`HomeDashboardDisplayData.totalEmployeeCount`) is
+          // `engineerCount + adminCount` — this roster only ever lists
+          // `workflow.engineers` (technicians), so a first-time player
+          // comparing HOME's "社員 ${engineers.length + s.adminCount}名" to
+          // this tab's own technician-only total above would see two
+          // different numbers under what looks like the same word. This
+          // line states the same reconciliation `_officeStageDisplay`'s own
+          // doc already establishes, reusing `s.adminCount` and
+          // [HomeNavigatorIdentity.name] verbatim — no new employee/admin
+          // record is added anywhere, and 総務 is deliberately never given
+          // its own roster card below (so 技術者 and 総務 are never mixed
+          // into one status list).
+          Padding(
+            padding: const EdgeInsets.only(top: 4),
+            child: Text(
+              'HOMEの「社員 ${engineers.length + s.adminCount}名」には、上の技術者'
+              '${engineers.length}名に加えて総務の${HomeNavigatorIdentity.name}'
+              '（${s.adminCount}名）が含まれます。総務はこの一覧には表示されません。',
+              style: TextStyle(
+                fontSize: 11,
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ),
+          // SES First Fun Quarter P1-1: a short, always-visible readiness
+          // summary — counted from the exact same
+          // [_employeeStatusDisplayFor] label every roster card badge below
+          // already renders, so this can never disagree with what the
+          // player sees per-card. No new eligibility rule or persisted
+          // aggregate: `営業可能`/`研修が必要` are two of the six existing
+          // [PublicDemoEmployeeStatusResolver] labels.
+          Padding(
+            padding: const EdgeInsets.only(top: 4),
+            child: Text(
+              '営業可能 ${engineers.where((e) => _employeeStatusDisplayFor(e).label == '営業可能').length}名'
+              ' ／ 研修が必要 ${engineers.where((e) => _employeeStatusDisplayFor(e).label == '研修が必要').length}名',
+              key: const Key('public-demo-employee-roster-readiness-summary'),
+              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+            ),
           ),
           const SizedBox(height: 6),
           for (final e in visibleEngineers) _employeeRosterCard(e),
@@ -4426,6 +4525,110 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
         _EmployeeStatusFilter.waiting =>
           !_currentlyAssignedEngineerIds.contains(e.id),
       };
+
+  /// Section 1.5 — 入社予定: SES First Fun Quarter P1-2 (Issue #122 Fresh
+  /// Audit — "採用面談→条件提示→承諾後、翌月入社まで人物が消えないようにする").
+  ///
+  /// Reads the exact same `workflow.applicants` /
+  /// [_applicantLifecycleBucket] the 採用 tab's own "結果待ち・入社予定" group
+  /// (`_salesApplicantProgressCards`) already uses to decide who is
+  /// genuinely done moving but not yet an employee — this is a second,
+  /// read-only rendering of that identical bucket in the Employee tab, not a
+  /// new candidate/employee record or a second authority for "who is about
+  /// to join". [PublicDemoApplicant] stays the sole source of truth for a
+  /// pre-join hire; [PublicDemoWorkflowState.joinAcceptedForFiscalClose]
+  /// (called from every monthly close) is still the only place a pre-join
+  /// applicant ever becomes a `workflow.engineers` entry, so this section
+  /// never disagrees with the roster above it — an applicant simply moves
+  /// from this section to [_employeeRosterSection] the month after they
+  /// join, and disappears from neither in between.
+  Widget _pendingJoinRosterSection() {
+    final pending = [
+      for (final a in workflow.applicants)
+        if (!a.hasJoined &&
+            _applicantLifecycleBucket(a) == _ApplicantLifecycleBucket.awaitingJoin)
+          a,
+    ];
+    if (pending.isEmpty) return const SizedBox.shrink();
+    // Public Demo 0.1's fiscal year only defines internal months 4-15
+    // (`PublicDemoFiscalCloseId.forMonth`); a pre-join applicant this late
+    // in the year falls back to the month-agnostic label below rather than
+    // naming a month outside that range.
+    final nextMonth = s.month + 1;
+    final joinMonthLabel = nextMonth <= 15
+        ? publicDemoMonthLabel(nextMonth)
+        : null;
+    return Padding(
+      key: const Key('public-demo-employee-pending-join-section'),
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _sectionHeader('入社予定', icon: Icons.person_add_alt_1_outlined),
+          Text(
+            joinMonthLabel == null
+                ? '内定を承諾済みで、来月の月次処理で入社します。'
+                : '内定を承諾済みで、$joinMonthLabelに入社します。',
+            style: const TextStyle(fontSize: 12),
+          ),
+          const SizedBox(height: 6),
+          for (final a in pending) _pendingJoinCard(a, joinMonthLabel),
+        ],
+      ),
+    );
+  }
+
+  Widget _pendingJoinCard(PublicDemoApplicant a, String? joinMonthLabel) =>
+      Container(
+        key: Key('public-demo-employee-pending-join-row-${a.id}'),
+        margin: const EdgeInsets.only(bottom: 6),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            PublicDemoEmployeeAvatar(
+              assetPath: homeOfficeStagePortraitFor(a.id),
+              radius: 20,
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    a.name,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 15,
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    a.resumeSummary,
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            PublicDemoEmployeeStatusBadge(
+              label: joinMonthLabel == null ? '入社予定' : '$joinMonthLabel入社予定',
+              tone: PublicDemoEmployeeStatusTone.waiting,
+            ),
+          ],
+        ),
+      );
 
   /// The 全員/待機中/参画中 filter chip row (Canonical Visual Reference
   /// `01_Employee_LayoutDraft.png`). Purely a client-side display filter on
@@ -4579,6 +4782,25 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
                     ),
                   ],
                 ),
+                // SES First Fun Quarter P1-1: identifies the two founding
+                // engineers (Issue #122 Fresh Audit — "佐藤・鈴木が何者なのか
+                // 分かるようにする") the moment they appear in the roster,
+                // reusing `publicDemoInitialEngineers`'s own ids (the exact
+                // authoritative seed list `PublicDemoState.initial` starts
+                // every game from) rather than inventing a new
+                // "founder"/role field on [PublicDemoEngineerSales].
+                if (publicDemoInitialEngineers.any((f) => f.id == e.id))
+                  Padding(
+                    padding: const EdgeInsets.only(top: 2),
+                    child: Text(
+                      '創業社員・技術者',
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: Theme.of(context).colorScheme.primary,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
                 if (skill != null) ...[
                   const SizedBox(height: 4),
                   PublicDemoEmployeeSkillBar(

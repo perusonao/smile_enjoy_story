@@ -58,7 +58,18 @@ class PublicDemoOfferComparisonScreen extends StatefulWidget {
   final void Function(String projectId) onProposeAdditional;
   final void Function(String projectId) onInterviewPartner;
   final void Function(String projectId) onInterviewClient;
-  final void Function(String projectId) onOrder;
+
+  /// SES First Fun Quarter (Issue #122 Fresh Audit, "受注成功"画像の欠落):
+  /// `Future<void>` (not `void`, unlike the interview callbacks above) so
+  /// the caller can `await` its own order-decision celebration —
+  /// [PublicDemoEventDialog]/`order_decision.jpg`, the exact same asset and
+  /// dialog the single-candidate `受注` flow
+  /// (`_recordEngineerOrder`/`_recordJuneOrder` on the parent screen) has
+  /// always shown — before this screen resumes. Before this fix, ordering
+  /// through 候補案件を比較 (Phase 1c) was the only order path in the game
+  /// with no celebratory image at all: [onOrder] just committed the
+  /// aggregate synchronously with nothing shown.
+  final Future<void> Function(String projectId) onOrder;
 
   @override
   State<PublicDemoOfferComparisonScreen> createState() =>
@@ -123,7 +134,27 @@ class _PublicDemoOfferComparisonScreenState
                 textAlign: TextAlign.center,
               ),
             )
-          else
+          else ...[
+            // SES First Fun Quarter P1-4 (Issue #245/#260 Fresh Audit):
+            // states, once per screen, why this comparison view's own
+            // 面談 buttons feel different from the single-candidate flow's
+            // interactive dialogue — [onInterviewPartner]/[onInterviewClient]
+            // resolve through [PublicDemoAggregate
+            // .evaluatePartnerInterviewForCandidate]/
+            // [evaluateClientInterviewForCandidate] (Phase 1c), a
+            // deterministic re-evaluation of the same profile the dialogic
+            // interview already reads, not a second, lesser interview —
+            // never framed as inferior, only as "already met once". Purely
+            // explanatory text; no interview rule changes.
+            const Padding(
+              padding: EdgeInsets.only(bottom: 10),
+              child: Text(
+                'ここでは複数の候補案件をまとめて比較できます。各案件の面談は、'
+                '既に紹介済みの技術者プロフィールに基づく判定のため、'
+                '最初の案件のような対話形式ではなく結果がすぐに表示されます。',
+                style: TextStyle(fontSize: 12, color: Colors.black54),
+              ),
+            ),
             for (final candidate in candidates)
               _OfferCandidateCard(
                 key: Key(
@@ -137,6 +168,7 @@ class _PublicDemoOfferComparisonScreenState
                     _runInterviewClient(candidate.projectId),
                 onOrder: () => _confirmOrder(context, candidate),
               ),
+          ],
           if (canAddMore) ...[
             const SizedBox(height: 8),
             if (!_showAdditionalPicker)
@@ -202,7 +234,7 @@ class _PublicDemoOfferComparisonScreenState
       ),
     );
     if (confirmed != true) return;
-    widget.onOrder(candidate.projectId);
+    await widget.onOrder(candidate.projectId);
     if (mounted) setState(() {});
   }
 }
@@ -214,11 +246,11 @@ class _PublicDemoOfferComparisonScreenState
 ) => switch (stage) {
   PublicDemoOfferCandidateStage.proposed => ('提案中', PublicDemoSalesStatusTone.inProgress),
   PublicDemoOfferCandidateStage.partnerInterviewPassed => (
-    'パートナー面談 通過',
+    '上位会社面談 通過',
     PublicDemoSalesStatusTone.inProgress,
   ),
   PublicDemoOfferCandidateStage.partnerInterviewFailed => (
-    'パートナー面談 不通過',
+    '上位会社面談 不通過',
     PublicDemoSalesStatusTone.negative,
   ),
   PublicDemoOfferCandidateStage.clientInterviewPassed => (
@@ -235,6 +267,26 @@ class _PublicDemoOfferComparisonScreenState
 
 String _interviewResultLabel(int? score, bool passed) =>
     score == null ? '未実施' : (passed ? '合格（$score点）' : '不合格（$score点）');
+
+/// SES First Fun Quarter P1-4: the "what just happened / what's next"
+/// sentence for [stage], or `null` for a stage that needs none (`proposed`
+/// — nothing has happened yet, the action button below already says
+/// "実施"; `ordered`/`declined` — already covered by [_OfferCandidateCard
+/// ._actionFor]'s own final-state text).
+String? _nextStepCaption(PublicDemoOfferCandidateStage stage) =>
+    switch (stage) {
+      PublicDemoOfferCandidateStage.partnerInterviewPassed =>
+        '上位会社面談に合格しました。次は客先面談です。',
+      PublicDemoOfferCandidateStage.partnerInterviewFailed =>
+        '上位会社面談が不合格でした。もう一度面談を行えます。',
+      PublicDemoOfferCandidateStage.clientInterviewPassed =>
+        '客先面談に合格しました。この案件を受注できます。',
+      PublicDemoOfferCandidateStage.clientInterviewFailed =>
+        '客先面談が不合格でした。もう一度面談を行えます。',
+      PublicDemoOfferCandidateStage.proposed ||
+      PublicDemoOfferCandidateStage.ordered ||
+      PublicDemoOfferCandidateStage.declined => null,
+    };
 
 class _OfferCandidateCard extends StatelessWidget {
   const _OfferCandidateCard({
@@ -295,7 +347,7 @@ class _OfferCandidateCard extends StatelessWidget {
             ),
             const SizedBox(height: 8),
             Text(
-              'パートナー面談：${_interviewResultLabel(candidate.partnerScore, candidate.stage != PublicDemoOfferCandidateStage.partnerInterviewFailed)}',
+              '上位会社面談：${_interviewResultLabel(candidate.partnerScore, candidate.stage != PublicDemoOfferCandidateStage.partnerInterviewFailed)}',
               style: const TextStyle(fontSize: 12.5),
             ),
             Text(
@@ -312,6 +364,22 @@ class _OfferCandidateCard extends StatelessWidget {
               '客先面談：${_interviewResultLabel(candidate.clientScore, candidate.hasGenuineInterviewRecord)}',
               style: const TextStyle(fontSize: 12.5),
             ),
+            // SES First Fun Quarter P1-4: the dialogic single-candidate
+            // interview narrates its own outcome
+            // (`PublicDemoProjectInterviewDialog`'s own pass copy: "次は
+            // 客先面談へ進みます" / "次は受注手続きへ進みます") — this screen's
+            // simplified re-evaluation previously changed only the stage
+            // badge and the button underneath it, with no sentence at all.
+            // This states the exact same "what just happened, what's next"
+            // fact this card's own next button already enacts, reusing
+            // `candidate.stage` — no new state.
+            if (_nextStepCaption(candidate.stage) case final caption?) ...[
+              const SizedBox(height: 4),
+              Text(
+                caption,
+                style: const TextStyle(fontSize: 12, color: Colors.black54),
+              ),
+            ],
             const SizedBox(height: 10),
             _actionFor(context),
           ],
@@ -331,8 +399,8 @@ class _OfferCandidateCard extends StatelessWidget {
           onPressed: onInterviewPartner,
           child: Text(
             candidate.stage == PublicDemoOfferCandidateStage.partnerInterviewFailed
-                ? 'パートナー面談を再実施'
-                : 'パートナー面談を実施',
+                ? '上位会社面談を再実施'
+                : '上位会社面談を実施',
           ),
         );
       case PublicDemoOfferCandidateStage.partnerInterviewPassed:

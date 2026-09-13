@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_engineer_runtime.dart';
+import 'package:smile_enjoy_story/game/public_demo/public_demo_financial_status.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_growth_engine.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_internal_training_transaction.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_recruitment.dart';
@@ -48,6 +49,35 @@ void main() {
     expect(result.state.cash, isNonNegative);
     expect(result.state.trainingSelections, isEmpty);
   });
+
+  // SES First Fun Quarter P1-3 Fresh Audit: this rule
+  // (FINANCE-FAILURE-1A+1B §13/16, `PublicDemoState.isFinanciallyRestricted`)
+  // already existed in `execute` before this Issue, but had no direct test
+  // — the UI-layer gate that should mirror it
+  // (`internalTrainingCard`'s `showAction`) was missing this exact check,
+  // so a player could tap 研修する during a cash shortage and see nothing
+  // happen. This pins the domain rule itself; the UI fix is covered
+  // separately in `public_demo_internal_training_financial_restriction_test.dart`.
+  test(
+    'a cash-shortage-restricted state rejects a new training purchase '
+    'atomically, even with sufficient cash',
+    () {
+      final before = state().copyWith(
+        financialStatus: PublicDemoFinancialStatus.cashShortage,
+      );
+      final result = transaction.execute(
+        state: before,
+        engineerId: 'eng-01',
+        assignedEngineerIds: const {},
+      );
+      expect(
+        result.status,
+        PublicDemoInternalTrainingStatus.blockedByFinancialShortage,
+      );
+      expect(identical(result.state, before), isTrue);
+      expect(result.state.trainingSelections, isEmpty);
+    },
+  );
 
   test('assigned, unknown, and duplicate engineer are rejected unchanged', () {
     final before = state();

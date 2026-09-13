@@ -161,6 +161,19 @@ void main() {
       );
       await tester.pumpAndSettle();
 
+      // SES First Fun Quarter Fresh Audit fix: ordering through
+      // 候補案件を比較 now shows the same order-decision celebration
+      // (`order_decision.jpg`) the single-candidate 受注 flow already
+      // showed — previously this path committed the order with no image
+      // or dialog at all.
+      expect(
+        find.byKey(const Key('public-demo-offer-comparison-order-decision-image')),
+        findsOneWidget,
+      );
+      expect(find.text('案件を受注しました'), findsOneWidget);
+      await tester.tap(find.text('確認'));
+      await tester.pumpAndSettle();
+
       expect(find.text('受注済みの案件です。'), findsOneWidget);
       // Codex Broad Review (PR #260) Finding #3 fix: the declined sibling
       // GENUINELY passed its client interview before being auto-declined —

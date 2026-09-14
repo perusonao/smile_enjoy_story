@@ -219,6 +219,76 @@ Result Reportは履歴・証拠であり、この文書の代わりにはしな�
 
 ## Update history
 
+### 2026-09-14（Mission System Phase 4 — Recruitment Missions + Document Screening 実装完了 / governing plan sync）
+
+- **First Fun Quarter Mission System Phase 4が完了した。** 設計資料
+  `docs/design/SES_FIRST-FUN-QUARTER_MISSION-ONBOARDING_Implementation-Plan.md`
+  §7の範囲を実装。開始時`git fetch origin main`で`origin/main`が
+  task指定のSHA `7c5b663d`（PR #267マージコミット、Mission System Phase 3）
+  と完全一致していることを確認（drift無し）。main Fast CI #705（このマージ
+  コミット自身のCI run）はFresh Audit開始時点でin_progressだったため、task
+  指示通りFresh Auditのみを先に進め、success確認後に実装へ着手した。作業
+  branchは`origin/main`から新規作成。
+- **実装前にFresh Auditを実施し、20項目（応募者state machine、reject/hire/
+  offer/join authority、Mission resolver、legacy save 等）を実コードと照合
+  した** — 詳細は`docs/reports/SES_FIRST-FUN-QUARTER_MISSION-PHASE4_Result.md`
+  のFresh Audit節を参照。特に「面接前のreject」が既存domain modelだけで
+  安全に表現できるかを検証し、2箇所の追加ガードのみで（新state/新field無し
+  で）実現可能と判断した。
+- **実装内容**:
+  1. **Document Screening（Required Feature A）**: `PublicDemoWorkflowState
+     .rejectApplicant`の precondition を`{interviewed}`から`{resumeReviewed,
+     interviewed}`へ拡張し、書類選考段階（面接前）での「見送る」を可能にした
+     — 既存`PublicDemoApplicantStage.rejected`をそのまま再利用（新state無
+     し）。実装時Fresh Auditで発見した実ギャップとして、`PublicDemoAggregate
+     .completeInterview`が`hasBeenInterviewed`のみを見ており`stage`を見て
+     いなかったため、書類選考で見送られた応募者がそのままcompleteInterview
+     を通過して面接段階へ「復活」できてしまう経路があった。sales slot消費前
+     に`stage == rejected`ガードを追加して閉じた（`PublicDemoApplicant
+     .completeInterview`側にもdefense-in-depthで同ガードを追加）。
+     採用不可（`PublicDemoOfferAcceptance.accept`の既存`rejected`ガード）・
+     二重reject不可（既存`_transitionApplicantStage`のidempotency）・
+     recruitment cost無返金（既存domainに返金機構が無い）・month transition
+     での復活無し（既存`joinAcceptedForFiscalClose`がstageを一切resetしな
+     い）は、いずれも既存authorityで既に成立していることを確認した（新guard
+     不要）。UI側は`resumeReviewed`段階の応募者カードへ「見送る」
+     `OutlinedButton`を追加（既存「採用面談」の下）。
+  2. **Recruitment Mission（Required Feature B）**: 新しい独立したMission
+     chain `publicDemoRecruitmentMissionChain`（`postRecruitmentMedium` →
+     `viewApplicantSkillSheet` → `screenApplicantResume` →
+     `conductHiringInterview` → `decideHiring` → `applicantJoined`）を
+     既存`public_demo_mission_resolver.dart`へ追加。Aprilの既存8 Mission
+     chain（`publicDemoAprilMissionChain`）自体は無変更・無拡張。
+     「書類選考する」は面接へ進める・見送るのどちらでも達成扱い
+     （`_hasScreened`ヘルパー、exhaustive switch）、「面接する」
+     「採用を決める」は実際にそのルートを選んだ場合のみ達成
+     （`hasBeenInterviewed`/`hasBindingOffer`の unforgeable record を直接
+     読む）— 新規persisted field無し。Mission画面（`PublicDemoMissionScreen`）
+     に「採用の目標」section を追加、`state.month >= 5`（Sales tabの求人媒体
+     カードと同じ閾値）から表示。
+- **Save/persistence**: schemaVersionは1のまま無変更。新規fieldも無し —
+  今回のMission chainはいずれも既存applicant authority（stage/
+  hasBeenInterviewed/hasBindingOffer/hasJoined）から都度導出するのみ。
+- **Tests**: `flutter analyze`（全体）issue無し。新規/更新テスト:
+  `public_demo_aggregate_test.dart`（reject pre-interview/二重reject/
+  reject後面接不可/reject後採用不可/recruitment cost無返金/save-reload/
+  A-B独立/month boundary）、`public_demo_mission_resolver_test.dart`
+  （Recruitment chain各missionの完了条件、見送りルートでのfalse-positive
+  無し）、`public_demo_mission_screen_test.dart`（Recruitment section表示・
+  360×800/390×844×TextScaler 1.0/1.3のoverflow無し）、新規
+  `public_demo_document_screening_reject_test.dart`（見送るボタンの実UI
+  動線・360×800/390×844×TextScaler 1.0/1.3）。
+  `flutter test test/game/public_demo` `flutter test test/ui/public_demo`
+  フルスイートPASS。`git diff --check`クリーン。詳細は
+  `docs/reports/SES_FIRST-FUN-QUARTER_MISSION-PHASE4_Result.md`。
+- **Self-hardening**: 実装後にClaude自身でBroad Self Reviewを1回実施 —
+  詳細はResult Report参照。
+- **本エントリはCurrent execution order・Prioritized backlog tableの構成を
+  変更しない** — Phase 1/2/3と同様、Mission Systemも独立した結果報告チェー
+  ンで追跡する（「Relationship to existing documents」参照）。
+- 詳細・Fresh Audit結論・persistence戦略・自己レビュー結果・未解決事項は
+  `docs/reports/SES_FIRST-FUN-QUARTER_MISSION-PHASE4_Result.md`を参照。
+
 ### 2026-09-14（Mission System Phase 3 — SkillSheet Understanding / Editing 実装完了 / governing plan sync）
 
 - **First Fun Quarter Mission System Phase 3が完了した。** 設計資料

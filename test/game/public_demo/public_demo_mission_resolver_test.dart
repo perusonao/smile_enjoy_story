@@ -3,13 +3,17 @@ import 'package:smile_enjoy_story/domain/models/programming_language.dart';
 import 'package:smile_enjoy_story/game/persistence/public_demo_save_codec.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_aggregate.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_assignment.dart';
+import 'package:smile_enjoy_story/game/public_demo/public_demo_fiscal_close_id.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_interview.dart';
+import 'package:smile_enjoy_story/game/public_demo/public_demo_join.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_mission_resolver.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_recruitment.dart';
+import 'package:smile_enjoy_story/game/public_demo/public_demo_recruitment_medium.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_sales.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_state.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_workflow_state.dart';
 
+import 'test_support/public_demo_offer_test_helpers.dart';
 import 'test_support/public_demo_recovery_test_helpers.dart';
 
 /// SES First Fun Quarter Mission System Phase 1 (Fresh Audit §3/§5,
@@ -593,6 +597,242 @@ void main() {
         expect(first[i].status, second[i].status);
         expect(first[i].engineerId, second[i].engineerId);
       }
+    });
+  });
+
+  // -------------------------------------------------------------------
+  // SES First Fun Quarter Mission Phase 4 — Recruitment Mission chain
+  // (PublicDemoMissionResolver.resolveRecruitment / publicDemoRecruitment
+  // MissionChain). Independent of the April chain above — none of these
+  // tests touch publicDemoAprilMissionChain/resolve.
+  // -------------------------------------------------------------------
+
+  PublicDemoApplicant applicant({
+    String id = 'app-01',
+    PublicDemoApplicantStage stage = PublicDemoApplicantStage.applied,
+  }) => PublicDemoApplicant(
+    id: id,
+    name: '応募者',
+    resumeSummary: 'Java 3年',
+    interviewScore: 70,
+    acceptanceScore: 70,
+    salesSkillFit: 70,
+    stage: stage,
+  );
+
+  PublicDemoMissionStatus recruitmentStatusOf(
+    List<PublicDemoMissionStatusEntry> entries,
+    PublicDemoMissionId id,
+  ) => entries.firstWhere((entry) => entry.id == id).status;
+
+  group('recruitment chain — no applicants yet', () {
+    test('only postRecruitmentMedium is available; everything else locked', () {
+      final workflow = PublicDemoWorkflowState(
+        applicants: const [],
+        engineers: const [],
+      );
+      final entries = PublicDemoMissionResolver.resolveRecruitment(
+        workflow: workflow,
+      );
+      expect(entries.length, publicDemoRecruitmentMissionChain.length);
+      expect(
+        recruitmentStatusOf(entries, PublicDemoMissionId.postRecruitmentMedium),
+        PublicDemoMissionStatus.available,
+      );
+      for (final id in publicDemoRecruitmentMissionChain.skip(1)) {
+        expect(recruitmentStatusOf(entries, id), PublicDemoMissionStatus.locked);
+      }
+    });
+  });
+
+  group('recruitment chain — document screening (見送る route)', () {
+    test(
+      'a resumeReviewed applicant completes viewApplicantSkillSheet only',
+      () {
+        final workflow = PublicDemoWorkflowState(
+          applicants: [
+            applicant(stage: PublicDemoApplicantStage.resumeReviewed),
+          ],
+          engineers: const [],
+        );
+        final entries = PublicDemoMissionResolver.resolveRecruitment(
+          workflow: workflow,
+        );
+        expect(
+          recruitmentStatusOf(entries, PublicDemoMissionId.postRecruitmentMedium),
+          PublicDemoMissionStatus.completed,
+        );
+        expect(
+          recruitmentStatusOf(entries, PublicDemoMissionId.viewApplicantSkillSheet),
+          PublicDemoMissionStatus.completed,
+        );
+        expect(
+          recruitmentStatusOf(entries, PublicDemoMissionId.screenApplicantResume),
+          PublicDemoMissionStatus.available,
+          reason: 'reviewed but not yet screened (neither interviewed nor rejected)',
+        );
+        expect(
+          recruitmentStatusOf(entries, PublicDemoMissionId.conductHiringInterview),
+          PublicDemoMissionStatus.locked,
+        );
+      },
+    );
+
+    test(
+      'a document-rejected applicant (screened via 見送る, never interviewed) '
+      'completes screenApplicantResume but never conductHiringInterview/'
+      'decideHiring/applicantJoined — a real alternate-route dead end, not '
+      'a false positive',
+      () {
+        final aggregate = PublicDemoAggregate.initial()
+            .recruit(PublicDemoRecruitmentMedium.engineer)
+            .aggregate!;
+        final id = aggregate.workflow.applicants.first.id;
+        final reviewed = aggregate.reviewResume(id);
+        final rejected = reviewed.rejectApplicant(id);
+        expect(
+          rejected.workflow.applicants.first.stage,
+          PublicDemoApplicantStage.rejected,
+        );
+
+        final entries = PublicDemoMissionResolver.resolveRecruitment(
+          workflow: rejected.workflow,
+        );
+        expect(
+          recruitmentStatusOf(entries, PublicDemoMissionId.screenApplicantResume),
+          PublicDemoMissionStatus.completed,
+          reason:
+              '書類選考する must complete via EITHER 面接へ進める OR 見送る — '
+              'per the task\'s own framing',
+        );
+        expect(
+          recruitmentStatusOf(entries, PublicDemoMissionId.conductHiringInterview),
+          isNot(PublicDemoMissionStatus.completed),
+          reason: '面接する is only achieved by genuinely taking the interview route',
+        );
+        expect(
+          recruitmentStatusOf(entries, PublicDemoMissionId.decideHiring),
+          isNot(PublicDemoMissionStatus.completed),
+        );
+        expect(
+          recruitmentStatusOf(entries, PublicDemoMissionId.applicantJoined),
+          isNot(PublicDemoMissionStatus.completed),
+        );
+      },
+    );
+  });
+
+  group('recruitment chain — interview route', () {
+    test(
+      'a genuinely interviewed applicant completes conductHiringInterview',
+      () {
+        final aggregate = PublicDemoAggregate.initial()
+            .recruit(PublicDemoRecruitmentMedium.engineer)
+            .aggregate!;
+        final id = aggregate.workflow.applicants.first.id;
+        final interviewed = aggregate.completeInterview(id).aggregate;
+
+        final entries = PublicDemoMissionResolver.resolveRecruitment(
+          workflow: interviewed.workflow,
+        );
+        expect(
+          recruitmentStatusOf(entries, PublicDemoMissionId.screenApplicantResume),
+          PublicDemoMissionStatus.completed,
+        );
+        expect(
+          recruitmentStatusOf(entries, PublicDemoMissionId.conductHiringInterview),
+          PublicDemoMissionStatus.completed,
+        );
+        expect(
+          recruitmentStatusOf(entries, PublicDemoMissionId.decideHiring),
+          isNot(PublicDemoMissionStatus.completed),
+        );
+      },
+    );
+  });
+
+  group('recruitment chain — decide-hiring and join', () {
+    test(
+      'a genuine accepted-offer applicant completes decideHiring but not '
+      'applicantJoined yet',
+      () {
+        final offered = acceptTestOffer(
+          applicant(id: 'app-02'),
+          offeredMonthlySalary: 320000,
+        );
+        expect(offered.hasBindingOffer, isTrue);
+        expect(offered.hasJoined, isFalse);
+
+        final workflow = PublicDemoWorkflowState(
+          applicants: [offered],
+          engineers: const [],
+        );
+        final entries = PublicDemoMissionResolver.resolveRecruitment(
+          workflow: workflow,
+        );
+        expect(
+          recruitmentStatusOf(entries, PublicDemoMissionId.decideHiring),
+          PublicDemoMissionStatus.completed,
+        );
+        expect(
+          recruitmentStatusOf(entries, PublicDemoMissionId.applicantJoined),
+          isNot(PublicDemoMissionStatus.completed),
+        );
+      },
+    );
+
+    test('a genuinely joined applicant completes applicantJoined', () {
+      final offered = acceptTestOffer(
+        applicant(id: 'app-03'),
+        offeredMonthlySalary: 320000,
+      );
+      const transaction = PublicDemoJoinTransaction();
+      final joined = transaction
+          .join(
+            applicant: offered,
+            week: 9,
+            currentFiscalCloseId: PublicDemoFiscalCloseId.forMonth(5),
+          )
+          .applicant;
+      expect(joined.hasJoined, isTrue);
+
+      final workflow = PublicDemoWorkflowState(
+        applicants: [joined],
+        engineers: const [],
+      );
+      final entries = PublicDemoMissionResolver.resolveRecruitment(
+        workflow: workflow,
+      );
+      expect(
+        recruitmentStatusOf(entries, PublicDemoMissionId.applicantJoined),
+        PublicDemoMissionStatus.completed,
+      );
+    });
+  });
+
+  group('recruitment chain — save/reload has no false positives, no new field', () {
+    test('a save from before this phase existed resolves correctly', () {
+      final aggregate = PublicDemoAggregate.initial()
+          .recruit(PublicDemoRecruitmentMedium.engineer)
+          .aggregate!;
+      final applicantId = aggregate.workflow.applicants.first.id;
+      final reviewed = aggregate.reviewResume(applicantId);
+
+      const codec = PublicDemoSaveCodec();
+      final json = codec.toJson(reviewed);
+      final restored = codec.fromJson(json);
+      expect(restored, isNotNull);
+
+      final entries = PublicDemoMissionResolver.resolveRecruitment(
+        workflow: restored!.workflow,
+      );
+      expect(
+        recruitmentStatusOf(entries, PublicDemoMissionId.viewApplicantSkillSheet),
+        PublicDemoMissionStatus.completed,
+        reason:
+            'no new persisted field: resolveRecruitment derives everything '
+            'from applicant.stage, already round-tripped by the existing codec',
+      );
     });
   });
 }

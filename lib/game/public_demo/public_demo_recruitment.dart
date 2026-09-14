@@ -334,9 +334,21 @@ class PublicDemoApplicant {
   /// unforgeable parameter instead: only
   /// [PublicDemoState.useSalesSlotForInterview] can mint one, and only when
   /// it actually consumed a slot.
+  ///
+  /// SES First Fun Quarter Mission Phase 4 (Document Screening): also a
+  /// no-op once `stage == rejected` — a document-screening "見送る" decision
+  /// (reachable pre-interview since this phase, see
+  /// [PublicDemoWorkflowState.rejectApplicant]) leaves `hasBeenInterviewed`
+  /// `false` (this applicant genuinely never interviewed), so without this
+  /// explicit check a rejected applicant could otherwise still be walked
+  /// through this method and "un-rejected" back into `interviewed`. The real
+  /// defense against wasting a sales slot on this no-op lives one level up
+  /// in [PublicDemoAggregate.completeInterview] (checked before slot
+  /// consumption); this is defense-in-depth at the model level, mirroring
+  /// every other unforgeable-record guard in this class.
   PublicDemoApplicant completeInterview(
     PublicDemoSalesSlotConsumptionProof proof,
-  ) => hasBeenInterviewed
+  ) => hasBeenInterviewed || stage == PublicDemoApplicantStage.rejected
       ? this
       : copyWith(
           stage: PublicDemoApplicantStage.interviewed,

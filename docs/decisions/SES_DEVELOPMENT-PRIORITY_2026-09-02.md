@@ -215,8 +215,82 @@ Result Reportは履歴・証拠であり、この文書の代わりにはしな�
 - `docs/reports/` — 実施結果と証拠。計画変更が必要なら結果報告だけで終わらせず、この文書も更新する。
 - `docs/reports/SES_CORE-GAMEPLAY_Phase*_Result.md` — First Fun Year本体（HOME/Visual/April→March replay）とは別建てで並行進行するCORE-GAMEPLAY（Seeded RNG→Random Recruitment→Recruitment Interview→Random Projects…）施策系列の実施結果と証拠。この系列は各Phase自身のresult reportチェーンのみで追跡され、本文書の「Current execution order」「Prioritized backlog」には含めない（2026-09-08 Update history参照）。
 - `docs/reports/SES_FIRST-FUN-QUARTER_*_Result.md` — 4月〜7月のPublic Demo core loop（HOME/採用/面談/営業）に対するAI Replay Audit系列（AI Replay Audit #1〜#3、PR #260〜#264）の実施結果と証拠。CORE-GAMEPLAYと同様、この系列も各Auditのresult reportチェーンで追跡し、本文書の「Current execution order」「Prioritized backlog」には含めない。2026-09-13 Update historyのエントリまで、この系列の完了はいずれも本文書へ同期されていなかった（Codex Broad Review, PR #264指摘）——同エントリ以降は各Audit完了時にここへも記録する。
+- `docs/reports/SES_FIRST-FUN-QUARTER_MISSION-ONBOARDING_Fresh-Audit.md` / `docs/design/SES_FIRST-FUN-QUARTER_MISSION-ONBOARDING_Implementation-Plan.md` / `docs/reports/SES_FIRST-FUN-QUARTER_MISSION-PHASE1_Result.md` — Public Demo Mission System（初心者オンボーディング）系列の監査・設計・各Phaseの実施結果。上記AI Replay Audit系列と同様、本文書の「Current execution order」「Prioritized backlog」には含めず、各Phase完了時にUpdate historyへ記録する。
 
 ## Update history
+
+### 2026-09-14（Mission System Phase 1 — April Main Mission 実装完了 / governing plan sync）
+
+- **First Fun Quarter Mission System Phase 1が完了した。** 設計資料
+  `docs/reports/SES_FIRST-FUN-QUARTER_MISSION-ONBOARDING_Fresh-Audit.md`
+  （READ-ONLY audit、`origin/main` SHA `dfb2726`基準）と
+  `docs/design/SES_FIRST-FUN-QUARTER_MISSION-ONBOARDING_Implementation-Plan.md`
+  §3で指定されたPhase 1範囲を実装 — 両ドキュメントとも本PRで正式に
+  リポジトリへ追加した。
+- **実装内容**: 新規`lib/game/public_demo/public_demo_mission_resolver.dart`
+  （`PublicDemoEmployeeStatusResolver`と同じ「pure function、既存authorityを
+  再解釈しない」規律に従うMission resolver。7 Mission — SkillSheet確認/
+  営業開始/案件提案/上位会社面談通過/客先面談通過/受注/参画 —
+  をFresh Audit §3のauthority citation通りに導出。stageのenum.indexは
+  一切比較せず、`PublicDemoSalesStage`の全9値を明示的exhaustive switchで
+  扱う。客先面談通過のみ`hasGenuineInterviewRecord`（unforgeable record）を
+  読み、他はFresh Audit自身がCategory A（bare stage / `assignedEngineerIds`
+  membership）と分類した箇所のみbare stageを信頼する）と、新規
+  `lib/ui/public_demo/public_demo_mission_screen.dart`（4月目標ヘッダー→
+  7ステップ進捗リスト→MISSION COMPLETE演出、360x800/390x844 ×
+  TextScaler 1.0/1.3でoverflow無しを確認済み）。
+  `public_demo_01_placeholder_screen.dart`への変更はAppBar
+  entry point（既存🔔通知ボタン隣にkey
+  `public-demo-app-bar-mission`のIconButtonを追加、Navigator.pushで
+  Mission画面を開く）と、その画面が読む1個の新規private method
+  （`_openMissionScreen`）のみ — Fresh Audit §9 Option Eの通りAppBarは
+  Scaffold-level chromeでありHOME本文ではないため、HOME Freezeの対象外
+  として実装した。HOME本文・Bottom Navigation（5タブ）はdiff無し
+  （widget testで直接確認）。
+- **売上因果関係の説明統合**: task本文の指示通りMission 22
+  （売上が発生する）は独立Missionにせず、参画Mission（Mission 8）自身の
+  完了演出内で説明する — 「参画すると売上が発生します。ただし、売上と
+  入金は同じタイミングではありません。」。既存の月次決算ダイアログ
+  （`_maybeShowMonthlyReport`）へは一切触れておらず、この説明はプレイヤーが
+  能動的に開くMission画面内にのみ表示されるため、既存演出との二重dialogは
+  発生しない。
+- **Save compatibility**: 新規save fieldは一切追加していない
+  （`schemaVersion`も無変更）。Mission進捗は完全にderived-only —
+  `PublicDemoSaveCodec`を実際に経由したencode/decodeラウンドトリップで、
+  Mission System導入前のsave相当（既に受注・参画済みのengineerを含む）を
+  読み込んだ直後に全7Missionが正しくcompleted表示になることをテストで
+  確認済み。
+- **Tests**: resolver unit test 14件（新規
+  `test/game/public_demo/public_demo_mission_resolver_test.dart`
+  — 各Missionのlocked/available/completed境界、ordered+assigned同時
+  completed回帰、company-level reduction、月境界での非stale読み取り、
+  legacy save互換、malformed/forged stageがMission達成を偽装できないこと、
+  partner面談失敗→retry→成功、再解決の冪等性）、UI test 24件（新規
+  `test/ui/public_demo/public_demo_mission_screen_test.dart` 15件 —
+  fresh/partial/complete表示、MISSION COMPLETE演出、360x800/390x844 ×
+  TextScaler 1.0/1.3 overflow無し、および新規
+  `test/ui/public_demo/public_demo_mission_appbar_entry_test.dart` 9件 —
+  AppBar entry pointが5タブ全てで到達可能、既存アグリゲートへの
+  再解決、MISSION COMPLETE演出の重複無し、HOME Freeze regression）。
+  `flutter analyze`（全体）issue無し。`flutter test test/game/public_demo`
+  1042件（既存1028件+新規14件）、`flutter test test/ui/public_demo`
+  800件（既存776件+新規24件）すべてPASS。`git diff --check`クリーン。
+- **Self-hardening**: 実装後にClaude自身でBroad Self Reviewを1回実施し、
+  P1を1件発見・同一セッションで修正済み — MISSION COMPLETEバナーの
+  「MISSION COMPLETE」見出しRowがExpanded無しで、360px幅×TextScaler 1.3で
+  RenderFlex overflowを起こしていた（widget testが実際に検知）。
+  `Expanded`でラップして解消し、再テストでoverflow無しを確認。それ以外の
+  観点（authority/stage forgery/stale month/duplicate completion/retry/
+  month transition/既存notificationとの二重演出）はいずれも上記テストで
+  問題なしを確認済み。
+- **本エントリはCurrent execution order・Prioritized backlog tableの構成を
+  変更しない** — `docs/reports/SES_FIRST-FUN-QUARTER_*_Result.md`系列と
+  同様、Mission Systemも独立した結果報告チェーンで追跡する
+  （「Relationship to existing documents」参照）。`docs/DEVELOPMENT_PLAN.md`
+  にはPublic Demo Missionに関する記述が存在しないため、本タスクでは
+  同文書への同期は不要と判断し変更していない。
+- 詳細・authority mapping・Phase 2推奨は
+  `docs/reports/SES_FIRST-FUN-QUARTER_MISSION-PHASE1_Result.md`を参照。
 
 ### 2026-09-13（AI Replay Audit #3 P1 — Recruitment Interview Agency 修正完了、PR #264 Codex Broad Review P1 2件対応込み / governing plan sync）
 

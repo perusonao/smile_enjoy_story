@@ -12,6 +12,7 @@ import '../../game/public_demo/public_demo_founder_follow_up.dart';
 import '../../game/public_demo/public_demo_interview.dart';
 import '../../game/public_demo/public_demo_internal_training_transaction.dart';
 import '../../game/public_demo/public_demo_matching_fit.dart';
+import '../../game/public_demo/public_demo_mission_resolver.dart';
 import '../../game/public_demo/public_demo_month_guard.dart';
 import '../../game/public_demo/public_demo_month_label.dart';
 import '../../game/public_demo/public_demo_monthly_close.dart';
@@ -57,6 +58,7 @@ import 'public_demo_home_presentation_components.dart';
 import 'public_demo_interview_result_dialog.dart';
 import 'public_demo_matching_screen.dart';
 import 'public_demo_menu_visual.dart';
+import 'public_demo_mission_screen.dart';
 import 'public_demo_month_guard_warning_dialog.dart';
 import 'public_demo_monthly_cash_flow_card.dart';
 import 'public_demo_monthly_report_dialog.dart';
@@ -492,6 +494,30 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
       context: context,
       barrierDismissible: false,
       builder: (context) => PublicDemoMonthlyReportDialog(data: data),
+    );
+  }
+
+  /// SES First Fun Quarter Mission System Phase 1 (Implementation Plan
+  /// §3.4/§3.5): opens the read-only April Mission screen via
+  /// [Navigator.push], resolving every mission's status fresh from the
+  /// currently-committed [_game] at open time — never a stored/cached list,
+  /// so a mission completed since the last time this was opened always
+  /// shows correctly without any Mission-specific "refresh" plumbing (the
+  /// same reasoning [_recommendedActionSlot]'s own doc gives for reading
+  /// straight off [_game]). [PublicDemoMissionResolver] is a pure function
+  /// of [workflow]/[s] — this call mutates nothing.
+  void _openMissionScreen() {
+    unawaited(
+      Navigator.of(context).push<void>(
+        MaterialPageRoute<void>(
+          builder: (context) => PublicDemoMissionScreen(
+            missions: PublicDemoMissionResolver.resolve(
+              workflow: workflow,
+              state: s,
+            ),
+          ),
+        ),
+      ),
     );
   }
 
@@ -6502,6 +6528,19 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
           ),
           title: const Text('S.E.S. Public Demo 0.1'),
           actions: [
+            // SES First Fun Quarter Mission System Phase 1 (Fresh Audit §9
+            // Option E / Implementation Plan §3.5): a HOME-Freeze-safe entry
+            // point — the AppBar is Scaffold-level chrome, not HOME content,
+            // and this button adds no new bottom-nav destination. Reads
+            // [workflow]/[s] read-only, exactly like every other getter this
+            // build() already consults; opening the Mission screen commits
+            // nothing.
+            IconButton(
+              key: const Key('public-demo-app-bar-mission'),
+              icon: const Icon(Icons.flag_outlined),
+              tooltip: 'ミッション',
+              onPressed: _openMissionScreen,
+            ),
             IconButton(
               key: const Key('public-demo-app-bar-notifications'),
               icon: const Icon(Icons.notifications_outlined),

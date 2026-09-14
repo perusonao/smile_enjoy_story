@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:smile_enjoy_story/domain/models/programming_language.dart';
+import 'package:smile_enjoy_story/game/models/recruitment_interview.dart';
 import 'package:smile_enjoy_story/game/persistence/public_demo_save_codec.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_aggregate.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_assignment.dart';
@@ -633,6 +634,7 @@ void main() {
       );
       final entries = PublicDemoMissionResolver.resolveRecruitment(
         workflow: workflow,
+        state: PublicDemoState.aprilStart(),
       );
       expect(entries.length, publicDemoRecruitmentMissionChain.length);
       expect(
@@ -649,14 +651,21 @@ void main() {
     test(
       'a resumeReviewed applicant completes viewApplicantSkillSheet only',
       () {
-        final workflow = PublicDemoWorkflowState(
-          applicants: [
-            applicant(stage: PublicDemoApplicantStage.resumeReviewed),
-          ],
-          engineers: const [],
-        );
+        // Codex review (PR #268 P2): postRecruitmentMedium now reads
+        // state.recruitmentMediumUsedMonth (durable across the May cohort
+        // prune), so this fixture goes through the real recruit()/
+        // reviewResume() commands rather than hand-building the workflow,
+        // to keep the applicant and the state's own recruitment-usage
+        // fact consistent with each other.
+        final aggregate = PublicDemoAggregate.initial()
+            .recruit(PublicDemoRecruitmentMedium.engineer)
+            .aggregate!;
+        final id = aggregate.workflow.applicants.first.id;
+        final reviewed = aggregate.reviewResume(id);
+
         final entries = PublicDemoMissionResolver.resolveRecruitment(
-          workflow: workflow,
+          workflow: reviewed.workflow,
+          state: reviewed.state,
         );
         expect(
           recruitmentStatusOf(entries, PublicDemoMissionId.postRecruitmentMedium),
@@ -697,6 +706,7 @@ void main() {
 
         final entries = PublicDemoMissionResolver.resolveRecruitment(
           workflow: rejected.workflow,
+          state: rejected.state,
         );
         expect(
           recruitmentStatusOf(entries, PublicDemoMissionId.screenApplicantResume),
@@ -724,20 +734,62 @@ void main() {
 
   group('recruitment chain — interview route', () {
     test(
-      'a genuinely interviewed applicant completes conductHiringInterview',
+      'completeInterview alone (the 採用面談 paperwork/sales-slot step) does '
+      'NOT complete conductHiringInterview — only a genuinely concluded '
+      'interactive Q&A session does',
       () {
+        // Codex review (PR #268 P2): `hasBeenInterviewed` (minted by
+        // completeInterview) used to be this mission's signal, but the
+        // real UI still shows a separate 面談を行う/面談を続ける button for
+        // the interactive session at this point — the player has not yet
+        // done "面接する" in any player-observable sense.
         final aggregate = PublicDemoAggregate.initial()
             .recruit(PublicDemoRecruitmentMedium.engineer)
             .aggregate!;
         final id = aggregate.workflow.applicants.first.id;
         final interviewed = aggregate.completeInterview(id).aggregate;
+        expect(interviewed.workflow.applicants.first.hasBeenInterviewed, isTrue);
 
         final entries = PublicDemoMissionResolver.resolveRecruitment(
           workflow: interviewed.workflow,
+          state: interviewed.state,
         );
         expect(
           recruitmentStatusOf(entries, PublicDemoMissionId.screenApplicantResume),
           PublicDemoMissionStatus.completed,
+        );
+        expect(
+          recruitmentStatusOf(entries, PublicDemoMissionId.conductHiringInterview),
+          isNot(PublicDemoMissionStatus.completed),
+        );
+      },
+    );
+
+    test(
+      'a genuinely concluded interactive interview session completes '
+      'conductHiringInterview',
+      () {
+        final aggregate = PublicDemoAggregate.initial()
+            .recruit(PublicDemoRecruitmentMedium.engineer)
+            .aggregate!;
+        final id = aggregate.workflow.applicants.first.id;
+        final concluded = aggregate
+            .completeInterview(id)
+            .aggregate
+            .startInterviewSession(id)
+            .askInterviewQuestion(id, InterviewQuestionCategory.technical)
+            .askInterviewQuestion(id, InterviewQuestionCategory.career)
+            .askInterviewQuestion(id, InterviewQuestionCategory.teamwork)
+            .answerInterviewReverseQuestion(id, 0)
+            .concludeInterviewSession(id, InterviewOutcome.hired);
+        expect(
+          concluded.workflow.interviewSessions.single.completed,
+          isTrue,
+        );
+
+        final entries = PublicDemoMissionResolver.resolveRecruitment(
+          workflow: concluded.workflow,
+          state: concluded.state,
         );
         expect(
           recruitmentStatusOf(entries, PublicDemoMissionId.conductHiringInterview),
@@ -769,6 +821,7 @@ void main() {
         );
         final entries = PublicDemoMissionResolver.resolveRecruitment(
           workflow: workflow,
+          state: PublicDemoState.aprilStart(),
         );
         expect(
           recruitmentStatusOf(entries, PublicDemoMissionId.decideHiring),
@@ -802,6 +855,7 @@ void main() {
       );
       final entries = PublicDemoMissionResolver.resolveRecruitment(
         workflow: workflow,
+        state: PublicDemoState.aprilStart(),
       );
       expect(
         recruitmentStatusOf(entries, PublicDemoMissionId.applicantJoined),
@@ -825,6 +879,7 @@ void main() {
 
       final entries = PublicDemoMissionResolver.resolveRecruitment(
         workflow: restored!.workflow,
+        state: restored.state,
       );
       expect(
         recruitmentStatusOf(entries, PublicDemoMissionId.viewApplicantSkillSheet),
@@ -834,5 +889,49 @@ void main() {
             'from applicant.stage, already round-tripped by the existing codec',
       );
     });
+  });
+
+  // -------------------------------------------------------------------
+  // Codex review (PR #268 P2): postRecruitmentMedium must never regress
+  // back to incomplete once genuinely achieved, even when the May→June
+  // cohort cutoff (`joinAndKeepOnly`) empties `workflow.applicants`
+  // entirely because nobody accepted an offer.
+  // -------------------------------------------------------------------
+  group('recruitment chain — postRecruitmentMedium survives the May cohort cutoff', () {
+    test(
+      'recruiting in May with no accepted offer still reads '
+      'postRecruitmentMedium as completed after closeMay empties the '
+      'applicant roster',
+      () {
+        final afterApril = PublicDemoAggregate.initial().closeApril(
+          monthlyExpenses: 800000,
+        );
+        expect(afterApril.state.month, 5);
+        final recruited = afterApril
+            .recruit(PublicDemoRecruitmentMedium.engineer)
+            .aggregate!;
+        expect(recruited.workflow.applicants, isNotEmpty);
+
+        final afterMay = recruited.closeMay(week: 9, monthlyExpenses: 800000);
+        expect(
+          afterMay.workflow.applicants,
+          isEmpty,
+          reason: 'nobody accepted an offer, so joinAndKeepOnly prunes the '
+              'whole cohort — this is the exact regression scenario',
+        );
+
+        final entries = PublicDemoMissionResolver.resolveRecruitment(
+          workflow: afterMay.workflow,
+          state: afterMay.state,
+        );
+        expect(
+          recruitmentStatusOf(entries, PublicDemoMissionId.postRecruitmentMedium),
+          PublicDemoMissionStatus.completed,
+          reason:
+              'a durable state fact (recruitmentMediumUsedMonth), not the '
+              'current applicant roster, must back this mission',
+        );
+      },
+    );
   });
 }

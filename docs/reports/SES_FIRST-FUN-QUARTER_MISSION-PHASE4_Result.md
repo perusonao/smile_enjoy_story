@@ -151,6 +151,19 @@ One Claude Broad Self Review pass, focused on: save authority, state transition,
 - **Recruitment Mission chain does not carry its own "履歴" screen** — per Fresh Audit finding, the existing Sales-tab applicant list already shows a document-rejected (or any-stage-rejected) applicant with the pre-existing "不採用" badge indefinitely for any June-onward-recruited applicant (never pruned by any month-close path); only the original April/May founding cohort is pruned at the one-time May→June cutover (`joinAndKeepOnly`), identically for a pre-existing post-interview reject as for this phase's new pre-interview reject. No new history UI was built, per the task's own "現行UIを確認して判断" instruction — the existing list already serves this need.
 - **Out of scope, confirmed untouched**: new recruitment media, referral hiring, SNS hiring, staffing agencies, recruitment PR, Applicant SkillSheet editing, trust penalty, interview-conversation overhaul, HOME redesign, Bottom Nav changes, image asset overhaul, Training Phase 1b — none of this phase's diff touches any of these.
 
+## Codex review (chatgpt-codex-connector, PR #268)
+
+An automated Codex review on the PR found 4 real findings against the initial push (`7c3d997`), all verified and fixed in a follow-up commit rather than disputed:
+
+| Severity | File:line | Finding | Fix |
+|---|---|---|---|
+| P1 | `public_demo_01_placeholder_screen.dart` (recruitment visibility getter) | Recruitment chain stayed visible past the August recruiting window even with no surviving applicant, pointing Mission 1 at a 求人媒体 action the Sales tab no longer renders | Visibility now requires either the recruiting window (`month >= 5 && isRecruitmentMediaWindowMonth`) or an existing applicant who can still advance the chain |
+| P2 | `public_demo_mission_resolver.dart` (`postRecruitmentMedium`) | Reading `workflow.applicants.isNotEmpty` regressed this mission back to incomplete once `closeMay`'s `joinAndKeepOnly` prunes the whole cohort (nobody accepted an offer) — a completed mission un-completing itself | Reads `PublicDemoState.recruitmentMediumUsedMonth != null` instead — a durable fact, set once, never cleared by any production path |
+| P2 | `public_demo_01_placeholder_screen.dart` (badge acknowledgement) | Opening the Mission screen while the Recruitment chain was still hidden (April) recorded front-index 0 for it; the chain's own genuine front-index-0 the moment it first became visible in May then read as already-acknowledged, suppressing the very first nudge | Never acknowledge the Recruitment chain's front while it is hidden; `_missionBadgeVisible` only compares it once genuinely visible |
+| P2 | `public_demo_mission_resolver.dart` (`conductHiringInterview`) | `hasBeenInterviewed` is minted by the paperwork/sales-slot step (`completeInterview`) that fires the moment 採用面談 is tapped — before the actual interactive Q&A session, which a player can still leave unopened or unfinished | Reads a genuinely `completed` `RecruitmentInterviewSession` instead |
+
+All four are regression-pinned: `public_demo_mission_resolver_test.dart` gained a dedicated `postRecruitmentMedium survives the May cohort cutoff` test and a `completeInterview alone... does NOT complete conductHiringInterview` test (alongside updating the existing interview-route test to drive a real interactive session to conclusion); `public_demo_mission_appbar_entry_test.dart` gained two visibility-window tests (hidden past August with no applicant; still visible past August for a genuinely mid-pipeline applicant).
+
 ## Git / PR
 
 - Working branch: `claude/ses-phase4-document-screening-ir36n1`

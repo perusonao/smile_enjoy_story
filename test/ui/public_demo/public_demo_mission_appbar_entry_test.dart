@@ -305,6 +305,57 @@ void main() {
     );
   });
 
+  group('Codex review (PR #268 P1): Recruitment chain visibility window', () {
+    const tallSize = Size(390, 3000);
+
+    testWidgets(
+      'hidden at month 9 with no surviving applicant — matches the Sales '
+      'tab\'s own 求人媒体 card, which no longer renders past August either',
+      (tester) async {
+        final aggregate = publicDemoAggregateAtMonth(9);
+        expect(aggregate.workflow.applicants, isEmpty);
+        tester.view.physicalSize = tallSize;
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.reset);
+        await _pumpDemo(tester, aggregate);
+
+        await tester.tap(find.byKey(missionButtonKey));
+        await tester.pumpAndSettle();
+
+        expect(
+          find.byKey(const Key('public-demo-mission-recruitment-header')),
+          findsNothing,
+        );
+      },
+    );
+
+    testWidgets(
+      'stays visible past August for an applicant recruited within the '
+      'window who is still mid-pipeline (never pruned after May)',
+      (tester) async {
+        var aggregate = publicDemoAggregateAtMonth(6, monthlyExpenses: 10000);
+        aggregate = aggregate.recruit(PublicDemoRecruitmentMedium.engineer).aggregate!;
+        aggregate = aggregate.closeJune(assignedInJuly: 0, monthlyExpenses: 10000);
+        aggregate = aggregate.closeJuly(monthlyExpenses: 10000);
+        aggregate = aggregate.closeOrdinaryMonth(monthlyExpenses: 10000);
+        expect(aggregate.state.month, 9);
+        expect(aggregate.workflow.applicants, isNotEmpty);
+        tester.view.physicalSize = tallSize;
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.reset);
+        await _pumpDemo(tester, aggregate);
+
+        await tester.tap(find.byKey(missionButtonKey));
+        await tester.pumpAndSettle();
+
+        expect(
+          find.byKey(const Key('public-demo-mission-recruitment-header')),
+          findsOneWidget,
+        );
+      },
+    );
+  });
+
   group('HOME Freeze regression (Implementation Plan §3.6 criterion 7)', () {
     testWidgets(
       'HOME tab content and the 5-item bottom nav are unaffected by the '

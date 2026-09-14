@@ -278,24 +278,35 @@ class PublicDemoMissionResolver {
 
   /// SES First Fun Quarter Mission Phase 4 — resolves the Recruitment
   /// Mission chain ([publicDemoRecruitmentMissionChain]) against
-  /// [workflow]. Reads only [PublicDemoWorkflowState.applicants] — every
-  /// completion signal is existing, already-save-durable applicant
-  /// authority (`public_demo_recruitment.dart`); no [PublicDemoState]
-  /// dependency, so this never needs a `month` parameter to derive
-  /// completion (unlike [resolve]'s `assignToProject`). Callers decide the
-  /// chain's *visibility* (SES First Fun Quarter Mission Phase 4: from
-  /// `state.month >= 5`, the same threshold the Sales tab's own 求人媒体
-  /// card already uses) — this resolver itself is unconditional, mirroring
-  /// [resolve]'s own "always resolve, let the caller decide whether to
-  /// show it" split.
+  /// [workflow]/[state]. Every completion signal is existing,
+  /// already-save-durable authority (`public_demo_recruitment.dart`,
+  /// `public_demo_interview.dart`, `public_demo_state.dart`). Callers
+  /// decide the chain's *visibility* (SES First Fun Quarter Mission
+  /// Phase 4: from `state.month >= 5` within the recruiting window, or
+  /// while an applicant still exists past it) — this resolver itself is
+  /// unconditional, mirroring [resolve]'s own "always resolve, let the
+  /// caller decide whether to show it" split.
   static List<PublicDemoMissionStatusEntry> resolveRecruitment({
     required PublicDemoWorkflowState workflow,
+    required PublicDemoState state,
   }) {
     bool anyApplicant(bool Function(PublicDemoApplicant) test) =>
         workflow.applicants.any(test);
 
     final completedById = <PublicDemoMissionId, bool>{
-      PublicDemoMissionId.postRecruitmentMedium: workflow.applicants.isNotEmpty,
+      // Codex review (PR #268 P2): `workflow.applicants.isNotEmpty` alone
+      // regresses this mission back to incomplete the moment a whole
+      // cohort is pruned with no accepted offer (`joinAndKeepOnly` at the
+      // May→June boundary empties `applicants` entirely in that case) —
+      // completing a mission must never un-complete it later. Reading
+      // [PublicDemoState.recruitmentMediumUsedMonth] instead is durable:
+      // it is set once, the first time [PublicDemoAggregate.recruit]
+      // actually charges/generates a real batch, and no production path
+      // ever clears it back to `null` afterward (it exists specifically
+      // so the once-per-month gate can tell "already used this month"
+      // apart from "never used" across every future month too).
+      PublicDemoMissionId.postRecruitmentMedium:
+          state.recruitmentMediumUsedMonth != null,
       // The atomic `_reviewResumeAndOpenSkillSheet` (public_demo_01_
       // placeholder_screen.dart) is the sole production path off `applied`
       // — reaching any later stage implies the SkillSheet was shown.
@@ -305,13 +316,15 @@ class PublicDemoMissionResolver {
       PublicDemoMissionId.screenApplicantResume: anyApplicant(
         (a) => _hasScreened(a.stage),
       ),
-      // Fresh Audit: the one mission that must read the unforgeable
-      // record, never the raw stage — a rejected-pre-interview applicant
-      // never sets this (mirrors [resolve]'s own `passClientInterview`
-      // discipline).
-      PublicDemoMissionId.conductHiringInterview: anyApplicant(
-        (a) => a.hasBeenInterviewed,
-      ),
+      // Codex review (PR #268 P2): `hasBeenInterviewed` is minted by
+      // `completeInterview` — the paperwork/sales-slot step behind the
+      // 採用面談 button — which happens BEFORE the actual interactive Q&A
+      // session a player can still leave unopened or unfinished. Reading
+      // a genuinely `completed` [RecruitmentInterviewSession] instead
+      // requires the Q&A to have actually concluded (either outcome),
+      // matching what "面接する" means to the player.
+      PublicDemoMissionId.conductHiringInterview: workflow.interviewSessions
+          .any((session) => session.completed),
       PublicDemoMissionId.decideHiring: anyApplicant((a) => a.hasBindingOffer),
       PublicDemoMissionId.applicantJoined: anyApplicant((a) => a.hasJoined),
     };

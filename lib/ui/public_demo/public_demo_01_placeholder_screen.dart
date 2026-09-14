@@ -550,12 +550,24 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
   /// straight off [_game]). [PublicDemoMissionResolver] is a pure function
   /// of [workflow]/[s] — this call mutates nothing.
   /// SES First Fun Quarter Mission Phase 4: whether the Recruitment
-  /// Mission chain should be shown at all — the same threshold the Sales
-  /// tab's own 求人媒体 card already uses (`_recruitmentMediaCardVisible`),
-  /// i.e. the moment the player could actually see this chain's first
-  /// step, rather than an arbitrary new constant.
-  List<PublicDemoMissionStatusEntry> get _recruitmentMissions => s.month >= 5
-      ? PublicDemoMissionResolver.resolveRecruitment(workflow: workflow)
+  /// Mission chain should be shown at all. Visible the same window the
+  /// Sales tab's own 求人媒体 card already uses
+  /// (`_recruitmentMediaCardVisible`: `month >= 5` inside
+  /// [PublicDemoState.isRecruitmentMediaWindowMonth], April-August) — OR,
+  /// past that window, for as long as an applicant genuinely exists to
+  /// still advance the chain (screening/interview/hire/join can all
+  /// legitimately land after the media window closes for a cohort
+  /// recruited near its end). Codex review (PR #268 P1): without the OR
+  /// clause, a player who reaches September with no surviving applicant
+  /// (e.g. every candidate document-rejected) would still see Mission 1
+  /// pointing at a 求人媒体 action the Sales tab no longer even renders.
+  bool get _recruitmentMissionsVisible =>
+      (s.month >= 5 && s.isRecruitmentMediaWindowMonth(s.month)) ||
+      workflow.applicants.isNotEmpty;
+
+  List<PublicDemoMissionStatusEntry> get _recruitmentMissions =>
+      _recruitmentMissionsVisible
+      ? PublicDemoMissionResolver.resolveRecruitment(workflow: workflow, state: s)
       : const <PublicDemoMissionStatusEntry>[];
 
   void _openMissionScreen() {
@@ -570,11 +582,22 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
     // each chain's own front is acknowledged independently — see
     // [_recruitmentMissionBadgeAcknowledgedIndex]'s own doc for why a
     // single combined index over both chains concatenated is unsafe.
+    //
+    // Codex review (PR #268 P2): while the Recruitment chain is still
+    // hidden (`recruitmentMissions.isEmpty`), its front index is always 0
+    // regardless of real progress — acknowledging that placeholder 0 here
+    // would then coincide with the chain's own genuine front-index-0 the
+    // moment it first becomes visible (nothing done yet), suppressing the
+    // very first just-in-time nudge. Leave the acknowledgement untouched
+    // (stays whatever it was, `null` on a fresh session) while hidden;
+    // only ever acknowledge a front index that reflects real content.
     setState(() {
       _missionBadgeAcknowledgedIndex = publicDemoMissionFrontIndex(missions);
-      _recruitmentMissionBadgeAcknowledgedIndex = publicDemoMissionFrontIndex(
-        recruitmentMissions,
-      );
+      if (recruitmentMissions.isNotEmpty) {
+        _recruitmentMissionBadgeAcknowledgedIndex = publicDemoMissionFrontIndex(
+          recruitmentMissions,
+        );
+      }
     });
     unawaited(
       Navigator.of(context).push<void>(
@@ -600,9 +623,20 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
       workflow: workflow,
       state: s,
     );
-    return _missionBadgeAcknowledgedIndex != publicDemoMissionFrontIndex(missions) ||
-        _recruitmentMissionBadgeAcknowledgedIndex !=
-            publicDemoMissionFrontIndex(_recruitmentMissions);
+    if (_missionBadgeAcknowledgedIndex != publicDemoMissionFrontIndex(missions)) {
+      return true;
+    }
+    // Codex review (PR #268 P2): only compare the Recruitment chain's own
+    // front while it is genuinely visible — while hidden,
+    // `_recruitmentMissionBadgeAcknowledgedIndex` is deliberately left
+    // untouched (see `_openMissionScreen`'s own doc), so comparing it
+    // against `publicDemoMissionFrontIndex([])` (always 0) here would
+    // read `null != 0` as "unacknowledged" and show the badge for the
+    // entire April-only period before Recruitment ever exists.
+    final recruitmentMissions = _recruitmentMissions;
+    if (recruitmentMissions.isEmpty) return false;
+    return _recruitmentMissionBadgeAcknowledgedIndex !=
+        publicDemoMissionFrontIndex(recruitmentMissions);
   }
 
   /// Read-only view of [_game]'s finance side. Never assigned directly —

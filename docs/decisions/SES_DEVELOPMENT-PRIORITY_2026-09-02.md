@@ -219,6 +219,87 @@ Result Reportは履歴・証拠であり、この文書の代わりにはしな�
 
 ## Update history
 
+### 2026-09-14（Mission System Phase 2 — Progressive Onboarding 実装完了 / governing plan sync）
+
+- **First Fun Quarter Mission System Phase 2が完了した。** 設計資料
+  `docs/design/SES_FIRST-FUN-QUARTER_MISSION-ONBOARDING_Implementation-Plan.md`
+  §5で指定されたPhase 2範囲（Opening Contextのpaged化 + event-driven
+  explanation）を実装。開始時`git fetch origin main`で`origin/main`が
+  task指定の「Phase 1 merge SHA」`34a8e4d`（PR #265マージコミット）と
+  完全一致していることを確認（drift無し）。作業branchは`f4ca78f`
+  （Phase 0A/0B）を指したまま`origin/main`から大きく遅れていたstale
+  branchで、branch自体に未マージの作業は無かったため
+  `origin/main`から作り直した。
+- **実装前にFresh Auditを実施し、task本文の前提を実コードと照合した**:
+  (1) 「経営開始前にSkillSheet確認が必須」という前提は現行コードには
+  無かった——Phase 1マージ時点のOpening Contextは既に
+  「まずSkillSheetで2人を確認する」/「4月の経営を始める」の2択を持ち、
+  どちらを選んでも経営（HOME/社員タブ）へ進めていた。実際の課題は
+  ドメイン側のgateではなく、2択という**見せ方**がSkillSheet優先を暗示
+  していた点——今回は単一CTA「経営を始める」へ統合し、SkillSheet確認は
+  April Mission #1としてのみ導線化することで、task指示の"Before/After"
+  が意図する結果を実現した。
+  (2) task本文のJust-in-time explanation A–E は、Phase 1のMission画面が
+  各Missionタイル（目的/次の操作/ひよりコメント）で**既に**ほぼ同内容を
+  説明済みと判明した——task自身の「既存UIで十分説明している場合は
+  二重dialogを作らない」指示に従い、A–E用に5個の新規one-time dialogは
+  追加していない。
+- **実装内容**:
+  1. `public_demo_opening_context_screen.dart` を単一スクロールリストから
+     5ページの「次へ」flowへ再設計（会社設立→社員紹介→4月の目標→資金→
+     MISSION案内+CTA）。金額・社員人数は引き続きcallerから渡される実データ
+     （`startingCash`/`monthlyFixedCost`/`founders.length`）のみを表示——
+     hard-code無し。4月の目標の文言はMission画面自身の見出し定数
+     `publicDemoAprilHeadlineGoal`（新規、`public_demo_mission_screen.dart`
+     に1箇所だけ定義）を共有し、二重管理によるdriftを構造的に防止した。
+  2. 「まずSkillSheetで2人を確認する」の第2CTAを削除し、単一CTA
+     「経営を始める」のみに統合（`public_demo_01_placeholder_screen.dart`
+     の`_acknowledgeOpeningContext`から`openEmployeesTabFirst`分岐を削除）。
+     Opening完了後は常にHOMEへ入る——Mission画面を強制で開く実装は採用せず、
+     task本文が示した2案のうち「Opening最終ページで4月目標を明示し、その
+     ままHOMEへ入る」方を採用。
+  3. SkillSheetシートの既存subtitle（`public_demo_skill_sheet_sections
+     .dart`）に「なぜ確認するか」の一文を追加（Fresh Audit §6.3が既に
+     指摘していた唯一の実copy gap）——新規dialogではなく既存文言の拡張。
+  4. Mission可視性のための小さなbadge（新規、
+     `public-demo-app-bar-mission-badge`）をAppBarの既存Missionアイコンへ
+     追加。Mission chainの「現在の先頭」（新規・pure・top-levelの
+     `publicDemoMissionFrontIndex`で導出）が、プレイヤーが最後にMission
+     画面を開いた時点から進んでいれば表示——modalではなく小さなdotのみで、
+     「操作のたびにdialogを出さない」というtask自身のUX ruleに従う。
+- **Save/persistence**: 新規save fieldは0件、`PublicDemoSaveCodec`の形状も
+  無変更。Opening完了flagは既存の`PublicDemoOpeningMarker`
+  （SharedPreferences、save schema外）をそのまま再利用。Openingのページ
+  位置はStateのみ（Fresh Audit §10.4の既存precedent通り、save/
+  SharedPreferencesどちらにも置かない）。Mission可視性badgeの
+  acknowledge状態もsession-scopedのState変数のみで、意図的に非永続化——
+  reload毎に一度だけ再表示されるのは仕様（「確認済みか」を思い出させる
+  ための挙動であり、bugではない）。「新しいpersisted fieldが本当に必要か」
+  を監査した結果、いずれの機構も既存tierの再利用または非永続Stateで
+  十分と判断し、新規fieldは追加していない。
+- **Tests**: `test/ui/public_demo/public_demo_01_opening_context_test.dart`
+  を新しいpaged flowに合わせて全面改訂（18件——gating/paged-flow content
+  per page/戻る navigation/dismissal（SkillSheet未確認で開始可能・HOMEへ
+  直接着地）/reload/restart/5ページ全部のoverflow matrix
+  360×800/390×844×TextScaler 1.0/1.3）、
+  `test/ui/public_demo/public_demo_mission_appbar_entry_test.dart`へ
+  badge機構3件+mid-game restored save 2件を追加、
+  `test/ui/public_demo/public_demo_01_skill_sheet_flow_test.dart`へ新copy
+  の存在確認を1件追加。`flutter analyze`（全体）issue無し。
+  `flutter test test/game/public_demo`（1042件、Phase 1から無変更——本
+  Phaseはgame層に一切触れていない）、`flutter test test/ui/public_demo`
+  （フルスイート実行、全件PASS）すべてPASS。`git diff --check`クリーン。
+  詳細は`docs/reports/SES_FIRST-FUN-QUARTER_MISSION-PHASE2_Result.md`。
+- **Self-hardening**: 実装後にClaude自身でBroad Self Reviewを1回実施 —
+  詳細はResult Report参照。
+- **本エントリはCurrent execution order・Prioritized backlog tableの構成を
+  変更しない** — Phase 1と同様、Mission Systemも独立した結果報告チェーン
+  で追跡する（「Relationship to existing documents」参照）。
+  `docs/DEVELOPMENT_PLAN.md`にはPublic Demo Missionに関する記述が存在
+  しないため、本タスクでも同文書への同期は不要と判断し変更していない。
+- 詳細・Fresh Audit結論・persistence戦略・Phase 3推奨は
+  `docs/reports/SES_FIRST-FUN-QUARTER_MISSION-PHASE2_Result.md`を参照。
+
 ### 2026-09-14（Mission System Phase 1 — April Main Mission 実装完了 / governing plan sync）
 
 - **First Fun Quarter Mission System Phase 1が完了した。** 設計資料

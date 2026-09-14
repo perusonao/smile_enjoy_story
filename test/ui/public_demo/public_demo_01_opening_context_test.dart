@@ -7,11 +7,15 @@ import 'package:smile_enjoy_story/game/public_demo/public_demo_salary.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_sales.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_state.dart';
 import 'package:smile_enjoy_story/ui/public_demo/public_demo_01_placeholder_screen.dart';
+import 'package:smile_enjoy_story/ui/public_demo/public_demo_mission_screen.dart'
+    show publicDemoAprilHeadlineGoal;
 import 'package:smile_enjoy_story/ui/theme.dart' show formatYen;
 
-/// FIRST-FUN-YEAR P1 (Issue #229): focused widget tests for the Public Demo
-/// Opening Context — [PublicDemoOpeningContextScreen], and the gating logic
-/// on [PublicDemo01PlaceholderScreen] that decides when it replaces HOME.
+/// FIRST-FUN-YEAR P1 (Issue #229) / SES First Fun Quarter Mission System
+/// Phase 2 (Progressive Onboarding): focused widget tests for the Public
+/// Demo Opening Context — [PublicDemoOpeningContextScreen]'s paged "次へ"
+/// flow, and the gating logic on [PublicDemo01PlaceholderScreen] that
+/// decides when it replaces HOME.
 ///
 /// [_RecordingSaveService] and [_RecordingOpeningMarker] deliberately avoid
 /// real `SharedPreferences` I/O (mirrors `public_demo_01_persistence_test
@@ -63,15 +67,15 @@ class _RecordingOpeningMarker extends PublicDemoOpeningMarker {
 const _openingScreenKey = Key('public-demo-opening-context-screen');
 const _bottomNavKey = Key('public-demo-bottom-nav');
 const _startButtonKey = Key('public-demo-opening-start-button');
-const _viewSkillSheetFirstButtonKey = Key(
-  'public-demo-opening-view-skillsheet-button',
-);
+const _nextButtonKey = Key('public-demo-opening-next-button');
+const _backButtonKey = Key('public-demo-opening-back-button');
 
-/// Issue #245 Finding #1 added a founding-roster card and a second CTA
-/// button to the Opening Context, so its total content height can now
-/// exceed flutter_test's default (short) window — scroll the target button
-/// into view first, exactly as real mobile playthroughs already rely on
-/// this screen's own `ListView` to do for TextScaler growth.
+/// Phase 2's Opening Context is a fixed 5-page "次へ" flow (this file's own
+/// `_pageCount` constant mirrors `_PublicDemoOpeningContextScreenState
+/// ._pages.length` in production — a test-side drift here would show up
+/// immediately as either a stuck "次へ" button or a missing "経営を始める").
+const _pageCount = 5;
+
 Future<void> _tapOpeningButton(WidgetTester tester, Key key) async {
   final finder = find.byKey(key);
   await tester.scrollUntilVisible(
@@ -82,6 +86,31 @@ Future<void> _tapOpeningButton(WidgetTester tester, Key key) async {
   await tester.pumpAndSettle();
   await tester.tap(finder);
   await tester.pump();
+}
+
+/// Advances the Opening Context [steps] pages forward via "次へ", without
+/// tapping the final "経営を始める" CTA.
+Future<void> _advance(WidgetTester tester, int steps) async {
+  for (var i = 0; i < steps; i++) {
+    await _tapOpeningButton(tester, _nextButtonKey);
+  }
+}
+
+/// Walks every page of the Opening Context in order (asserting the page
+/// indicator advances correctly and no exception is thrown on any page)
+/// and finally taps "経営を始める" to dismiss it.
+Future<void> _completeOpening(WidgetTester tester) async {
+  for (var page = 1; page < _pageCount; page++) {
+    expect(
+      find.text('$page / $_pageCount'),
+      findsOneWidget,
+      reason: 'page indicator should read "$page / $_pageCount" before '
+          'advancing past it',
+    );
+    await _tapOpeningButton(tester, _nextButtonKey);
+  }
+  expect(find.text('$_pageCount / $_pageCount'), findsOneWidget);
+  await _tapOpeningButton(tester, _startButtonKey);
 }
 
 Future<void> _mount(
@@ -166,31 +195,39 @@ void main() {
     );
   });
 
-  group('content — authority-derived, never hardcoded', () {
+  group('paged flow — content, authority-derived, never hardcoded', () {
     testWidgets(
-      'shows the exact starting cash and baseline monthly fixed cost read '
-      'from Finance/Payroll authority',
+      'page 1/5 introduces the company/goal with ひより, single "次へ" CTA '
+      'visible, no "戻る" on the first page',
       (tester) async {
         await _mount(
           tester,
           openingMarker: _RecordingOpeningMarker(seen: false),
         );
 
-        expect(find.textContaining(expectedCash), findsOneWidget);
-        expect(find.textContaining(expectedFixedCost), findsOneWidget);
+        expect(find.text('1 / $_pageCount'), findsOneWidget);
+        expect(find.byKey(_nextButtonKey), findsOneWidget);
+        expect(find.byKey(_backButtonKey), findsNothing);
+        expect(find.byKey(_startButtonKey), findsNothing);
       },
     );
 
     testWidgets(
-      'Issue #245 Finding #1: introduces the 2 founding engineers by their '
-      'real name/summary from publicDemoInitialEngineers — never a '
-      'fabricated differentiator',
+      'page 2/5 introduces the founding engineers by their real name/summary '
+      'from publicDemoInitialEngineers, and states their real headcount — '
+      'never a fabricated differentiator or a hardcoded "2名"',
       (tester) async {
         await _mount(
           tester,
           openingMarker: _RecordingOpeningMarker(seen: false),
         );
+        await _advance(tester, 1);
 
+        expect(find.text('2 / $_pageCount'), findsOneWidget);
+        expect(
+          find.textContaining('${publicDemoInitialEngineers.length}名'),
+          findsOneWidget,
+        );
         expect(
           find.byKey(const Key('public-demo-opening-founders')),
           findsOneWidget,
@@ -201,24 +238,120 @@ void main() {
         }
       },
     );
+
+    testWidgets(
+      'page 3/5 states the April headline goal using the exact same wording '
+      'the Mission screen itself uses (shared constant, no drift)',
+      (tester) async {
+        await _mount(
+          tester,
+          openingMarker: _RecordingOpeningMarker(seen: false),
+        );
+        await _advance(tester, 2);
+
+        expect(find.text('3 / $_pageCount'), findsOneWidget);
+        expect(
+          find.textContaining(publicDemoAprilHeadlineGoal),
+          findsOneWidget,
+        );
+      },
+    );
+
+    testWidgets(
+      'page 4/5 shows the exact starting cash and baseline monthly fixed '
+      'cost read from Finance/Payroll authority',
+      (tester) async {
+        await _mount(
+          tester,
+          openingMarker: _RecordingOpeningMarker(seen: false),
+        );
+        await _advance(tester, 3);
+
+        expect(find.text('4 / $_pageCount'), findsOneWidget);
+        expect(find.textContaining(expectedCash), findsOneWidget);
+        expect(find.textContaining(expectedFixedCost), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'Codex Broad Review (PR #266) P2 fix: page 4/5 names '
+      'monthlyFixedCost as a 固定費 (payroll + otherMonthlyFixedCost only) '
+      'and never implies it already includes variable costs like 求人媒体 '
+      'spend — it states such spend comes on top of the fixed cost instead',
+      (tester) async {
+        await _mount(
+          tester,
+          openingMarker: _RecordingOpeningMarker(seen: false),
+        );
+        await _advance(tester, 3);
+
+        expect(find.textContaining('固定費として'), findsOneWidget);
+        expect(find.textContaining('求人媒体'), findsOneWidget);
+        expect(find.textContaining('給与や営業費用'), findsNothing);
+      },
+    );
+
+    testWidgets(
+      'page 5/5 mentions MISSION as the ongoing guide and shows the single '
+      '"経営を始める" CTA, with no second/alternate CTA',
+      (tester) async {
+        await _mount(
+          tester,
+          openingMarker: _RecordingOpeningMarker(seen: false),
+        );
+        await _advance(tester, 4);
+
+        expect(find.text('5 / $_pageCount'), findsOneWidget);
+        expect(find.textContaining('MISSION'), findsOneWidget);
+        expect(find.byKey(_startButtonKey), findsOneWidget);
+        expect(find.byKey(_nextButtonKey), findsNothing);
+      },
+    );
+
+    testWidgets(
+      '"戻る" steps back exactly one page and never past the first page',
+      (tester) async {
+        await _mount(
+          tester,
+          openingMarker: _RecordingOpeningMarker(seen: false),
+        );
+        await _advance(tester, 2);
+        expect(find.text('3 / $_pageCount'), findsOneWidget);
+
+        await _tapOpeningButton(tester, _backButtonKey);
+        expect(find.text('2 / $_pageCount'), findsOneWidget);
+
+        await _tapOpeningButton(tester, _backButtonKey);
+        expect(find.text('1 / $_pageCount'), findsOneWidget);
+        expect(find.byKey(_backButtonKey), findsNothing);
+      },
+    );
   });
 
   group('dismissal', () {
     testWidgets(
-      'tapping the start button dismisses the Opening Context, reveals '
-      'HOME, and records the dismissal on the marker',
+      'paging through every screen and tapping the final start button '
+      'dismisses the Opening Context, reveals HOME (never a forced Mission '
+      'screen), and records the dismissal on the marker — SkillSheet is not '
+      'required first',
       (tester) async {
         final marker = _RecordingOpeningMarker(seen: false);
         await _mount(tester, openingMarker: marker);
         expect(find.byKey(_openingScreenKey), findsOneWidget);
 
-        await _tapOpeningButton(tester, _startButtonKey);
+        await _completeOpening(tester);
 
         expect(find.byKey(_openingScreenKey), findsNothing);
         expect(find.byKey(_bottomNavKey), findsOneWidget);
         expect(find.text('1年目 4月'), findsOneWidget);
         expect(marker.markSeenCalls, 1);
         expect(marker.seen, isTrue);
+        // Landed on HOME, not forced onto 社員 (SkillSheet is reached only
+        // through April Mission #1 now, never a pre-management choice).
+        expect(
+          find.byKey(const PageStorageKey('public-demo-home-tab')),
+          findsOneWidget,
+        );
       },
     );
 
@@ -229,7 +362,7 @@ void main() {
         final marker = _RecordingOpeningMarker(seen: false);
         final saveService = _RecordingSaveService();
         await _mount(tester, saveService: saveService, openingMarker: marker);
-        await _tapOpeningButton(tester, _startButtonKey);
+        await _completeOpening(tester);
         expect(marker.seen, isTrue);
 
         // Simulate a fresh mount (reload) reusing the same marker/save
@@ -247,7 +380,7 @@ void main() {
 
   group('restart', () {
     Future<void> dismissOpeningAndReachMenuTab(WidgetTester tester) async {
-      await _tapOpeningButton(tester, _startButtonKey);
+      await _completeOpening(tester);
       await tester.tap(find.byKey(const Key('public-demo-nav-menu')));
       await tester.pumpAndSettle();
     }
@@ -280,6 +413,7 @@ void main() {
 
         expect(marker.clearCalls, 1);
         expect(find.byKey(_openingScreenKey), findsOneWidget);
+        expect(find.text('1 / $_pageCount'), findsOneWidget);
       },
     );
 
@@ -318,8 +452,9 @@ void main() {
     for (final size in const [Size(360, 800), Size(390, 844)]) {
       for (final textScale in const [1.0, 1.3]) {
         testWidgets(
-          'renders without overflow at ${size.width.toInt()}x'
-          '${size.height.toInt()} / TextScaler $textScale',
+          'renders every one of the $_pageCount pages without overflow at '
+          '${size.width.toInt()}x${size.height.toInt()} / '
+          'TextScaler $textScale',
           (tester) async {
             tester.view.physicalSize = size;
             tester.view.devicePixelRatio = 1.0;
@@ -342,37 +477,18 @@ void main() {
             );
             await tester.pump();
 
-            expect(find.byKey(_openingScreenKey), findsOneWidget);
-            expect(
-              find.byKey(const Key('public-demo-opening-founders')),
-              findsOneWidget,
-            );
+            for (var page = 1; page <= _pageCount; page++) {
+              expect(find.byKey(_openingScreenKey), findsOneWidget);
+              expect(tester.takeException(), isNull);
+              if (page < _pageCount) {
+                await _tapOpeningButton(tester, _nextButtonKey);
+              }
+            }
+            expect(find.byKey(_startButtonKey), findsOneWidget);
             expect(tester.takeException(), isNull);
           },
         );
       }
     }
-  });
-
-  group('Issue #245 Finding #1: SkillSheet-first CTA', () {
-    testWidgets(
-      'tapping "まずSkillSheetで2人を確認する" dismisses the Opening Context and '
-      'opens directly on the 社員 tab instead of HOME',
-      (tester) async {
-        final marker = _RecordingOpeningMarker(seen: false);
-        await _mount(tester, openingMarker: marker);
-        expect(find.byKey(_openingScreenKey), findsOneWidget);
-
-        await _tapOpeningButton(tester, _viewSkillSheetFirstButtonKey);
-
-        expect(find.byKey(_openingScreenKey), findsNothing);
-        expect(find.byKey(_bottomNavKey), findsOneWidget);
-        expect(
-          find.byKey(const PageStorageKey('public-demo-employees-tab')),
-          findsOneWidget,
-        );
-        expect(marker.markSeenCalls, 1);
-      },
-    );
   });
 }

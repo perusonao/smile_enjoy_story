@@ -18,6 +18,15 @@ import '../theme.dart';
 // [PublicDemoOfferComparisonScreen] reading live getters, never holding
 // authority itself). No BuildContext-side game state is read here.
 
+/// SES First Fun Quarter Mission System Phase 2 (Progressive Onboarding):
+/// April's headline goal, in the exact wording shown on [_MainMissionHeader]
+/// below. Extracted to a shared constant so the Opening Context's own
+/// "4月の目標" page (`public_demo_opening_context_screen.dart`) can quote the
+/// identical sentence rather than a second, hand-typed copy that could
+/// silently drift from this screen's own headline — both surfaces read this
+/// one string.
+const String publicDemoAprilHeadlineGoal = '技術者1名を案件に参画させよう';
+
 /// Short display copy for one Mission — 目的 (purpose) / 操作 (what to do
 /// next) / a one-line Hiyori remark. Deliberately terse for Phase 1 (task
 /// scope: "長いチュートリアル文章を入れすぎない").
@@ -151,7 +160,7 @@ class _MainMissionHeader extends StatelessWidget {
             const Text('4月の目標', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
             const SizedBox(height: 6),
             const Text(
-              '技術者1名を案件に参画させよう',
+              publicDemoAprilHeadlineGoal,
               style: TextStyle(fontWeight: FontWeight.bold, fontSize: 20),
             ),
             const SizedBox(height: 10),

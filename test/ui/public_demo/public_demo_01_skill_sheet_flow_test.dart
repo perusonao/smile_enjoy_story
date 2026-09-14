@@ -47,6 +47,14 @@ void main() {
           findsOneWidget,
         );
         expect(find.textContaining('営業用スキルシート'), findsOneWidget);
+        // SES First Fun Quarter Mission System Phase 2 (Progressive
+        // Onboarding), Fresh Audit §6.3: the SkillSheet gate now states WHY
+        // to check it, not just what it is — connecting confirmation to the
+        // player's actual next decision (fit before selling).
+        expect(
+          find.textContaining('案件との相性を自分で判断するために'),
+          findsOneWidget,
+        );
         expect(find.text('経歴・スキル要約'), findsOneWidget);
         expect(find.text(engineer.summary), findsWidgets);
         expect(find.text('営業・面談プロフィール'), findsOneWidget);

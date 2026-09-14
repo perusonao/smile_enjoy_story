@@ -232,6 +232,20 @@ bool homeImportantTaskHasEligibleAction(
     !state.isCloseBlocked &&
     candidates.any((c) => kinds.contains(c.action.kind));
 
+/// SES First Fun Quarter Mission System Phase 2 (Progressive Onboarding):
+/// the index, within [missions] (`publicDemoAprilMissionChain` order), of
+/// the first mission that is not yet `completed` — i.e. the chain's current
+/// "front" the player should look at next — or `missions.length` once every
+/// mission in the chain is `completed`. Pure and top-level so it is
+/// testable directly against a hand-built list, with no widget harness
+/// (mirrors [homeImportantTaskHasEligibleAction]'s own convention).
+int publicDemoMissionFrontIndex(List<PublicDemoMissionStatusEntry> missions) {
+  for (var i = 0; i < missions.length; i++) {
+    if (missions[i].status != PublicDemoMissionStatus.completed) return i;
+  }
+  return missions.length;
+}
+
 class PublicDemo01PlaceholderScreen extends StatefulWidget {
   const PublicDemo01PlaceholderScreen({
     super.key,
@@ -318,6 +332,19 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
   /// path can disagree about what "not yet seen" means.
   bool _showOpening = false;
 
+  /// SES First Fun Quarter Mission System Phase 2 (Progressive Onboarding):
+  /// [publicDemoMissionFrontIndex] as of the last time the player opened the
+  /// Mission screen ([_openMissionScreen]) — `null` means "not yet opened
+  /// this session". Deliberately session-scoped only, never persisted (no
+  /// new save field, no SharedPreferences key): a fresh boot/reload showing
+  /// the badge once more is the intended "haven't you checked the current
+  /// goal yet?" nudge, not a bug — see [_missionBadgeVisible]'s own doc for
+  /// how this drives the small badge dot on the AppBar Mission icon, the
+  /// Mission-visibility mechanism Phase 2 uses instead of a new one-time
+  /// dialog per mission-chain step (UX rule: Mission-screen-first, no modal
+  /// spam).
+  int? _missionBadgeAcknowledgedIndex;
+
   /// Codex P2-2 fix (PR #214): true from the moment [_openProjectInterview]
   /// is entered until its dialog route (however it ends — a genuine
   /// pass/fail commit, the player dismissing it, or this widget being
@@ -379,17 +406,17 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
   /// (best-effort — see [PublicDemoOpeningMarker.markSeen]) so a later
   /// reload of this same fresh session does not show it again.
   ///
-  /// [openEmployeesTabFirst] is Issue #245 Finding #1's "まずSkillSheetで2人
-  /// を確認する" CTA: when true, the first tab shown after the Opening
-  /// Context closes is 社員 (where SkillSheet confirmation lives) instead of
-  /// HOME. This never touches workflow/save state — only which tab index
-  /// this already-existing [_selectedTabIndex] field starts on.
-  void _acknowledgeOpeningContext({bool openEmployeesTabFirst = false}) {
+  /// SES First Fun Quarter Mission System Phase 2 (Progressive Onboarding):
+  /// this is now the flow's only exit — always lands on HOME
+  /// ([_homeTabIndex], [_selectedTabIndex]'s own default), never forces a
+  /// tab switch. The former "まずSkillSheetで2人を確認する" alternate CTA
+  /// (Issue #245 Finding #1) was removed by the paged-Opening redesign
+  /// (`public_demo_opening_context_screen.dart`'s own top-of-file doc) —
+  /// SkillSheet confirmation is now reached only via April Mission #1, not
+  /// a pre-management choice.
+  void _acknowledgeOpeningContext() {
     if (!mounted) return;
-    setState(() {
-      _showOpening = false;
-      if (openEmployeesTabFirst) _selectedTabIndex = _employeesTabIndex;
-    });
+    setState(() => _showOpening = false);
     unawaited(widget.openingMarker.markSeen());
   }
 
@@ -507,18 +534,38 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
   /// straight off [_game]). [PublicDemoMissionResolver] is a pure function
   /// of [workflow]/[s] — this call mutates nothing.
   void _openMissionScreen() {
+    final missions = PublicDemoMissionResolver.resolve(
+      workflow: workflow,
+      state: s,
+    );
+    // Phase 2: acknowledges the current chain "front" so the AppBar badge
+    // (see [_missionBadgeVisible]) clears for this exact progress state —
+    // it reappears only once the front genuinely advances again.
+    setState(() {
+      _missionBadgeAcknowledgedIndex = publicDemoMissionFrontIndex(missions);
+    });
     unawaited(
       Navigator.of(context).push<void>(
         MaterialPageRoute<void>(
-          builder: (context) => PublicDemoMissionScreen(
-            missions: PublicDemoMissionResolver.resolve(
-              workflow: workflow,
-              state: s,
-            ),
-          ),
+          builder: (context) => PublicDemoMissionScreen(missions: missions),
         ),
       ),
     );
+  }
+
+  /// SES First Fun Quarter Mission System Phase 2 (Progressive Onboarding):
+  /// whether the AppBar Mission icon's small badge dot should show — the
+  /// chain's current front mission ([publicDemoMissionFrontIndex]) has
+  /// advanced past what [_missionBadgeAcknowledgedIndex] last recorded (or
+  /// the player has never opened the Mission screen this session at all).
+  /// Resolved fresh from [workflow]/[s] on every build, exactly like
+  /// [_openMissionScreen] itself — never a cached/stale mission list.
+  bool get _missionBadgeVisible {
+    final missions = PublicDemoMissionResolver.resolve(
+      workflow: workflow,
+      state: s,
+    );
+    return _missionBadgeAcknowledgedIndex != publicDemoMissionFrontIndex(missions);
   }
 
   /// Read-only view of [_game]'s finance side. Never assigned directly —
@@ -1849,6 +1896,12 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
       // from the Menu tab's test-only restart control.
       _selectedTabIndex = _homeTabIndex;
       _showOpening = showOpening;
+      // Phase 2: a restart resets the Mission chain to its own fresh
+      // front (index 0) — forgetting any prior acknowledgement so the
+      // badge is never suppressed by an acknowledgement carried over from
+      // the abandoned playthrough (e.g. one that happened to be recorded
+      // at the same index a fresh game also starts at).
+      _missionBadgeAcknowledgedIndex = null;
     });
     _resetMonthScroll();
   }
@@ -6498,8 +6551,6 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
             ),
         ],
         onStart: _acknowledgeOpeningContext,
-        onViewSkillSheetFirst: () =>
-            _acknowledgeOpeningContext(openEmployeesTabFirst: true),
       );
     }
     final navigatorAdvice = _compactedForShortage(
@@ -6535,11 +6586,35 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
             // [workflow]/[s] read-only, exactly like every other getter this
             // build() already consults; opening the Mission screen commits
             // nothing.
-            IconButton(
-              key: const Key('public-demo-app-bar-mission'),
-              icon: const Icon(Icons.flag_outlined),
-              tooltip: 'ミッション',
-              onPressed: _openMissionScreen,
+            Stack(
+              clipBehavior: Clip.none,
+              children: [
+                IconButton(
+                  key: const Key('public-demo-app-bar-mission'),
+                  icon: const Icon(Icons.flag_outlined),
+                  tooltip: 'ミッション',
+                  onPressed: _openMissionScreen,
+                ),
+                // Phase 2 Mission-visibility nudge (see
+                // [_missionBadgeVisible]'s own doc) — a small dot, never a
+                // modal, so it never interrupts the current screen.
+                if (_missionBadgeVisible)
+                  Positioned(
+                    right: 8,
+                    top: 8,
+                    child: IgnorePointer(
+                      child: Container(
+                        key: const Key('public-demo-app-bar-mission-badge'),
+                        width: 8,
+                        height: 8,
+                        decoration: const BoxDecoration(
+                          color: Colors.redAccent,
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
             ),
             IconButton(
               key: const Key('public-demo-app-bar-notifications'),

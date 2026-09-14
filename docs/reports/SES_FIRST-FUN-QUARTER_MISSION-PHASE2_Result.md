@@ -291,9 +291,66 @@ task's own listed concerns:
 No P0 was found. The one P1-equivalent finding (the restart/badge
 interaction above) was fixed in this same session before finishing.
 
+## Codex Broad Review — P2 fix
+
+**Reviewed HEAD**: `643057053890ba635f52f6581379b0080bc7bf54` (the commit
+this Result Report originally described). Codex Broad Review ran once on
+PR #266 against this HEAD and found **P2 × 1**; per the task's own
+instruction, Broad Review was not re-run for this fix — the finding below
+was addressed directly and verified with focused tests instead.
+
+**Finding**: Opening Page 4 (資金)'s copy read "給与や営業費用として、毎月
+◯◯前後の支出がかかります。" The displayed figure
+(`monthlyFixedCost` → `PublicDemoSalary.baselineMonthlyExpenses`) is
+confirmed, by reading the domain source directly
+(`lib/game/public_demo/public_demo_salary.dart`), to be exactly
+`initialTotalMonthlySalary + otherMonthlyFixedCost` — i.e. founding-engineer
+payroll + admin salary + one other fixed cost (¥50,000). It contains **no**
+variable cost of any kind (recruitment-medium spend, sales expense, etc.).
+The word "営業費用" ("sales/operating expense") in the old copy implied such
+variable costs were already folded into this one figure, which a first-time
+player could reasonably read as "this number is everything I'll ever spend
+per month" — untrue, and specifically the kind of comprehension gap that
+matters once 求人媒体 purchases (a real, separate, variable cost) enter
+play later in the game.
+
+**Fix** (`public_demo_opening_context_screen.dart`, `_buildFinancePage`
+only): reworded to name the figure accurately as a 固定費, and added one
+clause stating that other spending (求人媒体 named as the concrete example)
+comes on top of it:
+
+> 会社には ¥4,000,000 の資金があります。毎月、給与などの固定費として
+> ¥800,000 前後かかります。求人媒体などを利用すると、このほかにも費用が
+> かかります。支出を考えながら経営してください。
+
+No change to `[monthlyFixedCost]`'s value, its authority
+(`PublicDemoSalary.baselineMonthlyExpenses`, still read verbatim, never
+recomputed or hardcoded), or any other page/file. `[startingCash]` is
+likewise unchanged. Mission resolver, Mission progression, save schema,
+Opening persistence, Mission badge logic, HOME, Bottom Navigation,
+SkillSheet editing, and every other Phase 2 mechanism are untouched by this
+fix.
+
+**Verification**:
+- `flutter analyze` (whole repo): No issues found.
+- `flutter test test/ui/public_demo/public_demo_01_opening_context_test.dart
+  test/ui/public_demo/public_demo_mission_appbar_entry_test.dart`: **33/33
+  passed** (32 pre-existing + 1 new regression test pinning the fix: page
+  4/5 now contains "固定費として" and "求人媒体", and no longer contains the
+  old misleading "給与や営業費用" substring).
+- `git diff --check`: clean.
+- Full-suite re-run was judged unnecessary given the change is a single
+  string literal in one method of one file, with no logic/authority touched
+  — CI is the merge gate for the untouched remainder of the suite, per the
+  task's own instruction.
+
+**Unresolved**: none. The existing P2 review thread on PR #266 can be
+treated as addressed by this commit.
+
 ## Unresolved issues
 
-None known for Phase 2's own scope.
+None known for Phase 2's own scope, and none introduced by the Codex P2
+fix above.
 
 ## Phase 3 recommendation
 

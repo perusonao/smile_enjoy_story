@@ -238,10 +238,20 @@ class _PublicDemoOpeningContextScreenState
           key: const Key('public-demo-opening-cash'),
           icon: Icons.account_balance_wallet_outlined,
           title: '会社の資金',
+          // Codex Broad Review (PR #266) P2: [monthlyFixedCost] is
+          // `PublicDemoSalary.baselineMonthlyExpenses` — payroll +
+          // otherMonthlyFixedCost only, never a variable cost like
+          // recruitment-medium spend. The previous "給与や営業費用として"
+          // wording implied variable costs were folded into this one
+          // figure; this copy now names it as the fixed cost it actually
+          // is, and calls out that other spending (e.g. 求人媒体) comes on
+          // top of it — without hardcoding any amount, still reading
+          // [widget.startingCash]/[widget.monthlyFixedCost] verbatim.
           body:
               '会社には ${formatYen(widget.startingCash)} の資金があります。'
-              '給与や営業費用として、毎月 ${formatYen(widget.monthlyFixedCost)} '
-              '前後の支出がかかります。支出を考えながら経営してください。',
+              '毎月、給与などの固定費として ${formatYen(widget.monthlyFixedCost)} '
+              '前後かかります。求人媒体などを利用すると、このほかにも費用が'
+              'かかります。支出を考えながら経営してください。',
         ),
         const SizedBox(height: 10),
         const _OpeningSection(

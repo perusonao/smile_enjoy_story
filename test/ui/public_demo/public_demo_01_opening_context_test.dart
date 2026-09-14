@@ -274,6 +274,24 @@ void main() {
     );
 
     testWidgets(
+      'Codex Broad Review (PR #266) P2 fix: page 4/5 names '
+      'monthlyFixedCost as a 固定費 (payroll + otherMonthlyFixedCost only) '
+      'and never implies it already includes variable costs like 求人媒体 '
+      'spend — it states such spend comes on top of the fixed cost instead',
+      (tester) async {
+        await _mount(
+          tester,
+          openingMarker: _RecordingOpeningMarker(seen: false),
+        );
+        await _advance(tester, 3);
+
+        expect(find.textContaining('固定費として'), findsOneWidget);
+        expect(find.textContaining('求人媒体'), findsOneWidget);
+        expect(find.textContaining('給与や営業費用'), findsNothing);
+      },
+    );
+
+    testWidgets(
       'page 5/5 mentions MISSION as the ongoing guide and shows the single '
       '"経営を始める" CTA, with no second/alternate CTA',
       (tester) async {

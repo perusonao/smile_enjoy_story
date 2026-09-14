@@ -717,6 +717,61 @@ class PublicDemoState {
     return null;
   }
 
+  /// SES First Fun Quarter Mission Phase 3 (SkillSheet Editing): the ONLY
+  /// production way to change what an engineer's SkillSheet shows a
+  /// prospective client as their experience with their own
+  /// [PublicDemoEngineerRuntime.primaryLanguage].
+  ///
+  /// Touches [LanguageSkill.displayedExperienceMonths] and nothing else —
+  /// never [LanguageSkill.actualExperienceMonths]/`actualSkill`
+  /// (ground-truth capability), never [PublicDemoEngineerRuntime
+  /// .totalItExperienceMonths], never [PublicDemoEngineerRuntime.techSkills]
+  /// (Fit/Matching's own inputs, see [PublicDemoEngineerProjectFit]'s own
+  /// doc). [displayedMonths] is clamped to
+  /// `[0, actualExperienceMonths + PublicDemoEngineerRuntime
+  /// .maxDisplayedExperienceInflationMonths]` — the exact same inflation
+  /// ceiling the main game's own SkillSheet editor already enforces — so
+  /// this can never present a wilder fiction than the main game's existing
+  /// mechanic allows, even though Public Demo does not (yet) attach any
+  /// trust/risk penalty to it (Phase 3 scope: editing only, see this
+  /// feature's own Result Report for why penalties are deliberately
+  /// deferred).
+  ///
+  /// A no-op for an unknown [engineerId], or one whose runtime has no
+  /// [LanguageSkill] entry at all for its own primary language (should not
+  /// happen post-EG-1, but defensive rather than assumed, matching this
+  /// file's own [runtimeFor] vs [runtimeForOrNull] split elsewhere).
+  PublicDemoState updateDisplayedExperience({
+    required String engineerId,
+    required int displayedMonths,
+  }) {
+    final runtime = runtimeForOrNull(engineerId);
+    final currentSkill = runtime?.languageSkills[runtime.primaryLanguage];
+    if (runtime == null || currentSkill == null) return this;
+
+    final ceiling =
+        currentSkill.actualExperienceMonths +
+        PublicDemoEngineerRuntime.maxDisplayedExperienceInflationMonths;
+    final clamped = displayedMonths < 0
+        ? 0
+        : (displayedMonths > ceiling ? ceiling : displayedMonths);
+
+    final updatedRuntime = runtime.copyWith(
+      languageSkills: {
+        ...runtime.languageSkills,
+        runtime.primaryLanguage: currentSkill.copyWith(
+          displayedExperienceMonths: clamped,
+        ),
+      },
+    );
+    return copyWith(
+      engineerRuntimes: [
+        for (final candidate in engineerRuntimes)
+          if (candidate.engineerId == engineerId) updatedRuntime else candidate,
+      ],
+    );
+  }
+
   PublicDemoEngineerRuntime runtimeFor(String engineerId) =>
       runtimeForOrNull(engineerId) ??
       (throw ArgumentError.value(engineerId, 'engineerId', 'Unknown runtime'));

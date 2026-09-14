@@ -56,14 +56,14 @@ Widget _wrap(
 
 void main() {
   group('fresh chain rendering', () {
-    testWidgets('shows the April headline, progress 0/7, and the locked '
+    testWidgets('shows the April headline, progress 0/8, and the locked '
         'chain', (tester) async {
       await tester.pumpWidget(_wrap(_freshChain()));
       await tester.pumpAndSettle();
 
       expect(find.text('4月の目標'), findsOneWidget);
       expect(find.text('技術者1名を案件に参画させよう'), findsOneWidget);
-      expect(find.text('進捗 0 / 7'), findsOneWidget);
+      expect(find.text('進捗 0 / 8'), findsOneWidget);
       expect(
         find.byKey(const Key('public-demo-mission-tile-viewSkillSheet')),
         findsOneWidget,
@@ -76,13 +76,13 @@ void main() {
   });
 
   group('partial progress rendering', () {
-    testWidgets('shows progress 3/7 and the current step highlighted', (
+    testWidgets('shows progress 3/8 and the current step highlighted', (
       tester,
     ) async {
       await tester.pumpWidget(_wrap(_partiallyDoneChain()));
       await tester.pumpAndSettle();
 
-      expect(find.text('進捗 3 / 7'), findsOneWidget);
+      expect(find.text('進捗 3 / 8'), findsOneWidget);
       expect(
         find.byKey(const Key('public-demo-mission-complete-banner')),
         findsNothing,

@@ -17,6 +17,16 @@ class PublicDemoEngineerRuntime {
   /// flow. Presentation may show this rule, but must not duplicate it.
   static const int fieldSalesCapabilityRequirement = 60;
 
+  /// SES First Fun Quarter Mission Phase 3 (SkillSheet Editing): the most a
+  /// player may inflate a language's SkillSheet-facing
+  /// [LanguageSkill.displayedExperienceMonths] above that same language's
+  /// own [LanguageSkill.actualExperienceMonths] — mirrors the main game's
+  /// existing [SkillSheet.maxExperienceInflationMonths] cap verbatim (see
+  /// that constant's own doc) rather than inventing a second, Public-Demo-
+  /// only balance rule. [PublicDemoState.updateDisplayedExperience] is the
+  /// only place this is enforced.
+  static const int maxDisplayedExperienceInflationMonths = 36;
+
   const PublicDemoEngineerRuntime({
     required this.engineerId,
     required this.primaryLanguage,

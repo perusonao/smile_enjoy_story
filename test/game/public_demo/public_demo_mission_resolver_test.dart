@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:smile_enjoy_story/domain/models/programming_language.dart';
 import 'package:smile_enjoy_story/game/persistence/public_demo_save_codec.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_aggregate.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_assignment.dart';
@@ -52,31 +53,112 @@ void main() {
   });
 
   group('single-engineer April chain — each step flips exactly one mission', () {
-    test('viewSkillSheet completes, beginSelling becomes available', () {
-      final aggregate = PublicDemoAggregate.initial().startSkillSheetReview(
-        'eng-01',
-      );
-      final entries = PublicDemoMissionResolver.resolve(
-        workflow: aggregate.workflow,
-        state: aggregate.state,
-      );
-      expect(
-        statusOf(entries, PublicDemoMissionId.viewSkillSheet),
-        PublicDemoMissionStatus.completed,
-      );
-      expect(
-        entries.firstWhere((e) => e.id == PublicDemoMissionId.viewSkillSheet).engineerId,
-        'eng-01',
-      );
-      expect(
-        statusOf(entries, PublicDemoMissionId.beginSelling),
-        PublicDemoMissionStatus.available,
-      );
-      expect(
-        statusOf(entries, PublicDemoMissionId.proposeToProject),
-        PublicDemoMissionStatus.locked,
-      );
-    });
+    test(
+      'viewSkillSheet completes, editSkillSheet becomes available '
+      '(beginSelling stays locked until the SkillSheet is genuinely edited)',
+      () {
+        final aggregate = PublicDemoAggregate.initial().startSkillSheetReview(
+          'eng-01',
+        );
+        final entries = PublicDemoMissionResolver.resolve(
+          workflow: aggregate.workflow,
+          state: aggregate.state,
+        );
+        expect(
+          statusOf(entries, PublicDemoMissionId.viewSkillSheet),
+          PublicDemoMissionStatus.completed,
+        );
+        expect(
+          entries.firstWhere((e) => e.id == PublicDemoMissionId.viewSkillSheet).engineerId,
+          'eng-01',
+        );
+        expect(
+          statusOf(entries, PublicDemoMissionId.editSkillSheet),
+          PublicDemoMissionStatus.available,
+        );
+        expect(
+          statusOf(entries, PublicDemoMissionId.beginSelling),
+          PublicDemoMissionStatus.locked,
+        );
+      },
+    );
+
+    test(
+      'confirmSkillSheetEdit completes editSkillSheet, beginSelling becomes '
+      'available — a genuinely SAVED edit, never merely opening the sheet',
+      () {
+        final aggregate = PublicDemoAggregate.initial()
+            .startSkillSheetReview('eng-01')
+            .confirmSkillSheetEdit(engineerId: 'eng-01', displayedMonths: 48);
+        final entries = PublicDemoMissionResolver.resolve(
+          workflow: aggregate.workflow,
+          state: aggregate.state,
+        );
+        expect(
+          statusOf(entries, PublicDemoMissionId.editSkillSheet),
+          PublicDemoMissionStatus.completed,
+        );
+        expect(
+          entries.firstWhere((e) => e.id == PublicDemoMissionId.editSkillSheet).engineerId,
+          'eng-01',
+        );
+        expect(
+          statusOf(entries, PublicDemoMissionId.beginSelling),
+          PublicDemoMissionStatus.available,
+        );
+      },
+    );
+
+    test(
+      'confirming the edit with the SAME displayed value it already had '
+      'still completes editSkillSheet — the domain fact is "a save '
+      'genuinely happened", never a diff against the old value',
+      () {
+        final initial = PublicDemoAggregate.initial();
+        final unchangedMonths = initial.state
+            .runtimeFor('eng-01')
+            .languageSkills[ProgrammingLanguage.java]!
+            .displayedExperienceMonths;
+        final aggregate = initial.startSkillSheetReview('eng-01').confirmSkillSheetEdit(
+          engineerId: 'eng-01',
+          displayedMonths: unchangedMonths,
+        );
+        expect(
+          aggregate.state
+              .runtimeFor('eng-01')
+              .languageSkills[ProgrammingLanguage.java]!
+              .displayedExperienceMonths,
+          unchangedMonths,
+          reason: 'sanity: the value genuinely did not change',
+        );
+        final entries = PublicDemoMissionResolver.resolve(
+          workflow: aggregate.workflow,
+          state: aggregate.state,
+        );
+        expect(
+          statusOf(entries, PublicDemoMissionId.editSkillSheet),
+          PublicDemoMissionStatus.completed,
+        );
+      },
+    );
+
+    test(
+      'cancelling the edit sheet (no confirmSkillSheetEdit call) never '
+      'completes editSkillSheet',
+      () {
+        final aggregate = PublicDemoAggregate.initial().startSkillSheetReview(
+          'eng-01',
+        );
+        final entries = PublicDemoMissionResolver.resolve(
+          workflow: aggregate.workflow,
+          state: aggregate.state,
+        );
+        expect(
+          statusOf(entries, PublicDemoMissionId.editSkillSheet),
+          isNot(PublicDemoMissionStatus.completed),
+        );
+      },
+    );
 
     test('beginSelling completes, proposeToProject becomes available', () {
       final aggregate = PublicDemoAggregate.initial()

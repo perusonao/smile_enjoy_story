@@ -53,18 +53,25 @@ PublicDemoAggregate publicDemoAggregateAtMonth(
 }
 
 /// Advances [engineerId] through the real, unchanged engineer sales
-/// pipeline — `startSkillSheetReview` → `beginSelling` → `introduceProject`
-/// → partner interview → client interview → `recordOrder` — to
-/// [PublicDemoSalesStage.ordered] with a genuine
-/// [PublicDemoEngineerSales.hasGenuineInterviewRecord]. None of these
-/// commands are month-gated, so this works identically whether called in
-/// April or in December — the same chain Recovery relies on being usable
+/// pipeline — `startSkillSheetReview` → `confirmSkillSheetEdit` →
+/// `beginSelling` → `introduceProject` → partner interview → client
+/// interview → `recordOrder` — to [PublicDemoSalesStage.ordered] with a
+/// genuine [PublicDemoEngineerSales.hasGenuineInterviewRecord]. None of
+/// these commands are month-gated, so this works identically whether called
+/// in April or in December — the same chain Recovery relies on being usable
 /// again after May.
+///
+/// SES First Fun Quarter Mission Phase 3: includes a genuine
+/// `confirmSkillSheetEdit` (Mission 2) so every existing caller of this
+/// helper that asserts "the full April chain is complete" after reaching
+/// `ordered`/assigned keeps working — `36` is an arbitrary in-range value,
+/// never asserted on by this helper's own callers.
 PublicDemoAggregate publicDemoAdvanceEngineerToOrdered(
   PublicDemoAggregate aggregate,
   String engineerId,
 ) => aggregate
     .startSkillSheetReview(engineerId)
+    .confirmSkillSheetEdit(engineerId: engineerId, displayedMonths: 36)
     .beginSelling(engineerId)
     .introduceProject(engineerId)
     .recordEngineerInterviewResult(

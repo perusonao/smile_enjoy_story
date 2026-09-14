@@ -1136,6 +1136,21 @@ class PublicDemoWorkflowState {
         to: PublicDemoSalesStage.skillSheet,
       );
 
+  /// SES First Fun Quarter Mission Phase 3 (SkillSheet Editing): records
+  /// that [engineerId]'s player-facing SkillSheet edit was genuinely saved
+  /// — see [PublicDemoEngineerSales.salesProfileEditConfirmed]'s own doc.
+  /// Unlike [_transitionEngineerStage]'s named sales-pipeline events, this
+  /// never touches `stage` and has no required-current-stage precondition:
+  /// editing the sales-facing profile is not itself a pipeline step, only a
+  /// fact this method stamps onto whichever engineer the caller (
+  /// [PublicDemoAggregate.confirmSkillSheetEdit], the sole production
+  /// caller) already resolved. A no-op for an unknown [engineerId].
+  PublicDemoWorkflowState confirmSkillSheetEdit(String engineerId) =>
+      _withEngineer(
+        engineerId,
+        (engineer) => engineer.copyWith(salesProfileEditConfirmed: true),
+      );
+
   PublicDemoWorkflowState beginSelling(String engineerId) =>
       _transitionEngineerStage(
         engineerId,

@@ -140,6 +140,46 @@ void main() {
     });
   });
 
+  group('SES First Fun Quarter Mission Phase 3 §A: tech-skill labels are Japanese', () {
+    test('techSkillChips are localized, never the raw English domain key/label', () {
+      final runtime = publicDemoInitialEngineerRuntimes.firstWhere(
+        (r) => r.engineerId == 'eng-01',
+      );
+      final data = PublicDemoSkillSheetDisplayFactory.create(
+        engineer: const PublicDemoEngineerSales(
+          id: 'eng-01',
+          name: '既存社員',
+          summary: '既存社員のプロフィール',
+          interviewProfile: PublicDemoInterviewProfile(
+            skillFit: 78,
+            humanity: 60,
+            morale: 60,
+            clientTrust: 60,
+          ),
+        ),
+        statusLabel: '営業準備中',
+        runtime: runtime,
+        currentAssignment: null,
+      );
+
+      final labels = data.techSkillChips.map((chip) => chip.label).toList();
+      // eng-01's seed has non-zero database/network/infrastructure/frontend/
+      // backend/leader (see publicDemoInitialEngineerRuntimes) — every one
+      // of those domains must render its Japanese label, never the English
+      // one this file used before Phase 3.
+      expect(labels, contains('ネットワーク'));
+      expect(labels, contains('インフラ'));
+      expect(labels, contains('フロントエンド'));
+      expect(labels, contains('バックエンド'));
+      expect(labels, contains('リーダー'));
+      expect(labels, isNot(contains('Network')));
+      expect(labels, isNot(contains('Infra')));
+      expect(labels, isNot(contains('Frontend')));
+      expect(labels, isNot(contains('Backend')));
+      expect(labels, isNot(contains('Leader')));
+    });
+  });
+
   group(
     'PublicDemoSkillSheetSheet renders app-02 with no fabrication or overflow',
     () {

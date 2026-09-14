@@ -128,14 +128,22 @@ const Map<EmployeeAbility, String> _abilityLabels = {
   EmployeeAbility.commuteSensitive: '通勤条件に敏感',
 };
 
+// SES First Fun Quarter Mission Phase 3, Fresh Audit §A: localized to
+// Japanese for the Public Demo SkillSheet's own reader. Deliberately a
+// private map local to this file, NOT a change to the shared
+// `techDomainLabels` in ui/widgets/labels.dart — that map is read by several
+// main-game screens (project/engineer/applicant detail, Fit breakdown text)
+// this phase's scope never touches, so this file keeps its own translation
+// rather than risk a main-game regression (Fresh Audit finding, see this
+// feature's own Result Report).
 const Map<String, String> _techSkillDomainLabels = {
   'database': 'DB',
-  'network': 'Network',
-  'infrastructure': 'Infra',
-  'frontend': 'Frontend',
-  'backend': 'Backend',
-  'leader': 'Leader',
-  'manager': 'Manager',
+  'network': 'ネットワーク',
+  'infrastructure': 'インフラ',
+  'frontend': 'フロントエンド',
+  'backend': 'バックエンド',
+  'leader': 'リーダー',
+  'manager': 'マネージャー',
 };
 
 class PublicDemoSkillSheetDisplayFactory {

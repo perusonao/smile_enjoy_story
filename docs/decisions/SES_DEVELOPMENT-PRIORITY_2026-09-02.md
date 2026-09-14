@@ -219,6 +219,97 @@ Result Reportは履歴・証拠であり、この文書の代わりにはしな�
 
 ## Update history
 
+### 2026-09-14（Mission System Phase 3 — SkillSheet Understanding / Editing 実装完了 / governing plan sync）
+
+- **First Fun Quarter Mission System Phase 3が完了した。** 設計資料
+  `docs/design/SES_FIRST-FUN-QUARTER_MISSION-ONBOARDING_Implementation-Plan.md`
+  §6のPhase 3範囲を実装。開始時`git fetch origin main`で`origin/main`が
+  task指定のSHA `4efb478`（PR #266マージコミット、Mission System Phase 2）
+  と完全一致していることを確認（drift無し）。作業branch
+  `claude/skillsheet-editing-phase3-4jxr6a`は`origin/main`から新規作成。
+  main Fast CI #703（このマージコミット自身のCI run）はFresh Audit開始時点
+  でin_progressだったため、task指示通りFresh Auditを先に進め、production
+  実装着手前に再確認して完了・成功を確認した。
+- **実装前にFresh Auditを実施し、既存Implementation Plan §6の前提を実コードと
+  照合した** — 2箇所で計画と実装を意図的に乖離させた（詳細は
+  `docs/design/SES_FIRST-FUN-QUARTER_MISSION-ONBOARDING_Implementation-Plan.md`
+  §6の「Superseded at implementation time」を参照）:
+  1. §6.1は共有`techDomainLabels`（`lib/ui/widgets/labels.dart`）も
+     日本語化する計画だったが、実装時監査でMain Game側4画面
+     （project/engineer/applicant detail, engineer list）とPublic Demo自身の
+     Matching画面Fit理由行（`fitDetailLabel`経由）がこの共有mapを読んでいる
+     ことを確認した。Main Gameの文言変更は本task範囲外のため、Public Demo
+     SkillSheet自身が持つ`_techSkillDomainLabels`（private、
+     `public_demo_skill_sheet_display_projection.dart`）のみ日本語化し、
+     共有helperは無変更とした。
+  2. §6.2は言語別の編集API案だったが、Public DemoのSkillSheetは実際には
+     「confirmed languageは常に1件（primaryLanguage）」という既存ルール
+     （`PublicDemoSkillSheetDisplayFactory`自身のdoc）のため、
+     `primaryLanguage`のみを編集対象とした。clamp上限はMain Gameの既存
+     `SkillSheet.maxExperienceInflationMonths`（36か月）を
+     `PublicDemoEngineerRuntime.maxDisplayedExperienceInflationMonths`として
+     そのまま再利用し、Public Demo専用の新しいバランス定数は作らなかった。
+- **実装内容**:
+  1. **表示経験の編集**: `PublicDemoState.updateDisplayedExperience`（新規）
+     が対象engineerの`languageSkills[primaryLanguage].displayedExperienceMonths`
+     のみを`[0, actualExperienceMonths + 36]`にclampして書き換える —
+     `actualExperienceMonths`/`actualSkill`/`techSkills`/
+     `totalItExperienceMonths`/Fit計算（`PublicDemoEngineerProjectFit`が読む
+     値）はいずれも触れない。`PublicDemoAggregate.confirmSkillSheetEdit`
+     （新規）がこの状態更新と、後述のMission authority記録をatomicに実行する
+     唯一の本番エントリーポイント。
+  2. **UI**: 新規`PublicDemoSkillSheetEditSheet`
+     （`public_demo_skill_sheet_edit_sheet.dart`）。Main Gameの既存
+     `_editSkillSheet`（`engineer_detail_screen.dart`）と同じ「実際 X / 記載 Y」
+     の年単位stepper UIを踏襲。「営業用プロフィールを編集」の見出しと
+     「実際の実務経験や実力が変わるわけではありません」という明示的な非推奨
+     copyを採用し、経歴詐称を無条件に推奨する表現は使っていない。社員タブの
+     roster cardへ「スキルシートを編集」ボタンを追加（`stage != waiting`の
+     間、常時表示 — 営業開始のcapability gateとは独立）。Main GameのSkillSheet
+     編集ダイアログ（trust/risk system付き）とは異なり、今回は表示編集機能
+     のみで、Company Trust低下・面談失敗率・経歴詐称リスク等の新ペナルティは
+     一切追加していない（将来Phase候補として明記）。
+  3. **Mission**: `PublicDemoMissionId.editSkillSheet`（新規）を
+     `viewSkillSheet`と`beginSelling`の間に挿入（8ステップ化）。完了条件は
+     新規`PublicDemoEngineerSales.salesProfileEditConfirmed`（additive bool,
+     デフォルトfalse） — 「編集画面を保存した」というdomain factそのもの。
+     同じ値で保存してもtrueになる（差分比較ではなく「保存という行為が
+     起きたか」を記録する設計判断 — 理由はResult Report参照）。Mission
+     resolver自身の既存哲学（`locked`はUI表示のみで実際のドメイン操作を
+     ブロックしない）は変更していないため、Mission #2が未完了でも
+     「営業開始」ボタン自体は引き続き押せる。
+  4. **ラベル日本語化**: SkillSheetの技術スキルchip
+     （`_techSkillDomainLabels`）をFrontend→フロントエンド、
+     Backend→バックエンド、Leader→リーダー、Manager→マネージャー、
+     Network→ネットワーク、Infra→インフラへ変更（`DB`は既存のまま維持）。
+- **Save/persistence**: schemaVersionは1のまま無変更。
+  `displayedExperienceMonths`は既にPhase 2以前から`LanguageSkill`/
+  `PublicDemoEngineerRuntime`のsave codecへ含まれていたfieldを再利用した
+  （新規field不要）。`salesProfileEditConfirmed`のみ新規additive
+  bool（欠落時`false`にfallback、legacy save/schema bump不要）。
+- **Tests**: 新規`test/game/public_demo/public_demo_skill_sheet_edit_test.dart`
+  （save authority/クランプ/A-B独立/save-reload/legacy欠落field/malformed値）、
+  新規`test/ui/public_demo/public_demo_skill_sheet_edit_sheet_test.dart`
+  （increment/decrement clamp、save/cancel、390×844・360×800×TextScaler
+  1.0/1.3のoverflow行列）、`public_demo_mission_resolver_test.dart`へ
+  editSkillSheet関連4件を追加し既存1件を新chain順に更新、
+  `public_demo_01_skill_sheet_flow_test.dart`へ統合3件、
+  `public_demo_skill_sheet_display_projection_test.dart`へラベル回帰1件、
+  `public_demo_mission_screen_test.dart`/`public_demo_mission_appbar_entry
+  _test.dart`の進捗表示を7→8ステップへ更新。`flutter analyze`（全体）
+  issue無し。`flutter test test/game/public_demo`
+  `flutter test test/ui/public_demo`フルスイート、Main Game回帰
+  （`test/ui/fit_reason_widget_test.dart`/`test/game/matching_test.dart`/
+  `test/presentation`/`test/domain`）すべてPASS。`git diff --check`クリーン。
+  詳細は`docs/reports/SES_FIRST-FUN-QUARTER_MISSION-PHASE3_Result.md`。
+- **Self-hardening**: 実装後にClaude自身でBroad Self Reviewを1回実施 —
+  詳細はResult Report参照。
+- **本エントリはCurrent execution order・Prioritized backlog tableの構成を
+  変更しない** — Phase 1/2と同様、Mission Systemも独立した結果報告チェーン
+  で追跡する（「Relationship to existing documents」参照）。
+- 詳細・Fresh Audit結論・persistence戦略・自己レビュー結果・未解決事項は
+  `docs/reports/SES_FIRST-FUN-QUARTER_MISSION-PHASE3_Result.md`を参照。
+
 ### 2026-09-14（Mission System Phase 2 — Progressive Onboarding 実装完了 / governing plan sync）
 
 - **First Fun Quarter Mission System Phase 2が完了した。** 設計資料

@@ -884,6 +884,31 @@ class PublicDemoAggregate {
   PublicDemoAggregate startSkillSheetReview(String engineerId) =>
       _copyWith(workflow: workflow.startSkillSheetReview(engineerId));
 
+  /// SES First Fun Quarter Mission Phase 3 (SkillSheet Editing): the sole
+  /// production entry point for adjusting [engineerId]'s SkillSheet-facing
+  /// "表示経験" (never their actual experience/capability — see
+  /// [PublicDemoState.updateDisplayedExperience]'s own doc for the one
+  /// field this touches and the inflation ceiling it clamps to). Updates
+  /// both halves of the aggregate atomically: [PublicDemoState] carries the
+  /// new displayed-experience value on the engineer's own runtime, and
+  /// [PublicDemoWorkflowState] records
+  /// [PublicDemoEngineerSales.salesProfileEditConfirmed] — the domain fact
+  /// [PublicDemoMissionResolver] reads for Mission 2 (技術者のSkillSheetを編集す
+  /// る). A no-op on the workflow side for an unknown [engineerId] (mirrors
+  /// every other named engineer command in this class); the state-side
+  /// update is independently a no-op for an engineer with no runtime/no
+  /// primary-language [LanguageSkill] entry (see that method's own doc).
+  PublicDemoAggregate confirmSkillSheetEdit({
+    required String engineerId,
+    required int displayedMonths,
+  }) => _copyWith(
+    state: state.updateDisplayedExperience(
+      engineerId: engineerId,
+      displayedMonths: displayedMonths,
+    ),
+    workflow: workflow.confirmSkillSheetEdit(engineerId),
+  );
+
   PublicDemoAggregate beginSelling(String engineerId) =>
       _copyWith(workflow: workflow.beginSelling(engineerId));
 

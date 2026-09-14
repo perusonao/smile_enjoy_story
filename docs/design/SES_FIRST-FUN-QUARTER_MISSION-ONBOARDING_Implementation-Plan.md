@@ -291,7 +291,50 @@ One-line addition to the existing subtitle in `PublicDemoSkillSheetBody`/`_openS
 
 ## 6. Phase 3 — SkillSheet Comprehension + Editing
 
+**Status: COMPLETE (2026-09-14) — see `docs/reports/
+SES_FIRST-FUN-QUARTER_MISSION-PHASE3_Result.md` for the full implementation
+record, the implementation-time Fresh Audit, and the two deliberate
+deviations from this section's original plan (§6.1's shared-helper edit and
+§6.2's per-language editor, both superseded below).**
+
 **Estimated: 3h total, consider splitting into 3a (label fix + copy, 1h) and 3b (editing feature, 2h) if a single session runs long, per the governing SSOT's own 2–3h sizing guidance.**
+
+**Superseded at implementation time (Fresh Audit findings — code kept as
+authority over this plan, per this task's own "既存設計の前提と違う場合は、
+コードを正として計画を修正する" rule):**
+
+- §6.1's "edit both `_techSkillDomainLabels` and the shared `techDomainLabels`"
+  is NOT what shipped. The implementation-time audit found `techDomainLabels`
+  (`lib/ui/widgets/labels.dart`) read from more main-game call sites than
+  this plan assumed — `project_detail_screen.dart`, `engineer_detail_screen
+  .dart`, `engineer_list_screen.dart`, `applicant_detail_screen.dart`, and
+  (via `fitDetailLabel`) Public Demo's own Matching screen Fit-reason line —
+  none of them in this phase's scope. Localizing that shared map would have
+  changed main-game screens this task never asked to touch, exactly the risk
+  §6.1's own "verification required" caveat flagged. Only the private,
+  Public-Demo-local `_techSkillDomainLabels` was translated; the shared
+  `labels.dart` map, and the main-game screens/Public-Demo-Matching Fit-
+  reason line that read it, are unchanged and left as a documented future-
+  phase candidate.
+- §6.2's per-language `editSkillSheetDisplayedExperience(..., language: ...)`
+  shape did not ship. The implementation only edits the engineer's own
+  `primaryLanguage` entry (`PublicDemoState.updateDisplayedExperience`,
+  `PublicDemoAggregate.confirmSkillSheetEdit`) — Public Demo's SkillSheet
+  only ever shows one confirmed language's experience comparison per
+  employee in practice (see `PublicDemoSkillSheetDisplayFactory`'s own
+  "only a confirmed language" rule), so a multi-language editor would add
+  surface area with nothing real for the player to point it at. §6.2's own
+  open clamp-bound question is resolved by reusing the main game's existing
+  `SkillSheet.maxExperienceInflationMonths` (36 months) verbatim, as
+  `PublicDemoEngineerRuntime.maxDisplayedExperienceInflationMonths` — never
+  a second, Public-Demo-only balance constant.
+- **New scope beyond this section's original text**: the governing task also
+  asked for a Mission chain entry ("技術者のSkillSheetを編集する", inserted as
+  Mission #2 between `viewSkillSheet` and `beginSelling`) and a dedicated
+  `PublicDemoEngineerSales.salesProfileEditConfirmed` domain fact for it —
+  neither was in this plan's original §6 text. See the Result Report's
+  Mission-authority section for the persistence-vs-derived-fact design
+  decision.
 
 ### 6.1 Phase 3a — English label fix (Fresh Audit §7.1)
 

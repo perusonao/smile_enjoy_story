@@ -54,6 +54,13 @@ publicDemoAprilMissionCopy = {
     nextAction: '社員タブでSkillSheetを開きましょう。',
     hiyoriComment: 'まずは技術者のことを知るところから始めましょう。',
   ),
+  // SES First Fun Quarter Mission Phase 3 (SkillSheet Editing).
+  PublicDemoMissionId.editSkillSheet: PublicDemoMissionCopy(
+    title: '技術者のSkillSheetを編集する',
+    purpose: '営業を始める前に、取引先へ見せる表示経験を確認・調整しておきます。',
+    nextAction: '社員タブで「スキルシートを編集」から表示経験を保存しましょう。',
+    hiyoriComment: '実際の実務経験や実力は変わりません。あくまで見せ方の調整です。',
+  ),
   PublicDemoMissionId.beginSelling: PublicDemoMissionCopy(
     title: '営業を開始する',
     purpose: 'SkillSheetを確認したら、案件を探すための営業を始めます。',

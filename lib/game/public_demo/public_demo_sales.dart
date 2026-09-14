@@ -77,6 +77,7 @@ class PublicDemoEngineerSales {
     this.mental = 50,
     this.trust = 50,
     this.founderFollowUpMonth,
+    this.salesProfileEditConfirmed = false,
   });
 
   final String id;
@@ -101,6 +102,25 @@ class PublicDemoEngineerSales {
   /// `fromJson` defaults it to `null`, reproducing exactly the
   /// not-yet-decided state those saves already had.
   final int? founderFollowUpMonth;
+
+  /// SES First Fun Quarter Mission Phase 3 (SkillSheet Editing): true once
+  /// the player has explicitly saved a SkillSheet edit
+  /// ([PublicDemoAggregate.confirmSkillSheetEdit]) for this engineer at
+  /// least once — the domain fact Mission 2 (技術者のSkillSheetを編集する) reads,
+  /// via [PublicDemoMissionResolver]. Deliberately set on every genuine save
+  /// regardless of whether [PublicDemoState.updateDisplayedExperience]'s new
+  /// value actually differs from the old one: re-confirming an unchanged
+  /// number is still a real "I reviewed and submitted this SkillSheet"
+  /// decision the player made, and this field's only job is to record that
+  /// decision happened — not to diff two experience figures (which would
+  /// also require persisting the pre-edit baseline just to compare against,
+  /// for no more honest a signal than this flag already gives). Cancelling
+  /// out of the edit sheet never sets this — see
+  /// `PublicDemoSkillSheetEditSheet`'s own doc. Additive: absent (`null`) on
+  /// any save written before this field existed, defaulting to `false` —
+  /// no schemaVersion bump, matching every other additive field on this
+  /// class.
+  final bool salesProfileEditConfirmed;
 
   /// Public Demo currently uses the existing morale value as the
   /// Motivation-equivalent, matching the shared Engineer model semantics.
@@ -145,6 +165,7 @@ class PublicDemoEngineerSales {
     int? mental,
     int? trust,
     int? founderFollowUpMonth,
+    bool? salesProfileEditConfirmed,
   }) => PublicDemoEngineerSales(
     id: id,
     name: name,
@@ -156,6 +177,8 @@ class PublicDemoEngineerSales {
     mental: mental ?? this.mental,
     trust: trust ?? this.trust,
     founderFollowUpMonth: founderFollowUpMonth ?? this.founderFollowUpMonth,
+    salesProfileEditConfirmed:
+        salesProfileEditConfirmed ?? this.salesProfileEditConfirmed,
   );
 
   Map<String, dynamic> toJson() => {
@@ -179,6 +202,9 @@ class PublicDemoEngineerSales {
     'mental': mental,
     'trust': trust,
     'founderFollowUpMonth': founderFollowUpMonth,
+    // Additive (SES First Fun Quarter Mission Phase 3): see
+    // [salesProfileEditConfirmed]'s own doc.
+    'salesProfileEditConfirmed': salesProfileEditConfirmed,
   };
 
   factory PublicDemoEngineerSales.fromJson(Map<String, dynamic> json) {
@@ -230,6 +256,12 @@ class PublicDemoEngineerSales {
       mental: required<int>('mental'),
       trust: required<int>('trust'),
       founderFollowUpMonth: json['founderFollowUpMonth'] as int?,
+      // Additive (SES First Fun Quarter Mission Phase 3): absent on any
+      // save written before this field existed — `false` there reproduces
+      // exactly the "never edited" state those saves already had, not a
+      // fabricated fact.
+      salesProfileEditConfirmed:
+          json['salesProfileEditConfirmed'] as bool? ?? false,
     );
   }
 

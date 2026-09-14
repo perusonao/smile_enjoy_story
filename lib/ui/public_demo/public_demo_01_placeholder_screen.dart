@@ -70,6 +70,7 @@ import 'public_demo_project_interview_dialog.dart';
 import 'public_demo_recruitment_interview_dialog.dart';
 import 'public_demo_sales_progress.dart';
 import 'public_demo_sales_visual.dart';
+import 'public_demo_skill_sheet_edit_sheet.dart';
 import 'public_demo_skill_sheet_sheet.dart';
 import 'public_demo_offer_result_dialog.dart';
 import 'public_demo_salary_offer_dialog.dart';
@@ -1235,6 +1236,43 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
     );
     if (!mounted || confirmed != true) return;
     _startSkillSheetReview(engineer.id);
+  }
+
+  /// SES First Fun Quarter Mission Phase 3 (SkillSheet Editing): opens
+  /// [PublicDemoSkillSheetEditSheet] for [engineer] and, only on an
+  /// explicit save (a non-null result), commits
+  /// [PublicDemoAggregate.confirmSkillSheetEdit] — the sole place this
+  /// screen calls that command. A no-op when this engineer's runtime or its
+  /// own primary-language [LanguageSkill] entry is missing (should not
+  /// happen post-EG-1, but this method never assumes it, mirroring
+  /// [PublicDemoState.updateDisplayedExperience]'s own defensive doc);
+  /// Back/barrier-dismiss commits nothing, exactly like every other Public
+  /// Demo sheet's own cancel path.
+  Future<void> _openSkillSheetEdit(PublicDemoEngineerSales engineer) async {
+    final runtime = s.runtimeForOrNull(engineer.id);
+    final skill = runtime?.languageSkills[runtime.primaryLanguage];
+    if (runtime == null || skill == null) return;
+
+    final result = await PublicDemoSkillSheetEditSheet.show(
+      context,
+      engineerId: engineer.id,
+      engineerName: engineer.name,
+      languageLabel:
+          languageLabels[runtime.primaryLanguage] ??
+          runtime.primaryLanguage.name,
+      actualMonths: skill.actualExperienceMonths,
+      initialDisplayedMonths: skill.displayedExperienceMonths,
+      maxDisplayedMonths:
+          skill.actualExperienceMonths +
+          PublicDemoEngineerRuntime.maxDisplayedExperienceInflationMonths,
+    );
+    if (!mounted || result == null) return;
+    _commitAggregate(
+      _game.confirmSkillSheetEdit(
+        engineerId: engineer.id,
+        displayedMonths: result,
+      ),
+    );
   }
 
   /// CORE-GAMEPLAY Phase 4.5: a pure, always-available view of an already-
@@ -4338,6 +4376,22 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
               FilledButton(
                 onPressed: () => _beginSelling(e.id),
                 child: const Text('営業開始'),
+              ),
+            // SES First Fun Quarter Mission Phase 3 (SkillSheet Editing):
+            // available from the moment SkillSheet confirmation has
+            // happened once (mirrors Mission 1's own `stage != waiting`
+            // completion rule) through every later sales stage — editing
+            // the sales-facing profile is never itself gated on capability
+            // or pipeline stage, unlike starting sales.
+            if (e.stage != PublicDemoSalesStage.waiting)
+              Padding(
+                padding: const EdgeInsets.only(top: 6),
+                child: OutlinedButton.icon(
+                  key: Key('public-demo-skill-sheet-edit-open-${e.id}'),
+                  onPressed: () => unawaited(_openSkillSheetEdit(e)),
+                  icon: const Icon(Icons.edit_outlined),
+                  label: const Text('スキルシートを編集'),
+                ),
               ),
             if (e.stage == PublicDemoSalesStage.selling)
               FilledButton(

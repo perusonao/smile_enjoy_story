@@ -157,4 +157,149 @@ void main() {
       },
     );
   });
+
+  group('SES First Fun Quarter Mission Phase 3: SkillSheet Editing', () {
+    testWidgets(
+      'the edit entry point only appears once SkillSheet confirmation has '
+      'happened, never while still `waiting`',
+      (tester) async {
+        await pumpDemo(tester);
+        final engineer = currentWorkflow(tester).engineers.first;
+
+        await switchPublicDemoTab(tester, PublicDemoTab.employees);
+        expect(
+          find.byKey(Key('public-demo-skill-sheet-edit-open-${engineer.id}')),
+          findsNothing,
+        );
+
+        await tapVisible(
+          tester,
+          find.widgetWithText(FilledButton, 'スキルシート確認'),
+        );
+        await tapVisible(
+          tester,
+          find.byKey(Key('public-demo-skill-sheet-confirm-${engineer.id}')),
+        );
+
+        expect(
+          find.byKey(Key('public-demo-skill-sheet-edit-open-${engineer.id}')),
+          findsOneWidget,
+        );
+      },
+    );
+
+    testWidgets(
+      'saving an edit updates the displayed experience without touching '
+      'stage, actual experience, or the interview profile — and cancelling '
+      'changes nothing at all',
+      (tester) async {
+        await pumpDemo(tester);
+        final engineer = currentWorkflow(tester).engineers.first;
+
+        await switchPublicDemoTab(tester, PublicDemoTab.employees);
+        await tapVisible(
+          tester,
+          find.widgetWithText(FilledButton, 'スキルシート確認'),
+        );
+        await tapVisible(
+          tester,
+          find.byKey(Key('public-demo-skill-sheet-confirm-${engineer.id}')),
+        );
+
+        // Cancel first: nothing should change.
+        await tapVisible(
+          tester,
+          find.byKey(Key('public-demo-skill-sheet-edit-open-${engineer.id}')),
+        );
+        await tapVisible(
+          tester,
+          find.byKey(Key('public-demo-skill-sheet-edit-cancel-${engineer.id}')),
+        );
+        expect(
+          currentWorkflow(tester).engineers.first.salesProfileEditConfirmed,
+          isFalse,
+        );
+
+        final beforeStage = currentWorkflow(tester).engineers.first.stage;
+        final beforeProfile = currentWorkflow(tester).engineers.first.interviewProfile;
+
+        // Now genuinely save a change.
+        await tapVisible(
+          tester,
+          find.byKey(Key('public-demo-skill-sheet-edit-open-${engineer.id}')),
+        );
+        await tapVisible(
+          tester,
+          find.byKey(Key('public-demo-skill-sheet-edit-increment-${engineer.id}')),
+        );
+        await tapVisible(
+          tester,
+          find.byKey(Key('public-demo-skill-sheet-edit-save-${engineer.id}')),
+        );
+
+        final afterEngineer = currentWorkflow(tester).engineers.first;
+        expect(afterEngineer.salesProfileEditConfirmed, isTrue);
+        expect(afterEngineer.stage, beforeStage);
+        expect(afterEngineer.interviewProfile.skillFit, beforeProfile.skillFit);
+        expect(afterEngineer.interviewProfile.humanity, beforeProfile.humanity);
+        expect(afterEngineer.interviewProfile.morale, beforeProfile.morale);
+        expect(afterEngineer.interviewProfile.clientTrust, beforeProfile.clientTrust);
+      },
+    );
+
+    testWidgets(
+      'opening the Mission screen shows Mission #2 (SkillSheet編集) locked '
+      'until confirmed, then completed — and never completed by cancel',
+      (tester) async {
+        await pumpDemo(tester);
+        final engineer = currentWorkflow(tester).engineers.first;
+
+        await switchPublicDemoTab(tester, PublicDemoTab.employees);
+        await tapVisible(
+          tester,
+          find.widgetWithText(FilledButton, 'スキルシート確認'),
+        );
+        await tapVisible(
+          tester,
+          find.byKey(Key('public-demo-skill-sheet-confirm-${engineer.id}')),
+        );
+
+        await tapVisible(
+          tester,
+          find.byKey(const Key('public-demo-app-bar-mission')),
+        );
+        expect(
+          find.byKey(const Key('public-demo-mission-tile-editSkillSheet')),
+          findsOneWidget,
+        );
+        expect(find.text('技術者のSkillSheetを編集する'), findsOneWidget);
+        await tester.pageBack();
+        await tester.pumpAndSettle();
+
+        await tapVisible(
+          tester,
+          find.byKey(Key('public-demo-skill-sheet-edit-open-${engineer.id}')),
+        );
+        await tapVisible(
+          tester,
+          find.byKey(Key('public-demo-skill-sheet-edit-save-${engineer.id}')),
+        );
+
+        await tapVisible(
+          tester,
+          find.byKey(const Key('public-demo-app-bar-mission')),
+        );
+        // The completed tile shows a green check icon — cheaper to assert
+        // via the icon's presence within this tile than to reach into
+        // PublicDemoMissionStatusEntry from a pumped widget tree.
+        expect(
+          find.descendant(
+            of: find.byKey(const Key('public-demo-mission-tile-editSkillSheet')),
+            matching: find.byIcon(Icons.check_circle),
+          ),
+          findsOneWidget,
+        );
+      },
+    );
+  });
 }

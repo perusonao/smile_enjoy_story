@@ -63,6 +63,13 @@ enum PublicDemoMissionId {
   /// Mission 1 — 技術者のSkillSheetを確認する.
   viewSkillSheet,
 
+  /// Mission 2 — 技術者のSkillSheetを編集する (SES First Fun Quarter Mission
+  /// Phase 3, SkillSheet Editing). Reads
+  /// [PublicDemoEngineerSales.salesProfileEditConfirmed] — see that field's
+  /// own doc for why a genuine save counts regardless of whether the saved
+  /// value differs from the one already showing.
+  editSkillSheet,
+
   /// Mission 3 — 技術者の営業を行う.
   beginSelling,
 
@@ -88,6 +95,7 @@ enum PublicDemoMissionId {
 /// [PublicDemoMissionResolver.resolve] returns entries in this same order.
 const List<PublicDemoMissionId> publicDemoAprilMissionChain = [
   PublicDemoMissionId.viewSkillSheet,
+  PublicDemoMissionId.editSkillSheet,
   PublicDemoMissionId.beginSelling,
   PublicDemoMissionId.proposeToProject,
   PublicDemoMissionId.passPartnerInterview,
@@ -152,6 +160,12 @@ class PublicDemoMissionResolver {
       PublicDemoMissionId.viewSkillSheet: anyEngineer(
         (e) => e.stage != PublicDemoSalesStage.waiting,
       ),
+      // SES First Fun Quarter Mission Phase 3: genuinely SAVED, not merely
+      // opened — see [PublicDemoEngineerSales.salesProfileEditConfirmed]'s
+      // own doc for why cancelling the edit sheet never sets this.
+      PublicDemoMissionId.editSkillSheet: anyEngineer(
+        (e) => e.salesProfileEditConfirmed,
+      ),
       PublicDemoMissionId.beginSelling: anyEngineer(
         (e) => _hasReachedSelling(e.stage),
       ),
@@ -178,6 +192,9 @@ class PublicDemoMissionResolver {
     final engineerIdById = <PublicDemoMissionId, String?>{
       PublicDemoMissionId.viewSkillSheet: firstEngineerWhere(
         (e) => e.stage != PublicDemoSalesStage.waiting,
+      ),
+      PublicDemoMissionId.editSkillSheet: firstEngineerWhere(
+        (e) => e.salesProfileEditConfirmed,
       ),
       PublicDemoMissionId.beginSelling: firstEngineerWhere(
         (e) => _hasReachedSelling(e.stage),

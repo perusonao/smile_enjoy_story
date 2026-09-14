@@ -59,7 +59,7 @@ void main() {
 
       expect(find.text('4月の目標'), findsOneWidget);
       expect(find.text('技術者1名を案件に参画させよう'), findsOneWidget);
-      expect(find.text('進捗 0 / 7'), findsOneWidget);
+      expect(find.text('進捗 0 / 8'), findsOneWidget);
 
       // Navigates back to the real HOME screen underneath — a real
       // Navigator.push, not a replacement of the whole screen.
@@ -163,12 +163,13 @@ void main() {
 
     testWidgets(
       'the badge reappears once the chain genuinely advances past the '
-      'acknowledged front (Mission #1 completing unlocks Mission #3) — the '
+      'acknowledged front (Mission #1 completing unlocks Mission #2) — the '
       'Just-in-time nudge for the next step, never a modal',
       (tester) async {
         // eng-01 confirms SkillSheet — Mission #1 (viewSkillSheet)
         // completes, so the chain front moves from index 0 to index 1
-        // (beginSelling), which the AppBar has not yet acknowledged.
+        // (SES First Fun Quarter Mission Phase 3: editSkillSheet, inserted
+        // ahead of beginSelling), which the AppBar has not yet acknowledged.
         final aggregate = PublicDemoAggregate.initial().startSkillSheetReview(
           'eng-01',
         );
@@ -186,7 +187,7 @@ void main() {
         expect(
           find.byKey(badgeKey),
           findsNothing,
-          reason: 'acknowledged at the current front (beginSelling, index 1)',
+          reason: 'acknowledged at the current front (editSkillSheet, index 1)',
         );
       },
     );
@@ -209,7 +210,7 @@ void main() {
 
         await tester.tap(find.byKey(missionButtonKey));
         await tester.pumpAndSettle();
-        expect(find.text('進捗 0 / 7'), findsOneWidget);
+        expect(find.text('進捗 0 / 8'), findsOneWidget);
       },
     );
 

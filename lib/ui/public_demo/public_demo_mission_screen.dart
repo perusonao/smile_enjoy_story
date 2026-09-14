@@ -1,0 +1,312 @@
+import 'package:flutter/material.dart';
+
+import '../../game/public_demo/public_demo_mission_resolver.dart';
+import '../theme.dart';
+
+// SES First Fun Quarter — Mission System Phase 1 (April Main Mission),
+// design docs:
+//   docs/reports/SES_FIRST-FUN-QUARTER_MISSION-ONBOARDING_Fresh-Audit.md
+//   docs/design/SES_FIRST-FUN-QUARTER_MISSION-ONBOARDING_Implementation-Plan.md
+//
+// A read-only, full-route Mission screen (Navigator.push, not a modal
+// sheet — Fresh Audit §9 Option E) showing April's headline mission
+// ("技術者1名を案件に参画させよう") and its 7-step chain, each step's status
+// resolved by [PublicDemoMissionResolver] before this widget is built.
+// This screen mutates nothing: it takes an already-resolved
+// `List<PublicDemoMissionStatusEntry>`, never a live aggregate, mirroring
+// every other Public Demo "display data" screen's own convention (e.g.
+// [PublicDemoOfferComparisonScreen] reading live getters, never holding
+// authority itself). No BuildContext-side game state is read here.
+
+/// Short display copy for one Mission — 目的 (purpose) / 操作 (what to do
+/// next) / a one-line Hiyori remark. Deliberately terse for Phase 1 (task
+/// scope: "長いチュートリアル文章を入れすぎない").
+class PublicDemoMissionCopy {
+  const PublicDemoMissionCopy({
+    required this.title,
+    required this.purpose,
+    required this.nextAction,
+    required this.hiyoriComment,
+  });
+
+  final String title;
+  final String purpose;
+  final String nextAction;
+  final String hiyoriComment;
+}
+
+/// The Phase 1 April chain's display copy, keyed by [PublicDemoMissionId].
+/// Const, presentation-only — no authority, no state.
+const Map<PublicDemoMissionId, PublicDemoMissionCopy>
+publicDemoAprilMissionCopy = {
+  PublicDemoMissionId.viewSkillSheet: PublicDemoMissionCopy(
+    title: '技術者のSkillSheetを確認する',
+    purpose: '案件との相性を自分で判断するために、まず技術者の経歴を確認します。',
+    nextAction: '社員タブでSkillSheetを開きましょう。',
+    hiyoriComment: 'まずは技術者のことを知るところから始めましょう。',
+  ),
+  PublicDemoMissionId.beginSelling: PublicDemoMissionCopy(
+    title: '営業を開始する',
+    purpose: 'SkillSheetを確認したら、案件を探すための営業を始めます。',
+    nextAction: '営業タブから営業を開始しましょう。',
+    hiyoriComment: '営業を開始すると、案件を紹介できるようになります。',
+  ),
+  PublicDemoMissionId.proposeToProject: PublicDemoMissionCopy(
+    title: '案件に提案する',
+    purpose: '技術者を実際の案件に紹介し、選考をスタートします。',
+    nextAction: '案件を選んで提案しましょう。',
+    hiyoriComment: '相性の良い案件を選ぶのがポイントです。',
+  ),
+  PublicDemoMissionId.passPartnerInterview: PublicDemoMissionCopy(
+    title: '上位会社面談を通過する',
+    purpose: 'SESでは元請け企業（上位会社）との面談が最初の関門になります。',
+    nextAction: '上位会社面談に進みましょう。',
+    hiyoriComment: 'ここを通過すると、いよいよ客先面談です。',
+  ),
+  PublicDemoMissionId.passClientInterview: PublicDemoMissionCopy(
+    title: '客先面談を通過する',
+    purpose: '実際に案件に参画する客先企業との面談です。ここを通過すれば受注が見えてきます。',
+    nextAction: '客先面談に進みましょう。',
+    hiyoriComment: 'お客様との相性も大事な確認ポイントです。',
+  ),
+  PublicDemoMissionId.winOrder: PublicDemoMissionCopy(
+    title: '案件を受注する',
+    purpose: '面談を通過した案件を正式に受注します。',
+    nextAction: '受注の手続きを行いましょう。',
+    hiyoriComment: 'あと少しで技術者が案件に参画できます！',
+  ),
+  PublicDemoMissionId.assignToProject: PublicDemoMissionCopy(
+    title: '技術者を案件に参画させる',
+    purpose: '受注した案件に技術者が参画すると、SES事業の売上が発生します。',
+    nextAction: '月を進めて、参画を確定させましょう。',
+    hiyoriComment:
+        '参画すると売上が発生します。ただし、入金は後になります。入金予定も確認していきましょう。',
+  ),
+};
+
+/// Full-route Mission screen (Fresh Audit §9 Option E / Implementation
+/// Plan §3.4). A [StatelessWidget]: every status was already resolved by
+/// the caller before `Navigator.push`, so this screen re-renders correctly
+/// on its own without holding any live aggregate reference.
+class PublicDemoMissionScreen extends StatelessWidget {
+  const PublicDemoMissionScreen({super.key, required this.missions});
+
+  /// Already-resolved statuses, in [publicDemoAprilMissionChain] order —
+  /// see [PublicDemoMissionResolver.resolve].
+  final List<PublicDemoMissionStatusEntry> missions;
+
+  int get _completedCount => missions
+      .where((entry) => entry.status == PublicDemoMissionStatus.completed)
+      .length;
+
+  bool get _isMainMissionComplete => missions.isNotEmpty && _completedCount == missions.length;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('ミッション')),
+      body: SafeArea(
+        child: ListView(
+          key: const Key('public-demo-mission-screen-list'),
+          padding: const EdgeInsets.all(16),
+          children: [
+            if (_isMainMissionComplete)
+              _MissionCompleteBanner(key: const Key('public-demo-mission-complete-banner'))
+            else
+              _MainMissionHeader(
+                completedCount: _completedCount,
+                totalCount: missions.length,
+              ),
+            const SizedBox(height: 16),
+            for (final entry in missions)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: _MissionTile(entry: entry),
+              ),
+            const SizedBox(height: 8),
+            if (_isMainMissionComplete) const _NextMissionPlaceholderCard(),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _MainMissionHeader extends StatelessWidget {
+  const _MainMissionHeader({required this.completedCount, required this.totalCount});
+
+  final int completedCount;
+  final int totalCount;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      key: const Key('public-demo-mission-main-header'),
+      color: SesTheme.primaryBlue.withValues(alpha: 0.06),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('4月の目標', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+            const SizedBox(height: 6),
+            const Text(
+              '技術者1名を案件に参画させよう',
+              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 20),
+            ),
+            const SizedBox(height: 10),
+            Text(
+              '進捗 $completedCount / $totalCount',
+              key: const Key('public-demo-mission-progress-label'),
+              style: const TextStyle(fontSize: 14),
+            ),
+            const SizedBox(height: 6),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(4),
+              child: LinearProgressIndicator(
+                value: totalCount == 0 ? 0 : completedCount / totalCount,
+                minHeight: 8,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _MissionCompleteBanner extends StatelessWidget {
+  const _MissionCompleteBanner({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      color: SesTheme.accentCyan.withValues(alpha: 0.12),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: const [
+                Icon(Icons.emoji_events, color: Colors.amber),
+                SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'MISSION COMPLETE',
+                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, letterSpacing: 1.1),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            const Text(
+              '初めての案件参画！',
+              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 20),
+            ),
+            const SizedBox(height: 12),
+            const Text(
+              'ひより：\n'
+              '「おめでとうございます！\n'
+              '社員が案件に参画すると売上が発生します。\n'
+              'ただし、売上と入金は同じタイミングではありません。\n'
+              '入金予定も確認していきましょう。」',
+              style: TextStyle(fontSize: 14, height: 1.5),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _NextMissionPlaceholderCard extends StatelessWidget {
+  const _NextMissionPlaceholderCard();
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      key: const Key('public-demo-mission-next-placeholder'),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Text(
+          '次の経営目標は今後解放されます。',
+          style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
+        ),
+      ),
+    );
+  }
+}
+
+class _MissionTile extends StatelessWidget {
+  const _MissionTile({required this.entry});
+
+  final PublicDemoMissionStatusEntry entry;
+
+  @override
+  Widget build(BuildContext context) {
+    final copy = publicDemoAprilMissionCopy[entry.id];
+    final title = copy?.title ?? entry.id.name;
+    final isCompleted = entry.status == PublicDemoMissionStatus.completed;
+    final isLocked = entry.status == PublicDemoMissionStatus.locked;
+    final isCurrent = entry.status == PublicDemoMissionStatus.available;
+
+    final Widget statusIcon = switch (entry.status) {
+      PublicDemoMissionStatus.completed => const Icon(Icons.check_circle, color: Colors.green),
+      PublicDemoMissionStatus.available => const Icon(Icons.arrow_circle_right, color: Colors.blue),
+      PublicDemoMissionStatus.locked => Icon(Icons.lock_outline, color: Colors.grey.shade500),
+    };
+
+    return Card(
+      key: Key('public-demo-mission-tile-${entry.id.name}'),
+      color: isCurrent ? SesTheme.primaryBlue.withValues(alpha: 0.05) : null,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            statusIcon,
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 15,
+                      color: isLocked ? Colors.grey.shade600 : null,
+                      decoration: isCompleted ? TextDecoration.none : null,
+                    ),
+                  ),
+                  if (!isLocked && copy != null) ...[
+                    const SizedBox(height: 4),
+                    Text(
+                      copy.purpose,
+                      style: TextStyle(fontSize: 12.5, color: Colors.grey.shade700),
+                    ),
+                    if (isCurrent) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        '次に行う操作: ${copy.nextAction}',
+                        style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600),
+                      ),
+                    ],
+                    if (isCompleted) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        'ひより: ${copy.hiyoriComment}',
+                        style: TextStyle(fontSize: 12.5, color: Colors.grey.shade700),
+                      ),
+                    ],
+                  ],
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}

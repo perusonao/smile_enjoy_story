@@ -151,6 +151,12 @@ One Claude Broad Self Review pass, focused on: save authority, state transition,
 - **Recruitment Mission chain does not carry its own "履歴" screen** — per Fresh Audit finding, the existing Sales-tab applicant list already shows a document-rejected (or any-stage-rejected) applicant with the pre-existing "不採用" badge indefinitely for any June-onward-recruited applicant (never pruned by any month-close path); only the original April/May founding cohort is pruned at the one-time May→June cutover (`joinAndKeepOnly`), identically for a pre-existing post-interview reject as for this phase's new pre-interview reject. No new history UI was built, per the task's own "現行UIを確認して判断" instruction — the existing list already serves this need.
 - **Out of scope, confirmed untouched**: new recruitment media, referral hiring, SNS hiring, staffing agencies, recruitment PR, Applicant SkillSheet editing, trust penalty, interview-conversation overhaul, HOME redesign, Bottom Nav changes, image asset overhaul, Training Phase 1b — none of this phase's diff touches any of these.
 
+## Git / PR
+
+- Working branch: `claude/ses-phase4-document-screening-ir36n1`
+- Final HEAD SHA: `7c3d997eea2355a6efdaf441c2fc81fd29d671c2`
+- PR: [perusonao/smile_enjoy_story#268](https://github.com/perusonao/smile_enjoy_story/pull/268) → `main`
+
 ## FINAL VERDICT
 
 **Ship.** Both required features (Document Screening, Recruitment Mission) are implemented as genuine domain actions/derived facts, reusing 100% of the existing `PublicDemoApplicantStage` enum and applicant authority — no new persisted field, no schema bump. `flutter analyze` clean; the full `test/game/public_demo` + `test/ui/public_demo` suites (1904 tests) pass; `git diff --check` clean; one Claude Broad Self Review pass found and fixed one real P1 (Mission badge false-negative across independent chains), regression-pinned. The one main-game test failure encountered is pre-existing on `origin/main` and unrelated to this phase's files.

@@ -1,12 +1,14 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:smile_enjoy_story/game/engine/client_interview_engine.dart';
 import 'package:smile_enjoy_story/game/models/client_interview.dart';
+import 'package:smile_enjoy_story/game/models/recruitment_interview.dart';
 import 'package:smile_enjoy_story/game/persistence/public_demo_save_codec.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_aggregate.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_fiscal_close_id.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_interview.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_matching_fit.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_project_interview.dart';
+import 'package:smile_enjoy_story/game/public_demo/public_demo_recruitment_interview.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_recruitment_medium.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_rng.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_salary_offer.dart';
@@ -66,6 +68,83 @@ void main() {
     expect(restored, isNotNull);
     expect(restored!.workflow.applicants[1].stage.name, 'offerDeclined');
   });
+
+  test(
+    'AI Replay Audit #3 P1-1: a legacy save with no qaEvaluationApplies '
+    'key at all (every save written before this fix) still decodes '
+    'through the real codec, rather than being wholesale rejected',
+    () {
+      var aggregate = PublicDemoAggregate.initial(
+        runSeed: 1,
+      ).closeApril(monthlyExpenses: 800000);
+      final recruited = aggregate.recruit(PublicDemoRecruitmentMedium.free);
+      expect(recruited.isSuccess, isTrue, reason: 'fixture sanity');
+      aggregate = recruited.aggregate!;
+      final id = aggregate.workflow.applicants.first.id;
+      aggregate = aggregate.completeInterview(id).aggregate;
+      aggregate = aggregate
+          .startInterviewSession(id)
+          .askInterviewQuestion(id, InterviewQuestionCategory.technical)
+          .askInterviewQuestion(id, InterviewQuestionCategory.career)
+          .askInterviewQuestion(id, InterviewQuestionCategory.teamwork)
+          .answerInterviewReverseQuestion(id, 0);
+      aggregate = aggregate.concludeInterviewSession(
+        id,
+        InterviewOutcome.hired,
+      );
+      expect(
+        aggregate.workflow.applicants.first.qaEvaluationApplies,
+        isTrue,
+        reason: 'fixture sanity',
+      );
+
+      final encoded = codec.toJson(aggregate);
+      final workflow = Map<String, dynamic>.from(
+        (encoded['aggregate'] as Map)['workflow'] as Map,
+      );
+      final applicants = (workflow['applicants'] as List)
+          .map(
+            (entry) => Map<String, dynamic>.from(entry as Map)
+              ..remove('qaEvaluationApplies'),
+          )
+          .toList();
+      final legacy = {
+        ...encoded,
+        'aggregate': {
+          ...(encoded['aggregate'] as Map<String, dynamic>),
+          'workflow': {...workflow, 'applicants': applicants},
+        },
+      };
+
+      final restored = codec.fromJson(legacy);
+
+      expect(
+        restored,
+        isNotNull,
+        reason:
+            'without the migration splice, this save would be rejected '
+            'wholesale by the strict round-trip comparison the instant '
+            'this field shipped, discarding every existing player\'s '
+            'progress',
+      );
+      final restoredApplicant = restored!.workflow.applicants.firstWhere(
+        (a) => a.id == id,
+      );
+      expect(restoredApplicant.qaEvaluationApplies, isFalse);
+      final restoredSession = restored.workflow.interviewSessions.firstWhere(
+        (s) => s.applicantId == id,
+      );
+      expect(
+        PublicDemoRecruitmentInterview.finalEvaluationScore(
+          applicant: restoredApplicant,
+          session: restoredSession,
+        ),
+        restoredApplicant.interviewScore,
+        reason: 'grandfathered to the original interviewScore, through the '
+            'real save codec, not just PublicDemoAggregate.fromJson',
+      );
+    },
+  );
 
   test('rejects corrupt, incompatible, normalized, and inconsistent saves', () {
     final encoded = codec.toJson(_advancedAggregate());

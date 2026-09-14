@@ -182,6 +182,20 @@ class PublicDemoSaveCodec {
       // [_withMigratedEngineerRuntimeExperience] above already splices
       // `careerHistory` the same way for `state.engineerRuntimes[*]`.
       baseline = _withMigratedAssignmentMonthsCredited(baseline);
+      // AI Replay Audit #3 P1-1 backward-compatibility fix: the same
+      // additive-new-key-inside-each-entry gap as `interviewRecordProjectId`/
+      // `projectId`/`monthsCredited` above, this time for
+      // `workflow.applicants[*].qaEvaluationApplies` (see
+      // [PublicDemoApplicant.qaEvaluationApplies]'s own doc). Without this
+      // splice, every save written before this field existed would be
+      // missing the key entirely, the re-encoded aggregate would carry
+      // `qaEvaluationApplies: false` the original never had, this strict
+      // round-trip comparison would fail, and [fromJson] would reject the
+      // ENTIRE save as corrupt -- silently discarding every existing
+      // player's progress the instant this PR ships, which is a strictly
+      // worse outcome than the eligibility bug this field exists to fix in
+      // the first place.
+      baseline = _withMigratedApplicantQaEvaluationApplies(baseline);
       if (_canonicalJson(baseline) != _canonicalJson(toJson(aggregate))) {
         return null;
       }
@@ -1119,6 +1133,44 @@ class PublicDemoSaveCodec {
       'aggregate': {
         ...aggregate,
         'workflow': {...workflow, 'assignments': migratedAssignments},
+      },
+    };
+  }
+
+  /// Splices a `false` `qaEvaluationApplies` into each
+  /// `aggregate.workflow.applicants` entry that doesn't already carry that
+  /// key — a save from before the AI Replay Audit #3 P1-1 backward-
+  /// compatibility fix. Mirrors [_withMigratedInterviewRecordProjectId]'s
+  /// own per-entry shape/doc: `false` is the genuinely correct value for
+  /// every applicant persisted before this field existed — see
+  /// [PublicDemoApplicant.qaEvaluationApplies]'s own doc, which is exactly
+  /// why `false` is also this field's own hand-authored default — never a
+  /// fabricated retroactive figure. Deliberately does not handle
+  /// `applicants` being entirely absent — no save predates that field.
+  static Map<String, dynamic> _withMigratedApplicantQaEvaluationApplies(
+    Map<String, dynamic> envelope,
+  ) {
+    final aggregate = (envelope['aggregate'] as Map).cast<String, dynamic>();
+    final workflow = (aggregate['workflow'] as Map).cast<String, dynamic>();
+    final applicantsRaw = workflow['applicants'];
+    if (applicantsRaw is! List) return envelope;
+    var changed = false;
+    final migratedApplicants = <Map<String, dynamic>>[];
+    for (final raw in applicantsRaw) {
+      final entry = (raw as Map).cast<String, dynamic>();
+      if (entry.containsKey('qaEvaluationApplies')) {
+        migratedApplicants.add(entry);
+      } else {
+        changed = true;
+        migratedApplicants.add({...entry, 'qaEvaluationApplies': false});
+      }
+    }
+    if (!changed) return envelope;
+    return {
+      ...envelope,
+      'aggregate': {
+        ...aggregate,
+        'workflow': {...workflow, 'applicants': migratedApplicants},
       },
     };
   }

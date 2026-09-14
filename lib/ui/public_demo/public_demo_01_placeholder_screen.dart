@@ -20,6 +20,7 @@ import '../../game/public_demo/public_demo_monthly_report_snapshot.dart';
 import '../../game/public_demo/public_demo_project_generator.dart';
 import '../../game/public_demo/public_demo_recovery.dart';
 import '../../game/public_demo/public_demo_recruitment.dart';
+import '../../game/public_demo/public_demo_recruitment_interview.dart';
 import '../../game/public_demo/public_demo_recruitment_medium.dart';
 import '../../game/models/recruitment_interview.dart';
 import '../../game/public_demo/public_demo_sales.dart';
@@ -109,17 +110,24 @@ enum _EmployeeStatusFilter { all, waiting, assigned }
 /// and not persisted.
 enum _ApplicantLifecycleBucket { active, awaitingJoin, closed }
 
-/// Issue #245 Finding #8: `評価 ${a.interviewScore}` used to render
-/// [PublicDemoApplicant.interviewScore] as a bare number, with the `>= 60`
-/// pass line ([_S.ac]'s own offer-button gate) implicit and undocumented.
-/// This states the exact same gate the button already enforces in words
-/// instead of a raw score — mirrors [PublicDemoMatchingProspect]'s own
-/// "never a raw score" precedent (public_demo_matching_fit.dart) — and never
-/// introduces a new tier/threshold the domain does not already have. Not
-/// private ([Applicant] evaluation display, `_` would hide it from this
-/// file's own dedicated regression test) — still library-internal in intent.
-String publicDemoApplicantEvaluationLabel(int interviewScore) =>
-    interviewScore >= 60 ? '評価: 採用基準を満たしています' : '評価: 採用基準を下回っています';
+/// Issue #245 Finding #8: `評価 ${a.interviewScore}` used to render a bare
+/// number, with the `>= 60` pass line ([_S.ac]'s own offer-button gate)
+/// implicit and undocumented. This states the exact same gate the button
+/// already enforces in words instead of a raw score — mirrors
+/// [PublicDemoMatchingProspect]'s own "never a raw score" precedent
+/// (public_demo_matching_fit.dart) — and never introduces a new
+/// tier/threshold the domain does not already have. Not private
+/// ([Applicant] evaluation display, `_` would hide it from this file's own
+/// dedicated regression test) — still library-internal in intent.
+///
+/// AI Replay Audit #3 P1 fix: [evaluationScore] is no longer necessarily
+/// [PublicDemoApplicant.interviewScore] itself — every call site now passes
+/// [_S._finalInterviewEvaluation]'s result, the post-interview evaluation
+/// that also accounts for the candidate's actual Q&A answer credibility.
+/// This function's own `>= 60` line is unchanged; only what callers feed it
+/// changed.
+String publicDemoApplicantEvaluationLabel(int evaluationScore) =>
+    evaluationScore >= 60 ? '評価: 採用基準を満たしています' : '評価: 採用基準を下回っています';
 
 // ---------------------------------------------------------------------------
 // PUBLIC-DEMO-HOME-UI-3A P2 fix (PR #150 review): "今月の重要タスク"'s 営業/採用
@@ -2098,6 +2106,33 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
           )
           .firstOrNull;
 
+  /// [applicantId]'s finished interactive interview session, if the player
+  /// has completed one (AI Replay Audit #3 P1 fix). `null` while a session
+  /// is still in progress or has never been started -- callers use this to
+  /// find the real Q&A data [PublicDemoRecruitmentInterview
+  /// .finalEvaluationScore] needs; they must never fall back to displaying
+  /// or gating on anything before this exists.
+  RecruitmentInterviewSession? _completedInterviewSession(
+    String applicantId,
+  ) => workflow.interviewSessions
+      .where(
+        (session) => session.applicantId == applicantId && session.completed,
+      )
+      .firstOrNull;
+
+  /// The real, post-interview evaluation for [applicant] (AI Replay Audit
+  /// #3 P1 fix) -- `null` until their interactive interview session is
+  /// actually completed, so a caller can never reveal or act on an
+  /// evaluation before the Q&A genuinely concludes. See
+  /// [PublicDemoRecruitmentInterview.finalEvaluationScore] for how the
+  /// candidate's actual answer credibility now moves this away from the
+  /// pre-interview [PublicDemoApplicant.interviewScore] baseline.
+  int? _finalInterviewEvaluation(PublicDemoApplicant applicant) =>
+      PublicDemoRecruitmentInterview.finalEvaluationScore(
+        applicant: applicant,
+        session: _completedInterviewSession(applicant.id),
+      );
+
   /// Whether [applicantId]'s interview was decided "採用候補として進める" —
   /// the point at which the pre-existing 合格・給与提示 offer flow becomes
   /// this card's action again, exactly as it always has been. A session
@@ -2895,18 +2930,20 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
   /// PR #252 Codex review (P2, thread `r3995477975`): a second, genuinely
   /// different dead end at `interviewed`. [_interviewDecidedHired] true (the
   /// player chose "採用候補として進める" in the interactive interview) with
-  /// `interviewScore < 60` leaves `ac(i)`'s own offer button rendered but
-  /// permanently `onPressed: null` (`a.interviewScore >= 60 ? ... : null`)
-  /// and [_addApplicantStageCandidate]'s identical `interviewed` branch
-  /// emits no [HomeRecommendedActionKind] at all for this exact combination
-  /// (its own `if (a.interviewScore >= 60)` guard) — genuinely no legal
-  /// action anywhere on screen, and this never changes on its own:
-  /// [PublicDemoAggregate.concludeInterviewSession] locks the interview
-  /// session once `completed`, so "面談を行う"/"面談を続ける" (the *other*
-  /// `interviewed` branch, for a not-yet-decided session) never reappears
-  /// either. Every other `interviewed` applicant — not yet decided, or
-  /// decided-hired with a real offer button available — is unaffected and
-  /// still falls through to `active` below, exactly as before.
+  /// the real, post-interview evaluation ([_finalInterviewEvaluation],
+  /// AI Replay Audit #3 P1 fix: no longer the pre-interview
+  /// `interviewScore` alone) below 60 leaves `ac(i)`'s own offer button
+  /// rendered but permanently `onPressed: null` and
+  /// [_addApplicantStageCandidate]'s identical `interviewed` branch emits no
+  /// [HomeRecommendedActionKind] at all for this exact combination —
+  /// genuinely no legal action anywhere on screen, and this never changes on
+  /// its own: [PublicDemoAggregate.concludeInterviewSession] locks the
+  /// interview session once `completed`, so "面談を行う"/"面談を続ける" (the
+  /// *other* `interviewed` branch, for a not-yet-decided session) never
+  /// reappears either. Every other `interviewed` applicant — not yet
+  /// decided, or decided-hired with a real offer button available — is
+  /// unaffected and still falls through to `active` below, exactly as
+  /// before.
   ///
   /// Mirrors `ac(i)`'s own per-stage button conditions exactly, so this
   /// grouping can never disagree with the card content it groups.
@@ -2916,7 +2953,8 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
         PublicDemoApplicantStage.offerDeclined =>
           _ApplicantLifecycleBucket.closed,
         PublicDemoApplicantStage.interviewed
-            when _interviewDecidedHired(a.id) && a.interviewScore < 60 =>
+            when _interviewDecidedHired(a.id) &&
+                (_finalInterviewEvaluation(a) ?? 0) < 60 =>
           _ApplicantLifecycleBucket.closed,
         PublicDemoApplicantStage.juneOrdered ||
         PublicDemoApplicantStage.preEntryPartnerFailed ||
@@ -3698,7 +3736,7 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
         }
       case PublicDemoApplicantStage.interviewed:
         if (_interviewDecidedHired(a.id)) {
-          if (a.interviewScore >= 60) {
+          if ((_finalInterviewEvaluation(a) ?? 0) >= 60) {
             emit(
               HomeRecommendedActionKind.applicantSalaryOffer,
               () => unawaited(offer(index)),
@@ -4378,20 +4416,37 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
               child: const Text('採用面談'),
             ),
           if (a.stage == PublicDemoApplicantStage.interviewed) ...[
-            Text(publicDemoApplicantEvaluationLabel(a.interviewScore)),
-            const Text(
-              'コミュニケーションや仕事への取り組み姿勢など、面談で確認できた内容をもとにした評価です。',
-              style: TextStyle(fontSize: 11.5, color: Colors.black54),
-            ),
-            // Issue #248 FIRST-FUN-YEAR: the "経験 ｜ 希望給与" row above
-            // (shown from the very first card render) already carries this
-            // exact fact — no longer duplicated here.
-            if (_interviewDecidedHired(a.id))
+            // AI Replay Audit #3 P1 fix: the "評価" only renders once the
+            // player has actually decided "採用候補として進める" in the
+            // interactive interview (i.e. [_interviewDecidedHired]) — never
+            // before, and never from [a.interviewScore] alone. Showing it
+            // as soon as this card reaches `interviewed` (this branch's own
+            // entry condition, reachable before the Q&A dialog is even
+            // opened) used to reveal the pass/fail read before the
+            // interview started; now the evaluation itself doesn't exist
+            // yet at that point ([_finalInterviewEvaluation] is `null`
+            // until the session is `completed`), so there is nothing to
+            // leak.
+            if (_interviewDecidedHired(a.id)) ...[
+              Text(
+                publicDemoApplicantEvaluationLabel(
+                  _finalInterviewEvaluation(a) ?? a.interviewScore,
+                ),
+              ),
+              const Text(
+                'コミュニケーションや仕事への取り組み姿勢など、面談で確認できた内容をもとにした評価です。',
+                style: TextStyle(fontSize: 11.5, color: Colors.black54),
+              ),
+              // Issue #248 FIRST-FUN-YEAR: the "経験 ｜ 希望給与" row above
+              // (shown from the very first card render) already carries
+              // this exact fact — no longer duplicated here.
               FilledButton(
-                onPressed: a.interviewScore >= 60 ? () => offer(i) : null,
+                onPressed: (_finalInterviewEvaluation(a) ?? 0) >= 60
+                    ? () => offer(i)
+                    : null,
                 child: const Text('合格・給与提示'),
-              )
-            else
+              ),
+            ] else
               FilledButton(
                 key: ValueKey('public-demo-interview-open-${a.id}'),
                 onPressed: () => _openInterview(a.id),

@@ -246,6 +246,18 @@ Add `PublicDemoMissionId.completeTraining` (not part of the April headline chain
 
 ## 5. Phase 2 — Mission-Driven Progressive Onboarding
 
+**Status: COMPLETE (2026-09-14) — see `docs/reports/
+SES_FIRST-FUN-QUARTER_MISSION-PHASE2_Result.md` for the full implementation
+record, Fresh-Audit-at-implementation-time findings, and Phase 3 hand-off.**
+Implemented as a paged Opening Context (§5.1, 5 pages rather than a strict
+port of the original 6 `_OpeningSection` widgets — content was consolidated,
+not dropped, onto the task's own "会社設立/社員/4月目標/資金/MISSION" shape)
+plus one copy-only SkillSheet-gate fix (§5.3) and a non-modal Mission
+AppBar badge in place of the §5.2 one-time-dialog trigger table — a
+same-session audit found Phase 1's own Mission screen already explains each
+§5.2 trigger's content, so a competing set of dialogs was deliberately not
+built (see the Result report's "Fresh Audit — before implementing" section).
+
 **Estimated: 2–2.5h. Depends on: Phase 1 (reuses Mission unlock/completion signals as explanation triggers, per Fresh Audit §6.2's table).**
 
 ### 5.1 `PublicDemoOpeningContextScreen` → paged flow

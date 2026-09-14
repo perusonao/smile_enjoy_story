@@ -2,34 +2,49 @@ import 'package:flutter/material.dart';
 
 import '../../presentation/home/models/home_navigator_display.dart';
 import '../theme.dart';
+import 'public_demo_mission_screen.dart' show publicDemoAprilHeadlineGoal;
 
-/// FIRST-FUN-YEAR P1 (Issue #229): Public Demo's Opening Context — shown
+/// FIRST-FUN-YEAR P1 (Issue #229) / SES First Fun Quarter Mission System
+/// Phase 2 (Progressive Onboarding): Public Demo's Opening Context — shown
 /// once, before a brand-new playthrough's first April, so a first-time
 /// player understands what the game asks of them before the normal monthly
 /// operations begin.
 ///
-/// Pure presentation: every figure it shows ([startingCash],
-/// [monthlyFixedCost]) is supplied by the caller, which reads them straight
-/// from the existing Finance/Payroll authority
-/// (`PublicDemoState.aprilStart().cash` /
-/// `PublicDemoSalary.baselineMonthlyExpenses`) — this widget never computes,
-/// estimates, or hardcodes either value, and it introduces no new
-/// gameplay/balance rule of its own (Issue #229's "金額や倒産までの月数を
-/// copyへハードコードしないこと"). It never reads [PublicDemoAggregate],
-/// [PublicDemoState], or any save — the owning screen resolves everything
-/// this widget needs before building it.
+/// Phase 2 redesign (`docs/design/
+/// SES_FIRST-FUN-QUARTER_MISSION-ONBOARDING_Implementation-Plan.md` §5.1,
+/// per the governing task's own "会社設立 → ひよりの短い説明 → 4月の目標 →
+/// 経営開始" flow): a short, "次へ" ("Next") paged sequence instead of one
+/// long scrollable list. This is a **presentation-shape change only** — the
+/// underlying facts shown ([startingCash], [monthlyFixedCost],
+/// [founders].length) are still supplied by the caller and read straight
+/// from existing Finance/Payroll/roster authority, never hardcoded or
+/// recomputed here (Issue #229's "金額や倒産までの月数をcopyへハードコード
+/// しないこと", extended to "社員人数をhard-codeしない" per the Phase 2 task).
+/// This widget still never reads [PublicDemoAggregate], [PublicDemoState],
+/// or any save — the owning screen resolves everything this widget needs
+/// before building it.
+///
+/// Phase 2 "Critical change": the pre-Phase-2 screen offered two competing
+/// CTAs ("まずSkillSheetで2人を確認する" / "4月の経営を始める"), which framed
+/// SkillSheet confirmation as something to do *before* real play. There was
+/// never an actual domain-level gate forcing SkillSheet confirmation before
+/// management could start (both buttons already dismissed this screen and
+/// let the player into HOME/社員); this Phase 2 redesign instead removes the
+/// dual-CTA framing itself — a single CTA ("経営を始める") ends the flow, and
+/// SkillSheet confirmation is surfaced only as April Mission #1 (see
+/// `public_demo_mission_screen.dart`), reached "when it becomes necessary"
+/// rather than presented as a pre-management checklist item.
 ///
 /// The navigator is 佐倉ひより, the Public Demo's existing 総務/navigator
 /// character (see [HomeNavigatorIdentity]) — not a new character or a fresh
 /// placeholder image.
-class PublicDemoOpeningContextScreen extends StatelessWidget {
+class PublicDemoOpeningContextScreen extends StatefulWidget {
   const PublicDemoOpeningContextScreen({
     super.key,
     required this.startingCash,
     required this.monthlyFixedCost,
     required this.founders,
     required this.onStart,
-    required this.onViewSkillSheetFirst,
   });
 
   /// The company's cash at company founding, verbatim from
@@ -45,98 +60,215 @@ class PublicDemoOpeningContextScreen extends StatelessWidget {
   /// `publicDemoInitialEngineers` (`name`/`summary` only — both already
   /// player-facing in SkillSheet/Matching, never a hidden interview-profile
   /// value). This widget never invents a founder or a differentiator of its
-  /// own; it only renders what the caller supplies.
+  /// own; it only renders what the caller supplies. Its `.length` is also
+  /// the single source for every "◯名の技術者" sentence below — never a
+  /// separately hardcoded headcount.
   final List<PublicDemoOpeningFounder> founders;
 
-  /// Dismisses the Opening Context and proceeds into April. The owning
+  /// Dismisses the Opening Context and proceeds into April/HOME. The owning
   /// screen is responsible for recording that this browser has seen it
   /// (`PublicDemoOpeningMarker.markSeen`) — this widget only ever calls it.
+  /// Phase 2: this is now the flow's only exit — see this file's top-of-file
+  /// doc for why the former second ("SkillSheet-first") CTA was removed
+  /// rather than kept alongside a paged redesign.
   final VoidCallback onStart;
 
-  /// Same dismissal as [onStart], but the owning screen additionally opens
-  /// on the 社員 tab (where SkillSheet confirmation lives) instead of HOME —
-  /// Issue #245 Finding #1's "SkillSheet確認に意味を持たせる" CTA.
-  final VoidCallback onViewSkillSheetFirst;
+  @override
+  State<PublicDemoOpeningContextScreen> createState() =>
+      _PublicDemoOpeningContextScreenState();
+}
+
+/// Builds one "次へ"-flow page's content. Each of
+/// [_PublicDemoOpeningContextScreenState]'s `_build*Page` methods matches
+/// this signature — see `_pages` below for the fixed page order.
+typedef _PageBuilder = Widget Function(BuildContext context);
+
+class _PublicDemoOpeningContextScreenState
+    extends State<PublicDemoOpeningContextScreen> {
+  int _pageIndex = 0;
+
+  late final List<_PageBuilder> _pages = [
+    _buildWelcomePage,
+    _buildRosterPage,
+    _buildGoalPage,
+    _buildFinancePage,
+    _buildFinalPage,
+  ];
+
+  void _next() {
+    if (_pageIndex >= _pages.length - 1) return;
+    setState(() => _pageIndex += 1);
+  }
+
+  void _back() {
+    if (_pageIndex <= 0) return;
+    setState(() => _pageIndex -= 1);
+  }
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
+    final isLast = _pageIndex == _pages.length - 1;
     return Scaffold(
       key: const Key('public-demo-opening-context-screen'),
       body: SafeArea(
-        child: ListView(
-          padding: const EdgeInsets.fromLTRB(16, 20, 16, 20),
+        child: Column(
           children: [
-            _NavigatorIntro(),
-            const SizedBox(height: 16),
-            Text(
-              '経営を始める前に',
-              style: theme.textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.bold,
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  Text(
+                    '${_pageIndex + 1} / ${_pages.length}',
+                    key: const Key('public-demo-opening-page-indicator'),
+                    style: TextStyle(
+                      fontSize: 12.5,
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ],
               ),
             ),
-            const SizedBox(height: 12),
-            const _OpeningSection(
-              key: Key('public-demo-opening-goal'),
-              icon: Icons.flag_outlined,
-              title: '目的',
-              body: '技術者を案件へ参画させ、取引先から売上を得ながら、'
-                  '1年間(4月〜翌3月)会社を経営していくことが目標です。',
-            ),
-            const SizedBox(height: 10),
-            _OpeningSection(
-              key: const Key('public-demo-opening-cash'),
-              icon: Icons.account_balance_wallet_outlined,
-              title: '初期資金',
-              body: '会社の現預金は ${formatYen(startingCash)} からスタートします。',
-            ),
-            const SizedBox(height: 10),
-            _OpeningSection(
-              key: const Key('public-demo-opening-fixed-cost'),
-              icon: Icons.receipt_long_outlined,
-              title: '毎月の固定費',
-              body: '給与や家賃などの固定費として、毎月 ${formatYen(monthlyFixedCost)} '
-                  '前後の支出がかかります。',
-            ),
-            const SizedBox(height: 10),
-            const _OpeningSection(
-              key: Key('public-demo-opening-risk'),
-              icon: Icons.warning_amber_outlined,
-              title: '注意',
-              body: '売上がない月が続くと、固定費の分だけ資金が減っていきます。'
-                  '資金が尽きると倒産につながるため、早めに案件への参画を進めましょう。',
-              tone: _OpeningSectionTone.caution,
-            ),
-            const SizedBox(height: 10),
-            _FoundingRosterSection(founders: founders),
-            const SizedBox(height: 10),
-            const _OpeningSection(
-              key: Key('public-demo-opening-first-step'),
-              icon: Icons.play_circle_outline,
-              title: '最初にすること',
-              body: 'まずは4月、社員の状況を確認しながら、案件への参画や営業を進めていきましょう。',
-            ),
-            const SizedBox(height: 20),
-            SizedBox(
-              width: double.infinity,
-              child: OutlinedButton(
-                key: const Key('public-demo-opening-view-skillsheet-button'),
-                onPressed: onViewSkillSheetFirst,
-                child: const Text('まずSkillSheetで2人を確認する'),
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+                child: SingleChildScrollView(
+                  key: ValueKey('public-demo-opening-page-$_pageIndex'),
+                  child: _pages[_pageIndex](context),
+                ),
               ),
             ),
-            const SizedBox(height: 8),
-            SizedBox(
-              width: double.infinity,
-              child: FilledButton(
-                key: const Key('public-demo-opening-start-button'),
-                onPressed: onStart,
-                child: const Text('4月の経営を始める'),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+              child: Row(
+                children: [
+                  if (_pageIndex > 0)
+                    Expanded(
+                      child: OutlinedButton(
+                        key: const Key('public-demo-opening-back-button'),
+                        onPressed: _back,
+                        child: const Text('もどる'),
+                      ),
+                    ),
+                  if (_pageIndex > 0) const SizedBox(width: 12),
+                  Expanded(
+                    flex: 2,
+                    child: FilledButton(
+                      key: Key(
+                        isLast
+                            ? 'public-demo-opening-start-button'
+                            : 'public-demo-opening-next-button',
+                      ),
+                      onPressed: isLast ? widget.onStart : _next,
+                      child: Text(isLast ? '経営を始める' : '次へ'),
+                    ),
+                  ),
+                ],
               ),
             ),
           ],
         ),
       ),
+    );
+  }
+
+  // 1/5 — 会社設立 + ひよりの短い説明の導入。
+  Widget _buildWelcomePage(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const _NavigatorIntro(),
+        const SizedBox(height: 20),
+        const _OpeningSection(
+          key: Key('public-demo-opening-goal'),
+          icon: Icons.flag_outlined,
+          title: '会社設立、おめでとうございます！',
+          body:
+              '今日からSES会社の経営が始まります。技術者を案件へ参画させ、'
+              '取引先から売上を得ながら、1年間(4月〜翌3月)会社を経営して'
+              'いくことが目標です。',
+        ),
+      ],
+    );
+  }
+
+  // 2/5 — 社員紹介。人数は founders.length から、名前は
+  // publicDemoInitialEngineers 由来の founders から、それぞれ実データで表示。
+  Widget _buildRosterPage(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _OpeningSection(
+          key: const Key('public-demo-opening-roster-intro'),
+          icon: Icons.groups_outlined,
+          title: '社員の紹介',
+          body:
+              '最初は${widget.founders.length}名の技術者と一緒にスタートします。'
+              '社員の状況は『社員』タブからいつでも確認できます。',
+        ),
+        const SizedBox(height: 10),
+        _FoundingRosterSection(founders: widget.founders),
+      ],
+    );
+  }
+
+  // 3/5 — 4月の目標。文言は Mission 画面の見出しと同一の定数
+  // (publicDemoAprilHeadlineGoal) を参照し、二重管理によるdriftを防ぐ。
+  Widget _buildGoalPage(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _OpeningSection(
+          key: const Key('public-demo-opening-goal-detail'),
+          icon: Icons.emoji_events_outlined,
+          title: '4月の目標',
+          body: 'まずは$publicDemoAprilHeadlineGoal。'
+              'SkillSheetの確認や営業など、必要な操作はMISSIONが順番に案内します。',
+        ),
+      ],
+    );
+  }
+
+  // 4/5 — 資金。金額はすべて caller から渡された実データ。
+  Widget _buildFinancePage(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _OpeningSection(
+          key: const Key('public-demo-opening-cash'),
+          icon: Icons.account_balance_wallet_outlined,
+          title: '会社の資金',
+          body:
+              '会社には ${formatYen(widget.startingCash)} の資金があります。'
+              '給与や営業費用として、毎月 ${formatYen(widget.monthlyFixedCost)} '
+              '前後の支出がかかります。支出を考えながら経営してください。',
+        ),
+        const SizedBox(height: 10),
+        const _OpeningSection(
+          key: Key('public-demo-opening-risk'),
+          icon: Icons.warning_amber_outlined,
+          title: '注意',
+          body: '売上がない月が続くと、固定費の分だけ資金が減っていきます。'
+              '資金が尽きると倒産につながるため、早めに案件への参画を進めましょう。',
+          tone: _OpeningSectionTone.caution,
+        ),
+      ],
+    );
+  }
+
+  // 5/5 — MISSION の案内 + CTA。
+  Widget _buildFinalPage(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const _OpeningSection(
+          key: Key('public-demo-opening-mission-guide'),
+          icon: Icons.explore_outlined,
+          title: '迷ったらMISSIONを確認',
+          body: '画面右上のミッションアイコンから、次に何を目指せばよいか'
+               'いつでも確認できます。',
+        ),
+      ],
     );
   }
 }
@@ -151,11 +283,11 @@ class PublicDemoOpeningFounder {
   final String summary;
 }
 
-/// Introduces the 2 founding engineers by name and their existing
-/// `summary` text (already shown in SkillSheet/Matching) so a first-time
-/// player knows who they are and how they differ before being asked to
-/// open SkillSheet. Deliberately reuses only already-truthful, already
-/// player-facing text — no new score, no fabricated differentiator.
+/// Introduces the founding engineers by name and their existing `summary`
+/// text (already shown in SkillSheet/Matching) so a first-time player knows
+/// who they are before being asked to open SkillSheet. Deliberately reuses
+/// only already-truthful, already player-facing text — no new score, no
+/// fabricated differentiator.
 class _FoundingRosterSection extends StatelessWidget {
   const _FoundingRosterSection({required this.founders});
 
@@ -184,12 +316,6 @@ class _FoundingRosterSection extends StatelessWidget {
                 style: TextStyle(fontWeight: FontWeight.bold, color: scheme.primary),
               ),
             ],
-          ),
-          const SizedBox(height: 3),
-          const Text(
-            'この会社には、創業時から在籍する技術者が2名います。まずはSkillSheetで'
-            '2人の得意分野を確認してから、案件への提案を考えましょう。',
-            style: TextStyle(fontSize: 13, height: 1.4),
           ),
           const SizedBox(height: 8),
           for (final founder in founders)
@@ -271,7 +397,7 @@ class _OpeningSection extends StatelessWidget {
   }
 }
 
-/// The ひより portrait/name introduction, at the top of the Opening Context.
+/// The ひより portrait/name introduction, at the top of the first page.
 ///
 /// Reuses [HomeNavigatorIdentity]'s existing name/role/portrait constants —
 /// the same face and name HOME's own [HomeNavigatorSection] already shows —
@@ -279,6 +405,8 @@ class _OpeningSection extends StatelessWidget {
 /// back to a plain icon if the bundled asset fails to decode, the same
 /// degrade path [HomeNavigatorSection]'s own portrait already uses.
 class _NavigatorIntro extends StatelessWidget {
+  const _NavigatorIntro();
+
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
@@ -321,8 +449,8 @@ class _NavigatorIntro extends StatelessWidget {
               ),
               const SizedBox(height: 4),
               const Text(
-                'はじめまして。総務の佐倉です。これからこの会社の経営を一緒に進めましょう。'
-                'まずは経営の前提を簡単にご案内します。',
+                'はじめまして。総務の佐倉です。これからこの会社の経営を一緒に'
+                '進めましょう。まずは簡単にご案内しますね。',
                 style: TextStyle(fontSize: 12.5, height: 1.4, color: Colors.black54),
               ),
             ],

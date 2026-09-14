@@ -33,8 +33,15 @@ class PublicDemoSkillSheetBody extends StatelessWidget {
           style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
         ),
         const SizedBox(height: 6),
+        // SES First Fun Quarter Mission System Phase 2 (Progressive
+        // Onboarding), Fresh Audit §6.3: extends the existing "what this is"
+        // sentence with one clause on "why check it" — connecting SkillSheet
+        // confirmation to the player's actual next decision (judging project
+        // fit before selling) rather than leaving it a content-free click
+        // gate. A copy-only change, not a new dialog/mechanic.
         const Text(
-          '取引先へ提示する営業用プロフィールです。内容を確認してから営業開始へ進みます。',
+          '取引先へ提示する営業用プロフィールです。営業を開始する前に、'
+          '案件との相性を自分で判断するために内容を確認しましょう。',
           style: TextStyle(fontSize: 12.5, color: Colors.black54),
         ),
         const SizedBox(height: 12),

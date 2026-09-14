@@ -14,7 +14,10 @@ import 'package:smile_enjoy_story/game/public_demo/public_demo_aggregate.dart';
 import 'package:smile_enjoy_story/ui/public_demo/public_demo_01_placeholder_screen.dart';
 import 'package:smile_enjoy_story/ui/theme.dart';
 
-import '../../game/public_demo/test_support/public_demo_recovery_test_helpers.dart';
+import '../../game/public_demo/test_support/public_demo_recovery_test_helpers.dart'
+    show
+        publicDemoAdvanceEngineerToOrdered,
+        publicDemoAggregateAtMonth;
 import 'public_demo_tab_test_helpers.dart';
 
 class _FixedSaveService extends PublicDemoSaveService {
@@ -125,6 +128,114 @@ void main() {
           await tester.pageBack();
           await tester.pumpAndSettle();
         }
+      },
+    );
+  });
+
+  group('Mission-visibility badge (Phase 2 Progressive Onboarding)', () {
+    const badgeKey = Key('public-demo-app-bar-mission-badge');
+
+    testWidgets(
+      'a fresh game shows the badge before the Mission screen has ever '
+      'been opened this session',
+      (tester) async {
+        await _pumpDemo(tester, PublicDemoAggregate.initial());
+
+        expect(find.byKey(badgeKey), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'opening the Mission screen once clears the badge for the current '
+      'chain front, and it stays cleared while nothing has changed',
+      (tester) async {
+        await _pumpDemo(tester, PublicDemoAggregate.initial());
+        expect(find.byKey(badgeKey), findsOneWidget);
+
+        await tester.tap(find.byKey(missionButtonKey));
+        await tester.pumpAndSettle();
+        await tester.pageBack();
+        await tester.pumpAndSettle();
+
+        expect(find.byKey(badgeKey), findsNothing);
+      },
+    );
+
+    testWidgets(
+      'the badge reappears once the chain genuinely advances past the '
+      'acknowledged front (Mission #1 completing unlocks Mission #3) — the '
+      'Just-in-time nudge for the next step, never a modal',
+      (tester) async {
+        // eng-01 confirms SkillSheet — Mission #1 (viewSkillSheet)
+        // completes, so the chain front moves from index 0 to index 1
+        // (beginSelling), which the AppBar has not yet acknowledged.
+        final aggregate = PublicDemoAggregate.initial().startSkillSheetReview(
+          'eng-01',
+        );
+        await _pumpDemo(tester, aggregate);
+        expect(find.byKey(badgeKey), findsOneWidget);
+
+        await tester.tap(find.byKey(missionButtonKey));
+        await tester.pumpAndSettle();
+        expect(
+          find.byKey(const Key('public-demo-mission-tile-viewSkillSheet')),
+          findsOneWidget,
+        );
+        await tester.pageBack();
+        await tester.pumpAndSettle();
+        expect(
+          find.byKey(badgeKey),
+          findsNothing,
+          reason: 'acknowledged at the current front (beginSelling, index 1)',
+        );
+      },
+    );
+  });
+
+  group('Phase 2: mid-game restored saves never re-show Opening', () {
+    testWidgets(
+      'a restored May save (already past April, no Mission progress) '
+      'skips Opening entirely and the Mission entry still reflects the '
+      'real, current chain state',
+      (tester) async {
+        final aggregate = publicDemoAggregateAtMonth(5);
+        await _pumpDemo(tester, aggregate);
+
+        expect(
+          find.byKey(const Key('public-demo-opening-context-screen')),
+          findsNothing,
+        );
+        expect(find.byKey(const Key('public-demo-bottom-nav')), findsOneWidget);
+
+        await tester.tap(find.byKey(missionButtonKey));
+        await tester.pumpAndSettle();
+        expect(find.text('進捗 0 / 7'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'a restored save already at the April headline mission\'s completion '
+      '(pre-Mission-System equivalent) skips Opening and shows MISSION '
+      'COMPLETE immediately, per Fresh Audit §10.5 retroactive detection',
+      (tester) async {
+        var aggregate = publicDemoAdvanceEngineerToOrdered(
+          PublicDemoAggregate.initial(),
+          'eng-01',
+        );
+        aggregate = aggregate.closeApril(monthlyExpenses: 800000);
+
+        await _pumpDemo(tester, aggregate);
+
+        expect(
+          find.byKey(const Key('public-demo-opening-context-screen')),
+          findsNothing,
+        );
+        await tester.tap(find.byKey(missionButtonKey));
+        await tester.pumpAndSettle();
+        expect(
+          find.byKey(const Key('public-demo-mission-complete-banner')),
+          findsOneWidget,
+        );
       },
     );
   });

@@ -11,6 +11,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:smile_enjoy_story/game/persistence/public_demo_save_service.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_aggregate.dart';
+import 'package:smile_enjoy_story/game/public_demo/public_demo_recruitment_medium.dart';
 import 'package:smile_enjoy_story/ui/public_demo/public_demo_01_placeholder_screen.dart';
 import 'package:smile_enjoy_story/ui/theme.dart';
 
@@ -191,6 +192,69 @@ void main() {
         );
       },
     );
+
+    testWidgets(
+      'SES First Fun Quarter Mission Phase 4: further, real Recruitment '
+      'chain progress re-shows the badge even while the April chain is '
+      'still stuck incomplete (both founding engineers untouched) — a '
+      'single combined front index over both chains concatenated would '
+      'stay pinned at April\'s own unmoved front (position 0) forever, '
+      'masking every later Recruitment-only advance; independent per-'
+      'chain acknowledgement does not',
+      (tester) async {
+        // Both founding engineers stay at `waiting` throughout — April's
+        // own front never moves off `viewSkillSheet` (index 0). Recruit
+        // one applicant and get them to `resumeReviewed` before the first
+        // mount, so the Recruitment chain already shows real progress
+        // (front index 2: postRecruitmentMedium + viewApplicantSkillSheet
+        // completed, screenApplicantResume available) the first time the
+        // Mission screen is opened.
+        var aggregate = PublicDemoAggregate.initial().closeApril(
+          monthlyExpenses: 800000,
+        );
+        aggregate = aggregate.recruit(PublicDemoRecruitmentMedium.engineer).aggregate!;
+        final applicantId = aggregate.workflow.applicants.first.id;
+        aggregate = aggregate.reviewResume(applicantId);
+        // A ListView only mounts children within its viewport/cacheExtent
+        // — a tall viewport lets the Mission screen's Recruitment section
+        // (below April's own 8 tiles) mount without needing a scroll.
+        tester.view.physicalSize = const Size(390, 3000);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.reset);
+        await _pumpDemo(tester, aggregate);
+
+        // Acknowledge both chains' current fronts (April: 0, Recruitment: 2).
+        await tester.tap(find.byKey(missionButtonKey));
+        await tester.pumpAndSettle();
+        expect(
+          find.byKey(const Key('public-demo-mission-recruitment-header')),
+          findsOneWidget,
+        );
+        await tester.pageBack();
+        await tester.pumpAndSettle();
+        expect(find.byKey(badgeKey), findsNothing);
+
+        // Real, live progress on the Recruitment chain ONLY (見送る —
+        // Required Feature A's own button): screenApplicantResume
+        // completes, Recruitment front advances from 2 to 3. April is
+        // completely untouched by this action.
+        await switchPublicDemoTab(tester, PublicDemoTab.sales);
+        await tester.tap(
+          find.byKey(Key('public-demo-applicant-reject-$applicantId')),
+        );
+        await tester.pumpAndSettle();
+
+        expect(
+          find.byKey(badgeKey),
+          findsOneWidget,
+          reason:
+              'Recruitment chain genuinely advanced past its own '
+              'acknowledged front — a combined index stuck at April\'s '
+              'own unmoved front (0) would incorrectly still read as '
+              'acknowledged and hide this',
+        );
+      },
+    );
   });
 
   group('Phase 2: mid-game restored saves never re-show Opening', () {
@@ -235,6 +299,57 @@ void main() {
         await tester.pumpAndSettle();
         expect(
           find.byKey(const Key('public-demo-mission-complete-banner')),
+          findsOneWidget,
+        );
+      },
+    );
+  });
+
+  group('Codex review (PR #268 P1): Recruitment chain visibility window', () {
+    const tallSize = Size(390, 3000);
+
+    testWidgets(
+      'hidden at month 9 with no surviving applicant — matches the Sales '
+      'tab\'s own 求人媒体 card, which no longer renders past August either',
+      (tester) async {
+        final aggregate = publicDemoAggregateAtMonth(9);
+        expect(aggregate.workflow.applicants, isEmpty);
+        tester.view.physicalSize = tallSize;
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.reset);
+        await _pumpDemo(tester, aggregate);
+
+        await tester.tap(find.byKey(missionButtonKey));
+        await tester.pumpAndSettle();
+
+        expect(
+          find.byKey(const Key('public-demo-mission-recruitment-header')),
+          findsNothing,
+        );
+      },
+    );
+
+    testWidgets(
+      'stays visible past August for an applicant recruited within the '
+      'window who is still mid-pipeline (never pruned after May)',
+      (tester) async {
+        var aggregate = publicDemoAggregateAtMonth(6, monthlyExpenses: 10000);
+        aggregate = aggregate.recruit(PublicDemoRecruitmentMedium.engineer).aggregate!;
+        aggregate = aggregate.closeJune(assignedInJuly: 0, monthlyExpenses: 10000);
+        aggregate = aggregate.closeJuly(monthlyExpenses: 10000);
+        aggregate = aggregate.closeOrdinaryMonth(monthlyExpenses: 10000);
+        expect(aggregate.state.month, 9);
+        expect(aggregate.workflow.applicants, isNotEmpty);
+        tester.view.physicalSize = tallSize;
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.reset);
+        await _pumpDemo(tester, aggregate);
+
+        await tester.tap(find.byKey(missionButtonKey));
+        await tester.pumpAndSettle();
+
+        expect(
+          find.byKey(const Key('public-demo-mission-recruitment-header')),
           findsOneWidget,
         );
       },

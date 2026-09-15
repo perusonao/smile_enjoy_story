@@ -346,6 +346,21 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
   /// spam).
   int? _missionBadgeAcknowledgedIndex;
 
+  /// SES First Fun Quarter Mission Phase 4: the Recruitment Mission chain's
+  /// own front-index acknowledgement, tracked SEPARATELY from
+  /// [_missionBadgeAcknowledgedIndex] rather than folded into one combined
+  /// index over a concatenated list. A single concatenated-list index can
+  /// silently coincide across two different chain lengths — e.g. April
+  /// acknowledged at its own front index 8 (chain length 8, fully
+  /// complete) reads identically to a combined front index of 8 once the
+  /// Recruitment chain (6 more entries, all still locked/available) is
+  /// appended and its own first entry happens to also land at position 8 —
+  /// which would silently suppress the badge the very month recruitment
+  /// first becomes visible. Two independent indices cannot collide this
+  /// way: the badge shows if EITHER chain's front has moved past what was
+  /// last acknowledged.
+  int? _recruitmentMissionBadgeAcknowledgedIndex;
+
   /// Codex P2-2 fix (PR #214): true from the moment [_openProjectInterview]
   /// is entered until its dialog route (however it ends — a genuine
   /// pass/fail commit, the player dismissing it, or this widget being
@@ -534,21 +549,63 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
   /// same reasoning [_recommendedActionSlot]'s own doc gives for reading
   /// straight off [_game]). [PublicDemoMissionResolver] is a pure function
   /// of [workflow]/[s] — this call mutates nothing.
+  /// SES First Fun Quarter Mission Phase 4: whether the Recruitment
+  /// Mission chain should be shown at all. Visible the same window the
+  /// Sales tab's own 求人媒体 card already uses
+  /// (`_recruitmentMediaCardVisible`: `month >= 5` inside
+  /// [PublicDemoState.isRecruitmentMediaWindowMonth], April-August) — OR,
+  /// past that window, for as long as an applicant genuinely exists to
+  /// still advance the chain (screening/interview/hire/join can all
+  /// legitimately land after the media window closes for a cohort
+  /// recruited near its end). Codex review (PR #268 P1): without the OR
+  /// clause, a player who reaches September with no surviving applicant
+  /// (e.g. every candidate document-rejected) would still see Mission 1
+  /// pointing at a 求人媒体 action the Sales tab no longer even renders.
+  bool get _recruitmentMissionsVisible =>
+      (s.month >= 5 && s.isRecruitmentMediaWindowMonth(s.month)) ||
+      workflow.applicants.isNotEmpty;
+
+  List<PublicDemoMissionStatusEntry> get _recruitmentMissions =>
+      _recruitmentMissionsVisible
+      ? PublicDemoMissionResolver.resolveRecruitment(workflow: workflow, state: s)
+      : const <PublicDemoMissionStatusEntry>[];
+
   void _openMissionScreen() {
     final missions = PublicDemoMissionResolver.resolve(
       workflow: workflow,
       state: s,
     );
+    final recruitmentMissions = _recruitmentMissions;
     // Phase 2: acknowledges the current chain "front" so the AppBar badge
     // (see [_missionBadgeVisible]) clears for this exact progress state —
-    // it reappears only once the front genuinely advances again.
+    // it reappears only once the front genuinely advances again. Phase 4:
+    // each chain's own front is acknowledged independently — see
+    // [_recruitmentMissionBadgeAcknowledgedIndex]'s own doc for why a
+    // single combined index over both chains concatenated is unsafe.
+    //
+    // Codex review (PR #268 P2): while the Recruitment chain is still
+    // hidden (`recruitmentMissions.isEmpty`), its front index is always 0
+    // regardless of real progress — acknowledging that placeholder 0 here
+    // would then coincide with the chain's own genuine front-index-0 the
+    // moment it first becomes visible (nothing done yet), suppressing the
+    // very first just-in-time nudge. Leave the acknowledgement untouched
+    // (stays whatever it was, `null` on a fresh session) while hidden;
+    // only ever acknowledge a front index that reflects real content.
     setState(() {
       _missionBadgeAcknowledgedIndex = publicDemoMissionFrontIndex(missions);
+      if (recruitmentMissions.isNotEmpty) {
+        _recruitmentMissionBadgeAcknowledgedIndex = publicDemoMissionFrontIndex(
+          recruitmentMissions,
+        );
+      }
     });
     unawaited(
       Navigator.of(context).push<void>(
         MaterialPageRoute<void>(
-          builder: (context) => PublicDemoMissionScreen(missions: missions),
+          builder: (context) => PublicDemoMissionScreen(
+            missions: missions,
+            recruitmentMissions: recruitmentMissions,
+          ),
         ),
       ),
     );
@@ -566,7 +623,20 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
       workflow: workflow,
       state: s,
     );
-    return _missionBadgeAcknowledgedIndex != publicDemoMissionFrontIndex(missions);
+    if (_missionBadgeAcknowledgedIndex != publicDemoMissionFrontIndex(missions)) {
+      return true;
+    }
+    // Codex review (PR #268 P2): only compare the Recruitment chain's own
+    // front while it is genuinely visible — while hidden,
+    // `_recruitmentMissionBadgeAcknowledgedIndex` is deliberately left
+    // untouched (see `_openMissionScreen`'s own doc), so comparing it
+    // against `publicDemoMissionFrontIndex([])` (always 0) here would
+    // read `null != 0` as "unacknowledged" and show the badge for the
+    // entire April-only period before Recruitment ever exists.
+    final recruitmentMissions = _recruitmentMissions;
+    if (recruitmentMissions.isEmpty) return false;
+    return _recruitmentMissionBadgeAcknowledgedIndex !=
+        publicDemoMissionFrontIndex(recruitmentMissions);
   }
 
   /// Read-only view of [_game]'s finance side. Never assigned directly —
@@ -1471,6 +1541,15 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
   void _reviewResume(String applicantId) =>
       _commitAggregate(_game.reviewResume(applicantId));
 
+  /// SES First Fun Quarter Mission Phase 4 (Document Screening): the
+  /// "見送る" action on a `resumeReviewed`-stage applicant card — commits
+  /// straight through [PublicDemoAggregate.rejectApplicant], the same
+  /// domain command the post-interview interactive-interview "見送る"
+  /// outcome already uses. No confirmation dialog, matching every other
+  /// stage-transition button on this screen (e.g. [_reviewResume]).
+  void _rejectApplicant(String applicantId) =>
+      _commitAggregate(_game.rejectApplicant(applicantId));
+
   void _beginPreEntrySkillSheet(String applicantId) =>
       _commitAggregate(_game.beginPreEntrySkillSheet(applicantId));
 
@@ -1938,8 +2017,10 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
       // front (index 0) — forgetting any prior acknowledgement so the
       // badge is never suppressed by an acknowledgement carried over from
       // the abandoned playthrough (e.g. one that happened to be recorded
-      // at the same index a fresh game also starts at).
+      // at the same index a fresh game also starts at). Phase 4: same for
+      // the Recruitment chain's own independent acknowledgement.
       _missionBadgeAcknowledgedIndex = null;
+      _recruitmentMissionBadgeAcknowledgedIndex = null;
     });
     _resetMonthScroll();
   }
@@ -4543,11 +4624,23 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
               // CTA label.
               child: const Text('スキルシート確認'),
             ),
-          if (a.stage == PublicDemoApplicantStage.resumeReviewed)
+          if (a.stage == PublicDemoApplicantStage.resumeReviewed) ...[
             FilledButton(
               onPressed: s.salesRemaining > 0 ? () => recruit(i) : null,
               child: const Text('採用面談'),
             ),
+            // SES First Fun Quarter Mission Phase 4 (Document Screening):
+            // "面接前のreject" — a genuine domain action
+            // (PublicDemoAggregate.rejectApplicant), not a UI-only hide.
+            // Deliberately no sales-slot gating (unlike 採用面談 above):
+            // declining a candidate never consumes an interview slot.
+            const SizedBox(height: 6),
+            OutlinedButton(
+              key: Key('public-demo-applicant-reject-${a.id}'),
+              onPressed: () => _rejectApplicant(a.id),
+              child: const Text('見送る'),
+            ),
+          ],
           if (a.stage == PublicDemoApplicantStage.interviewed) ...[
             // AI Replay Audit #3 P1 fix: the "評価" only renders once the
             // player has actually decided "採用候補として進める" in the

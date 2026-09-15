@@ -360,7 +360,53 @@ Add the §6.3 SkillSheet-gate copy addition here too if not already done in Phas
 
 ## 7. Phase 4 — Recruitment Missions
 
+**Status: COMPLETE (2026-09-14) — see `docs/reports/
+SES_FIRST-FUN-QUARTER_MISSION-PHASE4_Result.md` for the full implementation
+record, the implementation-time Fresh Audit, and the deviations from this
+section's original text (both superseded below).**
+
 **Estimated: 2.5–3h. Depends on: Phase 1 (resolver pattern).**
+
+**Superseded at implementation time (Fresh Audit findings — code kept as
+authority over this plan, per this task's own "コードを正として計画を修正
+する" rule):**
+
+- §7.1's 9-id chain (`postRecruitmentMedium`, `viewApplicantSkillSheet`,
+  `screenApplicantResume`, `conductHiringInterview`, `presentSalaryAndOffer`,
+  `preEntrySellingStarted`, `preEntryOrderWon`, `applicantJoined`,
+  `assignNewHire`) did NOT ship as specified. The governing task's own
+  framing for this phase gave a simpler 6-step flow (求人媒体を利用する →
+  応募者のSkillSheetを確認する → 書類選考する → 候補者と面接する → 採用を決
+  める → 入社) and explicitly warned against "専用Mission bool乱造" — the
+  implementation-time audit found the 3 extra §7.1 ids
+  (`preEntrySellingStarted`/`preEntryOrderWon`/`assignNewHire`) would only
+  duplicate ground the existing April chain's own `assignToProject`-style
+  reduction already covers for a joined hire, adding chain length without a
+  new player-facing decision point. Shipped chain: `postRecruitmentMedium`
+  → `viewApplicantSkillSheet` → `screenApplicantResume` →
+  `conductHiringInterview` → `decideHiring` (subsumes §7.1's
+  `presentSalaryAndOffer`, reading `PublicDemoApplicant.hasBindingOffer`
+  directly — an offer that was extended but declined is not "採用を決めた",
+  so `hasBindingOffer` is the correct fact, not "an offer dialog was shown")
+  → `applicantJoined`. Both chains — this one and `publicDemoAprilMissionChain`
+  — live in the same file/enum/resolver machinery per §2's own
+  "resolver, not a controller" principle.
+- §7.2's phrasing ("no new domain logic — this reuses an existing,
+  already-tested transition") was not quite right: widening
+  `PublicDemoWorkflowState.rejectApplicant`'s precondition to
+  `resumeReviewed` alone left a real gap — `PublicDemoAggregate
+  .completeInterview` only checked `hasBeenInterviewed` (still `false` for
+  a never-interviewed rejectee), so a document-rejected applicant could
+  still be walked through it, consuming a real sales slot to "un-reject"
+  them back into `interviewed`. Fixed with an explicit `stage == rejected`
+  guard in `completeInterview`, checked before slot consumption, plus a
+  defense-in-depth mirror in `PublicDemoApplicant.completeInterview`
+  itself — see the Result Report's "Document-screening authority" section
+  for the full before/after.
+- §7.3's UI copy suggestion ("不採用にする") shipped as "見送る" instead,
+  matching the task's own document's wording ("今回は見送る") and the
+  existing `applicantStatus`'s pre-existing "不採用" stage label (reusing
+  the label, not duplicating it as a second string on the button).
 
 ### 7.1 Mission ids to add
 

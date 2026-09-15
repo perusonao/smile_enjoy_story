@@ -766,19 +766,28 @@ class PublicDemoWorkflowState {
     (applicant) => applicant.completeInterview(proof),
   );
 
-  /// The single sanctioned way to decline an applicant after their
-  /// interactive interview (CORE-GAMEPLAY Phase 3), wiring up the
+  /// The single sanctioned way to decline an applicant, wiring up the
   /// `PublicDemoApplicantStage.rejected` value that has existed on the enum
-  /// since WORKFLOW-STATE-1 but was never reachable from any production
-  /// command until this phase. A no-op unless the applicant is currently at
-  /// `interviewed` — in particular, an applicant who already has a
-  /// [PublicDemoApplicant.bindingOffer] or a decided
+  /// since WORKFLOW-STATE-1. Originally (CORE-GAMEPLAY Phase 3) reachable
+  /// only after the interactive interview; SES First Fun Quarter Mission
+  /// Phase 4 (Document Screening) widens the precondition to also allow a
+  /// pre-interview "書類選考で見送る" decision straight from
+  /// `resumeReviewed` — the applicant has been reviewed (SkillSheet/résumé
+  /// seen) but never interviewed. A no-op unless the applicant is currently
+  /// at one of those two stages — in particular, an applicant who already
+  /// has a [PublicDemoApplicant.bindingOffer] or a decided
   /// [PublicDemoApplicantStage.offerDeclined] can never be rejected
-  /// retroactively through this method.
+  /// retroactively through this method, and (per [_transitionApplicantStage]'s
+  /// own `from.contains` check) an already-`rejected` applicant is
+  /// unaffected by a second call — reject is idempotent from either
+  /// precondition stage.
   PublicDemoWorkflowState rejectApplicant(String applicantId) =>
       _transitionApplicantStage(
         applicantId,
-        from: const {PublicDemoApplicantStage.interviewed},
+        from: const {
+          PublicDemoApplicantStage.resumeReviewed,
+          PublicDemoApplicantStage.interviewed,
+        },
         to: PublicDemoApplicantStage.rejected,
       );
 

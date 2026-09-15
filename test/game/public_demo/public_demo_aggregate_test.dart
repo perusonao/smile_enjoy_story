@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:smile_enjoy_story/game/persistence/public_demo_save_codec.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_aggregate.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_assignment.dart';
 import 'package:smile_enjoy_story/game/public_demo/public_demo_fiscal_close_id.dart';
@@ -256,6 +257,218 @@ void main() {
       );
       expect(decided.hasBindingOffer, isFalse);
     });
+  });
+
+  group('SES First Fun Quarter Mission Phase 4: document-screening reject '
+      '(rejectApplicant, pre-interview)', () {
+    test(
+      'reviewResume then rejectApplicant moves a resumeReviewed applicant '
+      'to rejected — "面接前のreject" as a real domain action',
+      () {
+        final aggregate = PublicDemoAggregate.initial()
+            .recruit(PublicDemoRecruitmentMedium.engineer)
+            .aggregate!;
+        final id = aggregate.workflow.applicants.first.id;
+        final reviewed = aggregate.reviewResume(id);
+        expect(
+          reviewed.workflow.applicants.first.stage,
+          PublicDemoApplicantStage.resumeReviewed,
+        );
+
+        final rejected = reviewed.rejectApplicant(id);
+
+        expect(
+          rejected.workflow.applicants.first.stage,
+          PublicDemoApplicantStage.rejected,
+        );
+      },
+    );
+
+    test('rejectApplicant on a still-applied applicant (never reviewed) is '
+        'a no-op — reject requires resumeReviewed or interviewed', () {
+      final aggregate = PublicDemoAggregate.initial()
+          .recruit(PublicDemoRecruitmentMedium.engineer)
+          .aggregate!;
+      final id = aggregate.workflow.applicants.first.id;
+      expect(
+        aggregate.workflow.applicants.first.stage,
+        PublicDemoApplicantStage.applied,
+      );
+
+      final result = aggregate.rejectApplicant(id);
+
+      expect(
+        result.workflow.applicants.first.stage,
+        PublicDemoApplicantStage.applied,
+      );
+    });
+
+    test('double reject is idempotent: a second call leaves an already-'
+        'rejected applicant unchanged', () {
+      final aggregate = PublicDemoAggregate.initial()
+          .recruit(PublicDemoRecruitmentMedium.engineer)
+          .aggregate!;
+      final id = aggregate.workflow.applicants.first.id;
+      final firstReject = aggregate.reviewResume(id).rejectApplicant(id);
+      expect(
+        firstReject.workflow.applicants.first.stage,
+        PublicDemoApplicantStage.rejected,
+      );
+
+      final secondReject = firstReject.rejectApplicant(id);
+
+      // `_withApplicant` always rebuilds the containing `applicants` list
+      // (so the `PublicDemoWorkflowState` itself is a new instance even on
+      // a no-op), but the individual applicant record a no-op leaves
+      // untouched IS the same instance — `_transitionApplicantStage`'s
+      // update closure returns the original `applicant` unchanged once
+      // `rejected ∉ from`.
+      expect(
+        secondReject.workflow.applicants.first,
+        same(firstReject.workflow.applicants.first),
+      );
+    });
+
+    test(
+      'a document-rejected applicant can never subsequently be interviewed '
+      '— completeInterview refuses and consumes no sales slot',
+      () {
+        final aggregate = PublicDemoAggregate.initial()
+            .recruit(PublicDemoRecruitmentMedium.engineer)
+            .aggregate!;
+        final id = aggregate.workflow.applicants.first.id;
+        final rejected = aggregate.reviewResume(id).rejectApplicant(id);
+        final salesBefore = rejected.state.salesRemaining;
+
+        final result = rejected.completeInterview(id);
+
+        expect(result.isCompleted, isFalse);
+        expect(result.status, PublicDemoInterviewCompletionStatus.rejected);
+        expect(result.aggregate.state.salesRemaining, salesBefore);
+        expect(result.aggregate, same(rejected));
+        final unchanged = result.aggregate.workflow.applicants.first;
+        expect(unchanged.stage, PublicDemoApplicantStage.rejected);
+        expect(unchanged.hasBeenInterviewed, isFalse);
+      },
+    );
+
+    test(
+      'a document-rejected applicant can never subsequently receive a '
+      'binding offer — the existing rejected-stage guard in '
+      'PublicDemoOfferAcceptance.accept already covers this reject source '
+      'too, with no change needed there',
+      () {
+        final aggregate = PublicDemoAggregate.initial()
+            .recruit(PublicDemoRecruitmentMedium.engineer)
+            .aggregate!;
+        final applicant = aggregate.workflow.applicants.first;
+        final rejected = aggregate.reviewResume(applicant.id).rejectApplicant(
+          applicant.id,
+        );
+        final rejectedApplicant = rejected.workflow.applicants.first;
+
+        final offer = PublicDemoSalaryOfferEvaluator.evaluate(
+          applicant: rejectedApplicant,
+          offeredMonthlySalary: rejectedApplicant.requestedMonthlySalary,
+        );
+        final result = rejected.acceptOffer(
+          applicantId: applicant.id,
+          offer: offer,
+          fiscalCloseId: PublicDemoFiscalCloseId.forMonth(rejected.state.month),
+        );
+
+        final unchanged = result.workflow.applicants.first;
+        expect(unchanged.stage, PublicDemoApplicantStage.rejected);
+        expect(unchanged.hasBindingOffer, isFalse);
+      },
+    );
+
+    test('recruitment cost is never refunded by a later reject, whether '
+        'pre- or post-interview', () {
+      final aggregate = PublicDemoAggregate.initial()
+          .recruit(PublicDemoRecruitmentMedium.engineer)
+          .aggregate!;
+      final cashAfterRecruit = aggregate.state.cash;
+      final id = aggregate.workflow.applicants.first.id;
+
+      final rejected = aggregate.reviewResume(id).rejectApplicant(id);
+
+      expect(rejected.state.cash, cashAfterRecruit);
+    });
+
+    test('a document-rejected applicant survives a save/reload cycle as '
+        'rejected — not UI-only state', () {
+      final aggregate = PublicDemoAggregate.initial()
+          .recruit(PublicDemoRecruitmentMedium.engineer)
+          .aggregate!;
+      final id = aggregate.workflow.applicants.first.id;
+      final rejected = aggregate.reviewResume(id).rejectApplicant(id);
+
+      const codec = PublicDemoSaveCodec();
+      final restored = codec.fromJson(codec.toJson(rejected));
+
+      expect(restored, isNotNull);
+      final restoredApplicant = restored!.workflow.applicants.firstWhere(
+        (a) => a.id == id,
+      );
+      expect(restoredApplicant.stage, PublicDemoApplicantStage.rejected);
+      // The reload must not merely restore the label -- every downstream
+      // guard is re-checked from the reloaded aggregate too.
+      expect(
+        restored.completeInterview(id).status,
+        PublicDemoInterviewCompletionStatus.rejected,
+      );
+    });
+
+    test('rejecting applicant A never affects applicant B (A/B isolation)', () {
+      var aggregate = PublicDemoAggregate.initial()
+          .recruit(PublicDemoRecruitmentMedium.engineer)
+          .aggregate!;
+      expect(aggregate.workflow.applicants.length, greaterThanOrEqualTo(2));
+      final idA = aggregate.workflow.applicants[0].id;
+      final idB = aggregate.workflow.applicants[1].id;
+      aggregate = aggregate.reviewResume(idA).reviewResume(idB);
+
+      final result = aggregate.rejectApplicant(idA);
+
+      final a = result.workflow.applicants.firstWhere((x) => x.id == idA);
+      final b = result.workflow.applicants.firstWhere((x) => x.id == idB);
+      expect(a.stage, PublicDemoApplicantStage.rejected);
+      expect(
+        b.stage,
+        PublicDemoApplicantStage.resumeReviewed,
+        reason: 'rejecting A must not touch B',
+      );
+    });
+
+    test(
+      'a document-rejected applicant never revives across a month boundary',
+      () {
+        var aggregate = PublicDemoAggregate.initial()
+            .recruit(PublicDemoRecruitmentMedium.engineer)
+            .aggregate!;
+        final id = aggregate.workflow.applicants.first.id;
+        aggregate = aggregate.reviewResume(id).rejectApplicant(id);
+        expect(
+          aggregate.workflow.applicants.first.stage,
+          PublicDemoApplicantStage.rejected,
+        );
+
+        final afterApril = aggregate.closeApril(monthlyExpenses: 800000);
+        final stillRejected = afterApril.workflow.applicants
+            .where((a) => a.id == id)
+            .firstOrNull;
+        // May's cohort cutoff (joinAndKeepOnly) drops any applicant who
+        // never accepted an offer -- exactly the pre-existing behavior for
+        // a post-interview reject too (Fresh Audit §16). What matters here
+        // is the one thing that must NEVER happen: if this applicant is
+        // still present at all, they must still read `rejected`, never
+        // silently reset to an earlier, actionable stage.
+        if (stillRejected != null) {
+          expect(stillRejected.stage, PublicDemoApplicantStage.rejected);
+        }
+      },
+    );
   });
 
   group('P1-2: recruitment atomicity (recruit)', () {

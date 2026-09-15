@@ -597,6 +597,22 @@ class PublicDemoAggregate {
         status: PublicDemoInterviewCompletionStatus.alreadyInterviewed,
       );
     }
+    // SES First Fun Quarter Mission Phase 4 (Document Screening): checked
+    // before any slot consumption below — a pre-interview "見送る" decision
+    // (Phase 4 widens [PublicDemoWorkflowState.rejectApplicant] to allow
+    // this from `resumeReviewed`) leaves `hasBeenInterviewed` `false` (this
+    // applicant genuinely never interviewed), so the check above alone does
+    // not stop them from reaching this point. Returning here, before
+    // [PublicDemoState.useSalesSlotForInterview] runs, ensures a rejected
+    // applicant's interview attempt never consumes a real sales slot for a
+    // no-op — the same "no mutation on any rejected path" discipline every
+    // other branch in this method already follows.
+    if (applicant.stage == PublicDemoApplicantStage.rejected) {
+      return PublicDemoInterviewCompletionResult._(
+        aggregate: this,
+        status: PublicDemoInterviewCompletionStatus.rejected,
+      );
+    }
     final slotResult = state.useSalesSlotForInterview();
     final proof = slotResult.proof;
     if (proof == null) {
@@ -920,6 +936,16 @@ class PublicDemoAggregate {
 
   PublicDemoAggregate reviewResume(String applicantId) =>
       _copyWith(workflow: workflow.reviewResume(applicantId));
+
+  /// SES First Fun Quarter Mission Phase 4 (Document Screening): the single
+  /// sanctioned way to decline an applicant, whether pre-interview
+  /// ("書類選考で見送る", from `resumeReviewed`) or post-interview (the
+  /// existing `見送る` interactive-interview outcome, from `interviewed` —
+  /// unchanged, still reachable only via [concludeInterviewSession]).
+  /// See [PublicDemoWorkflowState.rejectApplicant]'s own doc for the full
+  /// precondition/idempotency contract.
+  PublicDemoAggregate rejectApplicant(String applicantId) =>
+      _copyWith(workflow: workflow.rejectApplicant(applicantId));
 
   PublicDemoAggregate beginPreEntrySkillSheet(String applicantId) =>
       _copyWith(workflow: workflow.beginPreEntrySkillSheet(applicantId));
@@ -2014,6 +2040,11 @@ enum PublicDemoInterviewCompletionStatus {
   noSalesSlot,
   fiscalYearCompleted,
   unknownApplicant,
+  /// SES First Fun Quarter Mission Phase 4 (Document Screening): the
+  /// applicant was already declined (pre- or post-interview) — see
+  /// [PublicDemoAggregate.completeInterview]'s own doc for why this is
+  /// checked before any sales-slot consumption.
+  rejected,
 }
 
 /// Generator hook for [PublicDemoAggregate.recruit] — tests substitute a

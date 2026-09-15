@@ -1,3 +1,4 @@
+import 'public_demo_recruitment.dart';
 import 'public_demo_sales.dart';
 import 'public_demo_state.dart';
 import 'public_demo_workflow_state.dart';
@@ -89,6 +90,42 @@ enum PublicDemoMissionId {
   /// 22 (売上が発生する, Fresh Audit §2.3) is folded into this mission's own
   /// completion narration rather than tracked separately.
   assignToProject,
+
+  // ---------------------------------------------------------------------
+  // SES First Fun Quarter Mission Phase 4 — Recruitment Mission chain.
+  // A second, INDEPENDENT chain (see [publicDemoRecruitmentMissionChain]
+  // below), sharing this same enum/[PublicDemoMissionStatus]/
+  // [PublicDemoMissionStatusEntry] machinery rather than a parallel type —
+  // deliberately NOT appended to [publicDemoAprilMissionChain] itself (the
+  // task's own "Aprilの既存8 Missionを無理に巨大化させない" constraint).
+  // Every completion signal below is existing, already-tested applicant
+  // authority (`lib/game/public_demo/public_demo_recruitment.dart`) — no
+  // new persisted field.
+  // ---------------------------------------------------------------------
+
+  /// Recruitment Mission 1 — 求人媒体を利用する.
+  postRecruitmentMedium,
+
+  /// Recruitment Mission 2 — 応募者のSkillSheetを確認する.
+  viewApplicantSkillSheet,
+
+  /// Recruitment Mission 3 — 書類選考する. Completed by EITHER advancing an
+  /// applicant to interview OR rejecting them pre-interview — see
+  /// [PublicDemoMissionResolver._hasScreened]'s own doc.
+  screenApplicantResume,
+
+  /// Recruitment Mission 4 — 面接する. Reads the unforgeable
+  /// [PublicDemoApplicant.hasBeenInterviewed] record — only true if the
+  /// interview route was actually taken, never the reject route.
+  conductHiringInterview,
+
+  /// Recruitment Mission 5 — 採用を決める. Reads
+  /// [PublicDemoApplicant.hasBindingOffer] — only true once an offer was
+  /// actually extended and accepted.
+  decideHiring,
+
+  /// Recruitment Mission 6 — 入社する.
+  applicantJoined,
 }
 
 /// The April headline chain, in its fixed narrative order (Fresh Audit §5).
@@ -102,6 +139,21 @@ const List<PublicDemoMissionId> publicDemoAprilMissionChain = [
   PublicDemoMissionId.passClientInterview,
   PublicDemoMissionId.winOrder,
   PublicDemoMissionId.assignToProject,
+];
+
+/// SES First Fun Quarter Mission Phase 4 — the Recruitment Mission chain,
+/// in its fixed narrative order: 求人媒体を利用する → 応募者のSkillSheetを
+/// 確認する → 書類選考する → 面接する → 採用を決める → 入社する.
+/// [PublicDemoMissionResolver.resolveRecruitment] returns entries in this
+/// same order. Independent of [publicDemoAprilMissionChain] — a separate
+/// list, never merged into it.
+const List<PublicDemoMissionId> publicDemoRecruitmentMissionChain = [
+  PublicDemoMissionId.postRecruitmentMedium,
+  PublicDemoMissionId.viewApplicantSkillSheet,
+  PublicDemoMissionId.screenApplicantResume,
+  PublicDemoMissionId.conductHiringInterview,
+  PublicDemoMissionId.decideHiring,
+  PublicDemoMissionId.applicantJoined,
 ];
 
 /// A Mission's player-facing progress state. Advisory/UI-only — see this
@@ -217,9 +269,86 @@ class PublicDemoMissionResolver {
           .firstOrNull,
     };
 
-    var previousCompleted = true; // Mission 1 is always at least available.
+    return _band(
+      chain: publicDemoAprilMissionChain,
+      completedById: completedById,
+      engineerIdById: engineerIdById,
+    );
+  }
+
+  /// SES First Fun Quarter Mission Phase 4 — resolves the Recruitment
+  /// Mission chain ([publicDemoRecruitmentMissionChain]) against
+  /// [workflow]/[state]. Every completion signal is existing,
+  /// already-save-durable authority (`public_demo_recruitment.dart`,
+  /// `public_demo_interview.dart`, `public_demo_state.dart`). Callers
+  /// decide the chain's *visibility* (SES First Fun Quarter Mission
+  /// Phase 4: from `state.month >= 5` within the recruiting window, or
+  /// while an applicant still exists past it) — this resolver itself is
+  /// unconditional, mirroring [resolve]'s own "always resolve, let the
+  /// caller decide whether to show it" split.
+  static List<PublicDemoMissionStatusEntry> resolveRecruitment({
+    required PublicDemoWorkflowState workflow,
+    required PublicDemoState state,
+  }) {
+    bool anyApplicant(bool Function(PublicDemoApplicant) test) =>
+        workflow.applicants.any(test);
+
+    final completedById = <PublicDemoMissionId, bool>{
+      // Codex review (PR #268 P2): `workflow.applicants.isNotEmpty` alone
+      // regresses this mission back to incomplete the moment a whole
+      // cohort is pruned with no accepted offer (`joinAndKeepOnly` at the
+      // May→June boundary empties `applicants` entirely in that case) —
+      // completing a mission must never un-complete it later. Reading
+      // [PublicDemoState.recruitmentMediumUsedMonth] instead is durable:
+      // it is set once, the first time [PublicDemoAggregate.recruit]
+      // actually charges/generates a real batch, and no production path
+      // ever clears it back to `null` afterward (it exists specifically
+      // so the once-per-month gate can tell "already used this month"
+      // apart from "never used" across every future month too).
+      PublicDemoMissionId.postRecruitmentMedium:
+          state.recruitmentMediumUsedMonth != null,
+      // The atomic `_reviewResumeAndOpenSkillSheet` (public_demo_01_
+      // placeholder_screen.dart) is the sole production path off `applied`
+      // — reaching any later stage implies the SkillSheet was shown.
+      PublicDemoMissionId.viewApplicantSkillSheet: anyApplicant(
+        (a) => a.stage != PublicDemoApplicantStage.applied,
+      ),
+      PublicDemoMissionId.screenApplicantResume: anyApplicant(
+        (a) => _hasScreened(a.stage),
+      ),
+      // Codex review (PR #268 P2): `hasBeenInterviewed` is minted by
+      // `completeInterview` — the paperwork/sales-slot step behind the
+      // 採用面談 button — which happens BEFORE the actual interactive Q&A
+      // session a player can still leave unopened or unfinished. Reading
+      // a genuinely `completed` [RecruitmentInterviewSession] instead
+      // requires the Q&A to have actually concluded (either outcome),
+      // matching what "面接する" means to the player.
+      PublicDemoMissionId.conductHiringInterview: workflow.interviewSessions
+          .any((session) => session.completed),
+      PublicDemoMissionId.decideHiring: anyApplicant((a) => a.hasBindingOffer),
+      PublicDemoMissionId.applicantJoined: anyApplicant((a) => a.hasJoined),
+    };
+
+    return _band(
+      chain: publicDemoRecruitmentMissionChain,
+      completedById: completedById,
+      engineerIdById: const {},
+    );
+  }
+
+  /// Shared locked/available/completed banding, used by both [resolve] and
+  /// [resolveRecruitment]: `available` the moment the previous chain step
+  /// is `completed`; `completed` per each mission's own signal; `locked`
+  /// otherwise (Implementation Plan §3.3) — advisory/UI-only, see this
+  /// file's top-of-file doc.
+  static List<PublicDemoMissionStatusEntry> _band({
+    required List<PublicDemoMissionId> chain,
+    required Map<PublicDemoMissionId, bool> completedById,
+    required Map<PublicDemoMissionId, String?> engineerIdById,
+  }) {
+    var previousCompleted = true; // The chain's first step is always at least available.
     final entries = <PublicDemoMissionStatusEntry>[];
-    for (final id in publicDemoAprilMissionChain) {
+    for (final id in chain) {
       final completed = completedById[id] ?? false;
       final status = completed
           ? PublicDemoMissionStatus.completed
@@ -236,6 +365,33 @@ class PublicDemoMissionResolver {
       previousCompleted = completed;
     }
     return entries;
+  }
+
+  /// Whether [stage] represents a genuine document-screening decision
+  /// already made for this applicant (Recruitment Mission 3, 書類選考する)
+  /// — true whether the applicant was advanced toward interview OR
+  /// rejected pre-interview, per the task's own "書類選考するは面接へ進める
+  /// または見送るのどちらでもscreening actionとして成立" framing. Exhaustive
+  /// `switch`, never `.index` — see this file's top-of-file doc.
+  static bool _hasScreened(PublicDemoApplicantStage stage) {
+    switch (stage) {
+      case PublicDemoApplicantStage.applied:
+      case PublicDemoApplicantStage.resumeReviewed:
+        return false;
+      case PublicDemoApplicantStage.interviewed:
+      case PublicDemoApplicantStage.rejected:
+      case PublicDemoApplicantStage.offerAccepted:
+      case PublicDemoApplicantStage.offerDeclined:
+      case PublicDemoApplicantStage.preEntrySkillSheet:
+      case PublicDemoApplicantStage.preEntrySelling:
+      case PublicDemoApplicantStage.preEntryIntroduced:
+      case PublicDemoApplicantStage.preEntryPartnerPassed:
+      case PublicDemoApplicantStage.preEntryPartnerFailed:
+      case PublicDemoApplicantStage.preEntryClientPassed:
+      case PublicDemoApplicantStage.preEntryClientFailed:
+      case PublicDemoApplicantStage.juneOrdered:
+        return true;
+    }
   }
 
   /// Whether [stage] represents having reached [PublicDemoSalesStage

@@ -42,15 +42,31 @@ List<PublicDemoMissionStatusEntry> _completeChain() => [
     ),
 ];
 
+/// SES First Fun Quarter Mission Phase 4 — a fresh Recruitment Mission
+/// chain fixture, mirroring [_freshChain]'s own shape.
+List<PublicDemoMissionStatusEntry> _freshRecruitmentChain() => [
+  for (var i = 0; i < publicDemoRecruitmentMissionChain.length; i++)
+    PublicDemoMissionStatusEntry(
+      id: publicDemoRecruitmentMissionChain[i],
+      status: i == 0
+          ? PublicDemoMissionStatus.available
+          : PublicDemoMissionStatus.locked,
+    ),
+];
+
 Widget _wrap(
   List<PublicDemoMissionStatusEntry> missions, {
   Size size = const Size(390, 844),
   double textScale = 1.0,
+  List<PublicDemoMissionStatusEntry> recruitmentMissions = const [],
 }) => MaterialApp(
   theme: SesTheme.build(),
   home: MediaQuery(
     data: MediaQueryData(size: size, textScaler: TextScaler.linear(textScale)),
-    child: PublicDemoMissionScreen(missions: missions),
+    child: PublicDemoMissionScreen(
+      missions: missions,
+      recruitmentMissions: recruitmentMissions,
+    ),
   ),
 );
 
@@ -132,6 +148,86 @@ void main() {
     );
   });
 
+  group('SES First Fun Quarter Mission Phase 4 — Recruitment Mission section', () {
+    // A ListView only mounts children within its viewport/cacheExtent
+    // (unlike Column, it is Sliver-backed even for a plain children list) —
+    // mirrors the pre-existing "MISSION COMPLETE" test's own
+    // `Size(390, 1600)` technique above, widened further here since the
+    // combined April + Recruitment chain is longer.
+    const tallSize = Size(390, 3000);
+
+    testWidgets(
+      'hidden entirely when recruitmentMissions is empty (default) — the '
+      'existing next-goal placeholder still shows once April is complete',
+      (tester) async {
+        tester.view.physicalSize = tallSize;
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.reset);
+        await tester.pumpWidget(_wrap(_completeChain(), size: tallSize));
+        await tester.pumpAndSettle();
+
+        expect(
+          find.byKey(const Key('public-demo-mission-recruitment-header')),
+          findsNothing,
+        );
+        expect(find.text('次の経営目標は今後解放されます。'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'shown alongside the April chain once non-empty, replacing the '
+      'generic placeholder',
+      (tester) async {
+        tester.view.physicalSize = tallSize;
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.reset);
+        await tester.pumpWidget(
+          _wrap(
+            _completeChain(),
+            size: tallSize,
+            recruitmentMissions: _freshRecruitmentChain(),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(
+          find.byKey(const Key('public-demo-mission-recruitment-header')),
+          findsOneWidget,
+        );
+        expect(find.text('技術者を新しく採用しよう'), findsOneWidget);
+        expect(
+          find.text('進捗 0 / ${publicDemoRecruitmentMissionChain.length}'),
+          findsOneWidget,
+        );
+        expect(find.text('次の経営目標は今後解放されます。'), findsNothing);
+        expect(
+          find.byKey(const Key('public-demo-mission-tile-postRecruitmentMedium')),
+          findsOneWidget,
+        );
+      },
+    );
+
+    testWidgets('shown even while the April chain is still in progress '
+        '(the two chains are independent)', (tester) async {
+      tester.view.physicalSize = tallSize;
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(
+        _wrap(
+          _partiallyDoneChain(),
+          size: tallSize,
+          recruitmentMissions: _freshRecruitmentChain(),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const Key('public-demo-mission-recruitment-header')),
+        findsOneWidget,
+      );
+    });
+  });
+
   group('390x844 / 360x800, TextScaler 1.0/1.3: renders without overflow', () {
     for (final size in const [Size(360, 800), Size(390, 844)]) {
       for (final textScale in [1.0, 1.3]) {
@@ -145,7 +241,17 @@ void main() {
               addTearDown(tester.view.reset);
 
               await tester.pumpWidget(
-                _wrap(chain, size: size, textScale: textScale),
+                _wrap(
+                  chain,
+                  size: size,
+                  textScale: textScale,
+                  // SES First Fun Quarter Mission Phase 4: include the
+                  // Recruitment Mission section in this same overflow
+                  // matrix — its own tiles/header reuse the same widgets
+                  // but this pins that the combined (longer) list still
+                  // fits at every size/scale combination.
+                  recruitmentMissions: _freshRecruitmentChain(),
+                ),
               );
               await tester.pumpAndSettle();
 

@@ -100,22 +100,81 @@ publicDemoAprilMissionCopy = {
   ),
 };
 
+/// SES First Fun Quarter Mission Phase 4 — the Recruitment Mission chain's
+/// display copy, keyed by [PublicDemoMissionId]. Const, presentation-only —
+/// no authority, no state.
+const Map<PublicDemoMissionId, PublicDemoMissionCopy>
+publicDemoRecruitmentMissionCopy = {
+  PublicDemoMissionId.postRecruitmentMedium: PublicDemoMissionCopy(
+    title: '求人媒体を利用する',
+    purpose: '新しい技術者を採用するには、まず求人媒体で応募者を集めます。',
+    nextAction: '営業タブの求人媒体から応募者を集めましょう。',
+    hiyoriComment: '求人媒体は月に1回まで利用できます。',
+  ),
+  PublicDemoMissionId.viewApplicantSkillSheet: PublicDemoMissionCopy(
+    title: '応募者のSkillSheetを確認する',
+    purpose: '応募者の経歴やスキルを確認してから、選考を進めるか判断します。',
+    nextAction: '応募者カードからSkillSheetを確認しましょう。',
+    hiyoriComment: '経歴を見てから、次に進むか見送るか判断しましょう。',
+  ),
+  PublicDemoMissionId.screenApplicantResume: PublicDemoMissionCopy(
+    title: '書類選考する',
+    purpose: '確認した内容をもとに、面接に進めるか、今回は見送るかを選びます。',
+    nextAction: '応募者カードで「採用面談」または「見送る」を選びましょう。',
+    hiyoriComment: '見送りも立派な経営判断です。',
+  ),
+  PublicDemoMissionId.conductHiringInterview: PublicDemoMissionCopy(
+    title: '面接する',
+    purpose: '書類選考を通過した応募者と面接を行います。',
+    nextAction: '採用面談を実施しましょう。',
+    hiyoriComment: '面接で人柄や適性を確認しましょう。',
+  ),
+  PublicDemoMissionId.decideHiring: PublicDemoMissionCopy(
+    title: '採用を決める',
+    purpose: '面接の結果をもとに、給与条件を提示して採用を決めます。',
+    nextAction: '合格・給与提示から採用を決めましょう。',
+    hiyoriComment: '条件に納得してもらえれば、入社が決まります。',
+  ),
+  PublicDemoMissionId.applicantJoined: PublicDemoMissionCopy(
+    title: '入社する',
+    purpose: '採用が決まった応募者が実際に入社し、新しい社員になります。',
+    nextAction: '月を進めて、入社を確定させましょう。',
+    hiyoriComment: '新しい仲間が増えると、できることも増えていきます。',
+  ),
+};
+
 /// Full-route Mission screen (Fresh Audit §9 Option E / Implementation
 /// Plan §3.4). A [StatelessWidget]: every status was already resolved by
 /// the caller before `Navigator.push`, so this screen re-renders correctly
 /// on its own without holding any live aggregate reference.
 class PublicDemoMissionScreen extends StatelessWidget {
-  const PublicDemoMissionScreen({super.key, required this.missions});
+  const PublicDemoMissionScreen({
+    super.key,
+    required this.missions,
+    this.recruitmentMissions = const [],
+  });
 
   /// Already-resolved statuses, in [publicDemoAprilMissionChain] order —
   /// see [PublicDemoMissionResolver.resolve].
   final List<PublicDemoMissionStatusEntry> missions;
+
+  /// SES First Fun Quarter Mission Phase 4 — already-resolved Recruitment
+  /// Mission statuses, in [publicDemoRecruitmentMissionChain] order (see
+  /// [PublicDemoMissionResolver.resolveRecruitment]). Empty (the default)
+  /// hides the section entirely — the caller decides visibility (SES First
+  /// Fun Quarter Mission Phase 4: `state.month >= 5`), this screen only
+  /// ever renders what it is handed, same convention as [missions] itself.
+  final List<PublicDemoMissionStatusEntry> recruitmentMissions;
 
   int get _completedCount => missions
       .where((entry) => entry.status == PublicDemoMissionStatus.completed)
       .length;
 
   bool get _isMainMissionComplete => missions.isNotEmpty && _completedCount == missions.length;
+
+  int get _recruitmentCompletedCount => recruitmentMissions
+      .where((entry) => entry.status == PublicDemoMissionStatus.completed)
+      .length;
 
   @override
   Widget build(BuildContext context) {
@@ -137,10 +196,36 @@ class PublicDemoMissionScreen extends StatelessWidget {
             for (final entry in missions)
               Padding(
                 padding: const EdgeInsets.only(bottom: 10),
-                child: _MissionTile(entry: entry),
+                child: _MissionTile(
+                  entry: entry,
+                  copy: publicDemoAprilMissionCopy[entry.id],
+                ),
               ),
             const SizedBox(height: 8),
-            if (_isMainMissionComplete) const _NextMissionPlaceholderCard(),
+            // SES First Fun Quarter Mission Phase 4: the Recruitment
+            // Mission section replaces the generic placeholder below the
+            // moment there is something real to show — this is exactly the
+            // "次の経営目標" that placeholder always promised. Independent
+            // of April chain completion: recruitment can genuinely run in
+            // parallel from month 5 onward even while April is still in
+            // progress.
+            if (recruitmentMissions.isNotEmpty) ...[
+              _RecruitmentMissionHeader(
+                key: const Key('public-demo-mission-recruitment-header'),
+                completedCount: _recruitmentCompletedCount,
+                totalCount: recruitmentMissions.length,
+              ),
+              const SizedBox(height: 16),
+              for (final entry in recruitmentMissions)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 10),
+                  child: _MissionTile(
+                    entry: entry,
+                    copy: publicDemoRecruitmentMissionCopy[entry.id],
+                  ),
+                ),
+            ] else if (_isMainMissionComplete)
+              const _NextMissionPlaceholderCard(),
           ],
         ),
       ),
@@ -174,6 +259,56 @@ class _MainMissionHeader extends StatelessWidget {
             Text(
               '進捗 $completedCount / $totalCount',
               key: const Key('public-demo-mission-progress-label'),
+              style: const TextStyle(fontSize: 14),
+            ),
+            const SizedBox(height: 6),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(4),
+              child: LinearProgressIndicator(
+                value: totalCount == 0 ? 0 : completedCount / totalCount,
+                minHeight: 8,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// SES First Fun Quarter Mission Phase 4 — the Recruitment Mission
+/// section's own header, mirroring [_MainMissionHeader]'s shape (title +
+/// progress + bar) but visually distinct (no [SesTheme.primaryBlue] tint)
+/// so the two chains read as separate goals, not one merged list.
+class _RecruitmentMissionHeader extends StatelessWidget {
+  const _RecruitmentMissionHeader({
+    super.key,
+    required this.completedCount,
+    required this.totalCount,
+  });
+
+  final int completedCount;
+  final int totalCount;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      key: const Key('public-demo-mission-recruitment-main-header'),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('採用の目標', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+            const SizedBox(height: 6),
+            const Text(
+              '技術者を新しく採用しよう',
+              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 20),
+            ),
+            const SizedBox(height: 10),
+            Text(
+              '進捗 $completedCount / $totalCount',
+              key: const Key('public-demo-mission-recruitment-progress-label'),
               style: const TextStyle(fontSize: 14),
             ),
             const SizedBox(height: 6),
@@ -255,13 +390,22 @@ class _NextMissionPlaceholderCard extends StatelessWidget {
 }
 
 class _MissionTile extends StatelessWidget {
-  const _MissionTile({required this.entry});
+  const _MissionTile({required this.entry, required this.copy});
 
   final PublicDemoMissionStatusEntry entry;
 
+  /// SES First Fun Quarter Mission Phase 4: the caller looks this up from
+  /// whichever chain's copy map applies ([publicDemoAprilMissionCopy] or
+  /// [publicDemoRecruitmentMissionCopy]) — this widget itself no longer
+  /// hardcodes a single map, so it renders either chain identically.
+  final PublicDemoMissionCopy? copy;
+
   @override
   Widget build(BuildContext context) {
-    final copy = publicDemoAprilMissionCopy[entry.id];
+    // Local binding so Dart's flow analysis can promote it to non-null
+    // inside the `copy != null` branch below — a `final` instance field
+    // does not get the same promotion a local variable does.
+    final copy = this.copy;
     final title = copy?.title ?? entry.id.name;
     final isCompleted = entry.status == PublicDemoMissionStatus.completed;
     final isLocked = entry.status == PublicDemoMissionStatus.locked;

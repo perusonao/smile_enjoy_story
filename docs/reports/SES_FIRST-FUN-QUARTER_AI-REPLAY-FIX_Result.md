@@ -1,6 +1,6 @@
 # SES First Fun Quarter — AI Replay Audit Fix (Result Report)
 
-Status: **Implemented, self-hardened, focused + full public_demo regression suites green, web build green.**
+Status: **Implemented, self-hardened, focused + full public_demo regression suites green, web build green. Codex Broad Review round 1 (P1/P2/P3) addressed in the same PR.**
 
 ## Base main SHA
 
@@ -15,7 +15,8 @@ Screening" のマージコミット）— タスクで指定された監査対�
 
 ## Final HEAD SHA
 
-`0bdfe7c1a3c0cc3c28fdfc3e585835c359646825`
+`02c1f1a75bfbae171ca8bcd71e9e0923bdce33dc`（初回実装は`0bdfe7c1a3c0cc3c28fdfc3e585835c359646825`。
+下記「Codex Broad Review Round 1 対応」節が今回の追加コミット分）
 
 ## 根拠となったResult Report
 
@@ -297,9 +298,13 @@ docs/reports/SES_FIRST-FUN-QUARTER_AI-REPLAY-FIX_Result.md (new, this file)
 - April Mission 8-step progression: 上記と同一テストで
   `publicDemoAprilMissionChain`の順序・要素数を変更していないことを確認
   （import元の定数をそのまま参照、書き換えなし）。
-- legacy save: `target`の読み込み側（`fromJson`）は無変更のため、旧セーブに
-  焼き込まれた文字列（内部識別子を含む可能性のあるもの含む）もそのまま
-  読める。新規に生成される質問だけが新ラベルを使う。
+- legacy save: 初回実装時点では`target`の読み込み側（`fromJson`）が無変更
+  だったため、旧セーブに焼き込まれた文字列（内部識別子を含む可能性のある
+  もの）はそのまま残っていた。この残課題はCodex Broad Review Round 1の
+  P1として指摘され、下記「Codex Broad Review Round 1 対応」節の通り
+  修正済み（`ClientInterviewEngine.sanitizeLegacySessions`を`SaveService
+  .load()`/`PublicDemoAggregate.fromJson()`にフックし、legacy active
+  sessionもロード時にサニタイズされる）。
 - malformed state: 本PRの変更範囲（表示文字列・UI導線の追加）は
   malformed-state耐性に影響する新しいパース/検証コードを含まないため、
   既存の防御（`_openSkillSheetEdit`のnullランタイム/スキルガードなど）を
@@ -322,12 +327,237 @@ docs/reports/SES_FIRST-FUN-QUARTER_AI-REPLAY-FIX_Result.md (new, this file)
   導線を1つ追加するだけの最小修正で解決したため、`ec(i)`自体の描画条件は
   変更していない）。
 
+## Codex Broad Review Round 1 対応（追加コミット）
+
+### Codex Broad Review result
+
+PR #269に対する初回Broad Review（`chatgpt-codex-connector[bot]`、reviewed
+commit `0bdfe7c1a3`）: **CHANGES REQUESTED**。
+
+- P0: 0件
+- P1: 1件
+- P2: 1件
+- P3: 1件
+
+GitHub上のインラインレビューコメント（review thread）として実際に確認
+できたのはP2の1件（`lib/ui/public_demo/public_demo_monthly_report_dialog.dart:226`、
+"Handle zero-sided revenue differences separately"）のみ。P1/P3は
+タスク本文で詳細に記述された内容を根拠とし、Broad Reviewの再実行は
+行っていない（指示通り）。3件とも本PR内で対応し、確認できたP2の
+review threadはresolve済み。
+
+### P1（必須修正）: legacy saveの面談質問で内部enum名が引き続き漏れる
+
+**Codexの指摘**: 初回実装の`_target()`修正は「新規に生成される質問」しか
+直しておらず、旧版（`requiredLanguages`が空の面談でtarget=
+`"technicalExperience"`を書き込んでいた版）で開始・保存済みの
+**active session**は、PR版へアップデートしてリロードしても
+`ClientInterviewSession.fromJson`が保存済みのtarget/answer textをそのまま
+復元するため、内部enum名が漏れ続ける。
+
+**Freshコード確認で確認した事実**:
+- `ClientInterviewQuestion.fromJson`/`ClientInterviewAnswer.fromJson`
+  （`lib/game/models/client_interview.dart`）はJSONの`target`/`text`
+  文字列をそのまま復元するだけで、サニタイズは一切行わない。
+- `target`が汚染されたまま保存されている場合、`ClientInterviewEngine
+  .answer()`（`lib/game/engine/client_interview_engine.dart`）が
+  **新しく**回答を計算する際（次の質問へ進む、follow-upを選ぶ等）にも
+  `q.target`をそのまま埋め込むため、「次の質問の回答」も新たに汚染される
+  — 過去の回答文字列だけでなく、再開後に計算される回答も影響を受ける。
+- `target`は`(category, project)`だけから決まる純粋関数の結果であり、
+  `category`/`mismatch`/`quality`/`vague`などのauthorityフィールドとは
+  完全に独立している（`lib/game/engine/game_engine.dart`の
+  `finalRate`/`evaluate`はどちらも`target`/`text`を一切参照しない）。
+
+**実装したmigration方法**:
+`ClientInterviewEngine`に2つの新しい純粋関数を追加（
+`lib/game/engine/client_interview_engine.dart`）:
+
+```dart
+static ClientInterviewSession sanitized(ClientInterviewSession session, Project project) {
+  // 各questionのtargetを (category, project) から再導出し、
+  // 各answerのtextを (category, 新target, 保存済みvague) から再生成。
+  // category/mismatch/quality/vague/completed/result は一切変更しない。
+}
+
+static List<ClientInterviewSession> sanitizeLegacySessions(
+  List<ClientInterviewSession> sessions,
+  List<ProjectProposal> proposals,
+) { ... } // Main Game: applicationId → ProjectProposal.project で解決
+```
+
+`sanitized()`は「新規生成されたセッションに対して実行しても値が変わらない
+（idempotent）」ため、legacy/非legacyを判定するロジックは不要 — **常に**
+実行して安全。
+
+呼び出し箇所（authority/displayの境界を明確にするため、Main Game/Public
+Demoそれぞれの「実際にセーブをロードする唯一の本番経路」にのみフック）:
+
+- **Main Game**: `lib/game/persistence/save_service.dart`の
+  `SaveService.load()`（Main Gameで`GameState.fromJson`が呼ばれる唯一の
+  本番経路）。Projectは`state.proposals`から`session.applicationId`で
+  解決（`GameEngine.startClientInterview`が元々セッションを紐付けるのと
+  同じキー）。`lib/game/models/*`（純粋データ層）は`lib/game/engine/*`に
+  依存しない既存の層構造を守るため、`models/game_state.dart`自体は
+  変更せず、`persistence`層（既に`public_demo_save_codec.dart`が
+  `engine/`に依存している前例あり）にサニタイズを置いた。
+- **Public Demo**: `lib/game/public_demo/public_demo_aggregate.dart`の
+  `PublicDemoAggregate.fromJson()`（`state.runSeed`と`workflow`の両方を
+  同時に持つ唯一の場所）。Projectは`PublicDemoSeededProjectGenerator
+  .regenerate(runSeed, projectId)`で解決 — Public Demoの他のPhase 6
+  読み取りコード（`projectInterviewCandidateFor`等）が既に使っている、
+  セーブデータに依存しない同じ決定的解決方法。新しい公開メソッド
+  `PublicDemoWorkflowState.withSanitizedProjectInterviewSessions
+  ({required int runSeed})`を追加。
+
+`ClientInterviewSession.copyWith`に`questions`パラメータを追加（
+既存呼び出し元は全て省略時に`this.questions`を使うため、既存の
+挙動は一切変わらない）。
+
+**Authorityへの影響**: なし。`category`/`mismatch`/`quality`/`vague`/
+`completed`/`result`はすべて元の値のまま。`finalRate`/`evaluate`は
+`target`/`text`を読まないため、score/pass-fail判定は無変更。
+
+**Save Compatibility**: 新しい永続化フィールドは追加していない
+（`copyWith`へのパラメータ追加はDartのAPI変更であり、JSON形式には
+影響しない）。旧セーブは読み込み時に自動的にサニタイズされ、
+その後の保存では既にクリーンな値が書き込まれる（べき等なので
+何度保存/読み込みしても安定）。
+
+### P2（必須修正）: 3月締めでも「来月入金予定」と表示してしまう
+
+**Codexの指摘**: `revenue != cashReceived`の場合、`revenue`または
+`cashReceived`のどちらかが`0`でも両方の説明文を無条件に表示していた
+ため、「今月の入金¥0は先月分の売上」のような、実際には発生していない
+取引を説明する不自然な文が出ていた。また3月（年度末）は翌月が
+存在しないため、「来月入金予定」という保証できない予測を書いていた。
+
+**修正内容**（`lib/ui/public_demo/public_demo_monthly_report_dialog.dart`
+の`_cashDivergenceCaption`）: `data.revenue > 0`のときだけ売上側の説明を、
+`data.cashReceived > 0`のときだけ入金側の説明を、それぞれ独立に追加する
+よう分岐。3月（`closedMonth == 15`）は「年度末時点で未収」という、
+未来を約束しない表現に変更。`revenue == cashReceived`（0円同士を含む）
+の場合は引き続きcaption自体を出さない。新しい会計計算・新しいFinance
+authorityは追加していない（読むのは既存の`data.revenue`/
+`data.cashReceived`のみ）。
+
+### P3（必須修正）: 新caption表示時に360×800でOne-Screen基準を4px超える
+
+**Codexの指摘**: 360×800・TextScaler 1.0・revenue=¥800,000・
+cashReceived=¥0・次アクションありの組み合わせで、`maxScrollExtent
+== 4.0`（4pxだけスクロールが必要）になっていた。
+
+**修正内容**: P2の文言修正で不要な文言（存在しない取引の説明）を削った
+上で、`PublicDemoMonthlyReportDialog`の`insetPadding`/`titlePadding`/
+`contentPadding`/`actionsPadding`と`_ReportSectionHeader`の上部paddingを
+それぞれ数px単位でさらに詰めた（既存のISSUE-250 One-Screen対応が確立した
+可読性/タップ領域の下限は維持）。情報は一切削っていない（純利益相当の
+説明文はP2の分岐後も内容として保持）。
+
+### Regression tests
+
+- `test/game/client_interview_04b_test.dart`（Main Game）: legacy save
+  （target="technicalExperience"、旧answer textにも同文字列を含む）を
+  `SaveService`経由でロードし、(1)過去/現在/次の回答すべてに内部enum名が
+  残らないこと、(2)quality/vague/mismatch/categoryが元の値と完全一致
+  すること、(3)そのまま面談を完走した際のresult/accumulatedEvaluationが
+  「汚染前のコントロール」と完全一致すること（score/pass-fail authority
+  不変の証明）、(4)save→reloadが安定（idempotent）であることを検証。
+  修正前のコード（サニタイズ呼び出しを外した状態）に対して実際に失敗
+  することを確認済み。
+- `test/game/public_demo/public_demo_project_interview_test.dart`
+  （Public Demo）: 同内容を`PublicDemoAggregate.fromJson`経由で検証。
+  こちらも修正前のコードに対して実際に失敗することを確認済み。
+- `test/ui/public_demo/public_demo_monthly_report_dialog_test.dart`:
+  - 新規group「5. 現金増減 vs 純利益相当 divergence caption」:
+    通常月revenue>0/cashReceived>0（不一致）、revenue>0/cashReceived==0、
+    revenue==0/cashReceived>0、3月でrevenue!=cashReceived、
+    revenue==cashReceived（0円同士含む）でcaption非表示、の5パターン。
+  - 既存group「4. One-Screen」に、Codex再現ケース（revenue=¥800,000、
+    cashReceived=¥0、次アクションあり）を360×800/390×844 ×
+    TextScaler 1.0/1.3の全4通りでoverflowなしを確認するテストと、
+    360×800・TextScaler 1.0での`maxScrollExtent == 0`（スクロール不要）
+    を確認するテストを追加。
+
+### Self-hardening（今回分）
+
+- Interview: new session / legacy active session / requiredLanguages
+  empty・non-empty / technicalExperience・communication・workStyle
+  各カテゴリ / past・current・next answer / save/reload / quality /
+  vague / score / pass-fail — 上記regression testsで直接検証済み。
+  Main Game・Public Demo双方の共有経路（`ClientInterviewEngine`）を
+  それぞれ個別のテストファイルで確認。
+  - 補足: "motivation"という単語自体はP1-1/Codex Round 1のいずれの
+    findingにも登場せず、`ClientInterviewQuestionCategory`にも該当する
+    値は存在しない（最も近いのは`workStyle`で、これは既存
+    テストでカバー済み）。
+- Monthly report: April（通常のrevenue==cashReceived経路、既存
+  テストで確認）/ normal month / March / revenue 0 / cashReceived 0 /
+  equal / diverged / 360×800 / 390×844 / TextScaler 1.0 / 1.3 —
+  すべて新規テストで直接カバー。
+- P1-2 regression（今回のP1/P2/P3では`activeProjectStatusCard`/
+  Mission関連コードに変更なし）: edit after assignment・cancel・
+  same-value save・Mission 8/8のテストは無変更のまま
+  `test/ui/public_demo/public_demo_skill_sheet_edit_after_assignment_test.dart`
+  に残っており、今回のフルスイート実行（1945/1945 pass）で
+  再確認済み。
+
+### Changed files（今回分）
+
+```
+lib/game/engine/client_interview_engine.dart
+lib/game/models/client_interview.dart
+lib/game/persistence/save_service.dart
+lib/game/public_demo/public_demo_aggregate.dart
+lib/game/public_demo/public_demo_workflow_state.dart
+lib/ui/public_demo/public_demo_monthly_report_dialog.dart
+test/game/client_interview_04b_test.dart
+test/game/public_demo/public_demo_project_interview_test.dart
+test/ui/public_demo/public_demo_monthly_report_dialog_test.dart
+docs/reports/SES_FIRST-FUN-QUARTER_AI-REPLAY-FIX_Result.md（本ファイル）
+```
+
+### Tests（今回分）
+
+- `flutter analyze`: プロジェクト全体で問題なし。
+- `flutter test test/game/public_demo test/ui/public_demo
+  test/game/client_interview_04b_test.dart
+  test/game/save_service_isolation_test.dart
+  test/game/project_interview_test.dart test/game/matching_test.dart`:
+  **1945/1945 pass**。
+- 新規テストはそれぞれ、対応する修正を一時的に外した状態で実際に
+  失敗することを確認してから修正版に戻して再度green化（P1: Main
+  Game/Public Demo双方、P3: 360×800レイアウトテスト）。
+- `git diff --check`: 問題なし。
+- `flutter build web --release`: 成功。
+
+### Unresolved items（今回分）
+
+- GitHub上でインラインコメントとして実際に確認できたCodex findingは
+  P2の1件のみ（`resolve_review_thread`でresolve済み）。P1/P3は
+  タスク本文の記述を根拠に対応したため、対応するGitHub review thread
+  は見つからず、resolveも行っていない（存在しないthreadをresolveする
+  ことはできない）。
+- 「March actual authoritative DisplayData経路」の追加テストは、
+  `PublicDemoMonthlyReportDisplayData.fromSnapshot()`を通した完全な
+  実プレイスルー由来のfixtureではなく、同クラスの通常コンストラクタで
+  `closedMonth: 15`を直接指定したfixtureで代替した（3月かつrevenue!=
+  cashReceivedを実プレイで安定再現するには、Recovery割当ウィンドウ
+  （7〜14月）の制約上、3月自体を初回請求月にする経路が存在せず、
+  エンジニアリングコストに見合わないと判断）。ダイアログの実ウィジェット
+  ・実`AlertDialog`構造を経由したテストである点は変えていない。
+- Broad Reviewは指示通り再実行していない。
+
 ## PR
 
 https://github.com/perusonao/smile_enjoy_story/pull/269
 
 ## Actual Processing Time
 
-セッション開始（`git fetch origin main`）からPR作成・本レポート作成完了まで、
-約1時間（コード調査・実装・Flutter SDKのセットアップ・複数回のフル
-テストスイート実行・flake切り分けのためのpristine main比較実行を含む）。
+初回実装（セッション開始からPR #269作成まで）: 約1時間。
+
+Codex Broad Review Round 1対応（本追記分、GitHub実状態確認から
+追加commit push・review thread resolve・本レポート更新まで）:
+約1時間20分（P1のmigration設計・Main Game/Public Demo双方への実装・
+各修正の有効性検証（一時無効化→再現確認→復元）・レイアウト調整の
+反復・フルテストスイート再実行を含む）。

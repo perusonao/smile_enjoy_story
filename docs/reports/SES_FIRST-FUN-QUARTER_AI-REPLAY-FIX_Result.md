@@ -329,5 +329,5 @@ https://github.com/perusonao/smile_enjoy_story/pull/269
 ## Actual Processing Time
 
 セッション開始（`git fetch origin main`）からPR作成・本レポート作成完了まで、
-約1時間40分（コード調査・実装・Flutter SDKのセットアップ・複数回のフル
+約1時間（コード調査・実装・Flutter SDKのセットアップ・複数回のフル
 テストスイート実行・flake切り分けのためのpristine main比較実行を含む）。

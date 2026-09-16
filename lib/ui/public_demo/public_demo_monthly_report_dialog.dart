@@ -214,6 +214,17 @@ class PublicDemoMonthlyReportDialog extends StatelessWidget {
                 value: data.netIncome >= 0
                     ? '+${formatYen(data.netIncome)}'
                     : '-${formatYen(-data.netIncome)}',
+                // SES First Fun Quarter AI Replay Audit #2 P2-3: read-only
+                // narration of two facts already shown above (「売上・入金」
+                // section's own `data.revenue`/`data.cashReceived`) — no new
+                // Finance authority or arithmetic, only shown when they
+                // actually diverge (otherwise 現金増減 and 純利益相当 already
+                // agree and this note would say nothing new).
+                caption: data.revenue != data.cashReceived
+                    ? '今月の売上${formatYen(data.revenue)}は来月入金予定、'
+                          '今月の入金${formatYen(data.cashReceived)}は先月分の売上のため、'
+                          '現金増減とは一致しません。'
+                    : null,
               ),
 
               const _ReportSectionHeader('社員'),

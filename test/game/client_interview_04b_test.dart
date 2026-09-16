@@ -2,6 +2,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:smile_enjoy_story/domain/domain.dart';
 import 'package:smile_enjoy_story/game/game.dart';
 
+import 'test_helpers.dart';
+
 GameState atClientInterview({int seed = 42, bool mismatch = false}) {
   var s = GameEngine.newGame(seed: seed);
   final e = s.engineers.first, p = s.openProjects.first.project;
@@ -132,6 +134,65 @@ void main() {
     );
     expect(GameState.fromJson(s.toJson()).toJson(), s.toJson());
   });
+  group(
+    'SES First Fun Quarter AI Replay Audit #2 P1-1: requiredLanguages '
+    'empty never leaks an internal enum identifier into player-facing text',
+    () {
+      test(
+        'every question target — for every category, both 上位会社面談 and '
+        '客先面談 share this same engine — is a human-readable label, never '
+        'ClientInterviewQuestionCategory.name',
+        () {
+          // requiredLanguages empty is the exact root cause condition the
+          // audit found; requiredLeader>0 and a displayedIndustryExperience
+          // entry force every conditional category (leadership,
+          // industryExperience) into the candidate list alongside the
+          // unconditional ones, so count:8 exercises every category's
+          // `_target` fallback in one pass, not just technicalExperience's.
+          final project = buildProject(requiredLanguages: const [], requiredLeader: 2);
+          final engineer = buildEngineer();
+          final sheet = SkillSheet.fromActual(
+            employeeId: engineer.id,
+            languageMonths: {ProgrammingLanguage.java: 36},
+            skills: engineer.profile.techSkills,
+            industryExperience: {Industry.other: 12},
+            week: 1,
+          );
+
+          final questions = ClientInterviewEngine.questions(
+            seed: 1,
+            employee: engineer,
+            project: project,
+            sheet: sheet,
+            count: 8,
+          );
+          expect(questions.length, 8);
+
+          for (final q in questions) {
+            for (final c in ClientInterviewQuestionCategory.values) {
+              expect(
+                q.target,
+                isNot(equals(c.name)),
+                reason:
+                    '${q.category} question target must never be a raw '
+                    'ClientInterviewQuestionCategory identifier',
+              );
+            }
+          }
+
+          final technical = questions.firstWhere(
+            (q) => q.category == ClientInterviewQuestionCategory.technicalExperience,
+          );
+          expect(technical.target, isNot('technicalExperience'));
+
+          final answer = ClientInterviewEngine.answer(engineer, project, technical);
+          expect(answer.text, isNot(contains('technicalExperience')));
+          expect(answer.text, contains(technical.target));
+        },
+      );
+    },
+  );
+
   test('aggressive mismatch can deep dive and affects trust', () {
     var found = false;
     for (var seed = 1; seed < 100 && !found; seed++) {

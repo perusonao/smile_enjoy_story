@@ -1,6 +1,11 @@
+import 'dart:convert';
+
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:smile_enjoy_story/app/app_experience.dart';
 import 'package:smile_enjoy_story/domain/domain.dart';
 import 'package:smile_enjoy_story/game/game.dart';
+import 'package:smile_enjoy_story/game/persistence/save_service.dart';
 
 import 'test_helpers.dart';
 
@@ -188,6 +193,160 @@ void main() {
           final answer = ClientInterviewEngine.answer(engineer, project, technical);
           expect(answer.text, isNot(contains('technicalExperience')));
           expect(answer.text, contains(technical.target));
+        },
+      );
+    },
+  );
+
+  group(
+    'SES First Fun Quarter AI Replay Audit #2 Codex Broad Review P1: '
+    'legacy save sanitizes on load without touching authority',
+    () {
+      test(
+        'a legacy save whose stored target/answer text embeds a raw '
+        'technicalExperience enum identifier is sanitized on load — past, '
+        'current, and next answers are all clean; quality/vague/mismatch/ '
+        'category and eventual pass-fail are untouched; save/reload '
+        'round-trips',
+        () async {
+          SharedPreferences.setMockInitialValues({});
+          final saveService = SaveService.forExperience(
+            AppExperience.development,
+          );
+
+          // A genuine session, advanced one follow-up so an already-answered
+          // (index 0) and a freshly precomputed current (index 1) answer
+          // both exist already — exactly what a legacy resumed session
+          // would show.
+          var control = GameEngine.startClientInterview(
+            atClientInterview(seed: 7, mismatch: true),
+            'client-app',
+          );
+          final sessionId = control.clientInterviews.single.id;
+          control = GameEngine.chooseClientInterviewFollowUp(
+            control,
+            sessionId,
+            ClientInterviewFollowUp.letEmployeeHandle,
+          );
+          final originalSession = control.clientInterviews.single;
+          final originalQuestions = originalSession.questions;
+          final originalAnswers = originalSession.employeeAnswers;
+
+          // Simulate a legacy save: corrupt only the two presentation-only
+          // fields the pre-fix `_target()` bug actually wrote (target/text)
+          // — category/mismatch/quality/vague are left exactly as the real
+          // engine produced them, matching what an old save genuinely
+          // looked like (the bug never touched those fields).
+          final json = control.toJson();
+          final sessionsJson = (json['clientInterviews'] as List)
+              .cast<Map<String, dynamic>>();
+          final questionsJson = (sessionsJson[0]['questions'] as List)
+              .cast<Map<String, dynamic>>();
+          final answersJson = (sessionsJson[0]['employeeAnswers'] as List)
+              .cast<Map<String, dynamic>>();
+          questionsJson[0]['target'] = 'technicalExperience';
+          answersJson[0]['text'] =
+              'technicalExperienceの案件には参加しています。担当範囲はチームで対応することが多く、'
+              '補助的に経験しました。';
+          questionsJson[1]['target'] = 'technicalExperience';
+          answersJson[1]['text'] =
+              'technicalExperienceを使った開発で、設計から実装・単体試験まで担当しました。課題は'
+              'チームと確認しながら具体的に解決しました。';
+
+          await SharedPreferences.getInstance().then(
+            (prefs) =>
+                prefs.setString(SaveService.developmentKey, jsonEncode(json)),
+          );
+
+          final loaded = await saveService.load();
+          expect(loaded, isNotNull);
+          final loadedSession = loaded!.clientInterviews.single;
+
+          // 6/7: past (index 0) and current (index 1) answers are clean.
+          for (final categoryName
+              in ClientInterviewQuestionCategory.values.map((c) => c.name)) {
+            expect(loadedSession.questions[0].target, isNot(categoryName));
+            expect(loadedSession.questions[1].target, isNot(categoryName));
+          }
+          expect(
+            loadedSession.employeeAnswers[0].text,
+            isNot(contains('technicalExperience')),
+          );
+          expect(
+            loadedSession.employeeAnswers[1].text,
+            isNot(contains('technicalExperience')),
+          );
+
+          // 9: quality/vague/mismatch/category — the authority fields —
+          // are byte-identical to what the real engine originally produced,
+          // never recomputed by sanitization.
+          for (var i = 0; i < 2; i++) {
+            expect(
+              loadedSession.employeeAnswers[i].quality,
+              originalAnswers[i].quality,
+            );
+            expect(
+              loadedSession.employeeAnswers[i].vague,
+              originalAnswers[i].vague,
+            );
+            expect(
+              loadedSession.questions[i].mismatch,
+              originalQuestions[i].mismatch,
+            );
+            expect(
+              loadedSession.questions[i].category,
+              originalQuestions[i].category,
+            );
+          }
+
+          // 8: resuming — a freshly-computed "next" answer — is also clean.
+          final resumedOnce = GameEngine.chooseClientInterviewFollowUp(
+            loaded,
+            sessionId,
+            ClientInterviewFollowUp.letEmployeeHandle,
+          );
+          expect(
+            resumedOnce.clientInterviews.single.employeeAnswers[2].text,
+            isNot(contains('technicalExperience')),
+          );
+
+          // 10: score/pass-fail authority is unaffected by sanitization —
+          // finishing the SAME sequence of follow-ups from the uncorrupted
+          // control and from the sanitized/reloaded save must resolve
+          // identically.
+          final controlOnce = GameEngine.chooseClientInterviewFollowUp(
+            control,
+            sessionId,
+            ClientInterviewFollowUp.letEmployeeHandle,
+          );
+          final resumedFinal = GameEngine.chooseClientInterviewFollowUp(
+            resumedOnce,
+            sessionId,
+            ClientInterviewFollowUp.letEmployeeHandle,
+          );
+          final controlFinal = GameEngine.chooseClientInterviewFollowUp(
+            controlOnce,
+            sessionId,
+            ClientInterviewFollowUp.letEmployeeHandle,
+          );
+          expect(
+            resumedFinal.clientInterviews.single.completed,
+            controlFinal.clientInterviews.single.completed,
+          );
+          expect(
+            resumedFinal.clientInterviews.single.result,
+            controlFinal.clientInterviews.single.result,
+          );
+          expect(
+            resumedFinal.clientInterviews.single.accumulatedEvaluation.total,
+            controlFinal.clientInterviews.single.accumulatedEvaluation.total,
+          );
+
+          // 11: save/reload round-trips — already-sanitized data is
+          // unchanged by a second pass (idempotent).
+          await saveService.save(resumedFinal);
+          final reloaded = await saveService.load();
+          expect(reloaded!.toJson(), resumedFinal.toJson());
         },
       );
     },

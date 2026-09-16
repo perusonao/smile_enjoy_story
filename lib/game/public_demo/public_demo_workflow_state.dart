@@ -1,4 +1,5 @@
 import '../../domain/domain.dart';
+import '../engine/client_interview_engine.dart';
 import '../models/client_interview.dart';
 import '../models/recruitment_interview.dart';
 import 'public_demo_assignment.dart';
@@ -10,6 +11,7 @@ import 'public_demo_interview.dart';
 import 'public_demo_join.dart';
 import 'public_demo_matching_proposal.dart';
 import 'public_demo_offer_candidate.dart';
+import 'public_demo_project_generator.dart';
 import 'public_demo_project_interview.dart';
 import 'public_demo_raise_transaction.dart';
 import 'public_demo_recruitment.dart';
@@ -321,6 +323,40 @@ class PublicDemoWorkflowState {
       ),
       offerCandidates: List.unmodifiable(offerCandidates),
     );
+  }
+
+  /// Codex Broad Review (PR #269) P1: re-derives every [projectInterviewSessions]
+  /// entry's display-only `target`/answer text via [ClientInterviewEngine
+  /// .sanitized] — see that method's own doc for exactly what it does and
+  /// does not touch (never category/mismatch/quality/vague/completed/
+  /// result). [runSeed] is needed because a Public Demo session only ever
+  /// keys its [Project] by id, never embeds the [Project] itself —
+  /// [PublicDemoSeededProjectGenerator.regenerate] is the same pure,
+  /// save-independent `(runSeed, projectId)` resolution every other Phase 6
+  /// reader already uses (see [PublicDemoAggregate.projectInterviewCandidateFor]'s
+  /// own doc). A session whose id this generator no longer recognizes
+  /// (should not happen for a genuine save) is left untouched rather than
+  /// dropped. [PublicDemoAggregate.fromJson] is the one production caller,
+  /// immediately after loading both halves of the aggregate — the only
+  /// place with both [runSeed] and this workflow together.
+  PublicDemoWorkflowState withSanitizedProjectInterviewSessions({
+    required int runSeed,
+  }) {
+    if (projectInterviewSessions.isEmpty) return this;
+    final sanitized = [
+      for (final session in projectInterviewSessions)
+        switch (PublicDemoSeededProjectGenerator.regenerate(
+          runSeed: runSeed,
+          projectId: session.projectId,
+        )) {
+          final candidate? => ClientInterviewEngine.sanitized(
+            session,
+            candidate.project,
+          ),
+          null => session,
+        },
+    ];
+    return _copyWith(projectInterviewSessions: sanitized);
   }
 
   /// Issue #245 Finding #4, Phase 1b (Production Cutover): the real,

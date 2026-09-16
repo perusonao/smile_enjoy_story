@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../app/app_experience.dart';
+import '../engine/client_interview_engine.dart';
 import '../models/models.dart';
 
 /// Local-storage save/load for [GameState] (§25).
@@ -48,7 +49,17 @@ class SaveService {
       // weekly-accounting model) can't be replayed under the new monthly
       // rules — start a fresh game rather than risk crashing on it (§26).
       if (state.schemaVersion != currentSchemaVersion) return null;
-      return state;
+      // Codex Broad Review (PR #269) P1: a legacy active client-interview
+      // session can carry a pre-fix ClientInterviewQuestionCategory
+      // enum-identifier leak baked into its stored target/answer text
+      // (ClientInterviewEngine._target's own doc) — sanitize once here, the
+      // one production load path, before anything reads it.
+      return state.copyWith(
+        clientInterviews: ClientInterviewEngine.sanitizeLegacySessions(
+          state.clientInterviews,
+          state.proposals,
+        ),
+      );
     } catch (_) {
       return null;
     }

@@ -20,4 +20,33 @@ class ClientInterviewEngine {
   static List<ClientInterviewFollowUp> choices(ClientInterviewQuestion q)=>switch(q.category){ClientInterviewQuestionCategory.technicalExperience=>[ClientInterviewFollowUp.emphasizeTechnical,ClientInterviewFollowUp.adjustExpectation,ClientInterviewFollowUp.letEmployeeHandle],ClientInterviewQuestionCategory.industryExperience=>[ClientInterviewFollowUp.emphasizeIndustry,ClientInterviewFollowUp.emphasizeCommunication,ClientInterviewFollowUp.letEmployeeHandle],ClientInterviewQuestionCategory.leadership=>[ClientInterviewFollowUp.emphasizeLeadership,ClientInterviewFollowUp.adjustExpectation,ClientInterviewFollowUp.letEmployeeHandle],_=>[ClientInterviewFollowUp.emphasizeCommunication,ClientInterviewFollowUp.adjustExpectation,ClientInterviewFollowUp.letEmployeeHandle]};
   static ({int adjustment,bool deepDive,String reaction,ClientInterviewEvaluation evaluation}) evaluate(Engineer e,ClientInterviewQuestion q,ClientInterviewAnswer a,ClientInterviewFollowUp f,int seed,String sessionId){var delta=((a.quality-50)/12).round();var risky=false;switch(f){case ClientInterviewFollowUp.emphasizeTechnical:delta+=q.category==ClientInterviewQuestionCategory.technicalExperience&&q.mismatch==0?3:-2;risky=q.mismatch>=2;case ClientInterviewFollowUp.emphasizeIndustry:delta+=q.category==ClientInterviewQuestionCategory.industryExperience&&q.mismatch==0?3:-2;risky=q.mismatch>=2;case ClientInterviewFollowUp.emphasizeLeadership:final strong=e.profile.techSkills.leader>=3||e.profile.techSkills.manager>=3;delta+=strong?4:-4;risky=!strong;case ClientInterviewFollowUp.emphasizeCommunication:delta+=(e.profile.personality.communication>=4||e.abilities.contains(EmployeeAbility.clientFriendly))?3:1;case ClientInterviewFollowUp.adjustExpectation:delta+=q.mismatch>=2?2:-1;case ClientInterviewFollowUp.letEmployeeHandle:delta+=e.profile.hidden.projectInterviewSkill>=4?2:0;}final deepDive=risky&&_hash('$seed:$sessionId:${q.category.name}:${f.name}')%100<70; if(deepDive)delta-=e.abilities.contains(EmployeeAbility.toughUnderPressure)?2:5;delta=delta.clamp(-5,5);final reaction=deepDive?'面接官は強調された点を、もう少し具体的に確認したいようです。':delta>=3?'面接官は納得しているようです。':delta<=-2?'面接官は少し懸念を持ったようです。':'面接官は回答を受け止め、次の質問へ進みました。';return(adjustment:delta,deepDive:deepDive,reaction:reaction,evaluation:ClientInterviewEvaluation(technical:q.category==ClientInterviewQuestionCategory.technicalExperience?delta:0,experience:a.quality~/20,communication:q.category==ClientInterviewQuestionCategory.communication?delta:1,credibility:q.mismatch>0?-q.mismatch:2,clientFit:e.abilities.contains(EmployeeAbility.clientFriendly)?2:0));}
   static int finalRate(Engineer e,Project p,ClientInterviewSession s,{bool fromInterviewOffer=false,int interviewOfferPenalty=35,SelectionStep step=SelectionStep.clientInterview}){var base=SelectionEngine.successRate(e,p,step);if(fromInterviewOffer)base=(base-interviewOfferPenalty).clamp(5,95);final adjustment=s.accumulatedEvaluation.total.clamp(-15,15);return(base+adjustment).clamp(5,95);}
+
+  /// Codex Broad Review (PR #269) P1: re-derives [session]'s `target`/answer
+  /// text from `(category, project)` alone — the exact same pure derivation
+  /// [questions]/[answer] use for a brand-new session (see [_target]/
+  /// [_answerText]). Never touches category/mismatch (untouched authority
+  /// fields on [ClientInterviewQuestion]) or quality/vague (untouched
+  /// authority fields on [ClientInterviewAnswer]) — only the two
+  /// presentation-only string fields their display text is built from.
+  /// Idempotent: a session already generated under the current [_target]
+  /// comes back byte-identical, so this is safe to run unconditionally on
+  /// every load, not only a session known to carry the pre-fix
+  /// [ClientInterviewQuestionCategory] enum-identifier leak.
+  static ClientInterviewSession sanitized(ClientInterviewSession session,Project project){
+    final questions=[for(final q in session.questions)ClientInterviewQuestion(category:q.category,text:q.text,target:_target(q.category,project),mismatch:q.mismatch)];
+    final answers=[for(var i=0;i<session.employeeAnswers.length;i++)ClientInterviewAnswer(text:_answerText(questions[i].category,questions[i].target,session.employeeAnswers[i].vague),quality:session.employeeAnswers[i].quality,vague:session.employeeAnswers[i].vague)];
+    return session.copyWith(questions:questions,employeeAnswers:answers);
+  }
+
+  /// The one production call site for [sanitized] against a legacy save:
+  /// resolves each session's real [Project] via its own `applicationId`
+  /// against [proposals] — the same [ProjectProposal] every session was
+  /// originally created against (see `GameEngine.startClientInterview`) —
+  /// and leaves a session whose proposal can no longer be found (should
+  /// never happen for a genuine save) untouched rather than guessing.
+  static List<ClientInterviewSession> sanitizeLegacySessions(List<ClientInterviewSession> sessions,List<ProjectProposal> proposals){
+    if(sessions.isEmpty)return sessions;
+    Project? projectFor(String applicationId){for(final p in proposals){if(p.id==applicationId)return p.project;}return null;}
+    return [for(final s in sessions)switch(projectFor(s.applicationId)){final project?=>sanitized(s,project),null=>s}];
+  }
 }

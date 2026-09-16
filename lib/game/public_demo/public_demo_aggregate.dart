@@ -440,12 +440,18 @@ class PublicDemoAggregate {
     if (stateRaw is! Map || workflowRaw is! Map) {
       throw const FormatException('Invalid Public Demo aggregate');
     }
-    final aggregate = PublicDemoAggregate._(
-      state: PublicDemoState.fromJson(stateRaw.cast<String, dynamic>()),
-      workflow: PublicDemoWorkflowState.fromJson(
-        workflowRaw.cast<String, dynamic>(),
-      ),
-    );
+    final state = PublicDemoState.fromJson(stateRaw.cast<String, dynamic>());
+    // Codex Broad Review (PR #269) P1: a legacy active project-interview
+    // session can carry a pre-fix ClientInterviewQuestionCategory
+    // enum-identifier leak baked into its stored target/answer text — this
+    // is the one place with both state.runSeed and the loaded workflow, so
+    // it sanitizes once here before anything reads it (see
+    // PublicDemoWorkflowState.withSanitizedProjectInterviewSessions's own
+    // doc).
+    final workflow = PublicDemoWorkflowState.fromJson(
+      workflowRaw.cast<String, dynamic>(),
+    ).withSanitizedProjectInterviewSessions(runSeed: state.runSeed);
+    final aggregate = PublicDemoAggregate._(state: state, workflow: workflow);
     aggregate._validateForPersistence();
     return aggregate;
   }

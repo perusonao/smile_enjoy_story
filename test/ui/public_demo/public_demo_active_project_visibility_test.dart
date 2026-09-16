@@ -145,16 +145,22 @@ void main() {
         // SES EMPLOYEE-UI-VISUAL-COMPLETE restyled this card
         // (`_assignmentMetricBar`) to pair each of those same two numeric
         // facts with its own label Text next to a progress bar, plus a
-        // '参画中' status badge — seven Text widgets total now, still
+        // '参画中' status badge — seven Text widgets total then, still
         // built from exactly the same four authoritative facts (name,
         // project, deliveryPressure, budgetHealth) the assertions above
         // already pin down; fieldEvaluation is still never one of them.
+        //
+        // SES First Fun Quarter AI Replay Audit #2 P1-2: the card now also
+        // carries a "スキルシートを編集" action Text (the same
+        // Mission-2-completing action `ec(i)`'s own button offers a
+        // not-yet-assigned engineer — see `activeProjectStatusCard`'s own
+        // doc) — an eighth Text widget, still not a new fact line.
         expect(
           find.descendant(
             of: find.byKey(cardKey),
             matching: find.byType(Text),
           ),
-          findsNWidgets(7),
+          findsNWidgets(8),
         );
       },
     );

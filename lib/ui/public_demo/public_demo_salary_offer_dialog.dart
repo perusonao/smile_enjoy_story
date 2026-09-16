@@ -32,7 +32,7 @@ class PublicDemoSalaryOfferDialog extends StatelessWidget {
               style: Theme.of(context).textTheme.titleMedium,
             ),
             const SizedBox(height: 12),
-            const Text('提示する月給を選んでください。給与は承諾だけでなく、入社後のMotivation / Trustにも影響します。'),
+            const Text('提示する月給を選んでください。給与は承諾だけでなく、入社後のモチベーションや信頼にも影響します。'),
           ],
         ),
         actions: [

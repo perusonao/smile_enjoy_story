@@ -3352,6 +3352,18 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
   /// assignment shows its real project's name instead of the generic
   /// template a fresh order always starts with (see
   /// [PublicDemoAssignment.forOrderedEngineer]'s own doc).
+  ///
+  /// SES FIRST-FUN-QUARTER AI Replay Audit #2 P1-2: no longer purely
+  /// read-only — carries the same "スキルシートを編集" action `ec(i)` has
+  /// always offered a not-yet-assigned engineer, calling the exact same
+  /// [_openSkillSheetEdit] (same command, same
+  /// [PublicDemoEngineerSales.salesProfileEditConfirmed] authority, same
+  /// cancel-commits-nothing behavior). `ec(i)`'s own render sites (Section 2)
+  /// stop covering an engineer the moment `assignOrderedForMay`/the
+  /// RECOVERY-LOOP-1 window put them in [PublicDemoWorkflowState
+  /// .assignedEngineerIds] — this is the one and only remaining site that
+  /// does, and it renders precisely opposite that same membership, so the
+  /// two edit buttons never coexist for one engineer in one month.
   Widget activeProjectStatusCard(PublicDemoAssignment a) => Card(
     key: Key('public-demo-active-project-status-${a.engineerId}'),
     child: Padding(
@@ -3394,6 +3406,18 @@ class _S extends State<PublicDemo01PlaceholderScreen> {
           _assignmentMetricBar(label: '納期プレッシャー', value: a.deliveryPressure),
           const SizedBox(height: 6),
           _assignmentMetricBar(label: '予算健全度', value: a.budgetHealth),
+          if (_engineerById(a.engineerId) case final engineer?)
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: OutlinedButton.icon(
+                key: Key(
+                  'public-demo-skill-sheet-edit-open-active-${a.engineerId}',
+                ),
+                onPressed: () => unawaited(_openSkillSheetEdit(engineer)),
+                icon: const Icon(Icons.edit_outlined),
+                label: const Text('スキルシートを編集'),
+              ),
+            ),
         ],
       ),
     ),
@@ -6890,7 +6914,7 @@ class _RecruitmentMediaCard extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 4),
-          Text('現預金 ¥${state.cash}'),
+          Text('現預金 ${formatYen(state.cash)}'),
           const SizedBox(height: 8),
           FilledButton.tonal(
             key: const Key('public-demo-open-recruitment-media'),
@@ -6924,7 +6948,7 @@ class _RecruitmentMediaSheet extends StatelessWidget {
           children: [
             Text('求人媒体を選ぶ', style: Theme.of(context).textTheme.titleLarge),
             const SizedBox(height: 4),
-            Text('現在の現預金 ¥${state.cash}'),
+            Text('現在の現預金 ${formatYen(state.cash)}'),
             const SizedBox(height: 12),
             for (final medium in PublicDemoRecruitmentMedium.values)
               _RecruitmentMediumOption(state: state, medium: medium),
@@ -6958,9 +6982,10 @@ class _RecruitmentMediumOption extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(label, style: const TextStyle(fontWeight: FontWeight.bold)),
-            Text('費用: ¥${medium.cost} / 応募: ${medium.applicantCount}名'),
+            Text('費用: ${formatYen(medium.cost)} / 応募: ${medium.applicantCount}名'),
             Text(description),
-            if (medium.cost > 0) Text('利用後の現預金: ¥${state.cash - medium.cost}'),
+            if (medium.cost > 0)
+              Text('利用後の現預金: ${formatYen(state.cash - medium.cost)}'),
             if (unavailable != null)
               Padding(
                 padding: const EdgeInsets.only(top: 4),

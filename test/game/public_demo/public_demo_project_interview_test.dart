@@ -1033,4 +1033,162 @@ void main() {
       );
     });
   });
+
+  group(
+    'SES First Fun Quarter AI Replay Audit #2 Codex Broad Review P1: '
+    'legacy save sanitizes on load without touching authority (Public '
+    'Demo shares ClientInterviewEngine with Main Game)',
+    () {
+      test(
+        'a legacy save whose stored target/answer text embeds a raw '
+        'technicalExperience enum identifier is sanitized on load — past, '
+        'current, and next answers are all clean; quality/vague/mismatch/'
+        'category and eventual pass-fail are untouched; save/reload '
+        'round-trips',
+        () {
+          var control = _withRealProposal(
+            PublicDemoAggregate.initial(runSeed: 1),
+          );
+          control = control.startProjectInterview('eng-01');
+          final startSession = control.projectInterviewSessionFor('eng-01')!;
+          control = control.chooseProjectInterviewFollowUp(
+            'eng-01',
+            startSession.currentQuestionIndex,
+            PublicDemoProjectInterview.choicesFor(startSession).first,
+          );
+          final originalSession = control.projectInterviewSessionFor(
+            'eng-01',
+          )!;
+          final originalQuestions = originalSession.questions;
+          final originalAnswers = originalSession.employeeAnswers;
+
+          // Simulate a legacy save: corrupt only the two presentation-only
+          // fields the pre-fix `_target()` bug actually wrote
+          // (target/text) — category/mismatch/quality/vague are left
+          // exactly as the real engine produced them.
+          final json = control.toJson();
+          final sessionsJson =
+              ((json['workflow'] as Map<String, dynamic>)['projectInterviewSessions']
+                      as List)
+                  .cast<Map<String, dynamic>>();
+          final sessionIndex = sessionsJson.indexWhere(
+            (s) => s['id'] == originalSession.id,
+          );
+          expect(sessionIndex, isNonNegative);
+          final questionsJson =
+              (sessionsJson[sessionIndex]['questions'] as List)
+                  .cast<Map<String, dynamic>>();
+          final answersJson =
+              (sessionsJson[sessionIndex]['employeeAnswers'] as List)
+                  .cast<Map<String, dynamic>>();
+          questionsJson[0]['target'] = 'technicalExperience';
+          answersJson[0]['text'] =
+              'technicalExperienceの案件には参加しています。担当範囲はチームで対応することが多く、'
+              '補助的に経験しました。';
+          questionsJson[1]['target'] = 'technicalExperience';
+          answersJson[1]['text'] =
+              'technicalExperienceを使った開発で、設計から実装・単体試験まで担当しました。課題は'
+              'チームと確認しながら具体的に解決しました。';
+
+          final loaded = PublicDemoAggregate.fromJson(json);
+          final loadedSession = loaded.projectInterviewSessionFor('eng-01')!;
+
+          // 6/7: past (index 0) and current (index 1) answers are clean.
+          for (final categoryName
+              in ClientInterviewQuestionCategory.values.map((c) => c.name)) {
+            expect(loadedSession.questions[0].target, isNot(categoryName));
+            expect(loadedSession.questions[1].target, isNot(categoryName));
+          }
+          expect(
+            loadedSession.employeeAnswers[0].text,
+            isNot(contains('technicalExperience')),
+          );
+          expect(
+            loadedSession.employeeAnswers[1].text,
+            isNot(contains('technicalExperience')),
+          );
+
+          // 9: quality/vague/mismatch/category — the authority fields —
+          // are byte-identical to what the real engine originally
+          // produced, never recomputed by sanitization.
+          for (var i = 0; i < 2; i++) {
+            expect(
+              loadedSession.employeeAnswers[i].quality,
+              originalAnswers[i].quality,
+            );
+            expect(
+              loadedSession.employeeAnswers[i].vague,
+              originalAnswers[i].vague,
+            );
+            expect(
+              loadedSession.questions[i].mismatch,
+              originalQuestions[i].mismatch,
+            );
+            expect(
+              loadedSession.questions[i].category,
+              originalQuestions[i].category,
+            );
+          }
+
+          // 8: resuming — a freshly-computed "next" answer — is also
+          // clean.
+          final resumedOnce = loaded.chooseProjectInterviewFollowUp(
+            'eng-01',
+            loadedSession.currentQuestionIndex,
+            PublicDemoProjectInterview.choicesFor(loadedSession).first,
+          );
+          expect(
+            resumedOnce
+                .projectInterviewSessionFor('eng-01')!
+                .employeeAnswers[2]
+                .text,
+            isNot(contains('technicalExperience')),
+          );
+
+          // 10: score/pass-fail authority is unaffected by sanitization —
+          // finishing the SAME sequence of follow-ups from the uncorrupted
+          // control and from the sanitized/reloaded save must resolve
+          // identically.
+          final controlOnce = control.chooseProjectInterviewFollowUp(
+            'eng-01',
+            originalSession.currentQuestionIndex,
+            PublicDemoProjectInterview.choicesFor(originalSession).first,
+          );
+          final resumedFinal = resumedOnce
+              .chooseProjectInterviewFollowUp(
+                'eng-01',
+                resumedOnce.projectInterviewSessionFor('eng-01')!.currentQuestionIndex,
+                PublicDemoProjectInterview.choicesFor(
+                  resumedOnce.projectInterviewSessionFor('eng-01')!,
+                ).first,
+              )
+              .concludeProjectInterview('eng-01');
+          final controlFinal = controlOnce
+              .chooseProjectInterviewFollowUp(
+                'eng-01',
+                controlOnce.projectInterviewSessionFor('eng-01')!.currentQuestionIndex,
+                PublicDemoProjectInterview.choicesFor(
+                  controlOnce.projectInterviewSessionFor('eng-01')!,
+                ).first,
+              )
+              .concludeProjectInterview('eng-01');
+          expect(
+            _engineer(resumedFinal).stage,
+            _engineer(controlFinal).stage,
+          );
+          expect(
+            _engineer(resumedFinal).lastInterviewScore,
+            _engineer(controlFinal).lastInterviewScore,
+          );
+
+          // 11: save/reload round-trips — already-sanitized data is
+          // unchanged by a second pass (idempotent).
+          final reloaded = PublicDemoAggregate.fromJson(
+            resumedFinal.toJson(),
+          );
+          expect(reloaded.toJson(), resumedFinal.toJson());
+        },
+      );
+    },
+  );
 }

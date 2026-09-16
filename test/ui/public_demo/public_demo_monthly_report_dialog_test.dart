@@ -19,17 +19,20 @@ const _hiyoriPortraitKey = Key('public-demo-monthly-report-hiyori-portrait');
 const _nextActionKey = Key('public-demo-monthly-report-next-action');
 
 PublicDemoMonthlyReportDisplayData _fixture({
+  int closedMonth = 8,
   int fixedCostsPaid = 50000,
+  int revenue = 800000,
+  int cashReceived = 800000,
   String? nextActionHeadline,
   bool isFinanciallyTerminal = false,
   bool isFiscalYearCompleted = false,
 }) => PublicDemoMonthlyReportDisplayData(
-  closedMonth: 8,
+  closedMonth: closedMonth,
   openingCash: 1000000,
   closingCash: 1100000,
   cashDelta: 100000,
-  revenue: 800000,
-  cashReceived: 800000,
+  revenue: revenue,
+  cashReceived: cashReceived,
   receivables: 800000,
   totalExpenses: 700000,
   salaryPaid: 600000,
@@ -143,6 +146,75 @@ void main() {
     });
   });
 
+  group(
+    '5. 現金増減 vs 純利益相当 divergence caption (SES First Fun Quarter AI '
+    'Replay Audit #2 P2-3, Codex Broad Review PR #269 P2)',
+    () {
+      testWidgets(
+        'a normal month with both revenue and cashReceived positive (and '
+        'unequal) states both halves',
+        (tester) async {
+          await _pump(
+            tester,
+            _fixture(revenue: 800000, cashReceived: 500000),
+          );
+          expect(find.textContaining('売上¥800,000は来月入金予定'), findsOneWidget);
+          expect(find.textContaining('入金¥500,000は先月分の売上'), findsOneWidget);
+          expect(find.textContaining('現金増減とは一致しません。'), findsOneWidget);
+        },
+      );
+
+      testWidgets(
+        'a normal month with revenue > 0 and cashReceived == 0 (first '
+        'billing close) states only the revenue half — never claims a ¥0 '
+        'receipt is last month\'s sales',
+        (tester) async {
+          await _pump(tester, _fixture(revenue: 800000, cashReceived: 0));
+          expect(find.textContaining('売上¥800,000は来月入金予定'), findsOneWidget);
+          expect(find.textContaining('先月分の売上'), findsNothing);
+        },
+      );
+
+      testWidgets(
+        'a normal month with revenue == 0 and cashReceived > 0 (an '
+        'assignment just ended, prior receivables still collected) states '
+        'only the cashReceived half — never claims a ¥0 sale is due next '
+        'month',
+        (tester) async {
+          await _pump(tester, _fixture(revenue: 0, cashReceived: 500000));
+          expect(find.textContaining('入金¥500,000は先月分の売上'), findsOneWidget);
+          expect(find.textContaining('来月入金予定'), findsNothing);
+        },
+      );
+
+      testWidgets(
+        'March (closedMonth 15, fiscal year end) never promises a "来月" '
+        'collection that cannot happen — states the weaker, still-true '
+        '"not yet collected as of year end" instead',
+        (tester) async {
+          await _pump(
+            tester,
+            _fixture(closedMonth: 15, revenue: 800000, cashReceived: 0),
+          );
+          expect(find.textContaining('来月入金予定'), findsNothing);
+          expect(find.textContaining('年度末時点で未収'), findsOneWidget);
+        },
+      );
+
+      testWidgets(
+        'revenue == cashReceived (including both zero) shows no '
+        'divergence caption at all — 現金増減 and 純利益相当 already agree',
+        (tester) async {
+          await _pump(tester, _fixture(revenue: 800000, cashReceived: 800000));
+          expect(find.textContaining('現金増減とは一致しません'), findsNothing);
+
+          await _pump(tester, _fixture(revenue: 0, cashReceived: 0));
+          expect(find.textContaining('現金増減とは一致しません'), findsNothing);
+        },
+      );
+    },
+  );
+
   group('4. One-Screen (SES ISSUE-250): 360x800 / 390x844, '
       'TextScaler 1.0 / 1.3', () {
     for (final size in [const Size(360, 800), const Size(390, 844)]) {
@@ -185,5 +257,66 @@ void main() {
             'needing to scroll at the smallest supported viewport',
       );
     });
+
+    // SES First Fun Quarter AI Replay Audit #2 P3, Codex Broad Review
+    // (PR #269) P3: the Codex-repro fixture (360x800, TextScaler 1.0,
+    // revenue=¥800,000, cashReceived=¥0, a next action present) — the exact
+    // combination that previously overflowed by 4px once the divergence
+    // caption was added. Covers every (size, scale) combination the rest
+    // of this group already exercises, plus the tightest one (360x800,
+    // 1.0x) held to the same maxScrollExtent==0 no-scroll bar as the
+    // caption-free case above.
+    for (final size in [const Size(360, 800), const Size(390, 844)]) {
+      for (final scale in [1.0, 1.3]) {
+        testWidgets(
+          'divergence caption shown, ${size.width.toInt()}x'
+          '${size.height.toInt()} at ${scale}x text scale lays out without '
+          'overflow',
+          (tester) async {
+            await _pump(
+              tester,
+              _fixture(
+                revenue: 800000,
+                cashReceived: 0,
+                nextActionHeadline: '佐藤 健のスキルシートを確認',
+              ),
+              size: size,
+              textScale: scale,
+            );
+            expect(tester.takeException(), isNull);
+            expect(find.byKey(_reportKey), findsOneWidget);
+          },
+        );
+      }
+    }
+
+    testWidgets(
+      'divergence caption shown, 360x800 at TextScaler 1.0 still fits '
+      'without scrolling',
+      (tester) async {
+        await _pump(
+          tester,
+          _fixture(
+            revenue: 800000,
+            cashReceived: 0,
+            nextActionHeadline: '佐藤 健のスキルシートを確認',
+          ),
+          size: const Size(360, 800),
+        );
+        final scrollable = find.descendant(
+          of: find.byKey(_reportKey),
+          matching: find.byType(Scrollable),
+        );
+        expect(scrollable, findsOneWidget);
+        final position = tester.state<ScrollableState>(scrollable).position;
+        expect(
+          position.maxScrollExtent,
+          0,
+          reason:
+              'the divergence-caption case must also fit the dialog without '
+              'needing to scroll at the smallest supported viewport',
+        );
+      },
+    );
   });
 }

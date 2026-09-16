@@ -5,6 +5,41 @@ import '../../presentation/home/models/home_navigator_display.dart';
 import '../theme.dart';
 import 'public_demo_monthly_report_display_data.dart';
 
+/// SES First Fun Quarter AI Replay Audit #2 P2-3, Codex Broad Review
+/// (PR #269) P2: the short note under 純利益相当 explaining why it can
+/// differ from 現金 above — read-only narration of two facts already shown
+/// in the 「売上・入金」 section ([data.revenue]/[data.cashReceived]), never a
+/// new Finance authority or a second calculation of the two figures'
+/// difference.
+///
+/// Each half is stated only when the transaction it describes actually
+/// happened this close — [data.revenue] `> 0` for "this month's billing
+/// collects next month", [data.cashReceived] `> 0` for "this month's
+/// receipt was last month's billing" — instead of the P1 version's
+/// unconditional pair, which claimed a ¥0 receipt was "last month's sales"
+/// (or a ¥0 sale was "due next month") even when no such transaction
+/// existed. March ([data.closedMonth] `== 15`, Public Demo 0.1's fiscal
+/// year end — [PublicDemoState.completeFiscalYear]'s own doc) never
+/// promises a "next month" collection that cannot happen; it states the
+/// weaker, still-true "not yet collected as of year end" instead. Returns
+/// `null` (no caption) whenever [data.revenue] and [data.cashReceived]
+/// already agree — including the common "both zero" case — since 現金増減
+/// and 純利益相当 already agree too and this note would say nothing new.
+String? _cashDivergenceCaption(PublicDemoMonthlyReportDisplayData data) {
+  if (data.revenue == data.cashReceived) return null;
+  final isMarch = data.closedMonth == 15;
+  final parts = <String>[
+    if (data.revenue > 0)
+      isMarch
+          ? '売上${formatYen(data.revenue)}は年度末時点で未収'
+          : '売上${formatYen(data.revenue)}は来月入金予定',
+    if (data.cashReceived > 0)
+      '入金${formatYen(data.cashReceived)}は先月分の売上',
+  ];
+  if (parts.isEmpty) return null;
+  return '${parts.join('・')}のため現金増減とは一致しません。';
+}
+
 /// One label/value line inside [PublicDemoMonthlyReportDialog] — the exact
 /// same stacked (label above, value below) layout
 /// [PublicDemoYearEndResultCard]'s own `_YearEndStatRow` uses, for the same
@@ -99,7 +134,11 @@ class _ReportSectionHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.only(top: 4),
+    // Codex Broad Review (PR #269) P3: trimmed from `top: 4` — reclaims a
+    // few px per section (this header renders up to 7 times) to make room
+    // for the P2-3/P2 divergence caption without needing to cut any
+    // section's content.
+    padding: const EdgeInsets.only(top: 2),
     child: Text(
       title,
       style: Theme.of(
@@ -155,10 +194,16 @@ class PublicDemoMonthlyReportDialog extends StatelessWidget {
       // `PublicDemoProjectInterviewDialog`/`PublicDemoRecruitmentInterviewDialog`
       // already use, plus tightened title/content/actions padding — reclaims
       // vertical room at 360x800 without shrinking any text.
-      insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-      titlePadding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
-      contentPadding: const EdgeInsets.fromLTRB(20, 6, 20, 6),
-      actionsPadding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+      //
+      // Codex Broad Review (PR #269) P3: tightened a second time (10→6,
+      // 12→8, 8→6) to make room for the P2-3/P2 divergence caption's own
+      // extra line without scrolling at 360x800 — still well inside the
+      // touch-target/legibility floor the first tightening pass already
+      // established.
+      insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+      titlePadding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
+      contentPadding: const EdgeInsets.fromLTRB(20, 4, 20, 4),
+      actionsPadding: const EdgeInsets.fromLTRB(20, 0, 20, 6),
       title: Text('${publicDemoMonthLabel(data.closedMonth)}の経営結果'),
       content: SizedBox(
         width: double.maxFinite,
@@ -214,6 +259,7 @@ class PublicDemoMonthlyReportDialog extends StatelessWidget {
                 value: data.netIncome >= 0
                     ? '+${formatYen(data.netIncome)}'
                     : '-${formatYen(-data.netIncome)}',
+                caption: _cashDivergenceCaption(data),
               ),
 
               const _ReportSectionHeader('社員'),
